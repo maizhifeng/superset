@@ -33,6 +33,7 @@
     "@superset-ui/core": "^0.20.4",
     "@types/lodash": "^4.17.20",
     "chart.js": "^4.5.0",
-    "lodash": "^4.17.21"
+    "lodash": "^4.17.21",
+    "svelte-routing": "^2.13.0"
   }
 }
