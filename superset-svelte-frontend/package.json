@@ -1,0 +1,38 @@
+{
+  "name": "superset-svelte-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@smui/tooltip": "^8.0.3",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0-next.6",
+    "@tsconfig/svelte": "^5.0.2",
+    "@types/d3-format": "^3.0.4",
+    "@types/d3-time-format": "^4.0.3",
+    "sass": "^1.70.0",
+    "svelte": "^5.0.0",
+    "svelte-check": "^3.6.7",
+    "tslib": "^2.6.2",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  },
+  "dependencies": {
+    "@smui/button": "^8.0.3",
+    "@smui/circular-progress": "^8.0.3",
+    "@smui/dialog": "^8.0.3",
+    "@smui/list": "^8.0.3",
+    "@smui/menu": "^8.0.3",
+    "@smui/textfield": "^8.0.3",
+    "@superset-ui/chart-controls": "^0.20.3",
+    "@superset-ui/core": "^0.20.4",
+    "@types/lodash": "^4.17.20",
+    "chart.js": "^4.5.0",
+    "lodash": "^4.17.21"
+  }
+}

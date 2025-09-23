@@ -1,0 +1,1180 @@
+
+> superset-svelte-frontend@0.0.0 check
+> svelte-check --tsconfig ./tsconfig.json
+
+
+====================================
+Loading svelte-check in workspace: /home/mzf/superset/superset-svelte-frontend
+Getting Svelte diagnostics...
+
+Parsing /home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartContextMenu/ChartContextMenu.svelte failed. No preprocess config found but lang tag exists. Skip showing error because they likely use other preprocessors.
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/AlteredSliceTag/AlteredSliceTag.svelte:9:5
+Error: Element implicitly has an 'any' type because expression of type '"tooltip-content"' can't be used to index type '{}'.
+  Property 'tooltip-content' does not exist on type '{}'. (ts)
+  <Tooltip>
+    <div slot="tooltip-content">
+      The slice has been altered.
+
+
+/home/mzf/superset/superset-svelte-frontend/src/main.ts:5:3
+Error: Type 'HTMLElement | null' is not assignable to type 'Document | Element | ShadowRoot'.
+  Type 'null' is not assignable to type 'Document | Element | ShadowRoot'. 
+const app = new App({
+  target: document.getElementById('app'),
+})
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/bootstrapTypes.ts:25:3
+Error: Module '"@superset-ui/core"' has no exported member 'AnyThemeConfig'. 
+import type {
+  AnyThemeConfig,
+  ColorSchemeConfig,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/bootstrapTypes.ts:32:3
+Error: Module '"@superset-ui/core"' has no exported member 'SerializableThemeConfig'. 
+  SequentialSchemeConfig,
+  SerializableThemeConfig,
+} from '@superset-ui/core';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/views/CRUD/types.ts:21:31
+Error: Cannot find module 'src/types/Database' or its corresponding type declarations. 
+import type { User } from 'src/types/bootstrapTypes';
+import type { Database } from 'src/types/Database';
+import type { Owner } from 'src/types/Owner';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/views/CRUD/types.ts:22:28
+Error: Cannot find module 'src/types/Owner' or its corresponding type declarations. 
+import type { Database } from 'src/types/Database';
+import type { Owner } from 'src/types/Owner';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/Chart.ts:24:10
+Error: 'QueryFormData' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+
+import { QueryFormData } from '@superset-ui/core';
+import { TagType } from 'src/components';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/Chart.ts:25:10
+Error: Module '"src/components"' has no exported member 'TagType'. 
+import { QueryFormData } from '@superset-ui/core';
+import { TagType } from 'src/components';
+import Owner from './Owner';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/Chart.ts:26:19
+Error: Cannot find module './Owner' or its corresponding type declarations. 
+import { TagType } from 'src/components';
+import Owner from './Owner';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/types/Chart.ts:81:16
+Error: An 'export default' must reference a value when 'verbatimModuleSyntax' is enabled, but 'Chart' only refers to a type. 
+
+export default Chart;
+
+/home/mzf/superset/superset-svelte-frontend/src/dashboard/types.ts:31:28
+Error: Cannot find module './util/componentTypes' or its corresponding type declarations. 
+import type { Dataset } from '@superset-ui/chart-controls';
+import componentTypes from './util/componentTypes';
+import type Database from '../types/Database';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dashboard/types.ts:32:27
+Error: Cannot find module '../types/Database' or its corresponding type declarations. 
+import componentTypes from './util/componentTypes';
+import type Database from '../types/Database';
+import type { UrlParamEntries } from '../utils/urlUtils';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dashboard/types.ts:33:38
+Error: Cannot find module '../utils/urlUtils' or its corresponding type declarations. 
+import type Database from '../types/Database';
+import type { UrlParamEntries } from '../utils/urlUtils';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dashboard/types.ts:36:24
+Error: Cannot find module '../types/Owner' or its corresponding type declarations. 
+import type { UserWithPermissionsAndRoles } from '../types/bootstrapTypes';
+import type Owner from '../types/Owner';
+import type { ChartState } from '../explore/types';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dashboard/types.ts:39:32
+Error: Cannot find module '../types/Dashboard' or its corresponding type declarations. 
+
+export type { Dashboard } from '../types/Dashboard';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dataMask/actions.ts:20:44
+Error: Cannot find module '../dashboard/components/nativeFilters/FiltersConfigModal/types' or its corresponding type declarations. 
+import type { DataMask, Filters } from '@superset-ui/core';
+import type { SaveFilterChangesType } from '../dashboard/components/nativeFilters/FiltersConfigModal/types';
+import { getInitialDataMask } from './reducer';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/dataMask/actions.ts:21:36
+Error: Cannot find module './reducer' or its corresponding type declarations. 
+import type { SaveFilterChangesType } from '../dashboard/components/nativeFilters/FiltersConfigModal/types';
+import { getInitialDataMask } from './reducer';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/apiResources.ts:21:10
+Error: Module '"svelte/store"' has no exported member 'onMount'. 
+import { makeApi } from '@superset-ui/core';
+import { onMount, writable } from 'svelte/store';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/apiResources.ts:126:3
+Error: Type 'Writable<Resource<RESULT>>' is not assignable to type 'Resource<RESULT>'. 
+
+  return resource;
+}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/apiResources.ts:153:7
+Error: Type 'unknown' is not assignable to type 'Error | null'. 
+      result: null,
+      error: e,
+    };
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/datasets.ts:21:3
+Error: 'Column' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+import {
+  Column,
+  logging,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/datasets.ts:23:3
+Error: 'Metric' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+  logging,
+  Metric,
+  ensureIsArray,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/datasets.ts:26:3
+Error: 'QueryFormData' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+  getExtensionsRegistry,
+  QueryFormData,
+} from '@superset-ui/core';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/hooks/apiResources/datasets.ts:30:10
+Error: 'Resource' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+import type { Dataset } from '../../components/Chart/types';
+import { Resource, ResourceStatus } from './apiResources';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/types.ts:19:10
+Error: 'Column' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+ */
+import { Column, Metric } from '@superset-ui/core';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/types.ts:19:18
+Error: 'Metric' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled. 
+ */
+import { Column, Metric } from '@superset-ui/core';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByChart.svelte:24:14
+Warn: Component has unused export property 'result'. If it is for external reference only, please consider using `export const result`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let formData: BaseFormData & { [key: string]: any };
+  export let result: QueryData[];
+  export let dataset: Dataset;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByChart.svelte:25:14
+Warn: Component has unused export property 'dataset'. If it is for external reference only, please consider using `export const dataset`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let result: QueryData[];
+  export let dataset: Dataset;
+  export let onContextMenu: (
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByChart.svelte:26:14
+Warn: Component has unused export property 'onContextMenu'. If it is for external reference only, please consider using `export const onContextMenu`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let dataset: Dataset;
+  export let onContextMenu: (
+    offsetX: number,
+    offsetY: number,
+    filters: ContextMenuFilters,
+  ) => void;
+  export let inContextMenu: boolean;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByChart.svelte:31:14
+Warn: Component has unused export property 'inContextMenu'. If it is for external reference only, please consider using `export const inContextMenu`
+https://svelte.dev/e/export_let_unused (svelte)
+  ) => void;
+  export let inContextMenu: boolean;
+</script>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByModal.svelte:191:9
+Warn: `<a>` element should have an href attribute
+https://svelte.dev/e/a11y_missing_attribute (svelte)
+      <Button disabled>
+        <a>{t('Edit chart')}</a>
+      </Button>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByModal.svelte:55:14
+Warn: Component has unused export property 'canDownload'. If it is for external reference only, please consider using `export const canDownload`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let onHideModal: () => void;
+  export let canDownload: boolean;
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByModal.svelte:129:51
+Error: Argument of type 'string | boolean' is not assignable to parameter of type 'boolean'.
+  Type 'string' is not assignable to type 'boolean'. (ts)
+        .then(({ response, json }: { response: any; json: any }) =>
+          handleChartDataResponse(response, json, useLegacyApi),
+        )
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:28:33
+Error: Cannot find module '@superset-ui/core/src/components' or its corresponding type declarations. (ts)
+  import type { BinaryQueryObjectFilterClause, QueryFormData } from '@superset-ui/core';
+  import { Button, Modal } from '@superset-ui/core/src/components';
+  import { isEmbedded } from 'src/dashboard/util/isEmbedded';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:31:34
+Error: Cannot find module 'src/utils/findPermission' or its corresponding type declarations. (ts)
+  import type { Slice } from 'src/types/Chart';
+  import { findPermission } from 'src/utils/findPermission';
+  import type { Dataset } from '../types';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:33:31
+Error: Cannot find module './DrillDetailPane.svelte' or its corresponding type declarations. (ts)
+  import type { Dataset } from '../types';
+  import DrillDetailPane from './DrillDetailPane.svelte';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:74:22
+Error: Property 'sizeUnit' does not exist on type 'Theme'. (ts)
+  resizableConfig={{
+    minHeight: theme.sizeUnit * 128,
+    minWidth: theme.sizeUnit * 128,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:75:21
+Error: Property 'sizeUnit' does not exist on type 'Theme'. (ts)
+    minHeight: theme.sizeUnit * 128,
+    minWidth: theme.sizeUnit * 128,
+    defaultSize: {
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailModal.svelte:105:36
+Error: Property 'sizeUnit' does not exist on type 'Theme'. (ts)
+      data-test="close-drilltodetail-modal"
+      style={`margin-left: ${theme.sizeUnit * 2}px;`}
+    >
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartContextMenu/ChartContextMenu.svelte:219:7
+Error: Unexpected token
+https://svelte.dev/e/js_parse_error (ts)
+    <Menu
+      className="chart-context-menu"
+      data-test="chart-context-menu"
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:230:3
+Warn: `<div>` with a contextmenu handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+{#if chartStatus !== 'loading' && !chartAlert && chartStatus !== null}
+  <div on:contextmenu={showContextMenu ? onContextMenuFallback : undefined}>
+    {#if showContextMenu}
+      <ChartContextMenu
+        bind:this={contextMenuRef}
+        id={chartId}
+        formData={currentFormData}
+        on:selection={handleContextMenuSelected}
+        on:close={handleContextMenuClosed}
+      />
+    {/if}
+    <SuperChart
+      disableErrorBoundary
+      key={`${chartId}${webpackHash}`}
+      id={`chart-id-${chartId}`}
+      className={chartClassName}
+      chartType={currentVizType}
+      {width}
+      {height}
+      {annotationData}
+      {datasource}
+      {initialValues}
+      formData={currentFormData}
+      {ownState}
+      {filterState}
+      {hooks}
+      {behaviors}
+      queriesData={mutableQueriesResponse}
+      onRenderSuccess={handleRenderSuccess}
+      onRenderFailure={handleRenderFailure}
+      noResults={
+        width > BIG_NO_RESULT_MIN_WIDTH && height > BIG_NO_RESULT_MIN_HEIGHT
+          ? EmptyState({
+              size: 'large',
+              title: noResultTitle,
+              description: noResultDescription,
+              image: noResultImage,
+            })
+          : EmptyState({
+              title: noResultTitle,
+              image: noResultImage,
+              size: 'small',
+            })
+      }
+      {postTransformProps}
+      {emitCrossFilters}
+      {legendState}
+      enableNoResults={bypassNoResult}
+      {legendIndex}
+      {...drillToDetailProps}
+    />
+  </div>
+{/if}
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:44:12
+Warn: Component has unused export property 'labelsColor'. If it is for external reference only, please consider using `export const labelsColor`
+https://svelte.dev/e/export_let_unused (svelte)
+export let latestQueryFormData: object;
+export let labelsColor: object;
+export let labelsColorMap: object;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:45:12
+Warn: Component has unused export property 'labelsColorMap'. If it is for external reference only, please consider using `export const labelsColorMap`
+https://svelte.dev/e/export_let_unused (svelte)
+export let labelsColor: object;
+export let labelsColorMap: object;
+export let height: number;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:50:12
+Warn: Component has unused export property 'triggerRender'. If it is for external reference only, please consider using `export const triggerRender`
+https://svelte.dev/e/export_let_unused (svelte)
+export let vizType: string;
+export let triggerRender: boolean = false;
+// state
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:55:12
+Warn: Component has unused export property 'triggerQuery'. If it is for external reference only, please consider using `export const triggerQuery`
+https://svelte.dev/e/export_let_unused (svelte)
+export let queriesResponse: object[];
+export let triggerQuery: boolean;
+export let chartIsStale: boolean;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:59:12
+Warn: Component has unused export property 'setDataMask'. If it is for external reference only, please consider using `export const setDataMask`
+https://svelte.dev/e/export_let_unused (svelte)
+export let addFilter: (col: string, vals: any[], merge?: boolean, refresh?: boolean) => void = () => {};
+export let setDataMask: (dataMask: object) => void;
+export let onFilterMenuOpen: () => void = () => {};
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:21:10
+Error: Module '"svelte"' has no exported member 'createRef'. (ts)
+import { snakeCase, isEqual, cloneDeep } from 'lodash';
+import { createRef, onMount, onDestroy, tick } from 'svelte';
+import {
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:33:28
+Error: Cannot find module '@superset-ui/core/components' or its corresponding type declarations. (ts)
+import { Logger, LOG_ACTIONS_RENDER_CHART } from 'src/logger/LogUtils';
+import { EmptyState } from '@superset-ui/core/components';
+import { ChartSource } from 'src/types/ChartSource';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:35:8
+Error: Module '"/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartContextMenu/ChartContextMenu.svelte"' has no default export. (ts)
+import { ChartSource } from 'src/types/ChartSource';
+import ChartContextMenu from './ChartContextMenu/ChartContextMenu.svelte';
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:80:5
+Error: Variable 'contextMenuRef' implicitly has type 'any' in some locations where its type cannot be determined. (ts)
+
+let contextMenuRef;
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:86:14
+Error: Property 'viz_type' does not exist on type 'object'. (ts)
+  const suppressContextMenu = getChartMetadataRegistry().get(
+    formData.viz_type ?? vizType,
+  )?.suppressContextMenu;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:96:26
+Error: Parameter 'col' implicitly has an 'any' type. (ts)
+
+function handleAddFilter(col, vals, merge = true, refresh = true) {
+  addFilter(col, vals, merge, refresh);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:96:31
+Error: Parameter 'vals' implicitly has an 'any' type. (ts)
+
+function handleAddFilter(col, vals, merge = true, refresh = true) {
+  addFilter(col, vals, merge, refresh);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:100:5
+Error: Variable 'renderStartTime' implicitly has type 'any' in some locations where its type cannot be determined. (ts)
+
+let renderStartTime;
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:104:13
+Error: Property 'chartRenderingSucceeded' does not exist on type 'object'. (ts)
+  if (['loading', 'rendered'].indexOf(chartStatus) < 0) {
+    actions.chartRenderingSucceeded(chartId);
+  }
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:108:13
+Error: Property 'logEvent' does not exist on type 'object'. (ts)
+  if (hasQueryResponseChange) {
+    actions.logEvent(LOG_ACTIONS_RENDER_CHART, {
+      slice_id: chartId,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:111:21
+Error: Variable 'renderStartTime' implicitly has an 'any' type. (ts)
+      viz_type: vizType,
+      start_offset: renderStartTime,
+      ts: new Date().getTime(),
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:113:41
+Error: Variable 'renderStartTime' implicitly has an 'any' type. (ts)
+      ts: new Date().getTime(),
+      duration: Logger.getTimestamp() - renderStartTime,
+    });
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:118:30
+Error: Parameter 'error' implicitly has an 'any' type. (ts)
+
+function handleRenderFailure(error, info) {
+  logging.warn(error);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:118:37
+Error: Parameter 'info' implicitly has an 'any' type. (ts)
+
+function handleRenderFailure(error, info) {
+  logging.warn(error);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:120:11
+Error: Property 'chartRenderingFailed' does not exist on type 'object'. (ts)
+  logging.warn(error);
+  actions.chartRenderingFailed(
+    error.toString(),
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:127:13
+Error: Property 'logEvent' does not exist on type 'object'. (ts)
+  if (hasQueryResponseChange) {
+    actions.logEvent(LOG_ACTIONS_RENDER_CHART, {
+      slice_id: chartId,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:131:21
+Error: Variable 'renderStartTime' implicitly has an 'any' type. (ts)
+      error_details: error.toString(),
+      start_offset: renderStartTime,
+      ts: new Date().getTime(),
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:133:41
+Error: Variable 'renderStartTime' implicitly has an 'any' type. (ts)
+      ts: new Date().getTime(),
+      duration: Logger.getTimestamp() - renderStartTime,
+    });
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:138:32
+Error: Rest parameter 'args' implicitly has an 'any[]' type. (ts)
+
+function handleSetControlValue(...args) {
+  if (setControlValue) {
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:140:21
+Error: A spread argument must either have a tuple type or be passed to a rest parameter. (ts)
+  if (setControlValue) {
+    setControlValue(...args);
+  }
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:144:30
+Error: Parameter 'offsetX' implicitly has an 'any' type. (ts)
+
+function handleOnContextMenu(offsetX, offsetY, filters) {
+  contextMenuRef.open(offsetX, offsetY, filters);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:144:39
+Error: Parameter 'offsetY' implicitly has an 'any' type. (ts)
+
+function handleOnContextMenu(offsetX, offsetY, filters) {
+  contextMenuRef.open(offsetX, offsetY, filters);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:144:48
+Error: Parameter 'filters' implicitly has an 'any' type. (ts)
+
+function handleOnContextMenu(offsetX, offsetY, filters) {
+  contextMenuRef.open(offsetX, offsetY, filters);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:145:3
+Error: Variable 'contextMenuRef' implicitly has an 'any' type. (ts)
+function handleOnContextMenu(offsetX, offsetY, filters) {
+  contextMenuRef.open(offsetX, offsetY, filters);
+  inContextMenu = true;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:157:35
+Error: Parameter 'newLegendState' implicitly has an 'any' type. (ts)
+
+function handleLegendStateChanged(newLegendState) {
+  legendState = newLegendState;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:161:32
+Error: Parameter 'event' implicitly has an 'any' type. (ts)
+
+function onContextMenuFallback(event) {
+  if (!inContextMenu) {
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:164:5
+Error: Expected 3 arguments, but got 2. (ts)
+    event.preventDefault();
+    handleOnContextMenu(event.clientX, event.clientY);
+  }
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:168:29
+Error: Parameter 'newLegendIndex' implicitly has an 'any' type. (ts)
+
+function handleLegendScroll(newLegendIndex) {
+  legendIndex = newLegendIndex;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:174:18
+Error: Variable 'showContextMenu' is used before being assigned. (ts)
+  onAddFilter: handleAddFilter,
+  onContextMenu: showContextMenu ? handleOnContextMenu : undefined,
+  onError: handleRenderFailure,
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:180:16
+Error: Parameter 'dataMask' implicitly has an 'any' type. (ts)
+  onLegendStateChanged: handleLegendStateChanged,
+  setDataMask: dataMask => {
+    actions?.updateDataMask(chartId, dataMask);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:181:14
+Error: Property 'updateDataMask' does not exist on type 'object'. (ts)
+  setDataMask: dataMask => {
+    actions?.updateDataMask(chartId, dataMask);
+  },
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:189:37
+Error: Property 'viz_type' does not exist on type 'object'. (ts)
+$: currentFormData = chartIsStale && latestQueryFormData ? latestQueryFormData : formData;
+$: currentVizType = currentFormData.viz_type || vizType;
+$: snakeCaseVizType = snakeCase(currentVizType);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:199:14
+Error: Cannot find name '__webpack_require__'. (ts)
+    ? `-${
+      typeof __webpack_require__ !== 'undefined' &&
+      typeof __webpack_require__.h === 'function' &&
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:200:14
+Error: Cannot find name '__webpack_require__'. (ts)
+      typeof __webpack_require__ !== 'undefined' &&
+      typeof __webpack_require__.h === 'function' &&
+      __webpack_require__.h()
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:201:7
+Error: Cannot find name '__webpack_require__'. (ts)
+      typeof __webpack_require__.h === 'function' &&
+      __webpack_require__.h()
+    }`
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:215:17
+Error: Property 'viz_type' does not exist on type 'object'. (ts)
+$: drillToDetailProps = getChartMetadataRegistry()
+  .get(formData.viz_type)
+  ?.behaviors.find(behavior => behavior === Behavior.DrillToDetail)
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:221:13
+Error: Property 'server_pagination' does not exist on type 'object'. (ts)
+$: bypassNoResult = !(
+  formData?.server_pagination && (ownState?.searchText?.length || 0) > 0
+);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:221:45
+Error: Property 'searchText' does not exist on type 'object'. (ts)
+$: bypassNoResult = !(
+  formData?.server_pagination && (ownState?.searchText?.length || 0) > 0
+);
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:240:6
+Error: Argument of type 'FC<Pick<Pick<Omit<Props, "chartProps"> & Omit<ChartPropsConfig, "height" | "width"> & { disableErrorBoundary?: boolean | undefined; ... 11 more ...; inContextMenu?: boolean | undefined; }, "id" | ... 29 more ... | "noResults"> & { ...; }, "id" | ... 32 more ... | "FallbackComponent"> & { ...; }>' is not assignable to parameter of type 'ConstructorOfATypedSvelteComponent | Component<any, any, any> | null | undefined'.
+  Type 'FunctionComponent<Pick<Pick<Omit<Props, "chartProps"> & Omit<ChartPropsConfig, "height" | "width"> & { disableErrorBoundary?: boolean | undefined; ... 11 more ...; inContextMenu?: boolean | undefined; }, "id" | ... 29 more ... | "noResults"> & { ...; }, "id" | ... 32 more ... | "FallbackComponent"> & { ...; }>' is not assignable to type 'Component<any, any, any>'.
+    Types of parameters 'props' and 'internals' are incompatible.
+      Type 'Brand<"ComponentInternals">' is not assignable to type 'PropsWithChildren<Pick<Pick<Omit<Props, "chartProps"> & Omit<ChartPropsConfig, "height" | "width"> & { disableErrorBoundary?: boolean | undefined; ... 11 more ...; inContextMenu?: boolean | undefined; }, "id" | ... 29 more ... | "noResults"> & { ...; }, "id" | ... 32 more ... | "FallbackComponent"> & { ...; }>'.
+        Property 'chartType' is missing in type 'Brand<"ComponentInternals">' but required in type 'Pick<Pick<Omit<Props, "chartProps"> & Omit<ChartPropsConfig, "height" | "width"> & { disableErrorBoundary?: boolean | undefined; debounceTime?: number | undefined; ... 10 more ...; inContextMenu?: boolean | undefined; }, "id" | ... 29 more ... | "noResults"> & { ...; }, "id" | ... 32 more ... | "FallbackComponent">'.
+
+Possible causes:
+- You use the instance type of a component where you should use the constructor type
+- Type definitions are missing for this Svelte Component.  (ts)
+    {/if}
+    <SuperChart
+      disableErrorBoundary
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/ChartRenderer.svelte:253:8
+Error: No value exists in scope for the shorthand property 'filterState'. Either declare one or provide an initializer. (ts)
+      {ownState}
+      {filterState}
+      {hooks}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/MenuItemWithTruncation.svelte:49:9
+Error: Element implicitly has an 'any' type because expression of type '"tooltip"' can't be used to index type '{}'.
+  Property 'tooltip' does not exist on type '{}'. (ts)
+        <span bind:this={labelRef} style={labelStyles}><slot /></span>
+        <div slot="tooltip">{tooltipText}</div>
+      </Tooltip>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DisabledMenuItemTooltip/MenuItemTooltip.svelte:26:3
+Warn: Self-closing HTML tags for non-void elements are ambiguous — use `<div ...></div>` rather than `<div ... />`
+https://svelte.dev/e/element_invalid_self_closing_tag (svelte)
+<Tooltip id="menu-item-tooltip" {title}>
+  <div
+    class="ant-menu-item-content"
+    style="position: absolute; top: 0; bottom: 0; right: 0; left: 0;"
+  />
+</Tooltip>
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:152:5
+Warn: Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events (svelte)
+  {:else}
+    <div
+      style="position: relative;"
+      on:mouseenter={() => (showSubMenu = true)}
+      on:mouseleave={() => (showSubMenu = false)}
+      on:click={onClick}
+    >
+      <Item>
+        {t('Drill by')}
+        <span style="flex-grow: 1;" />
+        <span>▶</span>
+      </Item>
+      <Menu
+        open={showSubMenu}
+        style="position: absolute; left: 100%; top: {submenuYOffset}px; z-index: 1000;"
+        anchor={false}
+      >
+        <List>
+          <div data-test="drill-by-submenu">
+            {#if showSearch}
+              <Textfield
+                bind:this={searchInputRef}
+                on:input={handleInput}
+                label={t('Search columns')}
+                style="width: auto; max-width: 100%; margin: 8px 12px; box-shadow: none;"
+                bind:value={searchInput}
+              >
+                <Icon class="material-icons" slot="leadingIcon">search</Icon>
+              </Textfield>
+            {/if}
+            {#if isLoadingDataset}
+              <div style="padding: 12px 0;">{t('Loading...')}</div>
+            {:else if filteredColumns.length}
+              <div style="height: {SUBMENU_HEIGHT}px; width: 100%; overflow-y: auto;">
+                {#each filteredColumns as column (column.column_name)}
+                  <MenuItemWithTruncation
+                    tooltipText={column.verbose_name || column.column_name || ''}
+                    on:click={e => handleSelection(e, column)}
+                  >
+                    {column.verbose_name || column.column_name}
+                  </MenuItemWithTruncation>
+                {/each}
+              </div>
+            {:else}
+              <Item disabled key="no-drill-by-columns-found">
+                {t('No columns found')}
+              </Item>
+            {/if}
+          </div>
+        </List>
+      </Menu>
+    </div>
+  {/if}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:152:5
+Warn: `<div>` with a mouseenter, mouseleave or click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+  {:else}
+    <div
+      style="position: relative;"
+      on:mouseenter={() => (showSubMenu = true)}
+      on:mouseleave={() => (showSubMenu = false)}
+      on:click={onClick}
+    >
+      <Item>
+        {t('Drill by')}
+        <span style="flex-grow: 1;" />
+        <span>▶</span>
+      </Item>
+      <Menu
+        open={showSubMenu}
+        style="position: absolute; left: 100%; top: {submenuYOffset}px; z-index: 1000;"
+        anchor={false}
+      >
+        <List>
+          <div data-test="drill-by-submenu">
+            {#if showSearch}
+              <Textfield
+                bind:this={searchInputRef}
+                on:input={handleInput}
+                label={t('Search columns')}
+                style="width: auto; max-width: 100%; margin: 8px 12px; box-shadow: none;"
+                bind:value={searchInput}
+              >
+                <Icon class="material-icons" slot="leadingIcon">search</Icon>
+              </Textfield>
+            {/if}
+            {#if isLoadingDataset}
+              <div style="padding: 12px 0;">{t('Loading...')}</div>
+            {:else if filteredColumns.length}
+              <div style="height: {SUBMENU_HEIGHT}px; width: 100%; overflow-y: auto;">
+                {#each filteredColumns as column (column.column_name)}
+                  <MenuItemWithTruncation
+                    tooltipText={column.verbose_name || column.column_name || ''}
+                    on:click={e => handleSelection(e, column)}
+                  >
+                    {column.verbose_name || column.column_name}
+                  </MenuItemWithTruncation>
+                {/each}
+              </div>
+            {:else}
+              <Item disabled key="no-drill-by-columns-found">
+                {t('No columns found')}
+              </Item>
+            {/if}
+          </div>
+        </List>
+      </Menu>
+    </div>
+  {/if}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:160:9
+Warn: Self-closing HTML tags for non-void elements are ambiguous — use `<span ...></span>` rather than `<span ... />`
+https://svelte.dev/e/element_invalid_self_closing_tag (svelte)
+        {t('Drill by')}
+        <span style="flex-grow: 1;" />
+        <span>▶</span>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:57:14
+Warn: Component has unused export property 'excludedColumns'. If it is for external reference only, please consider using `export const excludedColumns`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let openNewModal: boolean = true;
+  export let excludedColumns: Column[] | undefined = undefined;
+  export let open: boolean;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:147:30
+Error: Argument of type '(event: MouseEvent) => void' is not assignable to parameter of type '(e: CustomEvent<any>) => void'.
+  Types of parameters 'event' and 'e' are incompatible.
+    Type 'CustomEvent<any>' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 22 more. (ts)
+  {#if !handlesDimensionContextMenu || !hasDrillBy}
+    <Item disabled on:click={onClick}>
+      {t('Drill by')}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:172:28
+Error: Type 'SvelteComponent<$$ComponentProps, { [evt: string]: CustomEvent<any>; }, {}> & { $$bindings?: "invalid" | "value" | "files" | "dirty" | undefined; } & { ...; }' is not assignable to type 'HTMLInputElement | null'.
+  Type 'SvelteComponent<$$ComponentProps, { [evt: string]: CustomEvent<any>; }, {}> & { $$bindings?: "invalid" | "value" | "files" | "dirty" | undefined; } & { ...; }' is missing the following properties from type 'HTMLInputElement': accept, align, alt, autocomplete, and 371 more. (ts)
+              <Textfield
+                bind:this={searchInputRef}
+                on:input={handleInput}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:178:17
+Error: Element implicitly has an 'any' type because expression of type '"leadingIcon"' can't be used to index type '{}'.
+  Property 'leadingIcon' does not exist on type '{}'. (ts)
+              >
+                <Icon class="material-icons" slot="leadingIcon">search</Icon>
+              </Textfield>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillBy/DrillByMenuItems.svelte:195:30
+Error: Object literal may only specify known properties, and '"key"' does not exist in type '$$ComponentProps'. (ts)
+            {:else}
+              <Item disabled key="no-drill-by-columns-found">
+                {t('No columns found')}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:143:5
+Warn: `<div>` with a mouseenter or mouseleave handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions (svelte)
+  {:else}
+    <div
+      style="position: relative;"
+      on:mouseenter={() => (showSubMenu = true)}
+      on:mouseleave={() => (showSubMenu = false)}
+    >
+      <Item>
+        {DRILL_TO_DETAIL_BY}
+        <span style="flex-grow: 1;" />
+        <span>▶</span>
+      </Item>
+      <Menu
+        open={showSubMenu}
+        style="position: absolute; left: 100%; top: {submenuYOffset}px; z-index: 1000;"
+        anchor={false}
+      >
+        <List>
+          <div data-test="drill-to-detail-by-submenu">
+            {#each filters as filter, i}
+              <MenuItemWithTruncation
+                tooltipText={`${DRILL_TO_DETAIL_BY} ${filter.formattedVal ?? ''}`}
+                on:click={(e: MouseEvent) => openModal([filter], e)}
+              >
+                {`${DRILL_TO_DETAIL_BY} `}
+                <span class="filter-val"
+                  >{removeHTMLTags(filter.formattedVal ?? '')}</span
+                >
+              </MenuItemWithTruncation>
+            {/each}
+            {#if filters.length > 1}
+              <Item on:click={(e: MouseEvent) => openModal(filters, e)}>
+                <div>
+                  {`${DRILL_TO_DETAIL_BY} `}
+                  <span class="filter-val">{t('all')}</span>
+                </div>
+              </Item>
+            {/if}
+          </div>
+        </List>
+      </Menu>
+    </div>
+  {/if}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:150:9
+Warn: Self-closing HTML tags for non-void elements are ambiguous — use `<span ...></span>` rather than `<span ... />`
+https://svelte.dev/e/element_invalid_self_closing_tag (svelte)
+        {DRILL_TO_DETAIL_BY}
+        <span style="flex-grow: 1;" />
+        <span>▶</span>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:66:14
+Warn: Component has unused export property 'dataset'. If it is for external reference only, please consider using `export const dataset`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let setShowModal: (show: boolean) => void;
+  export let dataset: Dataset | undefined;
+  export let isLoadingDataset: boolean | undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:67:14
+Warn: Component has unused export property 'isLoadingDataset'. If it is for external reference only, please consider using `export const isLoadingDataset`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let dataset: Dataset | undefined;
+  export let isLoadingDataset: boolean | undefined;
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:133:19
+Error: Argument of type '(e: MouseEvent) => void' is not assignable to parameter of type '(e: CustomEvent<any>) => void'.
+  Types of parameters 'e' and 'e' are incompatible.
+    Type 'CustomEvent<any>' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 22 more. (ts)
+{:else}
+  <Item on:click={(e: MouseEvent) => openModal([], e)}>{DRILL_TO_DETAIL}</Item>
+{/if}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:163:27
+Error: Argument of type '(e: MouseEvent) => void' is not assignable to parameter of type '(e: CustomEvent<any>) => void'.
+  Types of parameters 'e' and 'e' are incompatible.
+    Type 'CustomEvent<any>' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 22 more. (ts)
+                tooltipText={`${DRILL_TO_DETAIL_BY} ${filter.formattedVal ?? ''}`}
+                on:click={(e: MouseEvent) => openModal([filter], e)}
+              >
+
+
+/home/mzf/superset/superset-svelte-frontend/src/components/Chart/DrillDetail/DrillDetailMenuItems.svelte:172:31
+Error: Argument of type '(e: MouseEvent) => void' is not assignable to parameter of type '(e: CustomEvent<any>) => void'.
+  Types of parameters 'e' and 'e' are incompatible.
+    Type 'CustomEvent<any>' is missing the following properties from type 'MouseEvent': altKey, button, buttons, clientX, and 22 more. (ts)
+            {#if filters.length > 1}
+              <Item on:click={(e: MouseEvent) => openModal(filters, e)}>
+                <div>
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/ChartErrorMessage.svelte:5:14
+Warn: Component has unused export property 'chartId'. If it is for external reference only, please consider using `export const chartId`
+https://svelte.dev/e/export_let_unused (svelte)
+
+  export let chartId: number;
+  export let error: SupersetError | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/ChartErrorMessage.svelte:9:14
+Warn: Component has unused export property 'source'. If it is for external reference only, please consider using `export const source`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let link: string | undefined = undefined;
+  export let source: any; // Replace with actual ChartSource type
+  export let stackTrace: string | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:9:14
+Warn: Component has unused export property 'annotationData'. If it is for external reference only, please consider using `export const annotationData`
+https://svelte.dev/e/export_let_unused (svelte)
+
+  export let annotationData: any = {};
+  export let actions: any;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:14:14
+Warn: Component has unused export property 'initialValues'. If it is for external reference only, please consider using `export const initialValues`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let dashboardId: number | undefined = undefined;
+  export let initialValues: any = {};
+  export let formData: any;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:16:14
+Warn: Component has unused export property 'labelColors'. If it is for external reference only, please consider using `export const labelColors`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let formData: any;
+  export let labelColors: string | undefined = undefined;
+  export let sharedLabelColors: string | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:17:14
+Warn: Component has unused export property 'sharedLabelColors'. If it is for external reference only, please consider using `export const sharedLabelColors`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let labelColors: string | undefined = undefined;
+  export let sharedLabelColors: string | undefined = undefined;
+  export let width: number;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:20:14
+Warn: Component has unused export property 'setControlValue'. If it is for external reference only, please consider using `export const setControlValue`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let height: number;
+  export let setControlValue: Function;
+  export let timeout: number | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:22:14
+Warn: Component has unused export property 'vizType'. If it is for external reference only, please consider using `export const vizType`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let timeout: number | undefined = undefined;
+  export let vizType: string;
+  export let triggerRender: boolean = false;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:23:14
+Warn: Component has unused export property 'triggerRender'. If it is for external reference only, please consider using `export const triggerRender`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let vizType: string;
+  export let triggerRender: boolean = false;
+  export let force: boolean = false;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:25:14
+Warn: Component has unused export property 'isFiltersInitialized'. If it is for external reference only, please consider using `export const isFiltersInitialized`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let force: boolean = false;
+  export let isFiltersInitialized: boolean = false;
+  export let chartAlert: string | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:30:14
+Warn: Component has unused export property 'latestQueryFormData'. If it is for external reference only, please consider using `export const latestQueryFormData`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let queriesResponse: ChartState['queriesResponse'];
+  export let latestQueryFormData: ChartState['latestQueryFormData'];
+  export let triggerQuery: boolean = false;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:34:14
+Warn: Component has unused export property 'addFilter'. If it is for external reference only, please consider using `export const addFilter`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let errorMessage: any | undefined = undefined;
+  export let addFilter: (type: string) => void = () => {};
+  export let onQuery: () => void = () => {};
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:35:14
+Warn: Component has unused export property 'onQuery'. If it is for external reference only, please consider using `export const onQuery`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let addFilter: (type: string) => void = () => {};
+  export let onQuery: () => void = () => {};
+  export let onFilterMenuOpen: (chartId: number, column: string) => void = () => {};
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:36:14
+Warn: Component has unused export property 'onFilterMenuOpen'. If it is for external reference only, please consider using `export const onFilterMenuOpen`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let onQuery: () => void = () => {};
+  export let onFilterMenuOpen: (chartId: number, column: string) => void = () => {};
+  export let onFilterMenuClose: (chartId: number, column: string) => void = () => {};
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:37:14
+Warn: Component has unused export property 'onFilterMenuClose'. If it is for external reference only, please consider using `export const onFilterMenuClose`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let onFilterMenuOpen: (chartId: number, column: string) => void = () => {};
+  export let onFilterMenuClose: (chartId: number, column: string) => void = () => {};
+  export let ownState: any = {};
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:39:14
+Warn: Component has unused export property 'postTransformProps'. If it is for external reference only, please consider using `export const postTransformProps`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let ownState: any = {};
+  export let postTransformProps: Function | undefined = undefined;
+  export let datasetsStatus: 'loading' | 'error' | 'complete' | undefined = undefined;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:40:14
+Warn: Component has unused export property 'datasetsStatus'. If it is for external reference only, please consider using `export const datasetsStatus`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let postTransformProps: Function | undefined = undefined;
+  export let datasetsStatus: 'loading' | 'error' | 'complete' | undefined = undefined;
+  export let isInView: boolean = true;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:42:14
+Warn: Component has unused export property 'emitCrossFilters'. If it is for external reference only, please consider using `export const emitCrossFilters`
+https://svelte.dev/e/export_let_unused (svelte)
+  export let isInView: boolean = true;
+  export let emitCrossFilters: boolean = false;
+
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:120:3
+Warn: Unused CSS selector ".chart-tooltip"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+  .chart-tooltip {
+    opacity: 0.75;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:131:3
+Warn: Unused CSS selector ".slice_container .pivot_table tbody tr"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+  .slice_container .pivot_table tbody tr {
+    font-feature-settings: 'tnum' 1;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:135:3
+Warn: Unused CSS selector ".slice_container .alert"
+https://svelte.dev/e/css_unused_selector (svelte)
+
+  .slice_container .alert {
+    margin: 8px;
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:5:39
+Error: Cannot find module '@superset-ui/core/components' or its corresponding type declarations. (ts)
+  import type { ChartState, Datasource, ChartStatus } from 'src/explore/types';
+  import { EmptyState, Loading } from '@superset-ui/core/components';
+  import ChartRenderer from './ChartRenderer.svelte';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:6:29
+Error: Cannot find module './ChartRenderer.svelte' or its corresponding type declarations. (ts)
+  import { EmptyState, Loading } from '@superset-ui/core/components';
+  import ChartRenderer from './ChartRenderer.svelte';
+  import ChartErrorMessage from './ChartErrorMessage.svelte';
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:77:12
+Error: Argument of type 'QueryData[] | null' is not assignable to parameter of type 'ArrayLike<unknown> | Iterable<unknown>'.
+  Type 'null' is not assignable to type 'ArrayLike<unknown> | Iterable<unknown>'. (ts)
+  {:else if chartStatus === 'failed'}
+    {#each queriesResponse as item}
+      <ChartErrorMessage
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:80:22
+Error: Property 'errors' does not exist on type '{}'. (ts)
+        chartId={chartId}
+        error={item?.errors?.[0]}
+        subtitle={chartAlert || item?.message}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:81:39
+Error: Property 'message' does not exist on type '{}'. (ts)
+        error={item?.errors?.[0]}
+        subtitle={chartAlert || item?.message}
+        link={item ? item.link : undefined}
+
+
+/home/mzf/superset/superset-svelte-frontend/src/lib/components/Chart/Chart.svelte:82:27
+Error: Property 'link' does not exist on type '{}'. (ts)
+        subtitle={chartAlert || item?.message}
+        link={item ? item.link : undefined}
+        source={dashboardId ? 'Dashboard' : 'Explore'}
+
+
+====================================
+svelte-check found 88 errors and 42 warnings in 21 files
