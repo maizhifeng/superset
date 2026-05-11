@@ -30,7 +30,7 @@ if (container) {
           <AuthProvider>
             <BreadcrumbProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
-                <BrowserRouter>
+                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                   <App />
                 </BrowserRouter>
               </LocalizationProvider>
