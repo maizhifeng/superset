@@ -13,7 +13,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DragHandleIcon from '@mui/icons-material/DragIndicator';
 import { useNavigate } from 'react-router-dom';
-import { GridLayout, useContainerWidth } from 'react-grid-layout';
+import { GridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
@@ -182,16 +182,61 @@ export default function Dashboard() {
   const { setCustom } = useBreadcrumb();
   const prevTitleRef = useRef<string | null>(null);
 
-  const { width, containerRef, mounted } = useContainerWidth();
+  const [containerWidth, setContainerWidth] = useState(window.innerWidth);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth);
+      }
+    };
+    handler();
+    window.addEventListener('resize', handler);
+    const observer = new ResizeObserver(handler);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => {
+      window.removeEventListener('resize', handler);
+      observer.disconnect();
+    };
+  }, []);
 
   const layoutItems = useMemo(() => {
     if (!gridId || Object.keys(nodeMap).length === 0) return [];
     return flattenLayout(nodeMap, gridId);
   }, [nodeMap, gridId]);
 
-  const gridLayout = useMemo(() =>
-    layoutItems.map(item => ({ i: item.i, x: item.x, y: item.y, w: item.w, h: item.h })),
-  [layoutItems]);
+  const gridLayout = useMemo(() => {
+    const rawItems = layoutItems.map(item => ({
+      i: item.i, x: item.x, y: item.y, w: item.w, h: item.h,
+    }));
+
+    const rows = new Map<number, typeof rawItems>();
+    for (const item of rawItems) {
+      const row = rows.get(item.y) || [];
+      row.push(item);
+      rows.set(item.y, row);
+    }
+
+    const result: typeof rawItems = [];
+    for (const [, rowItems] of rows) {
+      const totalW = rowItems.reduce((s, item) => s + item.w, 0);
+      if (totalW >= 12 || rowItems.length === 0) {
+        result.push(...rowItems);
+        continue;
+      }
+      const scale = 12 / totalW;
+      let xOff = 0;
+      for (let i = 0; i < rowItems.length; i++) {
+        const newW = i < rowItems.length - 1
+          ? Math.round(rowItems[i].w * scale)
+          : 12 - xOff;
+        result.push({ ...rowItems[i], x: xOff, w: newW });
+        xOff += newW;
+      }
+    }
+
+    return result;
+  }, [layoutItems]);
 
   const loadDashboard = useCallback(async () => {
     if (!id) return;
@@ -346,16 +391,16 @@ export default function Dashboard() {
   if (!dashboard) return null;
 
   return (
-    <Box sx={{ p: 1 }}>
+    <Box sx={{ p: 0 }}>
       {layoutItems.length === 0 ? (
         <Box sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography color="text.secondary">No charts in this dashboard yet</Typography>
         </Box>
       ) : (
         <Box ref={containerRef} sx={{ width: '100%', position: 'relative', minHeight: 400 }}>
-          {mounted && (
-            <GridLayout
-              width={width}
+          <GridLayout
+              key={containerWidth}
+              width={containerWidth}
               layout={gridLayout}
               gridConfig={{ cols: 12, rowHeight: 60, margin: [8, 8] }}
               onLayoutChange={handleLayoutChange}
@@ -373,6 +418,23 @@ export default function Dashboard() {
                 const data = chartData[chartId];
                 const vizType = meta?.viz_type || 'bar';
                 const option = data ? buildEChartsOption(vizType, data) : null;
+
+                function getBigNumber(chartData: Record<string, unknown> | undefined): string {
+                  const rows = Array.isArray(chartData?.data) ? (chartData.data as Record<string, unknown>[]) : [];
+                  if (rows.length === 0) return '—';
+                  const keys = Object.keys(rows[0]);
+                  for (const key of keys) {
+                    const val = rows[0][key];
+                    if (typeof val === 'number') return Number(val).toLocaleString();
+                    const num = Number(val);
+                    if (!isNaN(num)) return num.toLocaleString();
+                  }
+                  return '—';
+                }
+
+                const colW = (containerWidth - 8 * 11) / 12;
+                const itemPixelW = colW * item.w + 8 * (item.w - 1);
+                const isSmall = itemPixelW < 200;
 
                 return (
                   <Card
@@ -406,7 +468,13 @@ export default function Dashboard() {
                       </Tooltip>
                     </Box>
                     <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0 }}>
-                      {option ? (
+                      {isSmall ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                          <Typography variant="h3" sx={{ fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1.2, textAlign: 'center' }}>
+                            {getBigNumber(data)}
+                          </Typography>
+                        </Box>
+                      ) : option ? (
                         <ReactEChartsCore
                           echarts={echarts}
                           option={option}
@@ -427,7 +495,6 @@ export default function Dashboard() {
                 );
               })}
             </GridLayout>
-          )}
         </Box>
       )}
     </Box>

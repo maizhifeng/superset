@@ -23,7 +23,7 @@
 # 1. Start services: docker-compose -f docker-compose-light.yml up
 # 2. Access at: http://localhost:9002 (or NODE_MUI_PORT if specified)
 # 3. Frontend: MUI (Vite dev server), Backend: Flask dev server
-# 
+#
 #
 # RUNNING MULTIPLE INSTANCES:
 # - Use different project names: docker-compose -p project1 -f docker-compose-light.yml up
@@ -115,6 +115,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: *superset-user
+    ports:
+      - "8088:8088"
     depends_on:
       superset-init-light:
         condition: service_completed_successfully
@@ -167,6 +169,7 @@ services:
     environment:
       SCARF_ANALYTICS: "${SCARF_ANALYTICS:-}"
       superset: "http://superset-light:8088"
+      SUPERSET_HOST: "http://superset-light:8088"
     ports:
       - "${NODE_PORT:-9000}:9000"
     command: ["/app/docker/docker-frontend-mui.sh"]

@@ -88,6 +88,10 @@ const GridRow = styled.div<{ editMode: boolean }>`
     width: 100%;
     height: fit-content;
 
+    ${!editMode && css`
+      justify-content: space-between;
+    `}
+
     & > :not(:last-child):not(.hover-menu) {
       ${!editMode && `margin-right: ${theme.sizeUnit * 4}px;`}
     }

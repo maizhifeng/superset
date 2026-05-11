@@ -7,6 +7,10 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import PersonIcon from '@mui/icons-material/Person';
+import LockIcon from '@mui/icons-material/Lock';
+import InputAdornment from '@mui/material/InputAdornment';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Login() {
@@ -45,11 +49,12 @@ export default function Login() {
     >
       <Card sx={{ maxWidth: 420, width: '100%', mx: 2 }}>
         <CardContent sx={{ p: 4 }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>
-              Superset
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <AutoAwesomeIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+            <Typography variant="h4" sx={{ fontWeight: 800, fontSize: '1.75rem', letterSpacing: '-0.02em' }}>
+              starfly
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5, fontSize: '0.8125rem' }}>
               Sign in to continue
             </Typography>
           </Box>
@@ -67,6 +72,11 @@ export default function Login() {
               sx={{ mb: 2 }}
               autoFocus
               disabled={submitting}
+              slotProps={{
+                input: {
+                  startAdornment: <InputAdornment position="start"><PersonIcon sx={{ fontSize: 18, color: 'text.disabled' }} /></InputAdornment>,
+                },
+              }}
             />
             <TextField
               fullWidth
@@ -76,6 +86,11 @@ export default function Login() {
               onChange={e => setPassword(e.target.value)}
               sx={{ mb: 3 }}
               disabled={submitting}
+              slotProps={{
+                input: {
+                  startAdornment: <InputAdornment position="start"><LockIcon sx={{ fontSize: 18, color: 'text.disabled' }} /></InputAdornment>,
+                },
+              }}
             />
             <Button
               fullWidth
