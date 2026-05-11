@@ -1,0 +1,202 @@
+/**
+ * Component Styles — 使用 MUI CSS 变量
+ *
+ * 扁平化设计：卡片无阴影，交互仅用背景色
+ */
+
+/* Widget Card */
+.widget-card {
+  background: var(--mui-palette-background-paper);
+  border-radius: var(--radius-md);
+  box-shadow: var(--mui-palette-shadow-sm);
+  transition: box-shadow var(--duration-quick) var(--ease-decelerate),
+              transform var(--duration-quick) var(--ease-decelerate);
+}
+
+.widget-card:hover {
+  box-shadow: var(--mui-palette-shadow-md);
+  transform: translateY(-1px);
+}
+
+.widget-card.selected {
+  box-shadow: 0 0 0 2px var(--mui-palette-primary-main), var(--mui-palette-shadow-md);
+}
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  min-height: 14px;
+  background: var(--mui-palette-bg-header);
+  border-bottom: 1px solid var(--mui-palette-border-medium);
+}
+
+.widget-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--mui-palette-text-primary);
+}
+
+/* Widget actions */
+.widget-actions {
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-decelerate);
+}
+
+.widget-header:hover .widget-actions {
+  opacity: 1;
+}
+
+/* Action buttons */
+.widget-action-btn {
+  padding: 0.375rem;
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-quick) var(--ease-standard);
+}
+
+.widget-action-btn:hover {
+  background-color: var(--mui-palette-bg-muted);
+}
+
+/* Resize indicator */
+.widget-resize-indicator {
+  animation: resizeIndicatorPop 150ms ease-out;
+}
+
+@keyframes resizeIndicatorPop {
+  0% { transform: scale(0.8); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Form Inputs */
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--mui-palette-border-light);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  transition: border-color var(--duration-quick) ease;
+  background: var(--mui-palette-background-paper);
+  color: var(--mui-palette-text-primary);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--mui-palette-primary-main);
+  border-width: 2px;
+  box-shadow: none;
+}
+
+.form-input::placeholder {
+  color: var(--mui-palette-text-disabled);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-quick) var(--ease-standard);
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--mui-palette-primary-main);
+  color: var(--mui-palette-primary-contrastText);
+  border: none;
+}
+
+.btn-primary:hover {
+  background: var(--mui-palette-primary-dark);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--mui-palette-background-paper);
+  border: 1px solid var(--mui-palette-border-light);
+  color: var(--mui-palette-text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--mui-palette-bg-muted);
+  border-color: var(--mui-palette-border-strong);
+}
+
+.btn-danger {
+  background: var(--mui-palette-error-main);
+  color: var(--mui-palette-error-contrastText);
+  border: none;
+}
+
+.btn-danger:hover {
+  background: var(--mui-palette-error-dark, #C5221F);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--mui-palette-text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--mui-palette-bg-selected);
+  color: var(--mui-palette-primary-main);
+}
+
+/* Typography */
+.text-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--mui-palette-primary-main);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Table Styles */
+.table-cell-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-cell-text {
+  text-align: left;
+}
+
+/* Badge/Tag */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+
+.badge-primary {
+  background: var(--mui-palette-bg-selected);
+  color: var(--mui-palette-primary-main);
+}
+
+.badge-success {
+  background: var(--mui-palette-status-successBg);
+  color: var(--mui-palette-success-main);
+}
+
+.badge-warning {
+  background: var(--mui-palette-status-warningBg);
+  color: var(--mui-palette-warning-dark, #E37400);
+}
+
+.badge-error {
+  background: var(--mui-palette-status-errorBg);
+  color: var(--mui-palette-error-main);
+}
