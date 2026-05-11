@@ -1,0 +1,31 @@
+import { type ReactNode } from 'react';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+
+interface PageHeaderProps {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+}
+
+export default function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.01em', color: 'text.primary' }}>
+          {title}
+        </Typography>
+        {subtitle && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+            {subtitle}
+          </Typography>
+        )}
+      </Box>
+      {actions && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          {actions}
+        </Box>
+      )}
+    </Box>
+  );
+}
