@@ -15,9 +15,11 @@ const SqlLab = lazy(() => import('@/pages/SqlLab'));
 const DatabaseList = lazy(() => import('@/pages/DatabaseList'));
 const DatasetList = lazy(() => import('@/pages/DatasetList'));
 const DatasetCreation = lazy(() => import('@/pages/DatasetCreation'));
+const DatasetEdit = lazy(() => import('@/pages/DatasetEdit'));
 const SavedQueryList = lazy(() => import('@/pages/SavedQueryList'));
 const AlertReportList = lazy(() => import('@/pages/AlertReportList'));
 const QueryHistoryList = lazy(() => import('@/pages/QueryHistoryList'));
+const Settings = lazy(() => import('@/pages/Settings'));
 
 function LoadingFallback() {
   return (
@@ -57,9 +59,11 @@ export default function App() {
         <Route path="/database/list" element={<ProtectedLayout><DatabaseList /></ProtectedLayout>} />
         <Route path="/dataset/list" element={<ProtectedLayout><DatasetList /></ProtectedLayout>} />
         <Route path="/dataset/create" element={<ProtectedLayout><DatasetCreation /></ProtectedLayout>} />
+        <Route path="/dataset/edit/:id" element={<ProtectedLayout><DatasetEdit /></ProtectedLayout>} />
         <Route path="/saved_query/list" element={<ProtectedLayout><SavedQueryList /></ProtectedLayout>} />
         <Route path="/alert/list" element={<ProtectedLayout><AlertReportList /></ProtectedLayout>} />
         <Route path="/query_history" element={<ProtectedLayout><QueryHistoryList /></ProtectedLayout>} />
+        <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

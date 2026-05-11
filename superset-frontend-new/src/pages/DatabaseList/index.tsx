@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
-import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StorageIcon from '@mui/icons-material/Storage';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import type { GridColDef } from '@mui/x-data-grid';
+import DataGridTable from '@/components/DataGridTable';
+import FilterBar from '@/components/FilterBar';
+import TableSkeleton from '@/components/TableSkeleton';
 import PageHeader from '@/components/PageHeader';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
@@ -32,17 +34,30 @@ export default function DatabaseList() {
   const [rowCount, setRowCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
+  const searchLoaded = useRef(false);
+
+  const filterClause = searchText
+    ? `,filters:!((col:database_name,opr:contains,value:${searchText}))`
+    : '';
+
+  useEffect(() => {
+    if (searchLoaded.current) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
+    searchLoaded.current = true;
+  }, [searchText]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
 
     api
-      .get<DatabaseResponse>(`/database/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page})`)
+      .get<DatabaseResponse>(`/database/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
       .then(res => {
         setRows(res.data.result ?? []);
         setRowCount(res.data.count);
@@ -54,7 +69,7 @@ export default function DatabaseList() {
         );
         setLoading(false);
       });
-  }, [paginationModel]);
+  }, [paginationModel, filterClause]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -78,41 +93,50 @@ export default function DatabaseList() {
   };
 
   const columns: GridColDef[] = [
-    { field: 'id', headerName: 'ID', width: 80 },
+    { field: 'id', headerName: 'ID', width: 70 },
     { field: 'database_name', headerName: 'Database', flex: 1 },
-    { field: 'backend', headerName: 'Backend', width: 150 },
+    {
+      field: 'backend',
+      headerName: 'Backend',
+      width: 150,
+      renderCell: params => (
+        <Chip label={params.value} size="small" variant="outlined" />
+      ),
+    },
     {
       field: 'expose_in_sqllab',
       headerName: 'SQL Lab',
-      width: 120,
+      width: 110,
       renderCell: params => (
         <Chip
-          label={params.value ? 'Yes' : 'No'}
+          label={params.value ? 'Enabled' : 'Disabled'}
           color={params.value ? 'success' : 'default'}
           size="small"
+          variant={params.value ? 'filled' : 'outlined'}
         />
       ),
     },
     {
       field: 'allow_dml',
       headerName: 'DML',
-      width: 100,
+      width: 90,
       renderCell: params => (
         <Chip
           label={params.value ? 'Yes' : 'No'}
           color={params.value ? 'success' : 'default'}
           size="small"
+          variant={params.value ? 'filled' : 'outlined'}
         />
       ),
     },
     {
       field: 'changed_on_delta_humanized',
       headerName: 'Last Modified',
-      width: 200,
+      width: 180,
     },
     {
       field: 'actions',
-      headerName: 'Actions',
+      headerName: '',
       width: 60,
       sortable: false,
       renderCell: params => (
@@ -129,9 +153,8 @@ export default function DatabaseList() {
     return (
       <Box sx={{ p: 3 }}>
         <PageHeader title="Databases" />
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search databases..." />
+        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
   }
@@ -140,7 +163,7 @@ export default function DatabaseList() {
     return (
       <Box sx={{ p: 3 }}>
         <PageHeader title="Databases" />
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
@@ -148,16 +171,20 @@ export default function DatabaseList() {
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Databases" />
-      {rows.length === 0 ? (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search databases..." />
+      </Box>
+      {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<StorageIcon />}
           title="No databases connected"
-          description="Connect a database to start exploring your data"
+          description={searchText ? 'Try adjusting your search query' : 'Connect a database to start exploring your data'}
         />
       ) : (
-        <DataGrid
+        <DataGridTable
           rows={rows}
           columns={columns}
+          loading={loading}
           autoHeight
           paginationModel={paginationModel}
           rowCount={rowCount}
@@ -166,7 +193,7 @@ export default function DatabaseList() {
           pageSizeOptions={[25, 50, 100]}
         />
       )}
-      {deleteError && <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert>}
+      {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
         title="Delete Database"

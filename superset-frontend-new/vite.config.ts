@@ -41,11 +41,11 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://superset-light:8088',
+        target: process.env.SUPERSET_HOST || 'http://localhost:8088',
         changeOrigin: true,
       },
       '/api/v1': {
-        target: 'http://superset-light:8088',
+        target: process.env.SUPERSET_HOST || 'http://localhost:8088',
         changeOrigin: true,
       },
     },

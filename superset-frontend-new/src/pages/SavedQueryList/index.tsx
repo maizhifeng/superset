@@ -1,12 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '@mui/material/Box';
-import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
-import { DataGrid, type GridColDef } from '@mui/x-data-grid';
+import Typography from '@mui/material/Typography';
+import CodeIcon from '@mui/icons-material/Code';
+import type { GridColDef } from '@mui/x-data-grid';
+import DataGridTable from '@/components/DataGridTable';
+import FilterBar from '@/components/FilterBar';
+import TableSkeleton from '@/components/TableSkeleton';
 import PageHeader from '@/components/PageHeader';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
@@ -30,16 +34,29 @@ export default function SavedQueryList() {
   const [rowCount, setRowCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
+  const searchLoaded = useRef(false);
+
+  const filterClause = searchText
+    ? `,filters:!((col:label,opr:contains,value:${searchText}))`
+    : '';
+
+  useEffect(() => {
+    if (searchLoaded.current) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
+    searchLoaded.current = true;
+  }, [searchText]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
     api
-      .get<SavedQueryApiResponse>(`/saved_query/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page})`)
+      .get<SavedQueryApiResponse>(`/saved_query/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
       .then(res => {
         setRows(res.data.result);
         setRowCount(res.data.count);
@@ -49,7 +66,7 @@ export default function SavedQueryList() {
         setError(err?.message ?? 'Failed to load saved queries');
         setLoading(false);
       });
-  }, [paginationModel]);
+  }, [paginationModel, filterClause]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -73,27 +90,46 @@ export default function SavedQueryList() {
   };
 
   const columns: GridColDef[] = [
-    { field: 'id', headerName: 'ID', width: 80 },
-    { field: 'label', headerName: 'Label', flex: 1 },
+    { field: 'id', headerName: 'ID', width: 70 },
+    {
+      field: 'label',
+      headerName: 'Label',
+      flex: 1,
+      renderCell: params => (
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          {params.value}
+        </Typography>
+      ),
+    },
     {
       field: 'sql',
-      headerName: 'SQL',
+      headerName: 'SQL Preview',
       flex: 2,
       renderCell: params => {
         const sql = params.value ?? '';
-        return sql.length > 80 ? `${sql.slice(0, 80)}...` : sql;
+        const truncated = sql.length > 100 ? `${sql.slice(0, 100)}...` : sql;
+        return (
+          <Tooltip title={<Box component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 500, whiteSpace: 'pre-wrap', m: 0 }}>{sql}</Box>} placement="left" arrow>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, overflow: 'hidden' }}>
+              <CodeIcon sx={{ fontSize: 14, color: 'text.disabled', flexShrink: 0 }} />
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {truncated}
+              </Typography>
+            </Box>
+          </Tooltip>
+        );
       },
     },
     {
       field: 'database',
       headerName: 'Database',
-      width: 180,
+      width: 160,
       valueGetter: (_value, row) => row.database?.database_name ?? '',
     },
-    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', width: 200 },
+    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', width: 180 },
     {
       field: 'actions',
-      headerName: 'Actions',
+      headerName: '',
       width: 60,
       sortable: false,
       renderCell: params => (
@@ -110,9 +146,8 @@ export default function SavedQueryList() {
     return (
       <Box sx={{ p: 3 }}>
         <PageHeader title="Saved Queries" />
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search saved queries..." />
+        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
   }
@@ -121,7 +156,7 @@ export default function SavedQueryList() {
     return (
       <Box sx={{ p: 3 }}>
         <PageHeader title="Saved Queries" />
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
@@ -129,16 +164,20 @@ export default function SavedQueryList() {
   return (
     <Box sx={{ p: 3 }}>
       <PageHeader title="Saved Queries" />
-      {rows.length === 0 ? (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search saved queries..." />
+      </Box>
+      {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<SaveIcon />}
           title="No saved queries found"
-          description="Save a query from SQL Lab to see it here"
+          description={searchText ? 'Try adjusting your search query' : 'Save a query from SQL Lab to see it here'}
         />
       ) : (
-        <DataGrid
+        <DataGridTable
           rows={rows}
           columns={columns}
+          loading={loading}
           autoHeight
           paginationModel={paginationModel}
           rowCount={rowCount}
@@ -147,7 +186,7 @@ export default function SavedQueryList() {
           pageSizeOptions={[25, 50, 100]}
         />
       )}
-      {deleteError && <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert>}
+      {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
         title="Delete Saved Query"
