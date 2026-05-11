@@ -1,0 +1,105 @@
+- generic [ref=e7]:
+  - banner [ref=e8]:
+    - generic [ref=e9]:
+      - heading "Superset" [level=6] [ref=e10] [cursor=pointer]
+      - link "Home" [ref=e11] [cursor=pointer]:
+        - /url: /
+      - link "Dashboards" [ref=e12] [cursor=pointer]:
+        - /url: /dashboard/list
+      - link "Charts" [ref=e13] [cursor=pointer]:
+        - /url: /chart/list
+      - link "SQL Lab" [ref=e14] [cursor=pointer]:
+        - /url: /sqllab
+      - link "Datasets" [ref=e15] [cursor=pointer]:
+        - /url: /dataset/list
+      - link "Databases" [ref=e16] [cursor=pointer]:
+        - /url: /database/list
+      - link "Saved Queries" [ref=e17] [cursor=pointer]:
+        - /url: /saved_query/list
+      - link "Alerts" [ref=e18] [cursor=pointer]:
+        - /url: /alert/list
+      - link "History" [ref=e19] [cursor=pointer]:
+        - /url: /query_history
+      - navigation [ref=e20]:
+        - list [ref=e21]:
+          - listitem [ref=e22]:
+            - link "Dashboard" [ref=e23] [cursor=pointer]:
+              - /url: /dashboard
+          - listitem [ref=e24]:
+            - img [ref=e25]
+          - listitem [ref=e27]:
+            - paragraph [ref=e28]: "9"
+      - button "Account" [ref=e29] [cursor=pointer]:
+        - generic [ref=e30]: A
+  - main [ref=e31]:
+    - generic [ref=e32]:
+      - generic [ref=e33]:
+        - heading "World Bank's Data" [level=5] [ref=e35]
+        - generic [ref=e36]:
+          - generic [ref=e38]: Published
+          - button "Refresh all" [ref=e39] [cursor=pointer]:
+            - img [ref=e40]
+      - generic [ref=e42]:
+        - generic [ref=e44]:
+          - paragraph [ref=e45]: World's Population
+          - generic [ref=e46]:
+            - button [ref=e47] [cursor=pointer]:
+              - img [ref=e48]
+            - button "Open in Explore" [ref=e50] [cursor=pointer]:
+              - img [ref=e51]
+        - generic [ref=e58]:
+          - paragraph [ref=e59]: Rural Breakdown
+          - generic [ref=e60]:
+            - button [ref=e61] [cursor=pointer]:
+              - img [ref=e62]
+            - button "Open in Explore" [ref=e64] [cursor=pointer]:
+              - img [ref=e65]
+        - generic [ref=e72]:
+          - paragraph [ref=e73]: World's Pop Growth
+          - generic [ref=e74]:
+            - button [ref=e75] [cursor=pointer]:
+              - img [ref=e76]
+            - button "Open in Explore" [ref=e78] [cursor=pointer]:
+              - img [ref=e79]
+        - generic [ref=e86]:
+          - paragraph [ref=e87]: Box plot
+          - generic [ref=e88]:
+            - button [ref=e89] [cursor=pointer]:
+              - img [ref=e90]
+            - button "Open in Explore" [ref=e92] [cursor=pointer]:
+              - img [ref=e93]
+        - generic [ref=e100]:
+          - paragraph [ref=e101]: Growth Rate
+          - generic [ref=e102]:
+            - button [ref=e103] [cursor=pointer]:
+              - img [ref=e104]
+            - button "Open in Explore" [ref=e106] [cursor=pointer]:
+              - img [ref=e107]
+        - generic [ref=e114]:
+          - paragraph [ref=e115]: Most Populated Countries
+          - generic [ref=e116]:
+            - button [ref=e117] [cursor=pointer]:
+              - img [ref=e118]
+            - button "Open in Explore" [ref=e120] [cursor=pointer]:
+              - img [ref=e121]
+        - generic [ref=e128]:
+          - paragraph [ref=e129]: "% Rural"
+          - generic [ref=e130]:
+            - button [ref=e131] [cursor=pointer]:
+              - img [ref=e132]
+            - button "Open in Explore" [ref=e134] [cursor=pointer]:
+              - img [ref=e135]
+        - generic [ref=e142]:
+          - paragraph [ref=e143]: Life Expectancy VS Rural %
+          - generic [ref=e144]:
+            - button [ref=e145] [cursor=pointer]:
+              - img [ref=e146]
+            - button "Open in Explore" [ref=e148] [cursor=pointer]:
+              - img [ref=e149]
+        - generic [ref=e156]:
+          - paragraph [ref=e157]: Treemap
+          - generic [ref=e158]:
+            - button [ref=e159] [cursor=pointer]:
+              - img [ref=e160]
+            - button "Open in Explore" [ref=e162] [cursor=pointer]:
+              - img [ref=e163]
