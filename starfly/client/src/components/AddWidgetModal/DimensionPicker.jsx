@@ -29,7 +29,7 @@ export default function DimensionPicker({ open, columns, selectedDimensions, onT
           已选 {selectedDimensions.filter(Boolean).length} 个
         </Typography>
       </Box>
-      
+
       <Box sx={{ py: 1, overflowY: 'auto', flex: 1 }}>
         {columns.length === 0 ? (
           <Box sx={{ px: 2, py: 3, textAlign: 'center', color: 'text.secondary' }}>
@@ -76,7 +76,7 @@ export default function DimensionPicker({ open, columns, selectedDimensions, onT
           })
         )}
       </Box>
-      
+
       <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         <Button variant="outline" size="sm" onClick={onClose}>取消</Button>
         <Button size="sm" onClick={onClose}>确认</Button>

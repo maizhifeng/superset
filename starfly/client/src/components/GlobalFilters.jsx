@@ -227,7 +227,7 @@ export default function GlobalFilters() {
                   onCustomDateToggle={setShowCustomDate}
                 />
                 {showCustomDate && (
-                   <Box sx={{ display: 'flex', gap: 0.5 }}> 
+                   <Box sx={{ display: 'flex', gap: 0.5 }}>
                     <DateCalendar
                       value={dayjs(dateRange?.start)}
                       onChange={handleDateCalendarChange('start')}

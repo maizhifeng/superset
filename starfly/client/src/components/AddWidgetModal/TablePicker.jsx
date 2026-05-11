@@ -28,7 +28,7 @@ export default function TablePicker({ open, tables, groupedMetrics, onSelect, on
       <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择数据源</Typography>
       </Box>
-      
+
       <Box sx={{ py: 1, overflowY: 'auto', flex: 1 }}>
         {tables.length === 0 ? (
           <Box sx={{ px: 2, py: 3, textAlign: 'center', color: 'text.secondary' }}>
