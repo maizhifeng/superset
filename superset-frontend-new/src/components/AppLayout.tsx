@@ -21,6 +21,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import Logout from '@mui/icons-material/Logout';
 import Settings from '@mui/icons-material/Settings';
 import { useAuth } from '@/contexts/AuthContext';
+import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useMenuSettings } from '@/store/menuSettings';
 import api from '@/api';
 
@@ -52,6 +53,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [crumbAnchorEl, setCrumbAnchorEl] = useState<HTMLElement | null>(null);
   const [crumbOptions, setCrumbOptions] = useState<{ label: string; path: string }[]>([]);
   const [itemLabels, setItemLabels] = useState<Record<string, string>>({});
+  const { custom: breadcrumbCustom } = useBreadcrumb();
   const items = useMenuSettings(s => s.items);
   const enabled = useMenuSettings(s => s.enabled);
 
@@ -225,24 +227,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem' }}>/</Typography>
                 )}
                 {crumb.isId ? (
-                  <>
-                    <Button
-                      size="small"
-                      onClick={e => handleCrumbClick(crumb, e)}
-                      endIcon={<ArrowDropDownIcon />}
-                      sx={{
-                        textTransform: 'none',
-                        fontWeight: 500,
-                        fontSize: '0.75rem',
-                        color: 'text.secondary',
-                        px: 0.5,
-                        minWidth: 0,
-                        '&:hover': { bgcolor: 'action.hover' },
-                      }}
-                    >
-                      {crumb.label}
-                    </Button>
-                  </>
+                  <Button
+                    size="small"
+                    onClick={e => handleCrumbClick(crumb, e)}
+                    endIcon={<ArrowDropDownIcon />}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.75rem',
+                      color: 'text.secondary',
+                      px: 0.5,
+                      minWidth: 0,
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    {breadcrumbCustom?.label || crumb.label}
+                  </Button>
                 ) : (
                   <Typography
                     component={RouterLink}
@@ -263,6 +263,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 )}
               </Box>
             ))}
+            {breadcrumbCustom?.actions}
           </Box>
 
           <Menu

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -7,12 +7,19 @@ import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Drawer from '@mui/material/Drawer';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DragHandleIcon from '@mui/icons-material/DragIndicator';
-import { useNavigate } from 'react-router-dom';
+
 import { GridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -24,7 +31,14 @@ import {
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import ChartEditor from '@/pages/ChartCreation/ChartEditor';
 import api from '@/api';
+import {
+  DashboardFilterDrawer,
+  FilterToggleFab,
+  useDashboardFilters,
+} from '@/components/DashboardFilter';
+import type { AdhocFilter } from '@/components/DashboardFilter/types';
 
 echarts.use([
   BarChart, LineChart, PieChart,
@@ -73,16 +87,13 @@ const chartTypeToECharts: Record<string, string> = {
 };
 
 function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
-  const baseOption: Record<string, unknown> = {
-    tooltip: { trigger: 'axis' as const },
-    grid: { left: 40, right: 20, top: 40, bottom: 30 },
-    animation: true, animationDuration: 300,
-  };
   const echartsType = chartTypeToECharts[vizType] || 'bar';
 
   if (vizType === 'pie') {
     return {
-      ...baseOption, tooltip: { trigger: 'item' as const }, grid: undefined,
+      tooltip: { trigger: 'item' as const },
+      grid: undefined,
+      animation: true, animationDuration: 300,
       series: [{
         type: 'pie', radius: ['30%', '60%'], center: ['50%', '50%'],
         data: Array.isArray(data?.data) ? (data.data as Record<string, unknown>[]).slice(0, 10).map((d: Record<string, unknown>) => ({
@@ -97,17 +108,52 @@ function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
   const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
   const categoryKey = keys[0] || 'category';
   const valueKeys = keys.slice(1).filter(k => typeof rows[0]?.[k] === 'number' || k !== categoryKey);
-  const metricKey = valueKeys[0] || 'value';
+
+  const slicedRows = rows.slice(0, 50);
+  const xLabels = slicedRows.map(r => String(r[categoryKey] ?? ''));
+
+  const maxXLen = Math.max(...xLabels.map(l => l.length), 0);
+  const rotatedExtent = Math.ceil(maxXLen * 7 * Math.sin(Math.PI / 4));
+
+  const allYValues = valueKeys.flatMap(k => slicedRows.map(r => Number(r[k] || 0)).filter(v => Number.isFinite(v)).map(Math.abs));
+  const yMax = allYValues.length > 0 ? Math.max(...allYValues) : 0;
+  const yLabelChars = Math.max(String(Math.round(yMax)).length, 1);
+  const yLabelWidth = yLabelChars * 7;
+
+  const palette = ['#20a7c9', '#ff7f50', '#5ab1ef', '#ffb980', '#d87a80', '#8d98b3', '#e5cf0d', '#97b552'];
+  const series = valueKeys.length > 0 ? valueKeys.map((key, i) => ({
+    type: echartsType as ('bar' | 'line'),
+    name: key,
+    data: slicedRows.map(r => Number(r[key] || 0)),
+    smooth: vizType === 'area',
+    areaStyle: vizType === 'area' ? { opacity: 0.3 } : undefined,
+    itemStyle: { color: palette[i % palette.length] },
+  })) : [{
+    type: echartsType as ('bar' | 'line'),
+    name: 'value',
+    data: slicedRows.map(r => Number(r[categoryKey] || 0)),
+    smooth: vizType === 'area',
+    areaStyle: vizType === 'area' ? { opacity: 0.3 } : undefined,
+    itemStyle: { color: '#20a7c9' },
+  }];
 
   return {
-    ...baseOption,
-    xAxis: { type: 'category' as const, data: rows.slice(0, 50).map(r => String(r[categoryKey] ?? '')), axisLabel: { rotate: 45, fontSize: 10 } },
+    tooltip: { trigger: 'axis' as const },
+    legend: { type: 'scroll' as const, bottom: 0 },
+    grid: {
+      left: Math.max(40, Math.min(yLabelWidth + 24, 120)),
+      right: 20,
+      top: 40,
+      bottom: series.length > 1 ? Math.max(50, Math.min(rotatedExtent + 12, 160)) : Math.max(30, Math.min(rotatedExtent + 12, 160)),
+    },
+    animation: true, animationDuration: 300,
+    xAxis: {
+      type: 'category' as const,
+      data: xLabels,
+      axisLabel: { rotate: 45, fontSize: 10 },
+    },
     yAxis: { type: 'value' as const },
-    series: [{
-      type: echartsType, data: rows.slice(0, 50).map(r => Number(r[metricKey] || 0)),
-      smooth: vizType === 'area', areaStyle: vizType === 'area' ? { opacity: 0.3 } : undefined,
-      itemStyle: { color: '#20a7c9' },
-    }],
+    series,
   };
 }
 
@@ -119,8 +165,12 @@ function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
     if (node.type === 'CHART') {
       const w = (node.meta?.width as number) || 4;
       const h = Math.max(Math.round(((node.meta?.height as number) || 30) * 8 / 60), 3);
+      const savedX = node.meta?.x as number | undefined;
+      const savedY = node.meta?.y as number | undefined;
       items.push({
-        i: node.id, x: offsetX, y: offsetY,
+        i: node.id,
+        x: savedX ?? offsetX,
+        y: savedY ?? offsetY,
         w: Math.min(w, 12), h, minW: 2, minH: 3,
         chartId: node.meta?.chartId as number,
         sliceName: node.meta?.sliceName as string,
@@ -171,7 +221,6 @@ function getChildWidth(node: LayoutNode, parentWidth: number): number {
 
 export default function Dashboard() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [nodeMap, setNodeMap] = useState<Record<string, LayoutNode>>({});
   const [gridId, setGridId] = useState<string | null>(null);
@@ -182,6 +231,26 @@ export default function Dashboard() {
   const [isDragging, setIsDragging] = useState(false);
   const { setCustom } = useBreadcrumb();
   const prevTitleRef = useRef<string | null>(null);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editingSliceId = searchParams.get('slice_id');
+  const isDrawerOpen = Boolean(editingSliceId);
+
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const { filters, filterState, setFilter, clearAll, buildAdhocFilters, activeCount } =
+    useDashboardFilters(dashboard?.json_metadata ?? null, Object.values(chartMeta));
+  const extraFiltersRef = useRef<AdhocFilter[]>([]);
+  extraFiltersRef.current = buildAdhocFilters();
+
+  const hiddenFilters = useMemo(() => filters.slice(8), [filters]);
+  const [pendingFilterIds, setPendingFilterIds] = useState<string[]>([]);
+
+  const nodeMapRef = useRef(nodeMap);
+  nodeMapRef.current = nodeMap;
+  const fullPositionRef = useRef<Record<string, unknown>>({});
+  const isSavingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const saveLayoutRef = useRef<() => Promise<void>>();
 
   const [containerWidth, setContainerWidth] = useState(window.innerWidth);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -220,18 +289,13 @@ export default function Dashboard() {
       setDashboard(dash);
       if (prevTitleRef.current !== dash.dashboard_title) {
         prevTitleRef.current = dash.dashboard_title;
-        setCustom({
-          label: dash.dashboard_title,
-          actions: (
-            <Chip label={dash.published ? 'Published' : 'Not published'} color={dash.published ? 'success' : 'default'} size="small" sx={{ height: 20, ml: 0.5 }} />
-          ),
-        });
       }
 
       let parsedNodes: Record<string, LayoutNode> = {};
       let root: LayoutNode | null = null;
       try {
         const posData = JSON.parse(dash.position_json || '{}');
+        fullPositionRef.current = posData;
         for (const [key, val] of Object.entries(posData)) {
           if (typeof val === 'object' && val !== null && (val as LayoutNode).type) {
             parsedNodes[key] = val as LayoutNode;
@@ -258,7 +322,7 @@ export default function Dashboard() {
           setChartMeta(metaMap);
         } catch { /* continue */ }
 
-        const dMap = await getChartData(chartIds, metaMap);
+        const dMap = await getChartDataWithFilters(chartIds, metaMap);
         setChartData(dMap);
       }
     } catch (err: unknown) {
@@ -270,38 +334,62 @@ export default function Dashboard() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  const getChartData = useCallback(async (chartIds: number[], metaMap: Record<number, ChartData>) => {
+  useEffect(() => {
+    if (!dashboard) return;
+    setCustom({
+      label: dashboard.dashboard_title,
+      actions: (
+        <>
+          <FilterToggleFab
+            activeCount={activeCount}
+            hiddenCount={hiddenFilters.length}
+            hiddenFilters={hiddenFilters}
+            onOpenDrawer={() => setFilterDrawerOpen(true)}
+            onClearAll={() => clearAll()}
+            onAddFilter={(id: string) => { setPendingFilterIds(prev => [...prev, id]); setFilterDrawerOpen(true); }}
+          />
+          <Chip label={dashboard.published ? 'Published' : 'Not published'} color={dashboard.published ? 'success' : 'default'} size="small" sx={{ height: 20, ml: 0.5 }} />
+        </>
+      ),
+    });
+  }, [dashboard, activeCount, hiddenFilters, clearAll, setCustom]);
+
+  function buildQueryFromChart(fd: Record<string, unknown> | null): Record<string, unknown> {
+    fd = fd || {};
+    const query: Record<string, unknown> = { result_type: 'full' };
+    if (fd?.granularity_sqla) query.granularity = fd.granularity_sqla;
+    if (fd?.time_range) query.time_range = fd.time_range;
+    const metricFields = fd?.metrics || (fd?.metric ? [fd.metric] : undefined)
+      || (typeof fd?.x === 'string' ? [fd.x] : undefined) || (typeof fd?.y === 'string' ? [fd.y] : undefined)
+      || (typeof fd?.size === 'string' ? [fd.size] : undefined) || (typeof fd?.series === 'string' ? [fd.series] : undefined);
+    if (Array.isArray(metricFields) && metricFields.length > 0) query.metrics = metricFields;
+    const groupby = fd?.groupby || fd?.columns;
+    if (Array.isArray(groupby) && groupby.length > 0) query.groupby = groupby;
+    const extra = extraFiltersRef.current;
+    if (extra.length > 0) {
+      query.adhoc_filters = extra;
+    }
+    return query;
+  }
+
+  const getChartDataWithFilters = useCallback(async (chartIds: number[], metaMap: Record<number, ChartData>) => {
     const dataPromises = chartIds.map(async cid => {
+      const chart = metaMap[cid];
+      if (!chart) return { id: cid, data: {} };
       try {
-        const d = await api.get(`/chart/${cid}/data/`);
-        const result = d.data?.result;
-        return { id: cid, data: Array.isArray(result) ? (result[0] || {}) : (result || {}) };
-      } catch {
-        const chart = metaMap[cid];
-        if (!chart) return { id: cid, data: {} };
-        try {
-          const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : chart.form_data;
-          let dsId = chart.datasource_id;
-          let datasourceType = chart.datasource_type || 'table';
-          if (fd?.datasource) {
-            if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
-            else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
-          }
-          if (!dsId) return { id: cid, data: {} };
-          const query: Record<string, unknown> = { result_type: 'full' };
-          if (fd?.granularity_sqla) query.granularity = fd.granularity_sqla;
-          if (fd?.time_range) query.time_range = fd.time_range;
-          const metricFields = fd?.metrics || (fd?.metric ? [fd.metric] : undefined)
-            || (typeof fd?.x === 'string' ? [fd.x] : undefined) || (typeof fd?.y === 'string' ? [fd.y] : undefined)
-            || (typeof fd?.size === 'string' ? [fd.size] : undefined) || (typeof fd?.series === 'string' ? [fd.series] : undefined);
-          if (Array.isArray(metricFields) && metricFields.length > 0) query.metrics = metricFields;
-          const groupby = fd?.groupby || fd?.columns;
-          if (Array.isArray(groupby) && groupby.length > 0) query.groupby = groupby;
-          const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
-          const postResult = postRes.data?.result;
-          return { id: cid, data: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) };
-        } catch { return { id: cid, data: {} }; }
-      }
+        const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : (chart.form_data || {});
+        let dsId = chart.datasource_id;
+        let datasourceType = chart.datasource_type || 'table';
+        if (fd?.datasource) {
+          if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
+          else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
+        }
+        if (!dsId) return { id: cid, data: {} };
+        const query = buildQueryFromChart(fd);
+        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
+        const postResult = postRes.data?.result;
+        return { id: cid, data: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) };
+      } catch { return { id: cid, data: {} }; }
     });
     const results = await Promise.all(dataPromises);
     const dataMap: Record<number, Record<string, unknown>> = {};
@@ -310,48 +398,127 @@ export default function Dashboard() {
   }, []);
 
   const refreshChart = useCallback(async (chartId: number) => {
+    const chart = chartMeta[chartId];
+    if (!chart) return;
     try {
-      const d = await api.get(`/chart/${chartId}/data/`);
-      const result = d.data?.result;
-      setChartData(prev => ({ ...prev, [chartId]: Array.isArray(result) ? (result[0] || {}) : (result || {}) }));
-    } catch {
-      const chart = chartMeta[chartId];
-      if (!chart) return;
-      try {
-        const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : chart.form_data;
-        let dsId = chart.datasource_id; let datasourceType = chart.datasource_type || 'table';
+      const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : (chart.form_data || {});
+      let dsId = chart.datasource_id;
+      let datasourceType = chart.datasource_type || 'table';
+      if (fd?.datasource) {
+        if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
+        else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
+      }
+      if (dsId) {
+        const query = buildQueryFromChart(fd);
+        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
+        const postResult = postRes.data?.result;
+        setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
+      }
+    } catch { /* refresh failed */ }
+  }, [chartMeta]);
+
+  const refreshAllCharts = useCallback(async () => {
+    const ids = Object.keys(chartMeta).map(Number);
+    if (ids.length === 0) return;
+    const newData = await getChartDataWithFilters(ids, chartMeta);
+    setChartData(newData);
+  }, [chartMeta]);
+
+  const handleChartSaved = useCallback(async (chartId: number) => {
+    setSearchParams(prev => { prev.delete('slice_id'); return prev; });
+    try {
+      const metaRes = await api.get(`/chart/?q=(page_size:1,filters:!((col:id,opr:eq,value:${chartId})))`);
+      const charts = (metaRes.data?.result ?? []) as ChartData[];
+      if (charts.length > 0) {
+        setChartMeta(prev => ({ ...prev, [chartId]: charts[0] }));
+        const fd = typeof charts[0].form_data === 'string' ? JSON.parse(charts[0].form_data) : (charts[0].form_data || {});
+        let dsId = charts[0].datasource_id;
+        let datasourceType = charts[0].datasource_type || 'table';
         if (fd?.datasource) {
           if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
           else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
         }
-        if (dsId) {
-          const query: Record<string, unknown> = { result_type: 'full' };
-          if (fd?.granularity_sqla) query.granularity = fd.granularity_sqla;
-          if (fd?.time_range) query.time_range = fd.time_range;
-          const mf = fd?.metrics || (fd?.metric ? [fd.metric] : undefined)
-            || (typeof fd?.x === 'string' ? [fd.x] : undefined) || (typeof fd?.y === 'string' ? [fd.y] : undefined)
-            || (typeof fd?.size === 'string' ? [fd.size] : undefined) || (typeof fd?.series === 'string' ? [fd.series] : undefined);
-          if (Array.isArray(mf) && mf.length > 0) query.metrics = mf;
-          const gb = fd?.groupby || fd?.columns;
-          if (Array.isArray(gb) && gb.length > 0) query.groupby = gb;
-          const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
-          const postResult = postRes.data?.result;
-          setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
-        }
-      } catch { /* fallback failed */ }
-    }
-  }, [chartMeta]);
+        const query = buildQueryFromChart(fd);
+        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
+        const postResult = postRes.data?.result;
+        setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
+      }
+    } catch { /* refresh failed */ }
+  }, [setSearchParams]);
 
-  const handleLayoutChange = useCallback((newLayout: { i: string; x: number; y: number; w: number; h: number }[]) => {
-    setNodeMap(prev => {
-      const updated = { ...prev };
-      for (const item of newLayout) {
-        if (updated[item.i]?.meta) {
-          updated[item.i] = { ...updated[item.i], meta: { ...updated[item.i].meta, width: item.w, height: Math.round(item.h * 60 / 8) } };
+  const saveLayout = useCallback(async () => {
+    if (!id || isSavingRef.current) return;
+    isSavingRef.current = true;
+    setSaving(true);
+    try {
+      const updatedPosition = { ...fullPositionRef.current };
+      for (const [key, node] of Object.entries(nodeMapRef.current)) {
+        if (node.type) {
+          updatedPosition[key] = node;
         }
       }
-      return updated;
-    });
+      await api.put(`/dashboard/${id}`, {
+        position_json: JSON.stringify(updatedPosition),
+      });
+      fullPositionRef.current = updatedPosition;
+    } catch {
+      // layout save failure should not disrupt UX
+    } finally {
+      setSaving(false);
+      isSavingRef.current = false;
+    }
+  }, [id]);
+  saveLayoutRef.current = saveLayout;
+
+  const handleCloseDrawer = useCallback(() => {
+    setSearchParams(prev => { prev.delete('slice_id'); return prev; });
+  }, [setSearchParams]);
+
+  const handleFilterChange = useCallback((id: string, value: unknown) => {
+    setFilter(id, value);
+    setTimeout(() => { refreshAllCharts(); }, 50);
+  }, [setFilter, refreshAllCharts]);
+
+  const handleClearAll = useCallback(() => {
+    clearAll();
+    setTimeout(() => { refreshAllCharts(); }, 50);
+  }, [clearAll, refreshAllCharts]);
+
+  const handleFilterDrawerClose = useCallback(() => {
+    setFilterDrawerOpen(false);
+  }, []);
+
+  const handleFilterDrawerOpen = useCallback(() => {
+    setFilterDrawerOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!filterDrawerOpen) setPendingFilterIds([]);
+  }, [filterDrawerOpen]);
+
+  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLayoutChange = useCallback((newLayout: { i: string; x: number; y: number; w: number; h: number }[]) => {
+    const updated = { ...nodeMapRef.current };
+    for (const item of newLayout) {
+      if (updated[item.i]?.meta) {
+        updated[item.i] = {
+          ...updated[item.i],
+          meta: {
+            ...updated[item.i].meta,
+            width: item.w,
+            height: Math.round(item.h * 60 / 8),
+            x: item.x,
+            y: item.y,
+          },
+        };
+      }
+    }
+    nodeMapRef.current = updated;
+    setNodeMap(updated);
+    // Debounced save — react-grid-layout calls onLayoutChange BEFORE onDragStop
+    if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
+    layoutSaveTimerRef.current = setTimeout(() => { saveLayoutRef.current?.(); }, 300);
   }, []);
 
   if (loading) {
@@ -363,13 +530,29 @@ export default function Dashboard() {
   if (!dashboard) return null;
 
   return (
-    <Box sx={{ p: 0 }}>
+    <><DashboardFilterDrawer
+        open={filterDrawerOpen}
+        onClose={handleFilterDrawerClose}
+        onOpen={handleFilterDrawerOpen}
+        filters={filters}
+        filterState={filterState}
+        onFilterChange={handleFilterChange}
+        onClearAll={handleClearAll}
+        pendingFilterIds={pendingFilterIds}
+      />
+      <Box sx={{ p: 0 }}>
       {layoutItems.length === 0 ? (
         <Box sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
           <Typography color="text.secondary">No charts in this dashboard yet</Typography>
         </Box>
       ) : (
         <Box ref={containerRef} sx={{ width: '100%', position: 'relative', minHeight: 400 }}>
+          {saving && (
+            <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'background.paper', px: 1, py: 0.25, borderRadius: 1, boxShadow: 1 }}>
+              <CircularProgress size={10} />
+              <Typography variant="caption" color="text.secondary">Saving...</Typography>
+            </Box>
+          )}
           <GridLayout
               key={containerWidth}
               width={containerWidth}
@@ -433,14 +616,47 @@ export default function Dashboard() {
                       <IconButton size="small" onClick={(e: React.MouseEvent) => { e.stopPropagation(); refreshChart(chartId); }} sx={{ p: 0.5 }}>
                         <RefreshIcon sx={{ fontSize: 14 }} />
                       </IconButton>
-                      <Tooltip title="Open in Explore">
-                        <IconButton size="small" onClick={(e: React.MouseEvent) => { e.stopPropagation(); navigate(`/explore?slice_id=${chartId}`); }} sx={{ p: 0.5 }}>
+                      <Tooltip title="Edit Chart">
+                        <IconButton size="small" onClick={(e: React.MouseEvent) => { e.stopPropagation(); setSearchParams({ slice_id: String(chartId) }); }} sx={{ p: 0.5 }}>
                           <OpenInNewIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                       </Tooltip>
                     </Box>
-                    <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0 }}>
-                      {isSmall ? (
+                    <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0, overflow: 'auto' }}>
+                      {vizType === 'table' && data?.data ? (
+                        <TableContainer sx={{ flex: 1 }}>
+                          <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1, fontSize: '0.75rem' } }}>
+                            {(() => {
+                              const rows = Array.isArray(data.data) ? (data.data as Record<string, unknown>[]) : [];
+                              const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
+                              return (
+                                <>
+                                  <TableHead>
+                                    <TableRow>
+                                      {keys.map(k => <TableCell key={k} sx={{ fontWeight: 600 }}>{k}</TableCell>)}
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {rows.length === 0 ? (
+                                      <TableRow>
+                                        <TableCell colSpan={keys.length || 1} align="center">
+                                          <Typography variant="caption" color="text.secondary" sx={{ py: 2, display: 'block' }}>No data</Typography>
+                                        </TableCell>
+                                      </TableRow>
+                                    ) : (
+                                      rows.slice(0, 100).map((row, i) => (
+                                        <TableRow key={i}>
+                                          {keys.map(k => <TableCell key={k}>{String(row[k] ?? '')}</TableCell>)}
+                                        </TableRow>
+                                      ))
+                                    )}
+                                  </TableBody>
+                                </>
+                              );
+                            })()}
+                          </Table>
+                        </TableContainer>
+                      ) : isSmall ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
                           <Typography variant="h3" sx={{ fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1.2, textAlign: 'center' }}>
                             {getBigNumber(data)}
@@ -457,8 +673,8 @@ export default function Dashboard() {
                       ) : (
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', gap: 0.5 }}>
                           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>Chart data unavailable</Typography>
-                          <Typography variant="caption" color="primary" onClick={() => navigate(`/explore?slice_id=${chartId}`)} sx={{ cursor: 'pointer', textDecoration: 'underline' }}>
-                            Open in Explore
+                          <Typography variant="caption" color="primary" onClick={() => setSearchParams({ slice_id: String(chartId) })} sx={{ cursor: 'pointer', textDecoration: 'underline' }}>
+                            Edit Chart
                           </Typography>
                         </Box>
                       )}
@@ -470,5 +686,24 @@ export default function Dashboard() {
         </Box>
       )}
     </Box>
+      <Drawer
+        anchor="right"
+        open={isDrawerOpen}
+        onClose={handleCloseDrawer}
+        slotProps={{
+          paper: { sx: { width: { xs: '100vw', sm: 480 }, top: 48, height: 'calc(100vh - 48px)' } },
+        }}
+      >
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {isDrawerOpen && (
+            <ChartEditor
+              onChartSaved={handleChartSaved}
+              showPreview={false}
+              initialData={editingSliceId ? chartMeta[Number(editingSliceId)] : null}
+            />
+          )}
+        </Box>
+      </Drawer>
+    </>
   );
 }
