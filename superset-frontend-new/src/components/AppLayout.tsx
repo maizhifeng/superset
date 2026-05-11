@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, [location.pathname]);
 
   const navItems = useMemo(() =>
-    items.filter(item => enabled[item.id]),
+    items.filter(item => item.id !== 'home' && enabled[item.id]),
   [items, enabled]);
 
   function isActive(path: string) {
@@ -91,7 +91,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const breadcrumbItems = useMemo((): CrumbItem[] => {
     const parts = location.pathname.split('/').filter(Boolean);
-    if (parts.length === 0) return [{ label: 'Home', path: '/', isId: false }];
+    if (parts.length === 0) return [];
     const crumbs: CrumbItem[] = [];
     let acc = '';
     for (let i = 0; i < parts.length; i++) {

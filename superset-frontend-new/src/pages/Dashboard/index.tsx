@@ -111,14 +111,14 @@ function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
   };
 }
 
-function flattenLayout(nodeMap: Record<string, LayoutNode>, gridId: string): ChartLayoutItem[] {
+  function flattenLayout(nodeMap: Record<string, LayoutNode>, gridId: string): ChartLayoutItem[] {
   const items: ChartLayoutItem[] = [];
   function processNode(nodeId: string, parentWidth: number, offsetX: number, offsetY: number) {
     const node = nodeMap[nodeId];
     if (!node) return { height: 0 };
     if (node.type === 'CHART') {
       const w = (node.meta?.width as number) || 4;
-      const h = Math.max(Math.round(((node.meta?.height as number) || 30) / 12), 3);
+      const h = Math.max(Math.round(((node.meta?.height as number) || 30) * 8 / 60), 3);
       items.push({
         i: node.id, x: offsetX, y: offsetY,
         w: Math.min(w, 12), h, minW: 2, minH: 3,
@@ -154,6 +154,7 @@ function flattenLayout(nodeMap: Record<string, LayoutNode>, gridId: string): Cha
         const r = processNode(childId, 12, 0, yOff);
         yOff += r.height;
       }
+      return { height: yOff };
     }
     return { height: 0 };
   }
@@ -205,38 +206,9 @@ export default function Dashboard() {
     return flattenLayout(nodeMap, gridId);
   }, [nodeMap, gridId]);
 
-  const gridLayout = useMemo(() => {
-    const rawItems = layoutItems.map(item => ({
-      i: item.i, x: item.x, y: item.y, w: item.w, h: item.h,
-    }));
-
-    const rows = new Map<number, typeof rawItems>();
-    for (const item of rawItems) {
-      const row = rows.get(item.y) || [];
-      row.push(item);
-      rows.set(item.y, row);
-    }
-
-    const result: typeof rawItems = [];
-    for (const [, rowItems] of rows) {
-      const totalW = rowItems.reduce((s, item) => s + item.w, 0);
-      if (totalW >= 12 || rowItems.length === 0) {
-        result.push(...rowItems);
-        continue;
-      }
-      const scale = 12 / totalW;
-      let xOff = 0;
-      for (let i = 0; i < rowItems.length; i++) {
-        const newW = i < rowItems.length - 1
-          ? Math.round(rowItems[i].w * scale)
-          : 12 - xOff;
-        result.push({ ...rowItems[i], x: xOff, w: newW });
-        xOff += newW;
-      }
-    }
-
-    return result;
-  }, [layoutItems]);
+  const gridLayout = useMemo(() =>
+    layoutItems.map(item => ({ i: item.i, x: item.x, y: item.y, w: item.w, h: item.h })),
+  [layoutItems]);
 
   const loadDashboard = useCallback(async () => {
     if (!id) return;
@@ -375,7 +347,7 @@ export default function Dashboard() {
       const updated = { ...prev };
       for (const item of newLayout) {
         if (updated[item.i]?.meta) {
-          updated[item.i] = { ...updated[item.i], meta: { ...updated[item.i].meta, width: item.w, height: item.h * 12 } };
+          updated[item.i] = { ...updated[item.i], meta: { ...updated[item.i].meta, width: item.w, height: Math.round(item.h * 60 / 8) } };
         }
       }
       return updated;
@@ -434,7 +406,7 @@ export default function Dashboard() {
 
                 const colW = (containerWidth - 8 * 11) / 12;
                 const itemPixelW = colW * item.w + 8 * (item.w - 1);
-                const isSmall = itemPixelW < 200;
+                const isSmall = itemPixelW < 300;
 
                 return (
                   <Card
