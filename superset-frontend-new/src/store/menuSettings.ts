@@ -9,7 +9,6 @@ export interface NavItem {
 }
 
 const defaultItems: NavItem[] = [
-  { id: 'home', path: '/', label: 'Home', builtIn: true },
   { id: 'dashboards', path: '/dashboard/list', label: 'Dashboards', builtIn: true },
   { id: 'charts', path: '/chart/list', label: 'Charts', builtIn: true },
   { id: 'sqllab', path: '/sqllab', label: 'SQL Lab', builtIn: true },
@@ -21,7 +20,6 @@ const defaultItems: NavItem[] = [
 ];
 
 const defaultEnabled: Record<string, boolean> = {
-  'home': true,
   'dashboards': true,
   'charts': true,
   'sqllab': true,

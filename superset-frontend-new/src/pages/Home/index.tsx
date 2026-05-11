@@ -20,7 +20,7 @@ export default function Home() {
   return (
     <Box sx={{ p: 3, maxWidth: 'lg', mx: 'auto' }}>
       <PageHeader
-        title="Welcome to Superset"
+        title="Welcome to Starfly"
         subtitle="Select a section to get started"
       />
       <Box
