@@ -100,12 +100,12 @@ export function useWidgetForm({ widget, restoredFormData }) {
   }, [title, selectedTable, chartType, metricIds, dimensions, filters, orderBy, widget]);
 
   // Filter/OrderBy helpers
-  const addFilter = useCallback(() => 
+  const addFilter = useCallback(() =>
     setFilters(prev => [...prev, { field: '', operator: '=', value: '' }]),
     []
   );
 
-  const removeFilter = useCallback((index) => 
+  const removeFilter = useCallback((index) =>
     setFilters(prev => prev.filter((_, i) => i !== index)),
     []
   );
@@ -118,12 +118,12 @@ export function useWidgetForm({ widget, restoredFormData }) {
     });
   }, []);
 
-  const addOrderBy = useCallback(() => 
+  const addOrderBy = useCallback(() =>
     setOrderBy(prev => [...prev, { field: '', direction: 'DESC' }]),
     []
   );
 
-  const removeOrderBy = useCallback((index) => 
+  const removeOrderBy = useCallback((index) =>
     setOrderBy(prev => prev.filter((_, i) => i !== index)),
     []
   );
@@ -139,7 +139,7 @@ export function useWidgetForm({ widget, restoredFormData }) {
   // Metric toggle
   const handleMetricToggle = useCallback((id) => {
     const idStr = String(id);
-    setMetricIds(prev => 
+    setMetricIds(prev =>
       prev.includes(idStr) ? prev.filter(m => m !== idStr) : [...prev, idStr]
     );
   }, []);

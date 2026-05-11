@@ -27,7 +27,7 @@ export default function MetricPicker({ open, metrics, selectedIds, onToggle, onC
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>选择指标</Typography>
         <Typography variant="caption" color="text.secondary">已选 {selectedIds.length} 个</Typography>
       </Box>
-      
+
       <Box sx={{ py: 1, overflowY: 'auto', flex: 1 }}>
         {metrics.length === 0 ? (
           <Box sx={{ px: 2, py: 3, textAlign: 'center', color: 'text.secondary' }}>
@@ -74,7 +74,7 @@ export default function MetricPicker({ open, metrics, selectedIds, onToggle, onC
           })
         )}
       </Box>
-      
+
       <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         <Button variant="outline" size="sm" onClick={onClose}>取消</Button>
         <Button size="sm" onClick={onClose}>确认</Button>

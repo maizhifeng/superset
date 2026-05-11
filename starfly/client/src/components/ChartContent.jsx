@@ -344,15 +344,15 @@ const ChartContent = React.memo(function ChartContent({
 }) {
   // 获取当前主题色
   const { primaryColor } = useThemeColor();
-  
-  const option = getEChartsOption({ 
-    rows, 
-    fields, 
-    chartType, 
-    dimensions, 
-    isFullscreen, 
-    dateTrunc, 
-    primaryColor 
+
+  const option = getEChartsOption({
+    rows,
+    fields,
+    chartType,
+    dimensions,
+    isFullscreen,
+    dateTrunc,
+    primaryColor
   });
 
   // 动画配置：确保图表有平滑的入场和过渡动画

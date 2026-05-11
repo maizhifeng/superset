@@ -1,6 +1,6 @@
 ﻿/**
  * 图表颜色配置
- * 
+ *
  * 功能：
  * 1. 静态调色板 - 预定义的配色方案
  * 2. 动态调色板 - 基于主题色生成和谐配色
@@ -155,14 +155,14 @@ export function generateThemeAwarePalette(primaryColor, count = 12) {
   for (let i = 0; i < count; i++) {
     const offset = hueOffsets[i % hueOffsets.length];
     const hue = (baseHue + offset + 360) % 360;
-    
+
     // 根据位置微调饱和度和明度
     const satAdjust = i === 0 ? 0 : (i % 3 === 0 ? -10 : 5);
     const lightAdjust = i === 0 ? 0 : (i % 2 === 0 ? 5 : -5);
-    
+
     const s = Math.max(40, Math.min(90, baseSat + satAdjust));
     const l = Math.max(40, Math.min(70, baseLight + lightAdjust));
-    
+
     result.push(hslToHex(hue, s, l));
   }
 
@@ -202,7 +202,7 @@ export function getCategoricalColors(count = 12, primaryColor = null) {
   if (primaryColor) {
     return generateThemeAwarePalette(primaryColor, count);
   }
-  
+
   // 使用静态调色板
   const result = [];
   for (let i = 0; i < Math.min(count, DEFAULT_PALETTE.length); i++) {
@@ -231,7 +231,7 @@ export function getChartUIColors() {
   // 尝试从 CSS 变量读取
   const root = document.documentElement;
   const styles = getComputedStyle(root);
-  
+
   const getVar = (name, fallback) => {
     const value = styles.getPropertyValue(name).trim();
     return value || fallback;
