@@ -17,10 +17,11 @@ import type { GridColDef, GridRowParams } from '@mui/x-data-grid';
 import DataGridTable from '@/components/DataGridTable';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
-import PageHeader from '@/components/PageHeader';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import api from '@/api';
+import rison from 'rison';
 
 interface ChartRow {
   id: number;
@@ -71,23 +72,19 @@ export default function ChartList() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:slice_name,opr:contains,value:${searchText}))`
-    : '';
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
+    const qs = rison.encode({
+      page_size: paginationModel.pageSize,
+      page: paginationModel.page,
+      ...(searchText && { filters: [{ col: 'slice_name', opr: 'ct', value: searchText }] }),
+    });
     api
-      .get<ChartApiResponse>(`/chart/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
+      .get<ChartApiResponse>(`/chart/?q=${qs}`)
       .then(res => {
         setRows(res.data.result);
         setRowCount(res.data.count);
@@ -97,7 +94,42 @@ export default function ChartList() {
         setError(err?.message ?? 'Failed to load charts');
         setLoading(false);
       });
-  }, [paginationModel, filterClause]);
+  }, [paginationModel, searchText]);
+
+  useEffect(() => {
+    if (searchLoaded.current) {
+      setPaginationModel(prev => ({ ...prev, page: 0 }));
+    }
+    searchLoaded.current = true;
+  }, [searchText]);
+
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
+  useEffect(() => {
+    registerTools('chart_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search charts..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+      {
+        id: 'create',
+        priority: 10,
+        showOnMobile: true,
+        render: (
+          <Button variant="contained" size="small" onClick={() => navigate('/explore')} sx={{ whiteSpace: 'nowrap' }}>
+            Create Chart
+          </Button>
+        ),
+      },
+    ]);
+    return () => unregisterTools('chart_list');
+  }, [navigate, registerTools, unregisterTools, handleSearchChange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -213,17 +245,9 @@ export default function ChartList() {
     navigate(`/explore?slice_id=${params.id}`);
   };
 
-  const actions = (
-    <Button variant="contained" size="small" onClick={() => navigate('/explore')}>
-      Create Chart
-    </Button>
-  );
-
   if (loading && rows.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Charts" subtitle="Browse and manage charts" actions={actions} />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search charts..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
@@ -231,18 +255,16 @@ export default function ChartList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Charts" subtitle="Browse and manage charts" actions={actions} />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Charts" subtitle="Browse and manage charts" actions={actions} />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search charts..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search charts..." />
       </Box>
       {rows.length === 0 && !loading ? (
         <EmptyState

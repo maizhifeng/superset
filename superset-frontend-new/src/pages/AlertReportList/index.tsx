@@ -13,10 +13,11 @@ import type { GridColDef } from '@mui/x-data-grid';
 import DataGridTable from '@/components/DataGridTable';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
-import PageHeader from '@/components/PageHeader';
 import { ConfirmModal } from '@/superset-ui-mui/components';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
+import rison from 'rison';
 
 interface AlertReport {
   id: number;
@@ -43,10 +44,8 @@ export default function AlertReportList() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:name,opr:contains,value:${searchText}))`
-    : '';
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   useEffect(() => {
     if (searchLoaded.current) {
@@ -55,11 +54,34 @@ export default function AlertReportList() {
     searchLoaded.current = true;
   }, [searchText]);
 
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
+  useEffect(() => {
+    registerTools('alert_report_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search alerts..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+    ]);
+    return () => unregisterTools('alert_report_list');
+  }, [registerTools, unregisterTools, handleSearchChange]);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
+    const qs = rison.encode({
+      page_size: paginationModel.pageSize,
+      page: paginationModel.page,
+      ...(searchText && { filters: [{ col: 'name', opr: 'ct', value: searchText }] }),
+    });
     api
-      .get<AlertReportApiResponse>(`/report/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
+      .get<AlertReportApiResponse>(`/report/?q=${qs}`)
       .then(res => {
         setRows(res.data.result);
         setRowCount(res.data.count);
@@ -69,7 +91,7 @@ export default function AlertReportList() {
         setError(err?.message ?? 'Failed to load alerts & reports');
         setLoading(false);
       });
-  }, [paginationModel, filterClause]);
+  }, [paginationModel, searchText]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -161,9 +183,7 @@ export default function AlertReportList() {
 
   if (loading && rows.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Alerts & Reports" />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search alerts..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
@@ -171,18 +191,16 @@ export default function AlertReportList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Alerts & Reports" />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Alerts & Reports" />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search alerts..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search alerts..." />
       </Box>
       {rows.length === 0 && !loading ? (
         <EmptyState

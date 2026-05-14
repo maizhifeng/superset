@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 
 interface BreadcrumbCustom {
   label: string;
-  actions?: ReactNode;
+  actions?: React.ReactNode;
 }
 
 interface BreadcrumbContextType {
@@ -17,7 +18,8 @@ export function useBreadcrumb() {
 }
 
 export function BreadcrumbProvider({ children }: { children: ReactNode }) {
-  const [custom, setCustom] = useState<BreadcrumbCustom | null>(null);
+  const custom = useBreadcrumbStore(s => s.custom);
+  const setCustom = useBreadcrumbStore(s => s.setCustom);
   return (
     <BreadcrumbContext.Provider value={{ custom, setCustom }}>
       {children}
