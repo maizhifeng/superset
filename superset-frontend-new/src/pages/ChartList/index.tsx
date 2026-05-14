@@ -96,6 +96,8 @@ export default function ChartList() {
       });
   }, [paginationModel, searchText]);
 
+  useEffect(() => { fetchData(); }, [fetchData]);
+
   useEffect(() => {
     if (searchLoaded.current) {
       setPaginationModel(prev => ({ ...prev, page: 0 }));
@@ -121,6 +123,10 @@ export default function ChartList() {
         id: 'create',
         priority: 10,
         showOnMobile: true,
+        primary: true,
+        fabIcon: <BarChartIcon />,
+        fabLabel: 'New Chart',
+        action: () => navigate('/explore'),
         render: (
           <Button variant="contained" size="small" onClick={() => navigate('/explore')} sx={{ whiteSpace: 'nowrap' }}>
             Create Chart
@@ -130,8 +136,6 @@ export default function ChartList() {
     ]);
     return () => unregisterTools('chart_list');
   }, [navigate, registerTools, unregisterTools, handleSearchChange]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;

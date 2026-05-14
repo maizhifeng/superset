@@ -109,6 +109,10 @@ export default function DashboardList() {
         id: 'create',
         priority: 10,
         showOnMobile: true,
+        primary: true,
+        fabIcon: <DashboardIcon />,
+        fabLabel: 'New Dashboard',
+        action: () => setCreateDialogOpen(true),
         render: (
           <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
             Create Dashboard

@@ -108,6 +108,10 @@ export default function DatasetList() {
         id: 'create',
         priority: 10,
         showOnMobile: true,
+        primary: true,
+        fabIcon: <FunctionsIcon />,
+        fabLabel: 'New Dataset',
+        action: () => navigate('/dataset/create'),
         render: (
           <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')} sx={{ whiteSpace: 'nowrap' }}>
             Create Dataset
