@@ -5,6 +5,7 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
+import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -12,11 +13,17 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import Pagination from '@mui/material/Pagination';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import TextField from '@mui/material/TextField';
 import FilterBar from '@/components/FilterBar';
-import PageHeader from '@/components/PageHeader';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
+import rison from 'rison';
 
 interface Dashboard {
   id: number;
@@ -43,11 +50,12 @@ export default function DashboardList() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createName, setCreateName] = useState('New Dashboard');
+  const [creating, setCreating] = useState(false);
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:dashboard_title,opr:contains,value:${searchText}))`
-    : '';
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   useEffect(() => {
     if (searchLoaded.current) {
@@ -56,12 +64,22 @@ export default function DashboardList() {
     searchLoaded.current = true;
   }, [searchText]);
 
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
 
+    const qs = rison.encode({
+      page_size: PAGE_SIZE,
+      page,
+      ...(searchText && { filters: [{ col: 'dashboard_title', opr: 'ct', value: searchText }] }),
+    });
+
     api
-      .get<DashboardResponse>(`/dashboard/?q=(page_size:${PAGE_SIZE},page:${page}${filterClause})`)
+      .get<DashboardResponse>(`/dashboard/?q=${qs}`)
       .then(res => {
         setDashboards(res.data.result ?? []);
         setTotalCount(res.data.count);
@@ -73,9 +91,33 @@ export default function DashboardList() {
         );
         setLoading(false);
       });
-  }, [page, filterClause]);
+  }, [page, searchText]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    registerTools('dashboard_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search dashboards..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+      {
+        id: 'create',
+        priority: 10,
+        showOnMobile: true,
+        render: (
+          <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
+            Create Dashboard
+          </Button>
+        ),
+      },
+    ]);
+    return () => unregisterTools('dashboard_list');
+  }, [navigate, registerTools, unregisterTools, handleSearchChange]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -100,9 +142,7 @@ export default function DashboardList() {
 
   if (loading && dashboards.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Dashboards" subtitle="Organize and view your dashboards" />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search dashboards..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box
           sx={{
             display: 'grid',
@@ -136,8 +176,7 @@ export default function DashboardList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Dashboards" />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
@@ -145,11 +184,7 @@ export default function DashboardList() {
 
   if (dashboards.length === 0 && !loading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Dashboards" subtitle="Organize and view your dashboards" />
-        <Box sx={{ mb: 2 }}>
-          <FilterBar value={searchText} onChange={setSearchText} placeholder="Search dashboards..." />
-        </Box>
+      <Box sx={{ p: 3, pt: 2, mt: 2 }}>
         <EmptyState
           icon={<DashboardIcon />}
           title="No dashboards found"
@@ -160,10 +195,9 @@ export default function DashboardList() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Dashboards" subtitle="Organize and view your dashboards" />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search dashboards..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search dashboards..." />
       </Box>
       <Box
         sx={{
@@ -285,6 +319,45 @@ export default function DashboardList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Create Dashboard</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Dashboard Name"
+            value={createName}
+            onChange={e => setCreateName(e.target.value)}
+            variant="outlined"
+            size="small"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={creating || !createName.trim()}
+            onClick={async () => {
+              setCreating(true);
+              try {
+                const res = await api.post('/dashboard/', { dashboard_title: createName.trim() });
+                const newId = res.data?.id;
+                setCreateDialogOpen(false);
+                if (newId) navigate(`/dashboard/${newId}`);
+              } catch { /* ignore */ }
+              setCreating(false);
+            }}
+          >
+            {creating ? 'Creating...' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

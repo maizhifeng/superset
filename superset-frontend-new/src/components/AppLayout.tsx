@@ -12,17 +12,17 @@ import MenuItem from '@mui/material/MenuItem';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import Divider from '@mui/material/Divider';
 import Button from '@mui/material/Button';
+import Grow from '@mui/material/Grow';
+import { keyframes } from '@emotion/react';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import AddIcon from '@mui/icons-material/Add';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
-import CodeIcon from '@mui/icons-material/Code';
 import Logout from '@mui/icons-material/Logout';
 import Settings from '@mui/icons-material/Settings';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import { useToolbar } from '@/contexts/ToolbarContext';
 import { useMenuSettings } from '@/store/menuSettings';
+import GlobalSnackbar from '@/components/GlobalSnackbar';
 import api from '@/api';
 
 interface CrumbItem {
@@ -31,6 +31,11 @@ interface CrumbItem {
   isId: boolean;
   options?: { label: string; path: string }[];
 }
+
+const toolFadeIn = keyframes`
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+`;
 
 const knownSections: Record<string, { label: string; listPath: string }> = {
   dashboard: { label: 'Dashboard', listPath: '/dashboard/list' },
@@ -49,13 +54,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [createAnchor, setCreateAnchor] = useState<HTMLElement | null>(null);
   const [crumbAnchorEl, setCrumbAnchorEl] = useState<HTMLElement | null>(null);
   const [crumbOptions, setCrumbOptions] = useState<{ label: string; path: string }[]>([]);
   const [itemLabels, setItemLabels] = useState<Record<string, string>>({});
   const { custom: breadcrumbCustom } = useBreadcrumb();
+  const toolbarTools = useToolbar();
   const items = useMenuSettings(s => s.items);
   const enabled = useMenuSettings(s => s.enabled);
+  const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const parts = location.pathname.split('/').filter(Boolean);
@@ -174,48 +180,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </Typography>
             ))}
 
-            <Typography
-              onClick={e => setCreateAnchor(e.currentTarget)}
-              sx={{
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                color: 'primary.main',
-                textDecoration: 'none',
-                px: 1,
-                py: 0.375,
-                borderRadius: 1,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.25,
-                flexShrink: 0,
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
-            >
-              <AddIcon sx={{ fontSize: 16 }} /> Create
-            </Typography>
-
-            <Menu
-              anchorEl={createAnchor}
-              open={Boolean(createAnchor)}
-              onClose={() => setCreateAnchor(null)}
-              onClick={() => setCreateAnchor(null)}
-            >
-              <MenuItem onClick={() => navigate('/explore')}>
-                <ListItemIcon><BarChartIcon fontSize="small" /></ListItemIcon> Chart
-              </MenuItem>
-              <MenuItem onClick={() => navigate('/dashboard/create')}>
-                <ListItemIcon><DashboardIcon fontSize="small" /></ListItemIcon> Dashboard
-              </MenuItem>
-              <MenuItem onClick={() => navigate('/dataset/create')}>
-                <ListItemIcon><TableChartOutlinedIcon fontSize="small" /></ListItemIcon> Dataset
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={() => navigate('/sqllab')}>
-                <ListItemIcon><CodeIcon fontSize="small" /></ListItemIcon> SQL Query
-              </MenuItem>
-            </Menu>
           </Box>
 
           <Box sx={{ flexGrow: 1 }} />
@@ -263,7 +227,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 )}
               </Box>
             ))}
-            {breadcrumbCustom?.actions}
           </Box>
 
           <Menu
@@ -279,6 +242,66 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </MenuItem>
             ))}
           </Menu>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>
+            {toolbarTools.slice(0, 3).map((tool, i) => (
+              <Box
+                key={tool.id}
+                sx={{
+                  display: { xs: tool.showOnMobile ? 'block' : 'none', sm: 'block' },
+                  animation: `${toolFadeIn} 250ms cubic-bezier(0.4, 0, 0.2, 1) both`,
+                  animationDelay: `${i * 50}ms`,
+                }}
+              >
+                {tool.render}
+              </Box>
+            ))}
+            {toolbarTools.length > 3 && (
+              <>
+                <IconButton
+                  size="small"
+                  onClick={e => setOverflowAnchor(e.currentTarget)}
+                  sx={{
+                    transition: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)',
+                    transform: Boolean(overflowAnchor) ? 'rotate(90deg)' : 'rotate(0deg)',
+                  }}
+                >
+                  <MoreHorizIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+                <Menu
+                  anchorEl={overflowAnchor}
+                  open={Boolean(overflowAnchor)}
+                  onClose={() => setOverflowAnchor(null)}
+                  onClick={() => setOverflowAnchor(null)}
+                  slots={{ transition: Grow }}
+                  slotProps={{
+                    transition: { timeout: 250 },
+                    paper: {
+                      sx: {
+                        minWidth: 160,
+                        overflow: 'visible',
+                        filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.16))',
+                        mt: 0.75,
+                        '&::before': {
+                          content: '""', display: 'block', position: 'absolute', top: 0, right: 18,
+                          width: 10, height: 10, bgcolor: 'background.paper',
+                          transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
+                        },
+                      },
+                    },
+                  }}
+                  transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                  anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                >
+                  {toolbarTools.slice(3).map(tool => (
+                    <MenuItem key={tool.id} dense sx={{ fontSize: '0.8125rem', minHeight: 36 }}>
+                      {tool.render}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </>
+            )}
+          </Box>
 
           <Tooltip title="Account">
             <IconButton size="small" onClick={e => setAnchorEl(e.currentTarget)} sx={{ ml: 0.5, p: 0 }}>
@@ -327,6 +350,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <Box component="main" sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {children}
       </Box>
+      <GlobalSnackbar />
     </Box>
   );
 }

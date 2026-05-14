@@ -10,9 +10,10 @@ import type { GridColDef } from '@mui/x-data-grid';
 import DataGridTable from '@/components/DataGridTable';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
-import PageHeader from '@/components/PageHeader';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import api from '@/api';
+import rison from 'rison';
 
 interface QueryLog {
   id: number;
@@ -50,10 +51,8 @@ export default function QueryHistoryList() {
   const [searchText, setSearchText] = useState('');
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:action,opr:contains,value:${searchText}))`
-    : '';
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   useEffect(() => {
     if (searchLoaded.current) {
@@ -62,11 +61,34 @@ export default function QueryHistoryList() {
     searchLoaded.current = true;
   }, [searchText]);
 
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
+  useEffect(() => {
+    registerTools('query_history_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search queries..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+    ]);
+    return () => unregisterTools('query_history_list');
+  }, [registerTools, unregisterTools, handleSearchChange]);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
+    const qs = rison.encode({
+      page_size: paginationModel.pageSize,
+      page: paginationModel.page,
+      ...(searchText && { filters: [{ col: 'action', opr: 'ct', value: searchText }] }),
+    });
     api
-      .get<QueryLogApiResponse>(`/log/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
+      .get<QueryLogApiResponse>(`/log/?q=${qs}`)
       .then(res => {
         setRows(res.data.result);
         setRowCount(res.data.count);
@@ -76,7 +98,7 @@ export default function QueryHistoryList() {
         setError(err?.message ?? 'Failed to load query history');
         setLoading(false);
       });
-  }, [paginationModel, filterClause]);
+  }, [paginationModel, searchText]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -139,9 +161,7 @@ export default function QueryHistoryList() {
 
   if (loading && rows.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Query History" />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search queries..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
@@ -149,18 +169,16 @@ export default function QueryHistoryList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Query History" />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Query History" />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search queries..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search queries..." />
       </Box>
       {rows.length === 0 && !loading ? (
         <EmptyState

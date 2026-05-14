@@ -2,18 +2,25 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
+import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import TextField from '@mui/material/TextField';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StorageIcon from '@mui/icons-material/Storage';
 import type { GridColDef } from '@mui/x-data-grid';
 import DataGridTable from '@/components/DataGridTable';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
-import PageHeader from '@/components/PageHeader';
 import { ConfirmModal } from '@/superset-ui-mui/components';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
+import rison from 'rison';
 
 interface Database {
   id: number;
@@ -35,15 +42,17 @@ export default function DatabaseList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createUri, setCreateUri] = useState('');
+  const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:database_name,opr:contains,value:${searchText}))`
-    : '';
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   useEffect(() => {
     if (searchLoaded.current) {
@@ -52,12 +61,46 @@ export default function DatabaseList() {
     searchLoaded.current = true;
   }, [searchText]);
 
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
+  useEffect(() => {
+    registerTools('database_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search databases..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+      {
+        id: 'create',
+        priority: 10,
+        showOnMobile: true,
+        render: (
+          <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
+            Create Database
+          </Button>
+        ),
+      },
+    ]);
+    return () => unregisterTools('database_list');
+  }, [registerTools, unregisterTools, handleSearchChange]);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
 
+    const qs = rison.encode({
+      page_size: paginationModel.pageSize,
+      page: paginationModel.page,
+      ...(searchText && { filters: [{ col: 'database_name', opr: 'ct', value: searchText }] }),
+    });
+
     api
-      .get<DatabaseResponse>(`/database/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
+      .get<DatabaseResponse>(`/database/?q=${qs}`)
       .then(res => {
         setRows(res.data.result ?? []);
         setRowCount(res.data.count);
@@ -69,7 +112,7 @@ export default function DatabaseList() {
         );
         setLoading(false);
       });
-  }, [paginationModel, filterClause]);
+  }, [paginationModel, searchText]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -151,9 +194,7 @@ export default function DatabaseList() {
 
   if (loading && rows.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Databases" />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search databases..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
@@ -161,18 +202,16 @@ export default function DatabaseList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Databases" />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Databases" />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search databases..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search databases..." />
       </Box>
       {rows.length === 0 && !loading ? (
         <EmptyState
@@ -205,6 +244,56 @@ export default function DatabaseList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Connect Database</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Database Name"
+            value={createName}
+            onChange={e => setCreateName(e.target.value)}
+            variant="outlined"
+            size="small"
+            sx={{ mt: 1, mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="SQLAlchemy URI"
+            value={createUri}
+            onChange={e => setCreateUri(e.target.value)}
+            variant="outlined"
+            size="small"
+            placeholder="postgresql://user:pass@host:port/dbname"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={creating || !createName.trim() || !createUri.trim()}
+            onClick={async () => {
+              setCreating(true);
+              try {
+                const res = await api.post('/database/', {
+                  database_name: createName.trim(),
+                  sqlalchemy_uri: createUri.trim(),
+                });
+                setCreateDialogOpen(false);
+                if (res.data?.id) fetchData();
+              } catch { /* ignore */ }
+              setCreating(false);
+            }}
+          >
+            {creating ? 'Connecting...' : 'Connect'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

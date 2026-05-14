@@ -31,6 +31,7 @@ import {
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import { useToolbar } from '@/contexts/ToolbarContext';
 import ChartEditor from '@/pages/ChartCreation/ChartEditor';
 import api from '@/api';
 import {
@@ -230,7 +231,9 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const { setCustom } = useBreadcrumb();
+  const { registerTools, unregisterTools } = useToolbar();
   const prevTitleRef = useRef<string | null>(null);
+  const pageKey = `dashboard_${id}`;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get('slice_id');
@@ -336,10 +339,13 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!dashboard) return;
-    setCustom({
-      label: dashboard.dashboard_title,
-      actions: (
-        <>
+    setCustom({ label: dashboard.dashboard_title });
+    registerTools(pageKey, [
+      {
+        id: 'filter',
+        priority: 10,
+        showOnMobile: true,
+        render: (
           <FilterToggleFab
             activeCount={activeCount}
             hiddenCount={hiddenFilters.length}
@@ -348,11 +354,29 @@ export default function Dashboard() {
             onClearAll={() => clearAll()}
             onAddFilter={(id: string) => { setPendingFilterIds(prev => [...prev, id]); setFilterDrawerOpen(true); }}
           />
-          <Chip label={dashboard.published ? 'Published' : 'Not published'} color={dashboard.published ? 'success' : 'default'} size="small" sx={{ height: 20, ml: 0.5 }} />
-        </>
-      ),
-    });
-  }, [dashboard, activeCount, hiddenFilters, clearAll, setCustom]);
+        ),
+      },
+      {
+        id: 'publish',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <Chip label={dashboard.published ? 'Published' : 'Draft'} color={dashboard.published ? 'success' : 'default'} size="small" sx={{ height: 20 }} />
+        ),
+      },
+      {
+        id: 'refresh',
+        priority: 20,
+        showOnMobile: false,
+        render: (
+          <IconButton size="small" onClick={refreshAllCharts} sx={{ p: 0.5 }}>
+            <RefreshIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        ),
+      },
+    ]);
+    return () => unregisterTools(pageKey);
+  }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey]);
 
   function buildQueryFromChart(fd: Record<string, unknown> | null): Record<string, unknown> {
     fd = fd || {};

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import type { SxProps, Theme } from '@mui/material';
 import TextField from '@mui/material/TextField';
 import InputAdornment from '@mui/material/InputAdornment';
 import SearchIcon from '@mui/icons-material/Search';
@@ -9,9 +10,11 @@ interface FilterBarProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  sx?: SxProps<Theme>;
+  compact?: boolean;
 }
 
-export default function FilterBar({ value, onChange, placeholder = 'Search...' }: FilterBarProps) {
+export default function FilterBar({ value, onChange, placeholder = 'Search...', sx, compact = false }: FilterBarProps) {
   const [local, setLocal] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
   const mountedRef = useRef(false);
@@ -47,7 +50,14 @@ export default function FilterBar({ value, onChange, placeholder = 'Search...' }
       placeholder={placeholder}
       value={local}
       onChange={e => handleChange(e.target.value)}
-      sx={{ minWidth: 300 }}
+      sx={{
+        minWidth: 300,
+        ...sx,
+        ...(compact && {
+          '& .MuiInputBase-root': { height: 32, fontSize: '0.8125rem' },
+          '& .MuiOutlinedInput-input': { py: 0.25 },
+        }),
+      }}
       slotProps={{
         input: {
           startAdornment: (

@@ -14,10 +14,11 @@ import type { GridColDef } from '@mui/x-data-grid';
 import DataGridTable from '@/components/DataGridTable';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
-import PageHeader from '@/components/PageHeader';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
+import rison from 'rison';
 
 interface DatasetRow {
   id: number;
@@ -46,10 +47,8 @@ export default function DatasetList() {
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
   const [metricCounts, setMetricCounts] = useState<Record<number, number>>({});
   const searchLoaded = useRef(false);
-
-  const filterClause = searchText
-    ? `,filters:!((col:table_name,opr:contains,value:${searchText}))`
-    : '';
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
   useEffect(() => {
     if (searchLoaded.current) {
@@ -58,11 +57,20 @@ export default function DatasetList() {
     searchLoaded.current = true;
   }, [searchText]);
 
+  const handleSearchChange = useCallback((v: string) => {
+    setSearchText(v);
+  }, []);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
+    const qs = rison.encode({
+      page_size: paginationModel.pageSize,
+      page: paginationModel.page,
+      ...(searchText && { filters: [{ col: 'table_name', opr: 'ct', value: searchText }] }),
+    });
     api
-      .get<DatasetApiResponse>(`/dataset/?q=(page_size:${paginationModel.pageSize},page:${paginationModel.page}${filterClause})`)
+      .get<DatasetApiResponse>(`/dataset/?q=${qs}`)
       .then(async res => {
         const list = res.data.result;
         setRows(list);
@@ -82,9 +90,33 @@ export default function DatasetList() {
         setError(err?.message ?? 'Failed to load datasets');
         setLoading(false);
       });
-  }, [paginationModel, filterClause]);
+  }, [paginationModel, searchText]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    registerTools('dataset_list', [
+      {
+        id: 'search',
+        priority: 5,
+        showOnMobile: false,
+        render: (
+          <FilterBar value="" onChange={handleSearchChange} placeholder="Search datasets..." compact sx={{ minWidth: 220 }} />
+        ),
+      },
+      {
+        id: 'create',
+        priority: 10,
+        showOnMobile: true,
+        render: (
+          <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')} sx={{ whiteSpace: 'nowrap' }}>
+            Create Dataset
+          </Button>
+        ),
+      },
+    ]);
+    return () => unregisterTools('dataset_list');
+  }, [navigate, registerTools, unregisterTools, handleSearchChange]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -184,17 +216,9 @@ export default function DatasetList() {
     },
   ];
 
-  const actions = (
-    <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')}>
-      Create Dataset
-    </Button>
-  );
-
   if (loading && rows.length === 0) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Datasets" subtitle="Browse and manage datasets" actions={actions} />
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search datasets..." />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
       </Box>
     );
@@ -202,18 +226,16 @@ export default function DatasetList() {
 
   if (error) {
     return (
-      <Box sx={{ p: 3 }}>
-        <PageHeader title="Datasets" subtitle="Browse and manage datasets" actions={actions} />
+      <Box sx={{ p: 3, pt: 2 }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <PageHeader title="Datasets" subtitle="Browse and manage datasets" actions={actions} />
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FilterBar value={searchText} onChange={setSearchText} placeholder="Search datasets..." />
+    <Box sx={{ p: 3, pt: 2 }}>
+      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
+        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search datasets..." />
       </Box>
       {rows.length === 0 && !loading ? (
         <EmptyState
