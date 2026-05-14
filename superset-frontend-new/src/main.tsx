@@ -8,8 +8,6 @@ import { CacheProvider } from '@emotion/react';
 import createCache from '@emotion/cache';
 import { theme } from '@/theme';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { BreadcrumbProvider } from '@/contexts/BreadcrumbContext';
-import { ToolbarProvider } from '@/contexts/ToolbarContext';
 import App from '@/views/App';
 import './index.css';
 
@@ -26,16 +24,12 @@ if (container) {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
-          <BreadcrumbProvider>
-            <ToolbarProvider>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <App />
-              </BrowserRouter>
-            </LocalizationProvider>
-            </ToolbarProvider>
-          </BreadcrumbProvider>
-          </AuthProvider>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <App />
+            </BrowserRouter>
+          </LocalizationProvider>
+        </AuthProvider>
       </ThemeProvider>
     </CacheProvider>,
   );

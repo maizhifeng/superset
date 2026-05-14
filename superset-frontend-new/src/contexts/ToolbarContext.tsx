@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { create } from 'zustand';
+import type { ReactNode } from 'react';
 
 export interface ToolEntry {
   id: string;
@@ -7,47 +8,32 @@ export interface ToolEntry {
   showOnMobile: boolean;
 }
 
-interface ToolbarContextType {
-  tools: ToolEntry[];
+interface ToolbarState {
+  registry: Record<string, ToolEntry[]>;
   registerTools: (page: string, entries: Omit<ToolEntry, 'page'>[]) => void;
   unregisterTools: (page: string) => void;
 }
 
-const ToolbarContext = createContext<ToolbarContextType>({
-  tools: [],
-  registerTools: () => {},
-  unregisterTools: () => {},
-});
+export const useToolbarStore = create<ToolbarState>()((set) => ({
+  registry: {},
+  registerTools: (page, entries) =>
+    set(state => ({
+      registry: { ...state.registry, [page]: entries.map(e => ({ ...e })) },
+    })),
+  unregisterTools: (page) =>
+    set(state => {
+      const next = { ...state.registry };
+      delete next[page];
+      return { registry: next };
+    }),
+}));
 
 export function useToolbar() {
-  return useContext(ToolbarContext);
+  const registry = useToolbarStore(s => s.registry);
+  const tools = Object.values(registry).flat().sort((a, b) => a.priority - b.priority);
+  return tools;
 }
 
 export function ToolbarProvider({ children }: { children: ReactNode }) {
-  const [registry, setRegistry] = useState<Record<string, ToolEntry[]>>({});
-
-  const registerTools = useCallback((page: string, entries: Omit<ToolEntry, 'page'>[]) => {
-    setRegistry(prev => ({
-      ...prev,
-      [page]: entries.map(e => ({ ...e, page })),
-    }));
-  }, []);
-
-  const unregisterTools = useCallback((page: string) => {
-    setRegistry(prev => {
-      const next = { ...prev };
-      delete next[page];
-      return next;
-    });
-  }, []);
-
-  const tools = Object.values(registry)
-    .flat()
-    .sort((a, b) => a.priority - b.priority);
-
-  return (
-    <ToolbarContext.Provider value={{ tools, registerTools, unregisterTools }}>
-      {children}
-    </ToolbarContext.Provider>
-  );
+  return <>{children}</>;
 }

@@ -34,7 +34,8 @@ import {
   handleDashboardDelete,
 } from 'src/views/CRUD/utils';
 import { OWNER_OPTION_FILTER_PROPS } from 'src/features/owners/OwnerSelectLabel';
-import { useListViewResource, useFavoriteStatus } from 'src/views/CRUD/hooks';
+import { useFavoriteStatus } from 'src/views/CRUD/hooks';
+import { useListViewResourceQuery } from 'src/hooks/api';
 import {
   CertifiedBadge,
   ConfirmStatusChange,
@@ -158,12 +159,11 @@ function DashboardList(props: DashboardListProps) {
       resourceCollection: dashboards,
       bulkSelectEnabled,
     },
-    setResourceCollection: setDashboards,
     hasPerm,
     fetchData,
     toggleBulkSelect,
     refreshData,
-  } = useListViewResource<Dashboard>(
+  } = useListViewResourceQuery<Dashboard>(
     'dashboard',
     t('dashboard'),
     addDangerToast,
@@ -228,52 +228,8 @@ function DashboardList(props: DashboardListProps) {
     setDashboardToEdit(dashboard);
   }, []);
 
-  function handleDashboardEdit(edits: Dashboard) {
-    return SupersetClient.get({
-      endpoint: `/api/v1/dashboard/${edits.id}`,
-    }).then(
-      ({ json = {} }) => {
-        setDashboards(
-          dashboards.map(dashboard => {
-            if (dashboard.id === json?.result?.id) {
-              const {
-                changed_by_name: changedByName,
-                changed_by: changedBy,
-                dashboard_title: dashboardTitle = '',
-                slug = '',
-                json_metadata: jsonMetadata = '',
-                changed_on_delta_humanized: changedOnDeltaHumanized,
-                url = '',
-                certified_by: certifiedBy = '',
-                certification_details: certificationDetails = '',
-                owners,
-                tags,
-              } = json.result;
-              return {
-                ...dashboard,
-                changed_by_name: changedByName,
-                changed_by: changedBy,
-                dashboard_title: dashboardTitle,
-                slug,
-                json_metadata: jsonMetadata,
-                changed_on_delta_humanized: changedOnDeltaHumanized,
-                url,
-                certified_by: certifiedBy,
-                certification_details: certificationDetails,
-                owners,
-                tags,
-              };
-            }
-            return dashboard;
-          }),
-        );
-      },
-      createErrorHandler(errMsg =>
-        addDangerToast(
-          t('An error occurred while fetching dashboards: %s', errMsg),
-        ),
-      ),
-    );
+  function handleDashboardEdit(_edits: Dashboard) {
+    refreshData();
   }
 
   const handleBulkDashboardExport = useCallback(
