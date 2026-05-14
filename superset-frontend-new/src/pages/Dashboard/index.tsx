@@ -30,8 +30,8 @@ import {
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
-import { useToolbar } from '@/contexts/ToolbarContext';
+import { useBreadcrumbStore } from '@/store/breadcrumbStore';
+import { useToolbarStore } from '@/contexts/ToolbarContext';
 import ChartEditor from '@/pages/ChartCreation/ChartEditor';
 import api from '@/api';
 import {
@@ -83,7 +83,6 @@ interface ChartLayoutItem {
 
 const chartTypeToECharts: Record<string, string> = {
   line: 'line', bar: 'bar', area: 'line', pie: 'pie',
-  big_number: 'bar', big_number_total: 'bar',
   echarts_timeseries_line: 'line', echarts_area: 'line',
 };
 
@@ -111,7 +110,16 @@ function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
   const valueKeys = keys.slice(1).filter(k => typeof rows[0]?.[k] === 'number' || k !== categoryKey);
 
   const slicedRows = rows.slice(0, 50);
-  const xLabels = slicedRows.map(r => String(r[categoryKey] ?? ''));
+  const isTimeAxis = /year|date|time/i.test(categoryKey);
+  const xLabels = slicedRows.map(r => {
+    const v = r[categoryKey];
+    if (isTimeAxis && typeof v === 'number' && !isNaN(v)) {
+      const d = new Date(v);
+      const y = d.getFullYear();
+      if (y > 1900 && y < 2100) return d.toLocaleDateString();
+    }
+    return String(v ?? '');
+  });
 
   const maxXLen = Math.max(...xLabels.map(l => l.length), 0);
   const rotatedExtent = Math.ceil(maxXLen * 7 * Math.sin(Math.PI / 4));
@@ -140,20 +148,30 @@ function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
 
   return {
     tooltip: { trigger: 'axis' as const },
-    legend: { type: 'scroll' as const, bottom: 0 },
+    legend: series.length > 1 ? { type: 'scroll' as const, bottom: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8 } : undefined,
     grid: {
       left: Math.max(40, Math.min(yLabelWidth + 24, 120)),
       right: 20,
       top: 40,
-      bottom: series.length > 1 ? Math.max(50, Math.min(rotatedExtent + 12, 160)) : Math.max(30, Math.min(rotatedExtent + 12, 160)),
+      bottom: series.length > 1 ? Math.max(60, Math.min(rotatedExtent + 24, 160)) : Math.max(30, Math.min(rotatedExtent + 12, 100)),
     },
     animation: true, animationDuration: 300,
     xAxis: {
       type: 'category' as const,
       data: xLabels,
-      axisLabel: { rotate: 45, fontSize: 10 },
+      axisLabel: { rotate: 45, fontSize: 10, margin: 8 },
     },
-    yAxis: { type: 'value' as const },
+    yAxis: {
+      type: 'value' as const,
+      axisLabel: {
+        formatter: (v: number) => {
+          if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+          if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+          if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+          return String(v);
+        },
+      },
+    },
     series,
   };
 }
@@ -230,8 +248,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const { setCustom } = useBreadcrumb();
-  const { registerTools, unregisterTools } = useToolbar();
+  const setCustom = useBreadcrumbStore(s => s.setCustom);
+  const registerTools = useToolbarStore(s => s.registerTools);
+  const unregisterTools = useToolbarStore(s => s.unregisterTools);
   const prevTitleRef = useRef<string | null>(null);
   const pageKey = `dashboard_${id}`;
 
@@ -396,12 +415,18 @@ export default function Dashboard() {
     return query;
   }
 
+  function parseChartConfig(chart: ChartData): Record<string, unknown> {
+    const raw = chart.form_data || (chart as any).params || '{}';
+    const fd = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return fd;
+  }
+
   const getChartDataWithFilters = useCallback(async (chartIds: number[], metaMap: Record<number, ChartData>) => {
     const dataPromises = chartIds.map(async cid => {
       const chart = metaMap[cid];
       if (!chart) return { id: cid, data: {} };
       try {
-        const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : (chart.form_data || {});
+        const fd = parseChartConfig(chart);
         let dsId = chart.datasource_id;
         let datasourceType = chart.datasource_type || 'table';
         if (fd?.datasource) {
@@ -425,7 +450,7 @@ export default function Dashboard() {
     const chart = chartMeta[chartId];
     if (!chart) return;
     try {
-      const fd = typeof chart.form_data === 'string' ? JSON.parse(chart.form_data) : (chart.form_data || {});
+      const fd = parseChartConfig(chart);
       let dsId = chart.datasource_id;
       let datasourceType = chart.datasource_type || 'table';
       if (fd?.datasource) {
@@ -451,24 +476,16 @@ export default function Dashboard() {
   const handleChartSaved = useCallback(async (chartId: number) => {
     setSearchParams(prev => { prev.delete('slice_id'); return prev; });
     try {
-      const metaRes = await api.get(`/chart/?q=(page_size:1,filters:!((col:id,opr:eq,value:${chartId})))`);
-      const charts = (metaRes.data?.result ?? []) as ChartData[];
-      if (charts.length > 0) {
-        setChartMeta(prev => ({ ...prev, [chartId]: charts[0] }));
-        const fd = typeof charts[0].form_data === 'string' ? JSON.parse(charts[0].form_data) : (charts[0].form_data || {});
-        let dsId = charts[0].datasource_id;
-        let datasourceType = charts[0].datasource_type || 'table';
-        if (fd?.datasource) {
-          if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
-          else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
-        }
-        const query = buildQueryFromChart(fd);
-        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
-        const postResult = postRes.data?.result;
-        setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
+      const metaRes = await api.get(`/chart/${chartId}`);
+      const chart = metaRes.data?.result as ChartData | undefined;
+      if (chart) {
+        const newMeta = { ...chartMeta, [chartId]: chart };
+        setChartMeta(newMeta);
+        const newData = await getChartDataWithFilters([chartId], newMeta);
+        setChartData(prev => ({ ...prev, ...newData }));
       }
     } catch { /* refresh failed */ }
-  }, [setSearchParams]);
+  }, [setSearchParams, chartMeta]);
 
   const saveLayout = useCallback(async () => {
     if (!id || isSavingRef.current) return;
@@ -721,8 +738,8 @@ export default function Dashboard() {
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
           {isDrawerOpen && (
             <ChartEditor
+              compact
               onChartSaved={handleChartSaved}
-              showPreview={false}
               initialData={editingSliceId ? chartMeta[Number(editingSliceId)] : null}
             />
           )}
