@@ -133,13 +133,7 @@ export function useUpdateResource<D extends object = any>(
   const queryClient = useQueryClient();
 
   return useMutation<D, any, { id: number; body: Partial<D> }>({
-    mutationFn: async ({
-      id,
-      body,
-    }: {
-      id: number;
-      body: Partial<D>;
-    }) => {
+    mutationFn: async ({ id, body }: { id: number; body: Partial<D> }) => {
       const { json } = await SupersetClient.put({
         endpoint: `/api/v1/${resource}/${id}`,
         body: JSON.stringify(body),

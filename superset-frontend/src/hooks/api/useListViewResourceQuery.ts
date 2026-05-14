@@ -81,9 +81,7 @@ export function useListViewResourceQuery<D extends object = any>(
 
   useEffect(() => {
     if (isError && fetchConfig && listError) {
-      handleErrorMsg(
-        t('An error occurred while fetching %ss', resourceLabel),
-      );
+      handleErrorMsg(t('An error occurred while fetching %ss', resourceLabel));
     }
   }, [isError, fetchConfig, listError, handleErrorMsg, resourceLabel]);
 
@@ -98,12 +96,9 @@ export function useListViewResourceQuery<D extends object = any>(
     resourceCollection: listData?.result ?? defaultCollectionValue,
   };
 
-  const fetchData = useCallback(
-    (config: FetchDataConfig) => {
-      setFetchConfig(config);
-    },
-    [],
-  );
+  const fetchData = useCallback((config: FetchDataConfig) => {
+    setFetchConfig(config);
+  }, []);
 
   const refreshData = useCallback(
     (provideConfig?: FetchDataConfig) => {
@@ -128,12 +123,9 @@ export function useListViewResourceQuery<D extends object = any>(
     [infoData?.permissions],
   );
 
-  const setResourceCollection = useCallback(
-    (_update: D[]) => {
-      // no-op in react-query mode; mutations invalidate cache
-    },
-    [],
-  );
+  const setResourceCollection = useCallback((_update: D[]) => {
+    // no-op in react-query mode; mutations invalidate cache
+  }, []);
 
   return {
     state,
