@@ -79,6 +79,10 @@ export default function DatabaseList() {
         id: 'create',
         priority: 10,
         showOnMobile: true,
+        primary: true,
+        fabIcon: <StorageIcon />,
+        fabLabel: 'Connect Database',
+        action: () => setCreateDialogOpen(true),
         render: (
           <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
             Create Database

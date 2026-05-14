@@ -3,6 +3,7 @@ import { create } from 'zustand';
 interface BreadcrumbCustom {
   label: string;
   actions?: React.ReactNode;
+  status?: 'published' | 'draft';
 }
 
 interface BreadcrumbState {

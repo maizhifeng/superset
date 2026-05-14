@@ -6,6 +6,10 @@ export interface ToolEntry {
   priority: number;
   render: ReactNode;
   showOnMobile: boolean;
+  primary?: boolean;
+  fabIcon?: ReactNode;
+  fabLabel?: string;
+  action?: () => void;
 }
 
 interface ToolbarState {
@@ -30,8 +34,13 @@ export const useToolbarStore = create<ToolbarState>()((set) => ({
 
 export function useToolbar() {
   const registry = useToolbarStore(s => s.registry);
-  const tools = Object.values(registry).flat().sort((a, b) => a.priority - b.priority);
-  return tools;
+  const allTools = Object.values(registry).flat().sort((a, b) => a.priority - b.priority);
+  return allTools;
+}
+
+export function usePrimaryTools() {
+  const registry = useToolbarStore(s => s.registry);
+  return Object.values(registry).flat().filter(t => t.primary).sort((a, b) => a.priority - b.priority);
 }
 
 export function ToolbarProvider({ children }: { children: ReactNode }) {

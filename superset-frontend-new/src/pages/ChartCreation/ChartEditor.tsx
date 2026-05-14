@@ -10,6 +10,7 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
+import SaveIcon from '@mui/icons-material/Save';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -529,6 +530,10 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         id: 'save',
         priority: 10,
         showOnMobile: true,
+        primary: true,
+        fabIcon: <SaveIcon />,
+        fabLabel: isEditing ? 'Save' : 'Create',
+        action: handleSubmit,
         render: (
           <Button
             variant="contained"
