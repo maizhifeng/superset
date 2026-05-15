@@ -19,6 +19,7 @@ export interface FilterConfig {
   filterType: 'filter_select' | 'text' | 'value' | 'numerical_range' | 'time_range' | 'time_column' | 'time_grain';
   datasetId: number;
   column: string;
+  columnType?: 'time' | 'string' | 'numeric';
   controlValues?: Record<string, unknown>;
   chartsInScope?: number[];
   defaultDataMask?: DataMask;

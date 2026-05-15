@@ -145,7 +145,7 @@ export default function DatabaseList() {
     {
       field: 'backend',
       headerName: 'Backend',
-      width: 150,
+      flex: 0.4,
       renderCell: params => (
         <Chip label={params.value} size="small" variant="outlined" />
       ),
@@ -153,7 +153,7 @@ export default function DatabaseList() {
     {
       field: 'expose_in_sqllab',
       headerName: 'SQL Lab',
-      width: 110,
+      width: 100,
       renderCell: params => (
         <Chip
           label={params.value ? 'Enabled' : 'Disabled'}
@@ -166,7 +166,7 @@ export default function DatabaseList() {
     {
       field: 'allow_dml',
       headerName: 'DML',
-      width: 90,
+      width: 100,
       renderCell: params => (
         <Chip
           label={params.value ? 'Yes' : 'No'}
@@ -179,12 +179,12 @@ export default function DatabaseList() {
     {
       field: 'changed_on_delta_humanized',
       headerName: 'Last Modified',
-      width: 180,
+      flex: 0.4,
     },
     {
       field: 'actions',
       headerName: '',
-      width: 60,
+      width: 80,
       sortable: false,
       renderCell: params => (
         <Tooltip title="Delete">

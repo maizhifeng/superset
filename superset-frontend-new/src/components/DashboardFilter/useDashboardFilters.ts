@@ -4,7 +4,6 @@ import type {
   FilterState,
   UseDashboardFiltersResult,
   NativeFilterConfigRaw,
-  ChartFormData,
   AdhocFilter,
 } from './types';
 
@@ -18,37 +17,6 @@ function parseJsonMetadata(jsonMetadata: string | undefined | null): NativeFilte
   } catch {
     return [];
   }
-}
-
-function extractDimensionsFromCharts(
-  charts: { id: number; form_data?: Record<string, unknown> | string }[],
-): { datasetId: number; column: string; name: string }[] {
-  const seen = new Set<string>();
-  const result: { datasetId: number; column: string; name: string }[] = [];
-
-  for (const chart of charts) {
-    const fd: ChartFormData = typeof chart.form_data === 'string'
-      ? JSON.parse(chart.form_data)
-      : (chart.form_data || {});
-    let dsId = fd.datasource
-      ? (typeof fd.datasource === 'string'
-        ? Number(fd.datasource.split('__')[0])
-        : (fd.datasource as { id?: number }).id ?? 0)
-      : 0;
-    if (!dsId) dsId = 0;
-
-    const dimensions = fd.groupby || fd.columns || [];
-    const dimList = Array.isArray(dimensions) ? dimensions : [];
-
-    for (const dim of dimList) {
-      const key = `${dsId}:${dim}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        result.push({ datasetId: dsId, column: dim, name: dim });
-      }
-    }
-  }
-  return result;
 }
 
 function normalizeFilterType(rawType: string): FilterConfig['filterType'] {
@@ -67,12 +35,15 @@ function normalizeFilterType(rawType: string): FilterConfig['filterType'] {
   }
 }
 
+interface AutoDimension {
+  datasetId: number; column: string; name: string; columnType?: 'time' | 'string' | 'numeric';
+}
+
 export default function useDashboardFilters(
   jsonMetadata: string | undefined | null,
-  charts: { id: number; form_data?: Record<string, unknown> | string }[],
+  autoDimensions: AutoDimension[],
 ): UseDashboardFiltersResult {
   const nativeConfigs = useMemo(() => parseJsonMetadata(jsonMetadata), [jsonMetadata]);
-  const dimensionSources = useMemo(() => extractDimensionsFromCharts(charts), [charts]);
 
   const filters = useMemo<FilterConfig[]>(() => {
     if (nativeConfigs.length > 0) {
@@ -93,14 +64,15 @@ export default function useDashboardFilters(
       });
     }
 
-    return dimensionSources.map((dim, idx) => ({
+    return autoDimensions.map((dim, idx) => ({
       id: `dim_${idx}`,
       name: dim.name,
       filterType: 'value' as FilterConfig['filterType'],
       datasetId: dim.datasetId,
       column: dim.column,
+      columnType: dim.columnType,
     }));
-  }, [nativeConfigs, dimensionSources]);
+  }, [nativeConfigs, autoDimensions]);
 
   const [filterState, setFilterState] = useState<FilterState>({});
 

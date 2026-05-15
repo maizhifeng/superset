@@ -25,6 +25,7 @@ import {
   useDashboardFilters,
 } from '@/components/DashboardFilter';
 import type { AdhocFilter } from '@/components/DashboardFilter/types';
+import { buildQueryObject } from '@/utils/query/extractQueryFields';
 
 interface DashboardData {
   id: number;
@@ -141,10 +142,54 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get('slice_id');
   const isDrawerOpen = Boolean(editingSliceId);
+  useEffect(() => { document.body.classList.toggle('sidebar-open', isDrawerOpen); return () => document.body.classList.remove('sidebar-open'); }, [isDrawerOpen]);
 
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [dashboardDimensions, setDashboardDimensions] = useState<{ datasetId: number; column: string; name: string; columnType?: 'time' | 'string' | 'numeric' }[]>([]);
+
+  const dashboardChartIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const node of Object.values(nodeMap)) {
+      if (node.type === 'CHART' && node.meta?.chartId) {
+        ids.add(Number(node.meta.chartId));
+      }
+    }
+    return ids;
+  }, [nodeMap]);
+
+  useEffect(() => {
+    const chartIds = Object.values(chartMeta).filter(c => dashboardChartIds.has(c.id));
+    const dsIds = new Set(chartIds.map(c => c.datasource_id).filter((id): id is number => id != null));
+    if (dsIds.size === 0) { setDashboardDimensions([]); return; }
+    let cancelled = false;
+    (async () => {
+      const timeCols: { datasetId: number; column: string; name: string; columnType: 'time' }[] = [];
+      const stringCols: { datasetId: number; column: string; name: string; columnType: 'string' }[] = [];
+      const seen = new Set<string>();
+      const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
+      const stringTypes = /varchar|char|text|string/i;
+      for (const dsId of dsIds) {
+        try {
+          const res = await api.get(`/dataset/${dsId}`);
+          const cols: { column_name: string; type: string | null }[] = res.data?.result?.columns ?? [];
+          for (const col of cols) {
+            if (!col.column_name || !col.type) continue;
+            if (!timeTypes.test(col.type) && !stringTypes.test(col.type)) continue;
+            const key = `${dsId}:${col.column_name}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            if (timeTypes.test(col.type)) timeCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: 'time' });
+            else stringCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: 'string' });
+          }
+        } catch { /* ignore */ }
+      }
+      if (!cancelled) setDashboardDimensions([...timeCols, ...stringCols]);
+    })();
+    return () => { cancelled = true; };
+  }, [chartMeta, dashboardChartIds]);
+
   const { filters, filterState, setFilter, clearAll, buildAdhocFilters, activeCount } =
-    useDashboardFilters(dashboard?.json_metadata ?? null, Object.values(chartMeta));
+    useDashboardFilters(dashboard?.json_metadata ?? null, dashboardDimensions);
   const extraFiltersRef = useRef<AdhocFilter[]>([]);
   extraFiltersRef.current = buildAdhocFilters();
 
@@ -176,10 +221,16 @@ export default function Dashboard() {
     };
   }, []);
 
+  const supportedVizTypes = new Set(['line', 'bar', 'pie', 'table', 'big_number', 'echarts_timeseries_line']);
+
   const layoutItems = useMemo(() => {
     if (!gridId || Object.keys(nodeMap).length === 0) return [];
-    return flattenLayout(nodeMap, gridId);
-  }, [nodeMap, gridId]);
+    const items = flattenLayout(nodeMap, gridId);
+    return items.filter(item => {
+      const vt = chartMeta[item.chartId]?.viz_type;
+      return vt && supportedVizTypes.has(vt);
+    });
+  }, [nodeMap, gridId, chartMeta, supportedVizTypes]);
 
   const gridLayout = useMemo(() =>
     layoutItems.map(item => ({
@@ -312,28 +363,14 @@ export default function Dashboard() {
     return () => unregisterTools(pageKey);
   }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey, layoutItems.length]);
 
-  function buildQueryFromChart(fd: Record<string, unknown> | null): Record<string, unknown> {
-    fd = fd || {};
-    const query: Record<string, unknown> = { result_type: 'full' };
-    if (fd?.granularity_sqla) query.granularity = fd.granularity_sqla;
-    if (fd?.time_range) query.time_range = fd.time_range;
-    const metricFields = fd?.metrics || (fd?.metric ? [fd.metric] : undefined)
-      || (typeof fd?.x === 'string' ? [fd.x] : undefined) || (typeof fd?.y === 'string' ? [fd.y] : undefined)
-      || (typeof fd?.size === 'string' ? [fd.size] : undefined) || (typeof fd?.series === 'string' ? [fd.series] : undefined);
-    if (Array.isArray(metricFields) && metricFields.length > 0) query.metrics = metricFields;
-    const groupby = fd?.groupby || fd?.columns;
-    if (Array.isArray(groupby) && groupby.length > 0) query.groupby = groupby;
-    const extra = extraFiltersRef.current;
-    if (extra.length > 0) {
-      query.adhoc_filters = extra;
-    }
-    return query;
-  }
-
   function parseChartConfig(chart: ChartData): Record<string, unknown> {
     const raw = chart.form_data || (chart as any).params || '{}';
     const fd = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return fd;
+    return { ...fd, datasource: fd.datasource || `${chart.datasource_id}__${chart.datasource_type || 'table'}` };
+  }
+
+  function buildAdhocFiltersForDs(dsId: number) {
+    return dsId ? buildAdhocFilters(dsId) : [];
   }
 
   const getChartDataWithFilters = useCallback(async (chartIds: number[], metaMap: Record<number, ChartData>) => {
@@ -342,15 +379,14 @@ export default function Dashboard() {
       if (!chart) return { id: cid, data: {} };
       try {
         const fd = parseChartConfig(chart);
-        let dsId = chart.datasource_id;
-        let datasourceType = chart.datasource_type || 'table';
-        if (fd?.datasource) {
-          if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
-          else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
-        }
+        const dsId = chart.datasource_id || (fd.datasource ? Number(String(fd.datasource).split('__')[0]) : 0);
         if (!dsId) return { id: cid, data: {} };
-        const query = buildQueryFromChart(fd);
-        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
+        const query = buildQueryObject(fd, chart.viz_type);
+        if (!query.metrics || query.metrics.length === 0) return { id: cid, data: {} };
+        const adhocFilters = buildAdhocFiltersForDs(dsId);
+        if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+        const payload = { datasource: { id: dsId, type: chart.datasource_type || 'table' }, queries: [query], form_data: fd, result_format: 'json', result_type: 'full' as const, force: false };
+        const postRes = await api.post('/chart/data', payload);
         const postResult = postRes.data?.result;
         return { id: cid, data: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) };
       } catch { return { id: cid, data: {} }; }
@@ -366,18 +402,16 @@ export default function Dashboard() {
     if (!chart) return;
     try {
       const fd = parseChartConfig(chart);
-      let dsId = chart.datasource_id;
-      let datasourceType = chart.datasource_type || 'table';
-      if (fd?.datasource) {
-        if (typeof fd.datasource === 'string') { const parts = fd.datasource.split('__'); dsId = Number(parts[0]) || dsId; datasourceType = parts[1] || datasourceType; }
-        else if (typeof fd.datasource === 'object' && fd.datasource !== null) { dsId = (fd.datasource as { id?: number }).id ?? dsId; datasourceType = (fd.datasource as { type?: string }).type || datasourceType; }
-      }
-      if (dsId) {
-        const query = buildQueryFromChart(fd);
-        const postRes = await api.post('/chart/data', { datasource: { id: dsId, type: datasourceType }, queries: [query] });
-        const postResult = postRes.data?.result;
-        setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
-      }
+      const dsId = chart.datasource_id || (fd.datasource ? Number(String(fd.datasource).split('__')[0]) : 0);
+      if (!dsId) return;
+      const query = buildQueryObject(fd, chart.viz_type);
+      if (!query.metrics || query.metrics.length === 0) return;
+      const adhocFilters = buildAdhocFiltersForDs(dsId);
+      if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+      const payload = { datasource: { id: dsId, type: chart.datasource_type || 'table' }, queries: [query], form_data: fd, result_format: 'json', result_type: 'full' as const, force: false };
+      const postRes = await api.post('/chart/data', payload);
+      const postResult = postRes.data?.result;
+      setChartData(prev => ({ ...prev, [chartId]: Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {}) }));
     } catch { /* refresh failed */ }
   }, [chartMeta]);
 
@@ -555,7 +589,7 @@ export default function Dashboard() {
         open={isDrawerOpen}
         onClose={handleCloseDrawer}
         slotProps={{
-          paper: { sx: { width: { xs: '100vw', md: '30vw' }, top: { xs: 0, sm: 48 }, height: { xs: '100vh', sm: 'calc(100vh - 48px)' } } },
+          paper: { sx: { width: { xs: '100vw', md: '30vw' }, top: 0, height: '100vh', borderRight: 'none', borderTopLeftRadius: 12, borderBottomLeftRadius: 12 } },
         }}
       >
         <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

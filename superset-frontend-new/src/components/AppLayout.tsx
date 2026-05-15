@@ -6,29 +6,26 @@ import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import IconButton from '@mui/material/IconButton';
 import Avatar from '@mui/material/Avatar';
-import Tooltip from '@mui/material/Tooltip';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
-import ListItemIcon from '@mui/material/ListItemIcon';
-import Divider from '@mui/material/Divider';
-import Breadcrumbs from '@mui/material/Breadcrumbs';
-import Button from '@mui/material/Button';
 import Drawer from '@mui/material/Drawer';
+import Divider from '@mui/material/Divider';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
+import Breadcrumbs from '@mui/material/Breadcrumbs';
+import Button from '@mui/material/Button';
+import Grow from '@mui/material/Grow';
 import Dialog from '@mui/material/Dialog';
 import DialogContent from '@mui/material/DialogContent';
-import Grow from '@mui/material/Grow';
-import { keyframes } from '@emotion/react';
-import MenuIcon from '@mui/icons-material/Menu';
-import SearchIcon from '@mui/icons-material/Search';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import Logout from '@mui/icons-material/Logout';
-import Settings from '@mui/icons-material/Settings';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import MenuIcon from '@mui/icons-material/Menu';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import SearchIcon from '@mui/icons-material/Search';
+import { keyframes } from '@emotion/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useToolbar, usePrimaryTools } from '@/contexts/ToolbarContext';
@@ -67,12 +64,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [crumbAnchorEl, setCrumbAnchorEl] = useState<HTMLElement | null>(null);
   const [crumbOptions, setCrumbOptions] = useState<{ label: string; path: string }[]>([]);
   const [itemLabels, setItemLabels] = useState<Record<string, string>>({});
   const { custom: breadcrumbCustom } = useBreadcrumb();
   const toolbarTools = useToolbar();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setSidebarOpen(document.body.classList.contains('sidebar-open')));
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    setSidebarOpen(document.body.classList.contains('sidebar-open'));
+    return () => observer.disconnect();
+  }, []);
   const items = useMenuSettings(s => s.items);
   const enabled = useMenuSettings(s => s.enabled);
   const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
@@ -162,7 +165,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: 'grey.100' }}>
-      <AppBar position="static" color="inherit" sx={{ display: { xs: 'none', sm: 'block' }, zIndex: theme => theme.zIndex.drawer + 1 }}>
+      <AppBar position="static" color="inherit" sx={{ zIndex: theme => theme.zIndex.drawer + 1, visibility: sidebarOpen ? 'hidden' : 'visible', pointerEvents: sidebarOpen ? 'none' : 'auto' }}>
         <Toolbar variant="dense" sx={{ gap: 0, px: 0.75, minHeight: 44 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0, minWidth: 0 }}>
             <IconButton size="small" onClick={() => setDrawerOpen(true)} sx={{ display: { xs: 'inline-flex', sm: 'none' }, mr: 0.25 }}>
@@ -213,13 +216,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             ))}
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexShrink: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1, overflow: 'hidden', justifyContent: { xs: 'flex-end', sm: 'flex-end' } }}>
           <Breadcrumbs
             separator={<NavigateNextIcon sx={{ fontSize: 11, color: 'text.disabled' }} />}
             maxItems={4}
             itemsAfterCollapse={2}
             itemsBeforeCollapse={1}
-            sx={{ mr: 0, fontStyle: 'italic', '& .MuiBreadcrumbs-ol': { gap: 0 }, display: { xs: 'none', sm: 'block' } }}
+            sx={{ fontStyle: 'italic', '& .MuiBreadcrumbs-ol': { gap: 0, flexWrap: 'nowrap' }, '& .MuiBreadcrumbs-li': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }, mr: 'auto' }}
           >
             {breadcrumbItems.map((crumb, i) => (
               crumb.isId ? (
@@ -243,18 +246,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   }}
                 >
                   {breadcrumbCustom?.status && i === breadcrumbItems.length - 1 && (
-                    <Box
-                      component="span"
-                      sx={{
-                        display: 'inline-block',
-                        width: 12,
-                        height: 12,
-                        borderRadius: '50%',
-                        bgcolor: breadcrumbCustom.status === 'published' ? 'success.main' : 'warning.main',
-                        mr: 0.375,
-                        flexShrink: 0,
-                      }}
-                    />
+                    <Box component="span" sx={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', bgcolor: breadcrumbCustom.status === 'published' ? 'success.main' : 'warning.main', mr: 0.375, flexShrink: 0 }} />
                   )}
                   {breadcrumbCustom?.label || crumb.label}
                 </Button>
@@ -271,135 +263,48 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     textUnderlineOffset: 2,
                     color: i === breadcrumbItems.length - 1 ? 'text.secondary' : 'text.disabled',
                     px: 0.25,
-                    py: 0.125,
+                    minWidth: 0,
                     letterSpacing: 0,
                     lineHeight: 1.2,
                   }}
+                  onClick={() => setDrawerOpen(false)}
                 >
                   {crumb.label}
                 </Typography>
               )
             ))}
           </Breadcrumbs>
-
-          <Menu
-            anchorEl={crumbAnchorEl}
-            open={Boolean(crumbAnchorEl)}
-            onClose={() => setCrumbAnchorEl(null)}
-            onClick={() => setCrumbAnchorEl(null)}
-            slotProps={{ paper: { sx: { maxHeight: 300 } } }}
-          >
-            {crumbOptions.map(opt => (
-              <MenuItem key={opt.path} onClick={() => navigate(opt.path)} selected={location.pathname === opt.path}>
-                {opt.label}
-              </MenuItem>
-            ))}
-          </Menu>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5 }}>
+          {toolbarTools.filter(t => t.id !== 'search' && !t.primary).length > 0 && (
+          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5, px: 0.5 }}>
             {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(0, 3).map((tool, i) => (
-              <Box
-                key={tool.id}
-                sx={{
-                  display: { xs: tool.showOnMobile ? 'block' : 'none', sm: 'block' },
-                  animation: `${toolFadeIn} 250ms cubic-bezier(0.4, 0, 0.2, 1) both`,
-                  animationDelay: `${i * 50}ms`,
-                }}
-              >
+              <Box key={tool.id} sx={{ display: 'block', animation: `${toolFadeIn} 250ms cubic-bezier(0.4, 0, 0.2, 1) both`, animationDelay: `${i * 50}ms` }}>
                 {tool.render}
               </Box>
             ))}
             {toolbarTools.filter(t => t.id !== 'search' && !t.primary).length > 3 && (
-              <>
-                <IconButton
-                  size="small"
-                  onClick={e => setOverflowAnchor(e.currentTarget)}
-                  sx={{
-                    transition: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)',
-                    transform: Boolean(overflowAnchor) ? 'rotate(90deg)' : 'rotate(0deg)',
-                  }}
-                >
-                  <MoreHorizIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-                <Menu
-                  anchorEl={overflowAnchor}
-                  open={Boolean(overflowAnchor)}
-                  onClose={() => setOverflowAnchor(null)}
-                  onClick={() => setOverflowAnchor(null)}
-                  slots={{ transition: Grow }}
-                  slotProps={{
-                    transition: { timeout: 250 },
-                    paper: {
-                      sx: {
-                        minWidth: 160,
-                        overflow: 'visible',
-                        filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.16))',
-                        mt: 0.75,
-                        '&::before': {
-                          content: '""', display: 'block', position: 'absolute', top: 0, right: 18,
-                          width: 10, height: 10, bgcolor: 'background.paper',
-                          transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
-                        },
-                      },
-                    },
-                  }}
-                  transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-                  anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-                >
-                  {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(3).map(tool => (
-                    <MenuItem key={tool.id} dense sx={{ fontSize: '0.8125rem', minHeight: 36 }}>
-                      {tool.render}
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </>
+              <IconButton size="small" onClick={e => setOverflowAnchor(e.currentTarget)}
+                sx={{ transition: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)', transform: Boolean(overflowAnchor) ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                <MoreHorizIcon sx={{ fontSize: 18 }} />
+              </IconButton>
             )}
+            <Menu anchorEl={overflowAnchor} open={Boolean(overflowAnchor)} onClose={() => setOverflowAnchor(null)} onClick={() => setOverflowAnchor(null)}
+              slots={{ transition: Grow }} slotProps={{ transition: { timeout: 250 }, paper: { sx: { minWidth: 160, overflow: 'visible', filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.16))', mt: 0.75, '&::before': { content: '""', display: 'block', position: 'absolute', top: 0, right: 18, width: 10, height: 10, bgcolor: 'background.paper', transform: 'translateY(-50%) rotate(45deg)', zIndex: 0 } } } }}
+              transformOrigin={{ horizontal: 'right', vertical: 'top' }} anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}>
+              {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(3).map(tool => (
+                <MenuItem key={tool.id} dense sx={{ fontSize: '0.8125rem', minHeight: 36 }}>{tool.render}</MenuItem>
+              ))}
+            </Menu>
           </Box>
-
-          <Tooltip title="Account">
-            <IconButton size="small" onClick={e => setAnchorEl(e.currentTarget)} sx={{ ml: 0.5, p: 0 }}>
-              <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
-              </Avatar>
-            </IconButton>
-          </Tooltip>
+          )}
+          <Menu anchorEl={crumbAnchorEl} open={Boolean(crumbAnchorEl)} onClose={() => setCrumbAnchorEl(null)} onClick={() => setCrumbAnchorEl(null)}
+            slotProps={{ paper: { sx: { maxHeight: 300 } } }}>
+            {crumbOptions.map(opt => (
+              <MenuItem key={opt.path} onClick={() => navigate(opt.path)} selected={location.pathname === opt.path}>{opt.label}</MenuItem>
+            ))}
+          </Menu>
           </Box>
         </Toolbar>
       </AppBar>
-
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={() => setAnchorEl(null)}
-        onClick={() => setAnchorEl(null)}
-        slotProps={{
-          paper: {
-            sx: {
-              overflow: 'visible',
-              filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
-              mt: 1.5,
-              '&::before': {
-                content: '""', display: 'block', position: 'absolute', top: 0, right: 14,
-                width: 10, height: 10, bgcolor: 'background.paper',
-                transform: 'translateY(-50%) rotate(45deg)', zIndex: 0,
-              },
-            },
-          },
-        }}
-        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-      >
-        <MenuItem>
-          <Avatar sx={{ width: 28, height: 28, mr: 1 }} /> {user?.username || 'User'}
-        </MenuItem>
-        <Divider />
-        <MenuItem onClick={() => navigate('/settings')}>
-          <ListItemIcon><Settings fontSize="small" /></ListItemIcon> Settings
-        </MenuItem>
-        <MenuItem onClick={logout}>
-          <ListItemIcon><Logout fontSize="small" /></ListItemIcon> Sign Out
-        </MenuItem>
-      </Menu>
 
       <Box component="main" sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {children}
@@ -410,85 +315,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         sx={{ display: { xs: 'block', sm: 'none' } }}
+        slotProps={{ paper: { sx: { width: { xs: '30vw', sm: 260 } } } }}
       >
-        <Box sx={{ width: 240, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box sx={{ width: { xs: '30vw', sm: 260 }, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography sx={{ fontWeight: 700, fontSize: '1.125rem' }}>starfly</Typography>
           </Box>
-          <Divider />
-          <Box sx={{ px: 2, py: 1 }}>
-            <Breadcrumbs
-              separator={<NavigateNextIcon sx={{ fontSize: 11, color: 'text.disabled' }} />}
-              maxItems={4}
-              itemsAfterCollapse={2}
-              itemsBeforeCollapse={1}
-              sx={{ fontStyle: 'italic', '& .MuiBreadcrumbs-ol': { gap: 0 } }}
-            >
-              {breadcrumbItems.map((crumb, i) => (
-                crumb.isId ? (
-                  <Button
-                    key={crumb.path}
-                    size="small"
-                    onClick={e => handleCrumbClick(crumb, e)}
-                    endIcon={<ArrowDropDownIcon sx={{ fontSize: 15 }} />}
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: i === breadcrumbItems.length - 1 ? 600 : 400,
-                      fontSize: '0.75rem',
-                      fontStyle: 'italic',
-                      textDecoration: 'underline',
-                      textUnderlineOffset: 2,
-                      color: i === breadcrumbItems.length - 1 ? 'text.secondary' : 'text.disabled',
-                      px: 0.25,
-                      minWidth: 0,
-                      letterSpacing: 0,
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {breadcrumbCustom?.status && i === breadcrumbItems.length - 1 && (
-                      <Box component="span" sx={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', bgcolor: breadcrumbCustom.status === 'published' ? 'success.main' : 'warning.main', mr: 0.375, flexShrink: 0 }} />
-                    )}
-                    {breadcrumbCustom?.label || crumb.label}
-                  </Button>
-                ) : (
-                  <Typography
-                    key={crumb.path}
-                    component={RouterLink}
-                    to={crumb.path}
-                    sx={{
-                      fontSize: '0.75rem',
-                      fontWeight: i === breadcrumbItems.length - 1 ? 600 : 400,
-                      fontStyle: 'italic',
-                      textDecoration: 'underline',
-                      textUnderlineOffset: 2,
-                      color: i === breadcrumbItems.length - 1 ? 'text.secondary' : 'text.disabled',
-                      px: 0.25,
-                      py: 0.125,
-                      letterSpacing: 0,
-                      lineHeight: 1.2,
-                    }}
-                    onClick={() => setDrawerOpen(false)}
-                  >
-                    {crumb.label}
-                  </Typography>
-                )
-              ))}
-            </Breadcrumbs>
-            <Menu
-              anchorEl={crumbAnchorEl}
-              open={Boolean(crumbAnchorEl)}
-              onClose={() => setCrumbAnchorEl(null)}
-              onClick={() => setCrumbAnchorEl(null)}
-              slotProps={{ paper: { sx: { maxHeight: 300 } } }}
-            >
-              {crumbOptions.map(opt => (
-                <MenuItem key={opt.path} onClick={() => { navigate(opt.path); setDrawerOpen(false); }} selected={location.pathname === opt.path}>
-                  {opt.label}
-                </MenuItem>
-              ))}
-            </Menu>
-          </Box>
-          <Divider />
           <List sx={{ flex: 1, overflow: 'auto' }}>
             {items.filter(item => item.id !== 'home' && enabled[item.id]).map(item => (
               <ListItem key={item.id} disablePadding>
@@ -497,7 +329,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   to={item.path}
                   selected={isActive(item.path)}
                   onClick={() => setDrawerOpen(false)}
-                  sx={{ '&.Mui-selected': { bgcolor: 'action.selected' } }}
+                  sx={{ '&.Mui-selected': { bgcolor: 'action.selected' }, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
                   <ListItemText primary={item.label} slotProps={{ primary: { sx: { fontSize: '0.875rem', fontWeight: isActive(item.path) ? 600 : 400 } } }} />
                 </ListItemButton>
@@ -560,8 +392,8 @@ function FabTools() {
         direction="up"
         sx={{
           position: 'fixed',
-          bottom: 24,
-          right: 24,
+          bottom: { xs: 16, sm: 24 },
+          right: { xs: 16, sm: 24 },
           zIndex: theme => theme.zIndex.modal + 1,
           display: { xs: 'flex', sm: 'flex' },
           '& .MuiSpeedDial-fab': { width: 56, height: 56 },

@@ -171,7 +171,7 @@ export default function ChartList() {
     {
       field: 'viz_type',
       headerName: 'Type',
-      width: 160,
+      flex: 0.4, minWidth: 100,
       renderCell: params => (
         <Chip
           label={vizTypeLabels[params.value] || params.value}
@@ -184,7 +184,7 @@ export default function ChartList() {
     {
       field: 'datasource_name_text',
       headerName: 'Dataset',
-      width: 220,
+      flex: 0.7, minWidth: 120,
       valueGetter: (_value, row) => row.datasource_name_text || row.table?.table_name || '',
       renderCell: params => {
         const name = params.value;
@@ -214,14 +214,14 @@ export default function ChartList() {
     {
       field: 'created_by',
       headerName: 'Created By',
-      width: 160,
+      flex: 0.4, minWidth: 100,
       valueGetter: (_value, row) => row.created_by?.username ?? '',
     },
-    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', width: 180 },
+    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', flex: 0.4 },
     {
       field: 'actions',
       headerName: '',
-      width: 100,
+      width: 80,
       sortable: false,
       renderCell: params => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>

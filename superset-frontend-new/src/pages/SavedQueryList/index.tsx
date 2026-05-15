@@ -145,14 +145,14 @@ export default function SavedQueryList() {
     {
       field: 'database',
       headerName: 'Database',
-      width: 160,
+      flex: 0.4,
       valueGetter: (_value, row) => row.database?.database_name ?? '',
     },
-    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', width: 180 },
+    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', flex: 0.4 },
     {
       field: 'actions',
       headerName: '',
-      width: 60,
+      width: 80,
       sortable: false,
       renderCell: params => (
         <Tooltip title="Delete">

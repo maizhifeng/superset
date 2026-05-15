@@ -43,10 +43,18 @@ export default defineConfig({
       '/api': {
         target: process.env.SUPERSET_HOST || 'http://localhost:8088',
         changeOrigin: true,
+        headers: {
+          'X-Forwarded-Host': 'localhost:9000',
+          'X-Forwarded-Proto': 'http',
+        },
       },
       '/api/v1': {
         target: process.env.SUPERSET_HOST || 'http://localhost:8088',
         changeOrigin: true,
+        headers: {
+          'X-Forwarded-Host': 'localhost:9000',
+          'X-Forwarded-Proto': 'http',
+        },
       },
     },
   },

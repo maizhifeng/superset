@@ -120,7 +120,7 @@ export default function AlertReportList() {
     {
       field: 'type',
       headerName: 'Type',
-      width: 130,
+      flex: 0.4,
       renderCell: params => (
         <Chip
           icon={params.value === 'alert' ? <NotificationsIcon sx={{ fontSize: 14 }} /> : <VerifiedIcon sx={{ fontSize: 14 }} />}
@@ -134,7 +134,7 @@ export default function AlertReportList() {
     {
       field: 'active',
       headerName: 'Status',
-      width: 110,
+      width: 100,
       renderCell: params => (
         <Chip
           label={params.value ? 'Active' : 'Inactive'}
@@ -147,7 +147,7 @@ export default function AlertReportList() {
     {
       field: 'crontab',
       headerName: 'Schedule',
-      width: 160,
+      flex: 0.4,
       renderCell: params => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <ScheduleIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
@@ -169,7 +169,7 @@ export default function AlertReportList() {
     {
       field: 'actions',
       headerName: '',
-      width: 60,
+      width: 80,
       sortable: false,
       renderCell: params => (
         <Tooltip title="Delete">

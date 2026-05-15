@@ -34,5 +34,10 @@ DATA_CACHE_CONFIG = CACHE_CONFIG
 THUMBNAIL_CACHE_CONFIG = CACHE_CONFIG
 
 
+# Enable proxy fix so Flask reads X-Forwarded-* headers from Vite proxy
+# Without this, Flask generates redirect URLs with its own port (8088)
+# instead of the frontend port (9000), causing the browser to "jump" ports.
+ENABLE_PROXY_FIX = True
+
 # Disable Celery entirely for lightweight mode
 CELERY_CONFIG = None  # type: ignore[assignment,misc]
