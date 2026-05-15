@@ -7,7 +7,7 @@ import Typography from '@mui/material/Typography';
 import Tooltip from '@mui/material/Tooltip';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import type { GridColDef } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
@@ -177,9 +177,7 @@ export default function QueryHistoryList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search queries..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<HistoryIcon />}
@@ -187,7 +185,7 @@ export default function QueryHistoryList() {
           description={searchText ? 'Try adjusting your search query' : 'Run queries in SQL Lab to see your history here'}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -197,6 +195,36 @@ export default function QueryHistoryList() {
           paginationMode="server"
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
+          renderCard={row => {
+            const ms = row.duration_ms as number;
+            const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
+            return (
+              <>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, fontFamily: 'monospace', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.action as string}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.25 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+                      <AccountCircleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>
+                        {((row.user as Record<string, unknown>)?.['username'] as string) ?? 'N/A'}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {row.dttm ? new Date(row.dttm as string).toLocaleString() : ''}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                    <LinearProgress variant="determinate" value={pct} sx={{ width: 40, height: 3, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.06)', '& .MuiLinearProgress-bar': { bgcolor: durationColor(ms), borderRadius: 2 } }} />
+                    <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.6rem', color: durationColor(ms) }}>
+                      {formatDuration(ms)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </>
+            );
+          }}
         />
       )}
     </Box>

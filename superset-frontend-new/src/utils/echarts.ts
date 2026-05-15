@@ -1,20 +1,33 @@
 import * as echarts from 'echarts/core';
-import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import {
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
 echarts.use([
-  BarChart, LineChart, PieChart,
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   CanvasRenderer,
 ]);
 
-const registeredTypes = new Set<string>(['bar', 'line', 'pie']);
+const registeredTypes = new Set<string>();
+const echartsTypes = new Set(['bar', 'line', 'pie', 'echarts_timeseries_line']);
+let chartsLoading: Promise<void> | null = null;
 
-export function ensureChartType(type: string): void {
-  if (registeredTypes.has(type)) return;
+async function loadEChartsCharts(): Promise<void> {
+  if (chartsLoading) return chartsLoading;
+  chartsLoading = (async () => {
+    const { BarChart, LineChart, PieChart } = await import('echarts/charts');
+    echarts.use([BarChart, LineChart, PieChart]);
+    registeredTypes.add('bar');
+    registeredTypes.add('line');
+    registeredTypes.add('pie');
+  })();
+  return chartsLoading;
+}
+
+export async function ensureChartType(type: string): Promise<void> {
+  if (registeredTypes.has(type) || !echartsTypes.has(type)) return;
+  await loadEChartsCharts();
 }
 
 export const chartTypeToECharts: Record<string, string> = {

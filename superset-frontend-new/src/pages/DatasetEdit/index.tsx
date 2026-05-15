@@ -12,6 +12,7 @@ import CardHeader from '@mui/material/CardHeader';
 import CardContent from '@mui/material/CardContent';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import SaveIcon from '@mui/icons-material/Save';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -20,6 +21,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import api from '@/api';
 
 interface DatasetDetail {
@@ -92,9 +94,9 @@ export default function DatasetEdit() {
   }, [id, navigate]);
 
   useEffect(() => {
-    registerTools('dataset_edit', [{ id: 'save', priority: 30, showOnMobile: true, render: null, action: handleSave }]);
+    registerTools('dataset_edit', [{ id: 'save', priority: 30, showOnMobile: true, primary: true, fabIcon: <SaveIcon />, fabLabel: 'Save', action: handleSave, render: null }]);
     return () => unregisterTools('dataset_edit');
-  }, [registerTools, unregisterTools]);
+  }, [registerTools, unregisterTools, handleSave]);
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>;
   if (error && !dataset) return <Box sx={{ p: 3 }}><Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert></Box>;
@@ -197,6 +199,7 @@ export default function DatasetEdit() {
           </CardContent>
         </Card>
       )}
+      <PageSpeedDial pageKeys="dataset_edit" />
     </Box>
   );
 }

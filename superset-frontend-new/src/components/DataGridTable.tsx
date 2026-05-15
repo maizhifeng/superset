@@ -1,9 +1,16 @@
 import { DataGrid, type DataGridProps } from '@mui/x-data-grid';
+import { useMediaQuery, useTheme } from '@mui/material';
 
 export default function DataGridTable(props: DataGridProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   return (
     <DataGrid
       {...props}
+      rowHeight={isMobile ? 52 : undefined}
+      columnBufferPx={isMobile ? 150 : 200}
+      virtualizeColumnsWithAutoRowHeight={false}
       sx={[
         {
           border: '1px solid',

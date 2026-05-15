@@ -20,7 +20,8 @@ import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
 import FilterBar from '@/components/FilterBar';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
-import { ConfirmModal } from '@/superset-ui-mui/components';
+import PageSpeedDial from '@/components/PageSpeedDial';
+import { ConfirmModal, Grid2, Skeleton } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
 import rison from 'rison';
@@ -113,11 +114,7 @@ export default function DashboardList() {
         fabIcon: <DashboardIcon />,
         fabLabel: 'New Dashboard',
         action: () => setCreateDialogOpen(true),
-        render: (
-          <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
-            Create Dashboard
-          </Button>
-        ),
+        render: null,
       },
     ]);
     return () => unregisterTools('dashboard_list');
@@ -147,33 +144,19 @@ export default function DashboardList() {
   if (loading && dashboards.length === 0) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr' },
-            gap: 2,
-            mt: 2,
-          }}
-        >
+        <Grid2 container spacing={2} sx={{ mt: 2 }}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <Paper
-              key={i}
-              sx={{
-                p: 2,
-                height: 100,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-                animation: 'pulse 1.5s ease-in-out infinite',
-                '@keyframes pulse': {
-                  '0%, 100%': { opacity: 0.6 },
-                  '50%': { opacity: 0.3 },
-                },
-                animationDelay: `${i * 0.1}s`,
-              }}
-            />
+            <Grid2 size={{ xs: 12, sm: 6, lg: 4 }} key={i}>
+              <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                <Skeleton variant="text" width="70%" height={22} sx={{ mb: 1.5 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Skeleton variant="rounded" width={60} height={22} />
+                  <Skeleton variant="text" width={80} height={14} />
+                </Box>
+              </Paper>
+            </Grid2>
           ))}
-        </Box>
+        </Grid2>
       </Box>
     );
   }
@@ -200,23 +183,10 @@ export default function DashboardList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search dashboards..." />
-      </Box>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            sm: '1fr 1fr',
-            lg: '1fr 1fr 1fr',
-          },
-          gap: 2,
-        }}
-      >
+      <Grid2 container spacing={2}>
         {dashboards.map((dashboard, i) => (
+          <Grid2 size={{ xs: 12, sm: 6, lg: 4 }} key={dashboard.id}>
           <Paper
-            key={dashboard.id}
             sx={{
               p: 2.5,
               border: '1px solid',
@@ -296,8 +266,9 @@ export default function DashboardList() {
               </Tooltip>
             </Box>
           </Paper>
+          </Grid2>
         ))}
-      </Box>
+      </Grid2>
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
           <Pagination
@@ -362,6 +333,7 @@ export default function DashboardList() {
           </Button>
         </DialogActions>
       </Dialog>
+      <PageSpeedDial pageKeys="dashboard_list" />
     </Box>
   );
 }

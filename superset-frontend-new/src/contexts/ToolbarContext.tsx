@@ -10,6 +10,7 @@ export interface ToolEntry {
   fabIcon?: ReactNode;
   fabLabel?: string;
   action?: () => void;
+  fabColor?: 'primary' | 'error' | 'inherit' | 'default' | 'secondary' | 'info' | 'success' | 'warning';
 }
 
 interface ToolbarState {
@@ -21,9 +22,12 @@ interface ToolbarState {
 export const useToolbarStore = create<ToolbarState>()((set) => ({
   registry: {},
   registerTools: (page, entries) =>
-    set(state => ({
-      registry: { ...state.registry, [page]: entries.map(e => ({ ...e })) },
-    })),
+    set(state => {
+      const existing = state.registry[page] || [];
+      const merged = new Map(existing.map(e => [e.id, e]));
+      for (const e of entries) merged.set(e.id, { ...e });
+      return { registry: { ...state.registry, [page]: Array.from(merged.values()) } };
+    }),
   unregisterTools: (page) =>
     set(state => {
       const next = { ...state.registry };
@@ -38,9 +42,9 @@ export function useToolbar() {
   return allTools;
 }
 
-export function usePrimaryTools() {
+export function useFabTools() {
   const registry = useToolbarStore(s => s.registry);
-  return Object.values(registry).flat().filter(t => t.primary).sort((a, b) => a.priority - b.priority);
+  return Object.values(registry).flat().filter(t => t.fabIcon).sort((a, b) => a.priority - b.priority);
 }
 
 export function ToolbarProvider({ children }: { children: ReactNode }) {

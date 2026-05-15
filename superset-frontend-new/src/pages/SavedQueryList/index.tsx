@@ -8,7 +8,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import Typography from '@mui/material/Typography';
 import CodeIcon from '@mui/icons-material/Code';
 import type { GridColDef } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import { ConfirmModal } from '@/superset-ui-mui/components';
@@ -182,9 +182,7 @@ export default function SavedQueryList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search saved queries..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<SaveIcon />}
@@ -192,7 +190,7 @@ export default function SavedQueryList() {
           description={searchText ? 'Try adjusting your search query' : 'Save a query from SQL Lab to see it here'}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -202,6 +200,26 @@ export default function SavedQueryList() {
           paginationMode="server"
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
+          toolbarPageKey="saved_query_list"
+          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.label as string })}
+          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/saved_query/${id}`))); fetchData(); }}
+          renderCard={row => (
+            <>
+              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+                {row.label as string}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', columnGap: 0.25, mt: 0.25, overflow: 'hidden' }}>
+                <CodeIcon sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }} />
+                <Typography variant="caption" sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: '0.55rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {((row.sql as string)?.length ?? 0) > 60 ? `${(row.sql as string).slice(0, 60)}...` : (row.sql as string)}
+                </Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem', flexShrink: 0 }}>
+                  {((row.database as Record<string, unknown>)?.['database_name'] as string) ?? ''}
+                  {(row.changed_on_delta_humanized as string) ? ` · ${row.changed_on_delta_humanized}` : ''}
+                </Typography>
+              </Box>
+            </>
+          )}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}

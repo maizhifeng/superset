@@ -1,8 +1,9 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
+import CircularProgress from '@mui/material/CircularProgress';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -35,9 +36,17 @@ function ChartCard({
   onRefresh, onEdit,
 }: ChartCardProps) {
   const option = data ? buildEChartsOption(vizType, data) : null;
+  const [chartLibReady, setChartLibReady] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  useEffect(() => { ensureChartType(vizType); }, [vizType]);
+  useEffect(() => {
+    let cancelled = false;
+    setChartLibReady(false);
+    ensureChartType(vizType).then(() => {
+      if (!cancelled) setChartLibReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [vizType]);
 
   const touchStart = () => {
     if (containerWidth >= 600) return;
@@ -113,7 +122,7 @@ function ChartCard({
               })()}
             </Table>
           </TableContainer>
-        ) : option ? (
+        ) : option && chartLibReady ? (
           <ReactEChartsCore
             echarts={echarts}
             option={option}
@@ -121,6 +130,10 @@ function ChartCard({
             notMerge
             lazyUpdate
           />
+        ) : option ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <CircularProgress size={20} />
+          </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', gap: 0.5 }}>
             <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>Chart data unavailable</Typography>

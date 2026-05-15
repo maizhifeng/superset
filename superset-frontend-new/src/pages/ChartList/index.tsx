@@ -14,12 +14,14 @@ import Typography from '@mui/material/Typography';
 import Link from '@mui/material/Link';
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 import type { GridColDef, GridRowParams } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import api from '@/api';
 import rison from 'rison';
 
@@ -127,11 +129,7 @@ export default function ChartList() {
         fabIcon: <BarChartIcon />,
         fabLabel: 'New Chart',
         action: () => navigate('/explore'),
-        render: (
-          <Button variant="contained" size="small" onClick={() => navigate('/explore')} sx={{ whiteSpace: 'nowrap' }}>
-            Create Chart
-          </Button>
-        ),
+        render: null,
       },
     ]);
     return () => unregisterTools('chart_list');
@@ -267,9 +265,7 @@ export default function ChartList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search charts..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<BarChartIcon />}
@@ -278,7 +274,7 @@ export default function ChartList() {
           action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/explore')}>Create Chart</Button> : undefined}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -289,6 +285,32 @@ export default function ChartList() {
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
           onRowClick={handleRowClick}
+          onEdit={row => navigate(`/explore?slice_id=${row.id as number}`)}
+          toolbarPageKey="chart_list"
+          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.slice_name as string })}
+          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/chart/${id}`))); fetchData(); }}
+          renderCard={row => (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.slice_name as string}
+                </Typography>
+                <Chip label={vizTypeLabels[row.viz_type as string] || (row.viz_type as string)} size="small" variant="outlined" sx={{ fontWeight: 500, fontSize: '0.55rem', height: 16, flexShrink: 0, '& .MuiChip-label': { px: 0.5 } }} />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.5, mt: 0.25 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                  <TableChartOutlinedIcon sx={{ fontSize: 10, color: 'primary.main' }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>
+                    {(row.datasource_name_text as string) || ((row.table as Record<string, unknown>)?.['table_name'] as string) || 'Unknown'}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
+                  {(row.created_by as Record<string, unknown>)?.['username'] as string ?? 'N/A'}
+                  {(row.changed_on_delta_humanized as string) ? ` · ${row.changed_on_delta_humanized}` : ''}
+                </Typography>
+              </Box>
+            </>
+          )}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
@@ -303,6 +325,7 @@ export default function ChartList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+      <PageSpeedDial pageKeys="chart_list" />
     </Box>
   );
 }
