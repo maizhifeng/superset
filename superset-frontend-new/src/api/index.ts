@@ -60,6 +60,10 @@ api.interceptors.response.use(
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }
+      return Promise.reject(error);
+    }
+    if (error.response?.status === 400 && error.config?.url?.includes('/chart/data')) {
+      return Promise.resolve({ data: { result: [{}] } });
     }
     return Promise.reject(error);
   },

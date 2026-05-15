@@ -16,6 +16,20 @@ interface FilterPanelProps {
   pendingFilterIds?: string[];
 }
 
+function formatTimeLabel(v: unknown): string {
+  const s = String(v ?? '');
+  if (!s || s === 'null') return s;
+  const num = Number(s);
+  if (!isNaN(num) && num > 100000) {
+    const d = new Date(num);
+    if (d.getFullYear() > 1900 && d.getFullYear() < 2100) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+  return s;
+}
+
 function FilterSelect({
   filter,
   value,
@@ -25,7 +39,7 @@ function FilterSelect({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const [options, setOptions] = useState<string[]>([]);
+  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const fetchedRef = useRef(false);
@@ -38,7 +52,9 @@ function FilterSelect({
       try {
         const res = await api.get(`/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/`);
         const raw: unknown[] = res.data?.result || [];
-        const values: string[] = raw.filter((v): v is string => v != null).map(String);
+        const values: { label: string; value: string }[] = raw
+          .filter((v): v is string => v != null)
+          .map(v => ({ value: String(v), label: filter.columnType === 'time' ? formatTimeLabel(v) : String(v) }));
         if (!cancelled) setOptions(values);
       } catch {
       } finally {
@@ -46,16 +62,16 @@ function FilterSelect({
       }
     })();
     return () => { cancelled = true; };
-  }, [filter.datasetId, filter.column]);
+  }, [filter.datasetId, filter.column, filter.columnType]);
 
   const selected = useMemo(() => {
-    if (Array.isArray(value)) return value as string[];
+    if (Array.isArray(value)) return (value as string[]).map(v => ({ value: v, label: filter.columnType === 'time' ? formatTimeLabel(v) : v }));
     if (value === undefined || value === null || value === '') return [];
-    return [String(value)];
-  }, [value]);
+    return [{ value: String(value), label: filter.columnType === 'time' ? formatTimeLabel(value) : String(value) }];
+  }, [value, filter.columnType]);
 
   return (
-    <Autocomplete
+    <Autocomplete<{ label: string; value: string }, true, false, false>
       multiple
       size="small"
       loading={loading}
@@ -63,10 +79,12 @@ function FilterSelect({
       value={selected}
       inputValue={inputValue}
       onInputChange={(_, v) => setInputValue(v)}
-      onChange={(_, v) => onChange(v)}
+      onChange={(_, v) => onChange(v ? v.map(x => x.value) : [])}
       filterSelectedOptions
       disableCloseOnSelect
       limitTags={2}
+      getOptionLabel={o => o.label}
+      isOptionEqualToValue={(o, v) => o.value === v.value}
       sx={{
         '& .MuiInputBase-root': { minHeight: 36 },
         '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem', minWidth: 60 },
@@ -205,6 +223,7 @@ export default function FilterPanel({
   pendingFilterIds,
 }: FilterPanelProps) {
   const [visibleIds, setVisibleIds] = useState<Set<string> | null>(null);
+  const consumedPendingRef = useRef<Set<string>>(new Set());
 
   const visibleFilters = useMemo(() => {
     if (visibleIds) {
@@ -226,7 +245,8 @@ export default function FilterPanel({
       let changed = false;
       const next = new Set(visibleIds);
       for (const id of pendingFilterIds) {
-        if (!next.has(id)) {
+        if (!consumedPendingRef.current.has(id)) {
+          consumedPendingRef.current.add(id);
           next.add(id);
           changed = true;
         }

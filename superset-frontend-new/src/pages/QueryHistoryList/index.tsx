@@ -107,7 +107,7 @@ export default function QueryHistoryList() {
     {
       field: 'user',
       headerName: 'User',
-      width: 150,
+      flex: 0.4,
       renderCell: params => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <AccountCircleIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
@@ -119,7 +119,7 @@ export default function QueryHistoryList() {
     {
       field: 'dttm',
       headerName: 'Date',
-      width: 200,
+      flex: 0.5,
       valueGetter: (_value, row) => {
         if (!row.dttm) return '';
         return new Date(row.dttm).toLocaleString();
@@ -128,7 +128,7 @@ export default function QueryHistoryList() {
     {
       field: 'duration_ms',
       headerName: 'Duration',
-      width: 180,
+      flex: 0.4,
       renderCell: params => {
         const ms = params.row.duration_ms;
         const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);

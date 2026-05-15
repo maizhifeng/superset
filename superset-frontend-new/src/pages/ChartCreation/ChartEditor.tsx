@@ -19,111 +19,13 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import * as echarts from 'echarts/core';
-import { BarChart, LineChart, PieChart } from 'echarts/charts';
-import {
-  GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-} from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
+import { buildEChartsOption, ensureChartType } from '@/utils/echarts';
+import { buildQueryObject } from '@/utils/query/extractQueryFields';
 import api from '@/api';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import { useNotificationStore } from '@/store/notificationStore';
 import ChartTypeSelector from './ChartTypeSelector';
 import PickerField from './PickerField';
-
-echarts.use([
-  BarChart, LineChart, PieChart,
-  GridComponent, TooltipComponent, LegendComponent, TitleComponent,
-  CanvasRenderer,
-]);
-
-const chartTypeToECharts: Record<string, string> = {
-  auto: 'auto', line: 'line', bar: 'bar', pie: 'pie',
-  big_number: 'bar',
-};
-
-function buildEChartsOption(vizType: string, data: Record<string, unknown>) {
-  const echartsType = chartTypeToECharts[vizType] || 'bar';
-
-  if (vizType === 'pie') {
-    return {
-      tooltip: { trigger: 'item' as const },
-      animation: true, animationDuration: 300,
-      series: [{
-        type: 'pie', radius: ['30%', '60%'], center: ['50%', '50%'],
-        data: Array.isArray(data?.data) ? (data.data as Record<string, unknown>[]).slice(0, 10).map((d: Record<string, unknown>) => ({
-          name: String(Object.values(d)[0] || ''), value: Number(Object.values(d)[1] || 0),
-        })) : [],
-        emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } },
-      }],
-    };
-  }
-
-  const rows = Array.isArray(data?.data) ? (data.data as Record<string, unknown>[]) : [];
-  const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-  const categoryKey = keys[0] || 'category';
-  const valueKeys = keys.slice(1).filter(k => typeof rows[0]?.[k] === 'number' || k !== categoryKey);
-
-  const slicedRows = rows.slice(0, 50);
-  const isTimeAxis = /year|date|time/i.test(categoryKey);
-  const xLabels = slicedRows.map(r => {
-    const v = r[categoryKey];
-    if (isTimeAxis && typeof v === 'number' && !isNaN(v)) {
-      const d = new Date(v);
-      const y = d.getFullYear();
-      if (y > 1900 && y < 2100) return d.toLocaleDateString();
-    }
-    return String(v ?? '');
-  });
-
-  const maxXLen = Math.max(...xLabels.map(l => l.length), 0);
-  const rotatedExtent = Math.ceil(maxXLen * 7 * Math.sin(Math.PI / 4));
-
-  const allYValues = valueKeys.flatMap(k => slicedRows.map(r => Number(r[k] || 0)).filter(v => Number.isFinite(v)).map(Math.abs));
-  const yMax = allYValues.length > 0 ? Math.max(...allYValues) : 0;
-  const yLabelChars = Math.max(String(Math.round(yMax)).length, 1);
-  const yLabelWidth = yLabelChars * 7;
-
-  const palette = ['#20a7c9', '#ff7f50', '#5ab1ef', '#ffb980', '#d87a80', '#8d98b3', '#e5cf0d', '#97b552'];
-  const series = valueKeys.length > 0 ? valueKeys.map((key, i) => ({
-    type: echartsType as ('bar' | 'line'),
-    name: key,
-    data: slicedRows.map(r => Number(r[key] || 0)),
-    itemStyle: { color: palette[i % palette.length] },
-  })) : [{
-    type: echartsType as ('bar' | 'line'),
-    name: 'value',
-    data: slicedRows.map(r => Number(r[categoryKey] || 0)),
-    itemStyle: { color: '#20a7c9' },
-  }];
-
-  return {
-    tooltip: { trigger: 'axis' as const },
-    legend: series.length > 1 ? { type: 'scroll' as const, bottom: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 8 } : undefined,
-    grid: {
-      left: Math.max(40, Math.min(yLabelWidth + 24, 120)),
-      right: 20,
-      top: 40,
-      bottom: series.length > 1 ? Math.max(60, Math.min(rotatedExtent + 24, 160)) : Math.max(30, Math.min(rotatedExtent + 12, 100)),
-    },
-    animation: true, animationDuration: 300,
-    xAxis: {
-      type: 'category' as const,
-      data: xLabels,
-      axisLabel: { rotate: 45, fontSize: 10, margin: 8 },
-    },
-    yAxis: {
-      type: 'value' as const,
-      axisLabel: {
-        formatter: (v: number) => {
-          if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(1) + 'B';
-          if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
-          if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + 'K';
-          return String(v);
-        },
-      },
-    },
-    series,
-  };
-}
 
 interface Dataset { id: number; table_name: string }
 interface DatasetApiResponse { result: Dataset[]; count: number }
@@ -251,6 +153,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   const isEditing = Boolean(sliceId || initialData?.datasource_id);
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
+  const notify = useNotificationStore(s => s.notify);
   const abortRef = useRef<AbortController | null>(null);
   const metricNames = useMemo(() => new Set(metricsList.map(m => m.metric_name)), [metricsList]);
 
@@ -304,14 +207,19 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   }
 
   useEffect(() => {
+    if (initialData?.form_data || initialData?.params) {
+      setSliceName(initialData.slice_name);
+      setVizType(initialData.viz_type);
+      setDatasourceId(String(initialData.datasource_id ?? ''));
+      const raw = initialData.form_data || initialData.params;
+      restoreFormData(raw);
+      setLoadingChart(false);
+      return;
+    }
     if (initialData) {
       setSliceName(initialData.slice_name);
       setVizType(initialData.viz_type);
       setDatasourceId(String(initialData.datasource_id ?? ''));
-      const raw = initialData.form_data || initialData.params || null;
-      restoreFormData(raw);
-      setLoadingChart(false);
-      return;
     }
     if (!sliceId) return;
     setLoadingChart(true);
@@ -365,6 +273,8 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   const resolvedType = vizType === 'auto' && suggested ? suggested.vizType : vizType;
   const hasValidType = resolvedType && resolvedType !== 'auto';
 
+  useEffect(() => { ensureChartType(resolvedType); }, [resolvedType]);
+
   const previewParams = useMemo(() => {
     if (!datasourceId || !hasValidType) return null;
     return {
@@ -390,13 +300,14 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
     abortRef.current = controller;
     setLoadingData(true);
 
-    const query: Record<string, unknown> = { result_type: 'full' };
-    query.metrics = buildMetricsPayload(previewParams.metrics);
-    if (previewParams.groupby.length > 0) query.groupby = previewParams.groupby;
-
+    const query = buildQueryObject(
+      { metrics: buildMetricsPayload(previewParams.metrics), groupby: previewParams.groupby, viz_type: previewParams.viz_type },
+      previewParams.viz_type,
+    );
     api.post('/chart/data', {
       datasource: { id: previewParams.datasource_id, type: 'table' },
       queries: [query],
+      form_data: { viz_type: previewParams.viz_type, metrics: previewParams.metrics, groupby: previewParams.groupby },
     }, { signal: controller.signal })
       .then(res => {
         if (controller.signal.aborted) return;
@@ -404,7 +315,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         const rowData = Array.isArray(result) ? (result[0] || {}) : (result || {});
         setChartData(rowData);
       })
-      .catch(err => {
+      .catch(() => {
         if (controller.signal.aborted) return;
         setChartData({});
       })
@@ -490,16 +401,20 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
     try {
       const selectedDataset = datasets.find(d => d.id === Number(datasourceId));
       const effectiveType = resolvedType === 'auto' ? 'line' : resolvedType;
+      const formData = {
+        viz_type: effectiveType,
+        datasource: `${datasourceId}__table`,
+        metrics: buildMetricsPayload(metrics),
+        groupby,
+      };
+      const queryContext = buildQueryObject(formData, effectiveType);
       const body = {
         slice_name: sliceName || selectedDataset?.table_name || 'Untitled',
         viz_type: effectiveType,
         datasource_id: Number(datasourceId),
         datasource_type: 'table',
-        params: JSON.stringify({
-          metrics: buildMetricsPayload(metrics),
-          groupby,
-          viz_type: effectiveType,
-        }),
+        params: JSON.stringify(formData),
+        query_context: JSON.stringify(queryContext),
       };
 
       let savedId: number | null = null;
@@ -512,13 +427,16 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
       }
 
       if (onChartSaved && savedId) {
+        notify({ severity: 'success', message: 'Chart saved' });
         onChartSaved(savedId);
       } else {
+        notify({ severity: 'success', message: 'Chart saved' });
         navigate('/chart/list');
       }
     } catch (err: any) {
       const errMsg = err?.response?.data?.message ?? err?.message ?? 'Failed to save chart';
       setError(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+      notify({ severity: 'error', message: typeof errMsg === 'string' ? errMsg : 'Failed to save chart' });
     } finally {
       setCreating(false);
     }

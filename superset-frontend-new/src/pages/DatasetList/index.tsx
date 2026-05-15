@@ -41,11 +41,10 @@ export default function DatasetList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 });
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
-  const [metricCounts, setMetricCounts] = useState<Record<number, number>>({});
   const searchLoaded = useRef(false);
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
@@ -75,15 +74,6 @@ export default function DatasetList() {
         const list = res.data.result;
         setRows(list);
         setRowCount(res.data.count);
-        const counts: Record<number, number> = {};
-        await Promise.allSettled(
-          list.map(item =>
-            api.get(`/dataset/${item.id}`)
-              .then(detail => { counts[item.id] = (detail.data.result?.metrics?.length ?? 0); })
-              .catch(() => { counts[item.id] = 0; }),
-          ),
-        );
-        setMetricCounts(counts);
         setLoading(false);
       })
       .catch(err => {
@@ -143,11 +133,9 @@ export default function DatasetList() {
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
-    { field: 'table_name', headerName: 'Table Name', flex: 1 },
+    { field: 'table_name', headerName: 'Table Name', flex: 1, minWidth: 120 },
     {
-      field: 'schema',
-      headerName: 'Schema',
-      width: 130,
+      field: 'schema', headerName: 'Schema', flex: 0.5, minWidth: 80,
       renderCell: params => {
         const value = params.value;
         if (!value) return null;
@@ -155,58 +143,22 @@ export default function DatasetList() {
       },
     },
     {
-      field: 'metric_count',
-      headerName: 'Metrics',
-      width: 100,
-      renderCell: params => {
-        const count = metricCounts[params.id as number];
-        if (count === undefined) return null;
-        return (
-          <Chip
-            icon={<FunctionsIcon sx={{ fontSize: 14 }} />}
-            label={count}
-            size="small"
-            variant="outlined"
-            color={count > 0 ? 'primary' : 'default'}
-          />
-        );
-      },
-    },
-    {
-      field: 'database',
-      headerName: 'Database',
-      width: 180,
+      field: 'database', headerName: 'Database', flex: 0.7, minWidth: 100,
       valueGetter: (_value, row) => row.database?.database_name ?? '',
     },
+    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', flex: 0.6, minWidth: 100 },
     {
-      field: 'kind',
-      headerName: 'Kind',
-      width: 110,
+      field: 'kind', headerName: 'Kind', flex: 0.4, minWidth: 80,
       renderCell: params => (
-        <Chip
-          label={params.value}
-          size="small"
-          color={params.value === 'physical' ? 'primary' : 'secondary'}
-          variant="outlined"
-        />
+        <Chip label={params.value} size="small" color={params.value === 'physical' ? 'primary' : 'secondary'} variant="outlined" />
       ),
     },
-    { field: 'changed_on_delta_humanized', headerName: 'Last Modified', width: 180 },
     {
-      field: 'actions',
-      headerName: '',
-      width: 100,
-      sortable: false,
+      field: 'actions', headerName: '', width: 80, sortable: false,
       renderCell: params => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title="Edit dataset">
-            <IconButton
-              size="small"
-              onClick={e => {
-                e.stopPropagation();
-                navigate(`/dataset/edit/${params.id}`);
-              }}
-            >
+            <IconButton size="small" onClick={e => { e.stopPropagation(); navigate(`/dataset/edit/${params.id}`); }}>
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -259,6 +211,7 @@ export default function DatasetList() {
           paginationMode="server"
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
+          onRowClick={params => navigate(`/dataset/edit/${params.id}`)}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
