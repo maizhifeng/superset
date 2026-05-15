@@ -6,15 +6,17 @@ import Alert from '@mui/material/Alert';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
+import Typography from '@mui/material/Typography';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import type { GridColDef } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
@@ -102,11 +104,7 @@ export default function DatasetList() {
         fabIcon: <FunctionsIcon />,
         fabLabel: 'New Dataset',
         action: () => navigate('/dataset/create'),
-        render: (
-          <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')} sx={{ whiteSpace: 'nowrap' }}>
-            Create Dataset
-          </Button>
-        ),
+        render: null,
       },
     ]);
     return () => unregisterTools('dataset_list');
@@ -190,9 +188,7 @@ export default function DatasetList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search datasets..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<TableChartIcon />}
@@ -201,7 +197,7 @@ export default function DatasetList() {
           action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')}>Create Dataset</Button> : undefined}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -212,6 +208,27 @@ export default function DatasetList() {
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
           onRowClick={params => navigate(`/dataset/edit/${params.id}`)}
+          onEdit={row => navigate(`/dataset/edit/${row.id as number}`)}
+          toolbarPageKey="dataset_list"
+          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.table_name as string })}
+          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/dataset/${id}`))); fetchData(); }}
+          renderCard={row => (
+            <>
+              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+                {row.table_name as string}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
+                {(row.schema as string | null) && <Chip label={row.schema as string} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />}
+                <Chip label={row.kind as string} size="small" color={(row.kind as string) === 'physical' ? 'primary' : 'secondary'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
+                  {((row.database as Record<string, unknown>)?.['database_name'] as string) ?? 'Unknown'}
+                </Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
+                  {(row.changed_on_delta_humanized as string) ?? ''}
+                </Typography>
+              </Box>
+            </>
+          )}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
@@ -226,6 +243,7 @@ export default function DatasetList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+      <PageSpeedDial pageKeys="dataset_list" />
     </Box>
   );
 }

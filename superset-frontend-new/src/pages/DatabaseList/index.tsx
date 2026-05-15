@@ -12,12 +12,14 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import DeleteIcon from '@mui/icons-material/Delete';
 import StorageIcon from '@mui/icons-material/Storage';
+import Typography from '@mui/material/Typography';
 import type { GridColDef } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
 import rison from 'rison';
@@ -83,11 +85,7 @@ export default function DatabaseList() {
         fabIcon: <StorageIcon />,
         fabLabel: 'Connect Database',
         action: () => setCreateDialogOpen(true),
-        render: (
-          <Button variant="contained" size="small" onClick={() => setCreateDialogOpen(true)} sx={{ whiteSpace: 'nowrap' }}>
-            Create Database
-          </Button>
-        ),
+        render: null,
       },
     ]);
     return () => unregisterTools('database_list');
@@ -214,9 +212,7 @@ export default function DatabaseList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search databases..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<StorageIcon />}
@@ -224,7 +220,7 @@ export default function DatabaseList() {
           description={searchText ? 'Try adjusting your search query' : 'Connect a database to start exploring your data'}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -234,6 +230,24 @@ export default function DatabaseList() {
           paginationMode="server"
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
+          toolbarPageKey="database_list"
+          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.database_name as string })}
+          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/database/${id}`))); fetchData(); }}
+          renderCard={row => (
+            <>
+              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+                {row.database_name as string}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
+                <Chip label={row.backend as string} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Chip label={(row.expose_in_sqllab as boolean) ? 'Enabled' : 'Disabled'} size="small" color={(row.expose_in_sqllab as boolean) ? 'success' : 'default'} variant={(row.expose_in_sqllab as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Chip label={(row.allow_dml as boolean) ? 'DML: Yes' : 'DML: No'} size="small" color={(row.allow_dml as boolean) ? 'success' : 'default'} variant={(row.allow_dml as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
+                  {(row.changed_on_delta_humanized as string) ?? ''}
+                </Typography>
+              </Box>
+            </>
+          )}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
@@ -298,6 +312,7 @@ export default function DatabaseList() {
           </Button>
         </DialogActions>
       </Dialog>
+      <PageSpeedDial pageKeys="database_list" />
     </Box>
   );
 }

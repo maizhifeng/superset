@@ -1,20 +1,27 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { produce } from 'immer';
 import { useParams, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import Drawer from '@mui/material/Drawer';
-import Button from '@mui/material/Button';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import MenuIcon from '@mui/icons-material/Menu';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
 
 import { GridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import ChartEditor from '@/pages/ChartCreation/ChartEditor';
 import ChartCard from '@/pages/Dashboard/ChartCard';
 import ChatInput from '@/components/ChatInput';
@@ -297,6 +304,19 @@ export default function Dashboard() {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
+  const [navOpen, setNavOpen] = useState(false);
+  const [navItems, setNavItems] = useState<{ id: number; name: string }[]>([]);
+
+  const openNav = () => {
+    const cards = document.querySelectorAll('[data-chart-index]');
+    const items = Array.from(cards).map(el => ({
+      id: Number(el.getAttribute('data-chart-index')),
+      name: el.querySelector('.drag-handle .MuiTypography-root')?.textContent?.trim() || `Chart #${el.getAttribute('data-chart-index')}`,
+    }));
+    setNavItems(items);
+    setNavOpen(true);
+  };
+
   useEffect(() => {
     if (!dashboard) return;
     setCustom({ label: dashboard.dashboard_title, status: dashboard.published ? 'published' : 'draft' });
@@ -311,6 +331,7 @@ export default function Dashboard() {
         id: 'filter',
         priority: 10,
         showOnMobile: true,
+        primary: true,
         fabIcon: <FilterListIcon />,
         fabLabel: 'Filter',
         action: () => setFilterDrawerOpen(prev => !prev),
@@ -331,25 +352,7 @@ export default function Dashboard() {
         fabIcon: <RefreshIcon />,
         fabLabel: 'Refresh',
         action: refreshAllCharts,
-        render: (
-          <Button
-            onClick={refreshAllCharts}
-            startIcon={<RefreshIcon sx={{ fontSize: 22 }} />}
-            sx={{
-              textTransform: 'none',
-              fontWeight: 600,
-              fontSize: '0.9375rem',
-              color: 'text.secondary',
-              px: 0.5,
-              py: 0,
-              minWidth: 0,
-              whiteSpace: 'nowrap',
-              lineHeight: 1.2,
-            }}
-          >
-            Refresh
-          </Button>
-        ),
+        render: null,
       },
       ...(layoutItems.length > 1 ? [{
         id: 'nav',
@@ -357,11 +360,12 @@ export default function Dashboard() {
         showOnMobile: true,
         fabIcon: <MenuIcon />,
         fabLabel: 'Jump to chart',
+        action: openNav,
         render: null,
       }] : []),
     ]);
     return () => unregisterTools(pageKey);
-  }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey, layoutItems.length]);
+  }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey]);
 
   function parseChartConfig(chart: ChartData): Record<string, unknown> {
     const raw = chart.form_data || (chart as any).params || '{}';
@@ -441,12 +445,13 @@ export default function Dashboard() {
     isSavingRef.current = true;
     setSaving(true);
     try {
-      const updatedPosition = { ...fullPositionRef.current };
-      for (const [key, node] of Object.entries(nodeMapRef.current)) {
-        if (node.type) {
-          updatedPosition[key] = node;
+      const updatedPosition = produce(fullPositionRef.current, draft => {
+        for (const [key, node] of Object.entries(nodeMapRef.current)) {
+          if (node.type) {
+            draft[key] = node;
+          }
         }
-      }
+      });
       await api.put(`/dashboard/${id}`, {
         position_json: JSON.stringify(updatedPosition),
       });
@@ -493,21 +498,19 @@ export default function Dashboard() {
 
   const handleLayoutChange = useCallback((newLayout: { i: string; x: number; y: number; w: number; h: number }[]) => {
     if (containerWidth < 600) return;
-    const updated = { ...nodeMapRef.current };
-    for (const item of newLayout) {
-      if (updated[item.i]?.meta) {
-        updated[item.i] = {
-          ...updated[item.i],
-          meta: {
-            ...updated[item.i].meta,
+    const updated = produce(nodeMapRef.current, draft => {
+      for (const item of newLayout) {
+        if (draft[item.i]?.meta) {
+          draft[item.i].meta = {
+            ...draft[item.i].meta,
             width: item.w,
             height: Math.round(item.h * 60 / 8),
             x: item.x,
             y: item.y,
-          },
-        };
+          };
+        }
       }
-    }
+    });
     nodeMapRef.current = updated;
     setNodeMap(updated);
     // Debounced save — react-grid-layout calls onLayoutChange BEFORE onDragStop
@@ -554,14 +557,14 @@ export default function Dashboard() {
               key={`layout-${containerWidth < 600}`}
               width={containerWidth}
               layout={gridLayout}
-              gridConfig={{ cols: 12, rowHeight: 60, margin: [8, 8] }}
+              gridConfig={{ cols: 12, rowHeight: containerWidth < 600 ? 40 : 60, margin: [8, 8] }}
               onLayoutChange={handleLayoutChange}
               onDragStart={() => setIsDragging(true)}
               onDragStop={() => setIsDragging(false)}
               onResizeStart={() => setIsDragging(true)}
               onResizeStop={() => setIsDragging(false)}
-              dragConfig={{ enabled: true, handle: '.drag-handle' }}
-              resizeConfig={{ enabled: true, handles: ['se'] }}
+              dragConfig={{ enabled: containerWidth >= 600, handle: '.drag-handle' }}
+              resizeConfig={{ enabled: containerWidth >= 600, handles: ['se'] }}
               autoSize
             >
               {layoutItems.map(item => (
@@ -602,6 +605,33 @@ export default function Dashboard() {
           )}
         </Box>
       </Drawer>
+      <PageSpeedDial pageKeys={[pageKey, ...(isDrawerOpen ? ['chart_editor'] : [])]} searchTool={{ render: <ChatInput /> }} />
+      <Dialog
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        slotProps={{ paper: { sx: { maxHeight: 500, borderRadius: 2 } } }}
+      >
+        <DialogContent sx={{ p: 0 }}>
+          <List>
+            {navItems.map(item => (
+              <ListItem key={item.id} disablePadding>
+                <ListItemButton onClick={() => { setNavOpen(false); const el = document.querySelector(`[data-chart-index="${item.id}"]`); el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} sx={{ py: 2.5, px: 2 }}>
+                  <ListItemText primary={item.name} slotProps={{ primary: { sx: { fontSize: '0.9375rem' } } }} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+            {navItems.length === 0 && (
+              <ListItem dense sx={{ justifyContent: 'center' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem', py: 1 }}>
+                  No charts found
+                </Typography>
+              </ListItem>
+            )}
+          </List>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

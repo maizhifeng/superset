@@ -4,6 +4,7 @@ import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import PageHeader from '@/components/PageHeader';
 import Icon from '@/superset-ui-mui/components/Icon';
+import { Grid2 } from '@/superset-ui-mui/components';
 
 const links = [
   { title: 'Charts', path: '/chart/list', icon: 'chart', desc: 'Create and manage charts', color: '#20a7c9' },
@@ -23,14 +24,9 @@ export default function Home() {
         title="Welcome to Starfly"
         subtitle="Select a section to get started"
       />
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
-          gap: 2,
-        }}
-      >
+      <Grid2 container spacing={2}>
         {links.map((link, i) => (
+          <Grid2 size={{ xs: 12, sm: 6, md: 4 }} key={link.path}>
           <Paper
             key={link.path}
             elevation={0}
@@ -71,8 +67,9 @@ export default function Home() {
               {link.desc}
             </Typography>
           </Paper>
+          </Grid2>
         ))}
-      </Box>
+      </Grid2>
     </Box>
   );
 }

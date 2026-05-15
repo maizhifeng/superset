@@ -4,6 +4,9 @@ import { resolve } from 'path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  optimizeDeps: {
+    include: ['immer'],
+  },
   plugins: [
     react({
       jsxImportSource: '@emotion/react',

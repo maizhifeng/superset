@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, Link as RouterLink } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
@@ -17,23 +17,20 @@ import ListItemText from '@mui/material/ListItemText';
 import Breadcrumbs from '@mui/material/Breadcrumbs';
 import Button from '@mui/material/Button';
 import Grow from '@mui/material/Grow';
-import Dialog from '@mui/material/Dialog';
-import DialogContent from '@mui/material/DialogContent';
 import Logout from '@mui/icons-material/Logout';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import MenuIcon from '@mui/icons-material/Menu';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import SearchIcon from '@mui/icons-material/Search';
+import Dialog from '@mui/material/Dialog';
+import DialogContent from '@mui/material/DialogContent';
 import { keyframes } from '@emotion/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
-import { useToolbar, usePrimaryTools } from '@/contexts/ToolbarContext';
+import { useToolbar } from '@/contexts/ToolbarContext';
 import { useMenuSettings } from '@/store/menuSettings';
 import GlobalSnackbar from '@/components/GlobalSnackbar';
-import SpeedDial from '@mui/material/SpeedDial';
-import SpeedDialAction from '@mui/material/SpeedDialAction';
-import SpeedDialIcon from '@mui/material/SpeedDialIcon';
 import api from '@/api';
 
 interface CrumbItem {
@@ -79,7 +76,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const items = useMenuSettings(s => s.items);
   const enabled = useMenuSettings(s => s.enabled);
   const [overflowAnchor, setOverflowAnchor] = useState<HTMLElement | null>(null);
+  const [navMoreAnchor, setNavMoreAnchor] = useState<HTMLElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const navRef = useRef<HTMLDivElement>(null);
+  const [hiddenNavCount, setHiddenNavCount] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     const parts = location.pathname.split('/').filter(Boolean);
@@ -109,6 +110,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const navItems = useMemo(() =>
     items.filter(item => item.id !== 'home' && enabled[item.id]),
   [items, enabled]);
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el || navItems.length === 0) { setHiddenNavCount(0); return; }
+    const check = () => {
+      const children = Array.from(el.children) as HTMLElement[];
+      let w = 0;
+      let visible = 0;
+      for (let i = 0; i < children.length; i++) {
+        w += (children[i] as HTMLElement).offsetWidth;
+        if (w > el.clientWidth) break;
+        visible++;
+      }
+      setHiddenNavCount(Math.max(0, navItems.length - visible));
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [navItems]);
 
   function isActive(path: string) {
     if (path === '/') return location.pathname === '/';
@@ -166,8 +187,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', bgcolor: 'grey.100' }}>
       <AppBar position="static" color="inherit" sx={{ zIndex: theme => theme.zIndex.drawer + 1, visibility: sidebarOpen ? 'hidden' : 'visible', pointerEvents: sidebarOpen ? 'none' : 'auto' }}>
-        <Toolbar variant="dense" sx={{ gap: 0, px: 0.75, minHeight: 44 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0, minWidth: 0 }}>
+        <Toolbar variant="dense" sx={{ gap: 0, px: 0.5, minHeight: 44 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0, flex: '1 1 0', minWidth: 0, overflow: 'hidden' }}>
             <IconButton size="small" onClick={() => setDrawerOpen(true)} sx={{ display: { xs: 'inline-flex', sm: 'none' }, mr: 0.25 }}>
               <MenuIcon sx={{ fontSize: 20 }} />
             </IconButton>
@@ -179,7 +200,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               starfly
             </Typography>
 
-            <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0, overflow: 'hidden', minWidth: 0 }}>
+            <Box ref={navRef} sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0, overflow: 'hidden', minWidth: 0 }}>
               {navItems.map(item => (
                 <Typography
                   key={item.id}
@@ -194,10 +215,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     py: 0.375,
                     borderRadius: 1,
                     whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: 120,
-                    flexShrink: 1,
+                    flexShrink: 0,
                     transition: 'color 150ms ease, background-color 150ms ease',
                     '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
                   }}
@@ -206,23 +224,72 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </Typography>
               ))}
             </Box>
+            {hiddenNavCount > 0 && (
+              <IconButton
+                size="small"
+                onClick={e => setNavMoreAnchor(e.currentTarget)}
+                sx={{ display: { xs: 'none', sm: 'inline-flex' }, ml: 0.25 }}
+              >
+                <MoreHorizIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+            <Menu
+              anchorEl={navMoreAnchor}
+              open={Boolean(navMoreAnchor)}
+              onClose={() => setNavMoreAnchor(null)}
+              onClick={() => setNavMoreAnchor(null)}
+              transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+              anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+              slotProps={{ paper: { sx: { minWidth: 160 } } }}
+            >
+              {hiddenNavCount > 0 && navItems.slice(-hiddenNavCount).map(item => (
+                <MenuItem
+                  key={item.id}
+                  component={RouterLink}
+                  to={item.path}
+                  selected={isActive(item.path)}
+                  dense
+                  sx={{ fontSize: '0.8125rem', minHeight: 36 }}
+                >
+                  {item.label}
+                </MenuItem>
+              ))}
+            </Menu>
           </Box>
 
-          <Box sx={{ flex: 1, display: { xs: 'none', sm: 'flex' }, justifyContent: 'center', px: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: '1 1 0', justifyContent: 'flex-end' }}>
+          <Box sx={{ flex: 1 }} />
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, justifyContent: 'center', overflow: 'hidden', minWidth: 0, maxWidth: 300 }}>
             {toolbarTools.filter(t => t.id === 'search').map(tool => (
-              <Box key={tool.id} sx={{ width: 400 }}>
-                {tool.render}
-              </Box>
+              <Box key={tool.id} sx={{ width: '100%' }}>{tool.render}</Box>
             ))}
           </Box>
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1, overflow: 'hidden', justifyContent: { xs: 'flex-end', sm: 'flex-end' } }}>
+          <IconButton
+            size="small"
+            onClick={() => setSearchOpen(true)}
+            sx={{ display: { xs: 'inline-flex', md: 'none' } }}
+          >
+            <SearchIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+          <Dialog
+            open={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            fullWidth
+            maxWidth="sm"
+            slotProps={{ paper: { sx: { position: 'fixed', top: 60, m: 0, borderRadius: 2 } } }}
+          >
+            <DialogContent sx={{ p: 2 }} onClick={() => setSearchOpen(false)}>
+              {toolbarTools.filter(t => t.id === 'search').map(tool => (
+                <Box key={tool.id} onClick={e => e.stopPropagation()}>{tool.render}</Box>
+              ))}
+            </DialogContent>
+          </Dialog>
           <Breadcrumbs
             separator={<NavigateNextIcon sx={{ fontSize: 11, color: 'text.disabled' }} />}
             maxItems={4}
             itemsAfterCollapse={2}
             itemsBeforeCollapse={1}
-            sx={{ fontStyle: 'italic', '& .MuiBreadcrumbs-ol': { gap: 0, flexWrap: 'nowrap' }, '& .MuiBreadcrumbs-li': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }, mr: 'auto' }}
+            sx={{ fontStyle: 'italic', pr: { xs: 1.5, sm: 0 }, '& .MuiBreadcrumbs-ol': { gap: 0, flexWrap: 'nowrap' } }}
           >
             {breadcrumbItems.map((crumb, i) => (
               crumb.isId ? (
@@ -240,7 +307,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     textUnderlineOffset: 2,
                     color: i === breadcrumbItems.length - 1 ? 'text.secondary' : 'text.disabled',
                     px: 0.25,
-                    minWidth: 0,
+                    flexShrink: 0,
                     letterSpacing: 0,
                     lineHeight: 1.2,
                   }}
@@ -263,7 +330,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     textUnderlineOffset: 2,
                     color: i === breadcrumbItems.length - 1 ? 'text.secondary' : 'text.disabled',
                     px: 0.25,
-                    minWidth: 0,
+                    flexShrink: 0,
                     letterSpacing: 0,
                     lineHeight: 1.2,
                   }}
@@ -275,7 +342,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             ))}
           </Breadcrumbs>
           {toolbarTools.filter(t => t.id !== 'search' && !t.primary).length > 0 && (
-          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5, px: 0.5 }}>
+          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5, px: 0.5, overflow: 'hidden', minWidth: 0 }}>
             {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(0, 3).map((tool, i) => (
               <Box key={tool.id} sx={{ display: 'block', animation: `${toolFadeIn} 250ms cubic-bezier(0.4, 0, 0.2, 1) both`, animationDelay: `${i * 50}ms` }}>
                 {tool.render}
@@ -296,6 +363,32 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </Menu>
           </Box>
           )}
+          <IconButton
+            size="small"
+            onClick={e => setOverflowAnchor(e.currentTarget)}
+            sx={{ display: { xs: 'none', sm: 'inline-flex' }, ml: 0.5 }}
+          >
+            <Avatar sx={{ width: 26, height: 26, fontSize: '0.7rem', bgcolor: 'primary.main' }}>
+              {user?.username?.charAt(0).toUpperCase() || 'U'}
+            </Avatar>
+          </IconButton>
+          <Menu
+            anchorEl={overflowAnchor}
+            open={Boolean(overflowAnchor)}
+            onClose={() => setOverflowAnchor(null)}
+            onClick={() => setOverflowAnchor(null)}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            slotProps={{ paper: { sx: { minWidth: 140 } } }}
+          >
+            <MenuItem dense disabled sx={{ fontSize: '0.8125rem', opacity: '1 !important' }}>
+              {user?.username || 'User'}
+            </MenuItem>
+            <Divider />
+            <MenuItem dense onClick={logout} sx={{ fontSize: '0.8125rem' }}>
+              <Logout sx={{ fontSize: 16, mr: 1 }} /> Logout
+            </MenuItem>
+          </Menu>
           <Menu anchorEl={crumbAnchorEl} open={Boolean(crumbAnchorEl)} onClose={() => setCrumbAnchorEl(null)} onClick={() => setCrumbAnchorEl(null)}
             slotProps={{ paper: { sx: { maxHeight: 300 } } }}>
             {crumbOptions.map(opt => (
@@ -315,7 +408,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         sx={{ display: { xs: 'block', sm: 'none' } }}
-        slotProps={{ paper: { sx: { width: { xs: '30vw', sm: 260 } } } }}
+        slotProps={{ paper: { sx: { width: { xs: '80vw', sm: 260 } } } }}
       >
         <Box sx={{ width: { xs: '30vw', sm: 260 }, display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -348,122 +441,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </Box>
         </Box>
       </Drawer>
-      <FabTools />
     </Box>
-  );
-}
-
-function FabTools() {
-  const allTools = useToolbar();
-  const primaryTools = usePrimaryTools();
-  const searchTool = allTools.filter(t => t.id === 'search');
-  const otherTools = allTools.filter(t => t.id !== 'search' && !t.primary && (t.fabIcon || t.action));
-  const [open, setOpen] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [navOpen, setNavOpen] = useState(false);
-  const [navItems, setNavItems] = useState<{ id: number; name: string }[]>([]);
-
-  const openNav = () => {
-    const cards = document.querySelectorAll('[data-chart-index]');
-    const items = Array.from(cards).map(el => ({
-      id: Number(el.getAttribute('data-chart-index')),
-      name: el.querySelector('.drag-handle .MuiTypography-root')?.textContent?.trim() || `Chart #${el.getAttribute('data-chart-index')}`,
-    }));
-    setNavItems(items);
-    setNavOpen(true);
-  };
-
-  const scrollToChart = (id: number) => {
-    setNavOpen(false);
-    const el = document.querySelector(`[data-chart-index="${id}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  if (primaryTools.length === 0 && otherTools.length === 0 && searchTool.length === 0) return null;
-
-  return (
-    <>
-      <SpeedDial
-        ariaLabel="Tools"
-        icon={<SpeedDialIcon />}
-        onClose={() => setOpen(false)}
-        onOpen={() => setOpen(true)}
-        open={open}
-        direction="up"
-        sx={{
-          position: 'fixed',
-          bottom: { xs: 16, sm: 24 },
-          right: { xs: 16, sm: 24 },
-          zIndex: theme => theme.zIndex.modal + 1,
-          display: { xs: 'flex', sm: 'flex' },
-          '& .MuiSpeedDial-fab': { width: 56, height: 56 },
-          '& .MuiSpeedDialAction-fab': { width: 56, height: 56 },
-          '& .MuiSpeedDialAction-staticTooltipLabel': { fontSize: '0.8125rem' },
-        }}
-      >
-        {searchTool.length > 0 && (
-          <SpeedDialAction
-            icon={<SearchIcon />}
-            title="Ask..."
-            onClick={() => { setOpen(false); setDialogOpen(true); }}
-          />
-        )}
-        {otherTools.map(tool => (
-          <SpeedDialAction
-            key={tool.id}
-            icon={tool.fabIcon}
-            title={tool.fabLabel || tool.id}
-            onClick={() => { setOpen(false); tool.id === 'nav' ? openNav() : tool.action?.(); }}
-          />
-        ))}
-        {primaryTools.map(tool => (
-          <SpeedDialAction
-            key={tool.id}
-            icon={tool.fabIcon}
-            title={tool.fabLabel}
-            onClick={() => { tool.action?.(); setOpen(false); }}
-          />
-        ))}
-      </SpeedDial>
-      <Dialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        fullWidth
-        maxWidth="sm"
-        slotProps={{ paper: { sx: { position: 'fixed', top: 80, m: 0, borderRadius: 2 } } }}
-      >
-        <DialogContent sx={{ p: 2 }}>
-          {searchTool.map(tool => (
-            <Box key={tool.id} onClick={() => setDialogOpen(false)}>{tool.render}</Box>
-          ))}
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        slotProps={{ paper: { sx: { maxHeight: 500, borderRadius: 2 } } }}
-      >
-        <DialogContent sx={{ p: 0 }}>
-          <List>
-            {navItems.map(item => (
-              <ListItem key={item.id} disablePadding>
-                <ListItemButton onClick={() => scrollToChart(item.id)} sx={{ py: 2.5, px: 2 }}>
-                  <ListItemText primary={item.name} slotProps={{ primary: { sx: { fontSize: '0.9375rem' } } }} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-            {navItems.length === 0 && (
-              <ListItem dense sx={{ justifyContent: 'center' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem', py: 1 }}>
-                  No charts found
-                </Typography>
-              </ListItem>
-            )}
-          </List>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }

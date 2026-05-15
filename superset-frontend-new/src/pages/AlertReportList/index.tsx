@@ -9,8 +9,9 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import PeopleIcon from '@mui/icons-material/People';
+import Typography from '@mui/material/Typography';
 import type { GridColDef } from '@mui/x-data-grid';
-import DataGridTable from '@/components/DataGridTable';
+import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import TableSkeleton from '@/components/TableSkeleton';
 import { ConfirmModal } from '@/superset-ui-mui/components';
@@ -199,9 +200,7 @@ export default function AlertReportList() {
 
   return (
     <Box sx={{ p: 3, pt: 2 }}>
-      <Box sx={{ display: { xs: 'block', sm: 'none' }, mb: 2 }}>
-        <FilterBar value={searchText} onChange={handleSearchChange} placeholder="Search alerts..." />
-      </Box>
+
       {rows.length === 0 && !loading ? (
         <EmptyState
           icon={<NotificationsIcon />}
@@ -209,7 +208,7 @@ export default function AlertReportList() {
           description={searchText ? 'Try adjusting your search query' : 'Create an alert or report to get notified when conditions are met'}
         />
       ) : (
-        <DataGridTable
+        <ResponsiveDataGrid
           rows={rows}
           columns={columns}
           loading={loading}
@@ -219,6 +218,28 @@ export default function AlertReportList() {
           paginationMode="server"
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
+          toolbarPageKey="alert_report_list"
+          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.name as string })}
+          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/report/${id}`))); fetchData(); }}
+          renderCard={row => (
+            <>
+              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+                {row.name as string}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
+                <Chip icon={(row.type as string) === 'alert' ? <NotificationsIcon sx={{ fontSize: 10 }} /> : <VerifiedIcon sx={{ fontSize: 10 }} />} label={(row.type as string) ? `${(row.type as string).charAt(0).toUpperCase()}${(row.type as string).slice(1)}` : ''} size="small" color={(row.type as string) === 'alert' ? 'warning' : 'info'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Chip label={(row.active as boolean) ? 'Active' : 'Inactive'} size="small" color={(row.active as boolean) ? 'success' : 'default'} variant={(row.active as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                  <ScheduleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.crontab as string}</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                  <PeopleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.recipients as string}</Typography>
+                </Box>
+              </Box>
+            </>
+          )}
         />
       )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}

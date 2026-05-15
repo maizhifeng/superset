@@ -7,7 +7,6 @@ import Card from '@mui/material/Card';
 import CardHeader from '@mui/material/CardHeader';
 import CardContent from '@mui/material/CardContent';
 import TextField from '@mui/material/TextField';
-import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import SaveIcon from '@mui/icons-material/Save';
@@ -24,6 +23,7 @@ import { buildQueryObject } from '@/utils/query/extractQueryFields';
 import api from '@/api';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import { useNotificationStore } from '@/store/notificationStore';
+import PageSpeedDial from '@/components/PageSpeedDial';
 import ChartTypeSelector from './ChartTypeSelector';
 import PickerField from './PickerField';
 
@@ -147,12 +147,12 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   const [loadingData, setLoadingData] = useState(false);
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [loadingChart, setLoadingChart] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isEditing = Boolean(sliceId || initialData?.datasource_id);
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
+
+  const isEditing = Boolean(sliceId || initialData?.datasource_id);
   const notify = useNotificationStore(s => s.notify);
   const abortRef = useRef<AbortController | null>(null);
   const metricNames = useMemo(() => new Set(metricsList.map(m => m.metric_name)), [metricsList]);
@@ -273,7 +273,16 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   const resolvedType = vizType === 'auto' && suggested ? suggested.vizType : vizType;
   const hasValidType = resolvedType && resolvedType !== 'auto';
 
-  useEffect(() => { ensureChartType(resolvedType); }, [resolvedType]);
+  const [chartLibReady, setChartLibReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChartLibReady(false);
+    ensureChartType(resolvedType).then(() => {
+      if (!cancelled) setChartLibReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [resolvedType]);
 
   const previewParams = useMemo(() => {
     if (!datasourceId || !hasValidType) return null;
@@ -395,7 +404,10 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   }, [disabledReasons, vizType, suggested]);
 
   const handleSubmit = useCallback(async () => {
-    if (!datasourceId || !hasValidType) return;
+    if (!datasourceId || !hasValidType) {
+      notify({ severity: 'warning', message: 'Please select a dataset and ensure a chart type is available before saving' });
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
@@ -452,21 +464,11 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         fabIcon: <SaveIcon />,
         fabLabel: isEditing ? 'Save' : 'Create',
         action: handleSubmit,
-        render: (
-          <Button
-            variant="contained"
-            size="small"
-            onClick={handleSubmit}
-            disabled={creating || !datasourceId || !hasValidType}
-            sx={{ whiteSpace: 'nowrap', minWidth: 80 }}
-          >
-            {creating ? <CircularProgress size={16} /> : isEditing ? 'Save' : 'Create'}
-          </Button>
-        ),
+        render: null,
       },
     ]);
     return () => unregisterTools('chart_editor');
-  }, [registerTools, unregisterTools, handleSubmit, creating, datasourceId, hasValidType, isEditing]);
+  }, [registerTools, unregisterTools, handleSubmit, isEditing]);
 
   const handleChartTypeChange = (val: string) => {
     setVizType(val);
@@ -541,7 +543,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
           <Typography variant="h2" sx={{ fontWeight: 700, fontSize: { xs: '2rem', sm: '3rem' }, lineHeight: 1.2 }}>
             {bigNumberValue}
           </Typography>
-        ) : option ? (
+        ) : option && chartLibReady ? (
           <ReactEChartsCore
             echarts={echarts}
             option={option}
@@ -549,6 +551,8 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
             notMerge
             lazyUpdate
           />
+        ) : option ? (
+          <CircularProgress size={20} />
         ) : chartData ? (
           <Typography variant="body2" color="text.disabled">No data returned</Typography>
         ) : (
@@ -659,6 +663,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
       <Box sx={{ flex: 1, p: c(1.5, 0.75), minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {preview}
       </Box>
+      {!compact && <PageSpeedDial pageKeys="chart_editor" />}
     </Box>
   );
 }

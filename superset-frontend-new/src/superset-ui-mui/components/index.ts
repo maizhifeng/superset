@@ -21,6 +21,7 @@ export { default as EmptyState } from './EmptyState';
 export { default as Flex } from './Flex';
 export { default as Form } from './Form';
 export { default as Grid } from './Grid';
+export { default as Grid2 } from './Grid2';
 export { default as IconButton } from './IconButton';
 export { default as Image } from './Image';
 export { default as Input } from './Input';
