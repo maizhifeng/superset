@@ -28,7 +28,6 @@
     "lib": ["dom", "dom.iterable", "esnext"],
     "composite": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@superset-ui/core": ["./packages/superset-ui-core/src"],

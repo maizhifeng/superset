@@ -113,13 +113,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const el = navRef.current;
-    if (!el || navItems.length === 0) { setHiddenNavCount(0); return; }
+    if (!el || navItems.length === 0 || el.clientWidth === 0) { setHiddenNavCount(0); return; }
     const check = () => {
+      if (el.clientWidth === 0) { setHiddenNavCount(0); return; }
       const children = Array.from(el.children) as HTMLElement[];
       let w = 0;
       let visible = 0;
       for (let i = 0; i < children.length; i++) {
-        w += (children[i] as HTMLElement).offsetWidth;
+        w += children[i].offsetWidth;
         if (w > el.clientWidth) break;
         visible++;
       }
