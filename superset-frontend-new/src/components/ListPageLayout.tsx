@@ -45,6 +45,7 @@ export default function ListPageLayout({
         display: 'flex',
         flexDirection: 'column',
         flex: 1,
+        minHeight: 0,
         overflow: 'hidden',
         p: 3, pt: 2,
         animation: `${contentFadeIn} 350ms ease-out both`,

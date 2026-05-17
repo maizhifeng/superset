@@ -255,7 +255,7 @@ export default function ResponsiveDataGrid<R = any>({
           );
         })}
         {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, pr: { xs: 7, sm: 0 } }}>
             <Pagination
               count={totalPages}
               page={page + 1}

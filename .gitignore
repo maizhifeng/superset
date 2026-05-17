@@ -140,3 +140,4 @@ oxc-custom-build/
 *.code-workspace
 *.duckdb
 .playwright-mcp/
+pgdata

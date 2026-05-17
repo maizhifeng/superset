@@ -1,8 +1,21 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 import type { DataGridProps } from '@mui/x-data-grid';
 import { useMediaQuery, useTheme } from '@mui/material';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
+
+function getScrollbarWidth(): number {
+  if (typeof document === 'undefined') return 0;
+  const outer = document.createElement('div');
+  outer.style.visibility = 'hidden';
+  outer.style.overflow = 'scroll';
+  document.body.appendChild(outer);
+  const inner = document.createElement('div');
+  outer.appendChild(inner);
+  const width = outer.offsetWidth - inner.offsetWidth;
+  outer.parentNode?.removeChild(outer);
+  return width;
+}
 
 const DataGrid = lazy(() =>
   import('@mui/x-data-grid').then(m => ({ default: m.DataGrid })),
@@ -11,6 +24,7 @@ const DataGrid = lazy(() =>
 export default function DataGridTable(props: DataGridProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const scrollbarWidth = useMemo(() => getScrollbarWidth(), []);
 
   return (
     <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>}>
@@ -77,7 +91,8 @@ export default function DataGridTable(props: DataGridProps) {
           '& .MuiDataGrid-footerContainer': {
             borderTop: '1px solid',
             borderColor: 'divider',
-            minHeight: 48,
+            minHeight: 52,
+            pr: scrollbarWidth > 0 ? scrollbarWidth + 12 : 0,
           },
           '& .MuiTablePagination-root': {
             fontSize: '0.75rem',
