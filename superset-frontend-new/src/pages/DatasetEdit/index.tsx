@@ -22,17 +22,9 @@ import TableRow from '@mui/material/TableRow';
 import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
 import api from '@/api';
-
-interface DatasetDetail {
-  id: number; table_name: string; schema: string | null; description: string | null;
-  sql: string | null; default_endpoint: string | null;
-  fetch_values_predicate: string | null; template_params: string | null;
-  catalog: string | null; kind: string;
-  database: { database_name: string; id: number };
-  columns: { id: number; column_name: string; type: string; verbose_name: string | null; is_dttm: boolean; description: string | null; expression: string | null; filterable: boolean; groupby: boolean; is_active: boolean; type_generic: number | null }[];
-  metrics: { id: number; metric_name: string; verbose_name: string | null; expression: string; description: string | null; d3format: string | null; currency: string | null }[];
-}
+import type { DatasetDetail } from '@/types/api';
 
 export default function DatasetEdit() {
   const { id } = useParams<{ id: string }>();
@@ -48,15 +40,15 @@ export default function DatasetEdit() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api.get(`/dataset/${id}`)
+    api.get<{ result: DatasetDetail }>(`/dataset/${id}`)
       .then(res => {
-        const d = res.data.result as DatasetDetail;
+        const d = res.data.result;
         setDataset(d);
         setCustom({ label: `Edit: ${d.table_name}` });
         setForm({ table_name: d.table_name, description: d.description ?? '', default_endpoint: d.default_endpoint ?? '', sql: d.sql ?? '' });
         setLoading(false);
       })
-      .catch(err => { setError(err?.message ?? 'Failed to load dataset'); setLoading(false); });
+      .catch(err => { setError(parseErrorMessage(err, 'Failed to load dataset')); setLoading(false); });
   }, [id, setCustom]);
 
   const formRef = useRef(form);
@@ -88,7 +80,7 @@ export default function DatasetEdit() {
       setSuccess(true);
       setTimeout(() => navigate('/dataset/list'), 1200);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || (err instanceof Error ? err.message : 'Save failed');
+      const msg = parseErrorMessage(err, 'Save failed');
       setError(msg);
     }
   }, [id, navigate]);

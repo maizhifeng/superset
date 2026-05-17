@@ -11,14 +11,15 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import PersonIcon from '@mui/icons-material/Person';
 import LockIcon from '@mui/icons-material/Lock';
 import InputAdornment from '@mui/material/InputAdornment';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/authStore';
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const { login } = useAuth();
+  const login = useAuthStore(s => s.login);
   const location = useLocation();
 
   const from = (location.state as { from?: string })?.from || '/';
@@ -31,7 +32,7 @@ export default function Login() {
       await login(username, password);
       window.location.href = from;
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(parseErrorMessage(err, 'Login failed'));
     } finally {
       setSubmitting(false);
     }

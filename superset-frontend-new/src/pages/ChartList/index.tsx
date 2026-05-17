@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
@@ -16,31 +16,15 @@ import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 import type { GridColDef, GridRowParams } from '@mui/x-data-grid';
 import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
-import TableSkeleton from '@/components/TableSkeleton';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
-
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
+import ListPageLayout from '@/components/ListPageLayout';
 import api from '@/api';
-import rison from 'rison';
+import { usePaginatedList } from '@/hooks/usePaginatedList';
 
-interface ChartRow {
-  id: number;
-  slice_name: string;
-  viz_type: string;
-  created_by: { username: string } | null;
-  changed_on_delta_humanized: string;
-  datasource_name_text?: string;
-  datasource_type?: string;
-  datasource_id?: number;
-  table?: { table_name: string };
-}
-
-interface ChartApiResponse {
-  result: ChartRow[];
-  count: number;
-}
+import type { ChartRow } from '@/types/api';
 
 const vizTypeLabels: Record<string, string> = {
   line: 'Line Chart',
@@ -64,52 +48,9 @@ const vizTypeLabels: Record<string, string> = {
 
 export default function ChartList() {
   const navigate = useNavigate();
-  const [rows, setRows] = useState<ChartRow[]>([]);
-  const [rowCount, setRowCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
-  const searchLoaded = useRef(false);
+  const { rows, rowCount, loading, error, searchText, paginationModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<ChartRow>({ endpoint: '/chart/', filterColumn: 'slice_name', errorMessage: 'Failed to load charts' });
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const qs = rison.encode({
-      page_size: paginationModel.pageSize,
-      page: paginationModel.page,
-      ...(searchText && { filters: [{ col: 'slice_name', opr: 'ct', value: searchText }] }),
-    });
-    api
-      .get<ChartApiResponse>(`/chart/?q=${qs}`)
-      .then(res => {
-        setRows(res.data.result);
-        setRowCount(res.data.count);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err?.message ?? 'Failed to load charts');
-        setLoading(false);
-      });
-  }, [paginationModel, searchText]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    setSearchText(v);
-  }, []);
 
   useEffect(() => {
     registerTools('chart_list', [
@@ -134,25 +75,6 @@ export default function ChartList() {
     ]);
     return () => unregisterTools('chart_list');
   }, [navigate, registerTools, unregisterTools, handleSearchChange]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/chart/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      fetchData();
-    } catch (err: unknown) {
-      setDeleteError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-          || (err instanceof Error ? err.message : 'Delete failed'),
-      );
-      setDeleteTarget(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
@@ -247,33 +169,20 @@ export default function ChartList() {
     navigate(`/explore?slice_id=${params.id}`);
   };
 
-  if (loading && rows.length === 0) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3, pt: 2 }}>
-
-      {rows.length === 0 && !loading ? (
+    <ListPageLayout
+      loading={loading}
+      error={error}
+      hasData={rows.length > 0}
+      emptyState={
         <EmptyState
           icon={<BarChartIcon />}
           title="No charts found"
           description={searchText ? 'Try adjusting your search query' : 'Create your first chart to get started with data visualization'}
           action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/explore')}>Create Chart</Button> : undefined}
         />
-      ) : (
+      }
+    >
         <ResponsiveDataGrid
           rows={rows}
           columns={columns}
@@ -285,34 +194,33 @@ export default function ChartList() {
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
           onRowClick={handleRowClick}
-          onEdit={row => navigate(`/explore?slice_id=${row.id as number}`)}
+          onEdit={row => navigate(`/explore?slice_id=${row.id}`)}
           toolbarPageKey="chart_list"
-          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.slice_name as string })}
+          onDelete={row => setDeleteTarget({ id: row.id, name: row.slice_name })}
           onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/chart/${id}`))); fetchData(); }}
           renderCard={row => (
             <>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {row.slice_name as string}
+                  {row.slice_name}
                 </Typography>
-                <Chip label={vizTypeLabels[row.viz_type as string] || (row.viz_type as string)} size="small" variant="outlined" sx={{ fontWeight: 500, fontSize: '0.55rem', height: 16, flexShrink: 0, '& .MuiChip-label': { px: 0.5 } }} />
+                <Chip label={vizTypeLabels[row.viz_type] || row.viz_type} size="small" variant="outlined" sx={{ fontWeight: 500, fontSize: '0.55rem', height: 16, flexShrink: 0, '& .MuiChip-label': { px: 0.5 } }} />
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.5, mt: 0.25 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                   <TableChartOutlinedIcon sx={{ fontSize: 10, color: 'primary.main' }} />
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', lineHeight: 1 }}>
-                    {(row.datasource_name_text as string) || ((row.table as Record<string, unknown>)?.['table_name'] as string) || 'Unknown'}
+                    {row.datasource_name_text || row.table?.table_name || 'Unknown'}
                   </Typography>
                 </Box>
                 <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
-                  {(row.created_by as Record<string, unknown>)?.['username'] as string ?? 'N/A'}
-                  {(row.changed_on_delta_humanized as string) ? ` · ${row.changed_on_delta_humanized}` : ''}
+                  {row.created_by?.username ?? 'N/A'}
+                  {row.changed_on_delta_humanized ? ` · ${row.changed_on_delta_humanized}` : ''}
                 </Typography>
               </Box>
             </>
           )}
         />
-      )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
@@ -326,6 +234,6 @@ export default function ChartList() {
         onCancel={() => setDeleteTarget(null)}
       />
       <PageSpeedDial pageKeys="chart_list" />
-    </Box>
+    </ListPageLayout>
   );
 }

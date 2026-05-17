@@ -2,133 +2,27 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { produce } from 'immer';
 import { useParams, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import Drawer from '@mui/material/Drawer';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import MenuIcon from '@mui/icons-material/Menu';
-import Dialog from '@mui/material/Dialog';
-import DialogContent from '@mui/material/DialogContent';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
 
-import { GridLayout } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
-import { useBreadcrumbStore } from '@/store/breadcrumbStore';
-import { useToolbarStore } from '@/contexts/ToolbarContext';
+import type { DashboardData, ChartData } from '@/types/api';
 import PageSpeedDial from '@/components/PageSpeedDial';
 import ChartEditor from '@/pages/ChartCreation/ChartEditor';
-import ChartCard from '@/pages/Dashboard/ChartCard';
 import ChatInput from '@/components/ChatInput';
+import DashboardGrid from '@/pages/Dashboard/DashboardGrid';
+import DashboardNav from '@/pages/Dashboard/DashboardNav';
+import useDashboardToolbar from '@/pages/Dashboard/useDashboardToolbar';
 import api from '@/api';
 import {
   DashboardFilterDrawer,
-  FilterToolbarButton,
   useDashboardFilters,
 } from '@/components/DashboardFilter';
 import type { AdhocFilter } from '@/components/DashboardFilter/types';
 import { buildQueryObject } from '@/utils/query/extractQueryFields';
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
 
-interface DashboardData {
-  id: number;
-  dashboard_title: string;
-  published: boolean;
-  description?: string;
-  position_json: string;
-  json_metadata: string;
-  charts: string[];
-  created_by?: { email?: string; username?: string; first_name?: string; last_name?: string };
-}
-
-interface LayoutNode {
-  id: string;
-  type: string;
-  children: string[];
-  meta?: Record<string, unknown>;
-}
-
-interface ChartData {
-  id: number;
-  slice_name: string;
-  viz_type: string;
-  datasource_id?: number;
-  datasource_type?: string;
-  datasource_name_text?: string;
-  form_data?: Record<string, unknown> | string;
-}
-
-interface ChartLayoutItem {
-  i: string; x: number; y: number; w: number; h: number;
-  minW: number; minH: number;
-  chartId: number; sliceName?: string;
-}
-
-  function flattenLayout(nodeMap: Record<string, LayoutNode>, gridId: string): ChartLayoutItem[] {
-  const items: ChartLayoutItem[] = [];
-  function processNode(nodeId: string, parentWidth: number, offsetX: number, offsetY: number) {
-    const node = nodeMap[nodeId];
-    if (!node) return { height: 0 };
-    if (node.type === 'CHART') {
-      const w = (node.meta?.width as number) || 4;
-      const h = Math.max(Math.round(((node.meta?.height as number) || 30) * 8 / 60), 3);
-      const savedX = node.meta?.x as number | undefined;
-      const savedY = node.meta?.y as number | undefined;
-      items.push({
-        i: node.id,
-        x: savedX ?? offsetX,
-        y: savedY ?? offsetY,
-        w: Math.min(w, 12), h, minW: 2, minH: 3,
-        chartId: node.meta?.chartId as number,
-        sliceName: node.meta?.sliceName as string,
-      });
-      return { height: h };
-    }
-    if (node.type === 'ROW') {
-      const children = (node.children || []).filter(id => nodeMap[id]);
-      let xOff = 0; let maxH = 0;
-      for (const childId of children) {
-        const cw = getChildWidth(nodeMap[childId], parentWidth);
-        const r = processNode(childId, parentWidth, offsetX + xOff, offsetY);
-        xOff += cw; maxH = Math.max(maxH, r.height);
-      }
-      return { height: maxH };
-    }
-    if (node.type === 'COLUMN') {
-      const cw = (node.meta?.width as number) || parentWidth;
-      const children = (node.children || []).filter(id => nodeMap[id]);
-      let yOff = 0;
-      for (const childId of children) {
-        const r = processNode(childId, cw, offsetX, offsetY + yOff);
-        yOff += r.height;
-      }
-      return { height: yOff };
-    }
-    if (node.type === 'GRID') {
-      const children = (node.children || []).filter(id => nodeMap[id]);
-      let yOff = 0;
-      for (const childId of children) {
-        const r = processNode(childId, 12, 0, yOff);
-        yOff += r.height;
-      }
-      return { height: yOff };
-    }
-    return { height: 0 };
-  }
-  if (gridId) processNode(gridId, 12, 0, 0);
-  return items;
-}
-
-function getChildWidth(node: LayoutNode, parentWidth: number): number {
-  if (!node) return 0;
-  if (node.type === 'CHART') return (node.meta?.width as number) || 4;
-  if (node.type === 'COLUMN') return (node.meta?.width as number) || parentWidth;
-  return parentWidth;
-}
+import { type LayoutNode, flattenLayout } from '@/utils/dashboard/layout';
 
 export default function Dashboard() {
   const { id } = useParams<{ id: string }>();
@@ -140,11 +34,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const setCustom = useBreadcrumbStore(s => s.setCustom);
-  const registerTools = useToolbarStore(s => s.registerTools);
-  const unregisterTools = useToolbarStore(s => s.unregisterTools);
   const prevTitleRef = useRef<string | null>(null);
-  const pageKey = `dashboard_${id}`;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get('slice_id');
@@ -177,8 +67,8 @@ export default function Dashboard() {
       const stringTypes = /varchar|char|text|string/i;
       for (const dsId of dsIds) {
         try {
-          const res = await api.get(`/dataset/${dsId}`);
-          const cols: { column_name: string; type: string | null }[] = res.data?.result?.columns ?? [];
+          const res = await api.get<{ result: { columns: { column_name: string; type: string | null }[] } }>(`/dataset/${dsId}`);
+          const cols = res.data.result.columns ?? [];
           for (const col of cols) {
             if (!col.column_name || !col.type) continue;
             if (!timeTypes.test(col.type) && !stringTypes.test(col.type)) continue;
@@ -219,16 +109,12 @@ export default function Dashboard() {
       }
     };
     handler();
-    window.addEventListener('resize', handler);
     const observer = new ResizeObserver(handler);
     if (containerRef.current) observer.observe(containerRef.current);
-    return () => {
-      window.removeEventListener('resize', handler);
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
-  const supportedVizTypes = new Set(['line', 'bar', 'pie', 'table', 'big_number', 'echarts_timeseries_line']);
+  const supportedVizTypes = useMemo(() => new Set(['line', 'bar', 'pie', 'table', 'big_number', 'echarts_timeseries_line']), []);
 
   const layoutItems = useMemo(() => {
     if (!gridId || Object.keys(nodeMap).length === 0) return [];
@@ -254,8 +140,8 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get(`/dashboard/${id}`);
-      const dash: DashboardData = res.data.result;
+      const res = await api.get<{ result: DashboardData }>(`/dashboard/${id}`);
+      const dash = res.data.result;
       setDashboard(dash);
       if (prevTitleRef.current !== dash.dashboard_title) {
         prevTitleRef.current = dash.dashboard_title;
@@ -286,8 +172,8 @@ export default function Dashboard() {
       let metaMap: Record<number, ChartData> = {};
       if (chartIds.length > 0) {
         try {
-          const metaRes = await api.get('/chart/?q=(page_size:200,page:0)');
-          const allCharts: ChartData[] = metaRes.data?.result || [];
+          const metaRes = await api.get<{ result: ChartData[] }>('/chart/?q=(page_size:200,page:0)');
+          const allCharts = metaRes.data?.result || [];
           allCharts.forEach(c => { metaMap[c.id] = c; });
           setChartMeta(metaMap);
         } catch { /* continue */ }
@@ -296,7 +182,7 @@ export default function Dashboard() {
         setChartData(dMap);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      setError(parseErrorMessage(err, 'Failed to load dashboard'));
     } finally {
       setLoading(false);
     }
@@ -317,58 +203,8 @@ export default function Dashboard() {
     setNavOpen(true);
   };
 
-  useEffect(() => {
-    if (!dashboard) return;
-    setCustom({ label: dashboard.dashboard_title, status: dashboard.published ? 'published' : 'draft' });
-    registerTools(pageKey, [
-      {
-        id: 'search',
-        priority: 0,
-        showOnMobile: false,
-        render: <ChatInput />,
-      },
-      {
-        id: 'filter',
-        priority: 10,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <FilterListIcon />,
-        fabLabel: 'Filter',
-        action: () => setFilterDrawerOpen(prev => !prev),
-        render: (
-          <FilterToolbarButton
-            activeCount={activeCount}
-            hiddenFilters={hiddenFilters}
-            onOpenDrawer={() => setFilterDrawerOpen(prev => !prev)}
-            onClearAll={() => clearAll()}
-            onAddFilter={(id: string) => { setPendingFilterIds(prev => [...prev, id]); setFilterDrawerOpen(true); }}
-          />
-        ),
-      },
-      {
-        id: 'refresh',
-        priority: 20,
-        showOnMobile: false,
-        fabIcon: <RefreshIcon />,
-        fabLabel: 'Refresh',
-        action: refreshAllCharts,
-        render: null,
-      },
-      ...(layoutItems.length > 1 ? [{
-        id: 'nav',
-        priority: 25,
-        showOnMobile: true,
-        fabIcon: <MenuIcon />,
-        fabLabel: 'Jump to chart',
-        action: openNav,
-        render: null,
-      }] : []),
-    ]);
-    return () => unregisterTools(pageKey);
-  }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey]);
-
   function parseChartConfig(chart: ChartData): Record<string, unknown> {
-    const raw = chart.form_data || (chart as any).params || '{}';
+    const raw = chart.params || chart.form_data || '{}';
     const fd = typeof raw === 'string' ? JSON.parse(raw) : raw;
     return { ...fd, datasource: fd.datasource || `${chart.datasource_id}__${chart.datasource_type || 'table'}` };
   }
@@ -426,11 +262,24 @@ export default function Dashboard() {
     setChartData(newData);
   }, [chartMeta]);
 
+  const pageKey = `dashboard_${id}`;
+  useDashboardToolbar({
+    dashboard,
+    activeCount,
+    hiddenFilters,
+    clearAll,
+    layoutItems,
+    onFilterDrawerOpen: () => setFilterDrawerOpen(true),
+    onAddFilter: (id: string) => setPendingFilterIds(prev => [...prev, id]),
+    onRefreshAll: refreshAllCharts,
+    onOpenNav: openNav,
+  });
+
   const handleChartSaved = useCallback(async (chartId: number) => {
     setSearchParams(prev => { prev.delete('slice_id'); return prev; });
     try {
-      const metaRes = await api.get(`/chart/${chartId}`);
-      const chart = metaRes.data?.result as ChartData | undefined;
+      const metaRes = await api.get<{ result: ChartData }>(`/chart/${chartId}`);
+      const chart = metaRes.data?.result;
       if (chart) {
         const newMeta = { ...chartMeta, [chartId]: chart };
         setChartMeta(newMeta);
@@ -538,55 +387,24 @@ export default function Dashboard() {
         pendingFilterIds={pendingFilterIds}
       />
       <Box sx={{ p: 0 }}>
-      {layoutItems.length === 0 ? (
-        <Box sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-          <Typography color="text.secondary">No charts in this dashboard yet</Typography>
-        </Box>
-      ) : (
-        <Box
-          ref={containerRef}
-          sx={{ width: '100%', position: 'relative', minHeight: 400 }}
-        >
-          {saving && (
-            <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 10, display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'background.paper', px: 1, py: 0.25, borderRadius: 1, boxShadow: 1 }}>
-              <CircularProgress size={10} />
-              <Typography variant="caption" color="text.secondary">Saving...</Typography>
-            </Box>
-          )}
-          <GridLayout
-              key={`layout-${containerWidth < 600}`}
-              width={containerWidth}
-              layout={gridLayout}
-              gridConfig={{ cols: 12, rowHeight: containerWidth < 600 ? 40 : 60, margin: [8, 8] }}
-              onLayoutChange={handleLayoutChange}
-              onDragStart={() => setIsDragging(true)}
-              onDragStop={() => setIsDragging(false)}
-              onResizeStart={() => setIsDragging(true)}
-              onResizeStop={() => setIsDragging(false)}
-              dragConfig={{ enabled: containerWidth >= 600, handle: '.drag-handle' }}
-              resizeConfig={{ enabled: containerWidth >= 600, handles: ['se'] }}
-              autoSize
-            >
-              {layoutItems.map(item => (
-                <div key={item.i} data-chart-index={item.chartId}>                  <ChartCard
-                    chartId={item.chartId}
-                    sliceName={item.sliceName}
-                    vizType={chartMeta[item.chartId]?.viz_type || 'bar'}
-                    data={chartData[item.chartId]}
-                    meta={chartMeta[item.chartId]}
-                    isDragging={isDragging}
-                    containerWidth={containerWidth}
-                    onRefresh={refreshChart}
-                    onEdit={(chartId: number) => {
-                      setSearchParams({ slice_id: String(chartId) });
-                    }}
-                  />
-                </div>
-              ))}
-            </GridLayout>
-        </Box>
-      )}
-    </Box>
+        <DashboardGrid
+          containerWidth={containerWidth}
+          gridLayout={gridLayout}
+          layoutItems={layoutItems}
+          chartMeta={chartMeta}
+          chartData={chartData}
+          isDragging={isDragging}
+          saving={saving}
+          containerRef={containerRef}
+          onLayoutChange={handleLayoutChange}
+          onDragStart={() => setIsDragging(true)}
+          onDragStop={() => setIsDragging(false)}
+          onResizeStart={() => setIsDragging(true)}
+          onResizeStop={() => setIsDragging(false)}
+          onRefresh={refreshChart}
+          onEdit={(chartId: number) => setSearchParams({ slice_id: String(chartId) })}
+        />
+      </Box>
       <Drawer
         anchor="right"
         open={isDrawerOpen}
@@ -606,32 +424,7 @@ export default function Dashboard() {
         </Box>
       </Drawer>
       <PageSpeedDial pageKeys={[pageKey, ...(isDrawerOpen ? ['chart_editor'] : [])]} searchTool={{ render: <ChatInput /> }} />
-      <Dialog
-        open={navOpen}
-        onClose={() => setNavOpen(false)}
-        fullWidth
-        maxWidth="xs"
-        slotProps={{ paper: { sx: { maxHeight: 500, borderRadius: 2 } } }}
-      >
-        <DialogContent sx={{ p: 0 }}>
-          <List>
-            {navItems.map(item => (
-              <ListItem key={item.id} disablePadding>
-                <ListItemButton onClick={() => { setNavOpen(false); const el = document.querySelector(`[data-chart-index="${item.id}"]`); el?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} sx={{ py: 2.5, px: 2 }}>
-                  <ListItemText primary={item.name} slotProps={{ primary: { sx: { fontSize: '0.9375rem' } } }} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-            {navItems.length === 0 && (
-              <ListItem dense sx={{ justifyContent: 'center' }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8125rem', py: 1 }}>
-                  No charts found
-                </Typography>
-              </ListItem>
-            )}
-          </List>
-        </DialogContent>
-      </Dialog>
+      <DashboardNav open={navOpen} items={navItems} onClose={() => setNavOpen(false)} />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -14,77 +14,21 @@ import TableChartIcon from '@mui/icons-material/TableChart';
 import type { GridColDef } from '@mui/x-data-grid';
 import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
-import TableSkeleton from '@/components/TableSkeleton';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
+import ListPageLayout from '@/components/ListPageLayout';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
-import rison from 'rison';
+import { usePaginatedList } from '@/hooks/usePaginatedList';
 
-interface DatasetRow {
-  id: number;
-  table_name: string;
-  schema: string | null;
-  database: { database_name: string } | null;
-  kind: 'physical' | 'virtual';
-  changed_on_delta_humanized: string;
-}
-
-interface DatasetApiResponse {
-  result: DatasetRow[];
-  count: number;
-}
+import type { DatasetRow } from '@/types/api';
 
 export default function DatasetList() {
   const navigate = useNavigate();
-  const [rows, setRows] = useState<DatasetRow[]>([]);
-  const [rowCount, setRowCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 25 });
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const searchLoaded = useRef(false);
+  const { rows, rowCount, loading, error, searchText, paginationModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<DatasetRow>({ endpoint: '/dataset/', filterColumn: 'table_name', pageSize: 25, errorMessage: 'Failed to load datasets' });
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    setSearchText(v);
-  }, []);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const qs = rison.encode({
-      page_size: paginationModel.pageSize,
-      page: paginationModel.page,
-      ...(searchText && { filters: [{ col: 'table_name', opr: 'ct', value: searchText }] }),
-    });
-    api
-      .get<DatasetApiResponse>(`/dataset/?q=${qs}`)
-      .then(async res => {
-        const list = res.data.result;
-        setRows(list);
-        setRowCount(res.data.count);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err?.message ?? 'Failed to load datasets');
-        setLoading(false);
-      });
-  }, [paginationModel, searchText]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     registerTools('dataset_list', [
@@ -109,25 +53,6 @@ export default function DatasetList() {
     ]);
     return () => unregisterTools('dataset_list');
   }, [navigate, registerTools, unregisterTools, handleSearchChange]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/dataset/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      fetchData();
-    } catch (err: unknown) {
-      setDeleteError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-          || (err instanceof Error ? err.message : 'Delete failed'),
-      );
-      setDeleteTarget(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
@@ -170,33 +95,20 @@ export default function DatasetList() {
     },
   ];
 
-  if (loading && rows.length === 0) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3, pt: 2 }}>
-
-      {rows.length === 0 && !loading ? (
+    <ListPageLayout
+      loading={loading}
+      error={error}
+      hasData={rows.length > 0}
+      emptyState={
         <EmptyState
           icon={<TableChartIcon />}
           title="No datasets found"
           description={searchText ? 'Try adjusting your search query' : 'Create your first dataset to start building charts'}
           action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')}>Create Dataset</Button> : undefined}
         />
-      ) : (
+      }
+    >
         <ResponsiveDataGrid
           rows={rows}
           columns={columns}
@@ -210,27 +122,26 @@ export default function DatasetList() {
           onRowClick={params => navigate(`/dataset/edit/${params.id}`)}
           onEdit={row => navigate(`/dataset/edit/${row.id as number}`)}
           toolbarPageKey="dataset_list"
-          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.table_name as string })}
+          onDelete={row => setDeleteTarget({ id: row.id, name: row.table_name })}
           onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/dataset/${id}`))); fetchData(); }}
           renderCard={row => (
             <>
               <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
-                {row.table_name as string}
+                {row.table_name}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
-                {(row.schema as string | null) && <Chip label={row.schema as string} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />}
-                <Chip label={row.kind as string} size="small" color={(row.kind as string) === 'physical' ? 'primary' : 'secondary'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+                {row.schema && <Chip label={row.schema} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />}
+                <Chip label={row.kind} size="small" color={row.kind === 'physical' ? 'primary' : 'secondary'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem' }}>
-                  {((row.database as Record<string, unknown>)?.['database_name'] as string) ?? 'Unknown'}
+                  {row.database?.database_name ?? 'Unknown'}
                 </Typography>
                 <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
-                  {(row.changed_on_delta_humanized as string) ?? ''}
+                  {row.changed_on_delta_humanized ?? ''}
                 </Typography>
               </Box>
             </>
           )}
         />
-      )}
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
@@ -244,6 +155,6 @@ export default function DatasetList() {
         onCancel={() => setDeleteTarget(null)}
       />
       <PageSpeedDial pageKeys="dataset_list" />
-    </Box>
+    </ListPageLayout>
   );
 }

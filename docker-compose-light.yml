@@ -85,6 +85,8 @@ x-common-build: &common-build
     INCLUDE_CHROMIUM: ${INCLUDE_CHROMIUM:-false}
     INCLUDE_FIREFOX: ${INCLUDE_FIREFOX:-false}
     BUILD_TRANSLATIONS: ${BUILD_TRANSLATIONS:-false}
+    PIP_INDEX_URL: ${PIP_INDEX_URL}
+    UV_INDEX_URL: ${UV_INDEX_URL}
 
 services:
   db-light:

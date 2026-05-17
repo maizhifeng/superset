@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
@@ -19,82 +19,35 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import TextField from '@mui/material/TextField';
 import FilterBar from '@/components/FilterBar';
+import ListPageLayout from '@/components/ListPageLayout';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
-import { ConfirmModal, Grid2, Skeleton } from '@/superset-ui-mui/components';
+import { ConfirmModal, Grid2 } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import { cardEnter } from '@/theme/keyframes';
 import api from '@/api';
-import rison from 'rison';
-
-interface Dashboard {
-  id: number;
-  dashboard_title: string;
-  published: boolean;
-  changed_on_delta_humanized?: string;
-}
-
-interface DashboardResponse {
-  result: Dashboard[];
-  count: number;
-}
+import { usePaginatedList } from '@/hooks/usePaginatedList';
+import type { DashboardListItem } from '@/types/api';
 
 const PAGE_SIZE = 18;
 
 export default function DashboardList() {
   const navigate = useNavigate();
-  const [dashboards, setDashboards] = useState<Dashboard[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const {
+    rows: dashboards, rowCount, loading, error, searchText, paginationModel,
+    deleteTarget, deleteLoading, deleteError,
+    setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete,
+  } = usePaginatedList<DashboardListItem>({
+    endpoint: '/dashboard/',
+    filterColumn: 'dashboard_title',
+    pageSize: PAGE_SIZE,
+    errorMessage: 'Failed to load dashboards',
+  });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createName, setCreateName] = useState('New Dashboard');
   const [creating, setCreating] = useState(false);
-  const searchLoaded = useRef(false);
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPage(0);
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    setSearchText(v);
-  }, []);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-
-    const qs = rison.encode({
-      page_size: PAGE_SIZE,
-      page,
-      ...(searchText && { filters: [{ col: 'dashboard_title', opr: 'ct', value: searchText }] }),
-    });
-
-    api
-      .get<DashboardResponse>(`/dashboard/?q=${qs}`)
-      .then(res => {
-        setDashboards(res.data.result ?? []);
-        setTotalCount(res.data.count);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(
-          err?.response?.data?.message ?? err.message ?? 'Failed to load dashboards',
-        );
-        setLoading(false);
-      });
-  }, [page, searchText]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
     registerTools('dashboard_list', [
@@ -120,69 +73,21 @@ export default function DashboardList() {
     return () => unregisterTools('dashboard_list');
   }, [navigate, registerTools, unregisterTools, handleSearchChange]);
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/dashboard/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      fetchData();
-    } catch (err: unknown) {
-      setDeleteError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-          || (err instanceof Error ? err.message : 'Delete failed'),
-      );
-      setDeleteTarget(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
+  const totalPages = Math.ceil(rowCount / PAGE_SIZE);
 
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-
-  if (loading && dashboards.length === 0) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Grid2 container spacing={2} sx={{ mt: 2 }}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Grid2 size={{ xs: 12, sm: 6, lg: 4 }} key={i}>
-              <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-                <Skeleton variant="text" width="70%" height={22} sx={{ mb: 1.5 }} />
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Skeleton variant="rounded" width={60} height={22} />
-                  <Skeleton variant="text" width={80} height={14} />
-                </Box>
-              </Paper>
-            </Grid2>
-          ))}
-        </Grid2>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
-      </Box>
-    );
-  }
-
-  if (dashboards.length === 0 && !loading) {
-    return (
-      <Box sx={{ p: 3, pt: 2, mt: 2 }}>
+  return (
+    <ListPageLayout
+      loading={loading}
+      error={error}
+      hasData={dashboards.length > 0}
+      emptyState={
         <EmptyState
           icon={<DashboardIcon />}
           title="No dashboards found"
           description={searchText ? 'Try adjusting your search query' : 'Create a dashboard to organize your charts in one place'}
         />
-      </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ p: 3, pt: 2 }}>
+      }
+    >
       <Grid2 container spacing={2}>
         {dashboards.map((dashboard, i) => (
           <Grid2 size={{ xs: 12, sm: 6, lg: 4 }} key={dashboard.id}>
@@ -201,11 +106,7 @@ export default function DashboardList() {
                 borderColor: 'primary.light',
                 '& .card-actions': { opacity: 1 },
               },
-              '@keyframes cardEnter': {
-                from: { opacity: 0, transform: 'translateY(16px)' },
-                to: { opacity: 1, transform: 'translateY(0)' },
-              },
-              animation: 'cardEnter 0.35s ease both',
+              animation: `${cardEnter} 0.35s ease both`,
               animationDelay: `${i * 0.04}s`,
             }}
             onClick={() => navigate(`/dashboard/${dashboard.id}`)}
@@ -273,8 +174,8 @@ export default function DashboardList() {
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
           <Pagination
             count={totalPages}
-            page={page + 1}
-            onChange={(_, p) => setPage(p - 1)}
+            page={paginationModel.page + 1}
+            onChange={(_, p) => setPaginationModel({ ...paginationModel, page: p - 1 })}
             color="primary"
             shape="rounded"
             showFirstButton
@@ -334,6 +235,6 @@ export default function DashboardList() {
         </DialogActions>
       </Dialog>
       <PageSpeedDial pageKeys="dashboard_list" />
-    </Box>
+    </ListPageLayout>
   );
 }

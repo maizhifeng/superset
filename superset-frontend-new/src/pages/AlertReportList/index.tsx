@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
@@ -13,51 +13,19 @@ import Typography from '@mui/material/Typography';
 import type { GridColDef } from '@mui/x-data-grid';
 import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
-import TableSkeleton from '@/components/TableSkeleton';
+import ListPageLayout from '@/components/ListPageLayout';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
 import api from '@/api';
-import rison from 'rison';
+import { usePaginatedList } from '@/hooks/usePaginatedList';
 
-interface AlertReport {
-  id: number;
-  name: string;
-  type: string;
-  active: boolean;
-  crontab: string;
-  recipients: string;
-}
-
-interface AlertReportApiResponse {
-  result: AlertReport[];
-  count: number;
-}
+import type { AlertReport } from '@/types/api';
 
 export default function AlertReportList() {
-  const [rows, setRows] = useState<AlertReport[]>([]);
-  const [rowCount, setRowCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
-  const searchLoaded = useRef(false);
+  const { rows, rowCount, loading, error, searchText, paginationModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<AlertReport>({ endpoint: '/report/', filterColumn: 'name', errorMessage: 'Failed to load alerts & reports' });
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    setSearchText(v);
-  }, []);
 
   useEffect(() => {
     registerTools('alert_report_list', [
@@ -72,48 +40,6 @@ export default function AlertReportList() {
     ]);
     return () => unregisterTools('alert_report_list');
   }, [registerTools, unregisterTools, handleSearchChange]);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const qs = rison.encode({
-      page_size: paginationModel.pageSize,
-      page: paginationModel.page,
-      ...(searchText && { filters: [{ col: 'name', opr: 'ct', value: searchText }] }),
-    });
-    api
-      .get<AlertReportApiResponse>(`/report/?q=${qs}`)
-      .then(res => {
-        setRows(res.data.result);
-        setRowCount(res.data.count);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err?.message ?? 'Failed to load alerts & reports');
-        setLoading(false);
-      });
-  }, [paginationModel, searchText]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/report/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      fetchData();
-    } catch (err: unknown) {
-      setDeleteError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-          || (err instanceof Error ? err.message : 'Delete failed'),
-      );
-      setDeleteTarget(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
@@ -182,66 +108,52 @@ export default function AlertReportList() {
     },
   ];
 
-  if (loading && rows.length === 0) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3, pt: 2 }}>
-
-      {rows.length === 0 && !loading ? (
+    <ListPageLayout
+      loading={loading}
+      error={error}
+      hasData={rows.length > 0}
+      emptyState={
         <EmptyState
           icon={<NotificationsIcon />}
           title="No alerts or reports found"
           description={searchText ? 'Try adjusting your search query' : 'Create an alert or report to get notified when conditions are met'}
         />
-      ) : (
-        <ResponsiveDataGrid
-          rows={rows}
-          columns={columns}
-          loading={loading}
-          autoHeight
-          paginationModel={paginationModel}
-          rowCount={rowCount}
-          paginationMode="server"
-          onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[25, 50, 100]}
-          toolbarPageKey="alert_report_list"
-          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.name as string })}
-          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/report/${id}`))); fetchData(); }}
-          renderCard={row => (
-            <>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
-                {row.name as string}
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
-                <Chip icon={(row.type as string) === 'alert' ? <NotificationsIcon sx={{ fontSize: 10 }} /> : <VerifiedIcon sx={{ fontSize: 10 }} />} label={(row.type as string) ? `${(row.type as string).charAt(0).toUpperCase()}${(row.type as string).slice(1)}` : ''} size="small" color={(row.type as string) === 'alert' ? 'warning' : 'info'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
-                <Chip label={(row.active as boolean) ? 'Active' : 'Inactive'} size="small" color={(row.active as boolean) ? 'success' : 'default'} variant={(row.active as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                  <ScheduleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.crontab as string}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                  <PeopleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
-                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.recipients as string}</Typography>
-                </Box>
+      }
+    >
+      <ResponsiveDataGrid
+        rows={rows}
+        columns={columns}
+        loading={loading}
+        autoHeight
+        paginationModel={paginationModel}
+        rowCount={rowCount}
+        paginationMode="server"
+        onPaginationModelChange={setPaginationModel}
+        pageSizeOptions={[25, 50, 100]}
+        toolbarPageKey="alert_report_list"
+        onDelete={row => setDeleteTarget({ id: row.id, name: row.name })}
+        onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/report/${id}`))); fetchData(); }}
+        renderCard={row => (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+              {row.name}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
+              <Chip icon={row.type === 'alert' ? <NotificationsIcon sx={{ fontSize: 10 }} /> : <VerifiedIcon sx={{ fontSize: 10 }} />} label={row.type ? `${row.type.charAt(0).toUpperCase()}${row.type.slice(1)}` : ''} size="small" color={row.type === 'alert' ? 'warning' : 'info'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+              <Chip label={row.active ? 'Active' : 'Inactive'} size="small" color={row.active ? 'success' : 'default'} variant={row.active ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                <ScheduleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.crontab}</Typography>
               </Box>
-            </>
-          )}
-        />
-      )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                <PeopleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>{row.recipients}</Typography>
+              </Box>
+            </Box>
+          </>
+        )}
+      />
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
@@ -254,6 +166,6 @@ export default function AlertReportList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-    </Box>
+    </ListPageLayout>
   );
 }

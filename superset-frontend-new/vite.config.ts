@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import checker from 'vite-plugin-checker';
 import { resolve } from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   optimizeDeps: {
@@ -14,7 +14,7 @@ export default defineConfig({
         plugins: ['@emotion/babel-plugin'],
       },
     }),
-    checker({ typescript: true }),
+    ...(process.env.VITEST ? [] : [checker({ typescript: true })]),
   ],
   resolve: {
     alias: {
@@ -29,6 +29,7 @@ export default defineConfig({
         'packages/superset-ui-switchboard/src',
       ),
       '@apache-superset/core': resolve(__dirname, 'packages/superset-core/src'),
+      '@fixtures': resolve(__dirname, 'spec/fixtures'),
     },
   },
   css: {
@@ -60,5 +61,13 @@ export default defineConfig({
         },
       },
     },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/setupTests.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'spec/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['node_modules', 'dist'],
+    css: true,
   },
 });

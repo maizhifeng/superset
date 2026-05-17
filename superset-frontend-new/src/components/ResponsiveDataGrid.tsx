@@ -16,10 +16,11 @@ import DataGridTable from './DataGridTable';
 const SWIPE_THRESHOLD = 40;
 const ACTION_WIDTH = 72;
 
-interface ResponsiveDataGridProps extends DataGridProps {
-  renderCard?: (row: Record<string, unknown>) => ReactNode;
-  onEdit?: (row: Record<string, unknown>) => void;
-  onDelete?: (row: Record<string, unknown>) => void;
+interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, 'rows'> {
+  rows: readonly R[];
+  renderCard?: (row: R) => ReactNode;
+  onEdit?: (row: R) => void;
+  onDelete?: (row: R) => void;
   onBatchDelete?: (ids: string[]) => void;
   toolbarPageKey?: string;
   selectedIds?: string[];
@@ -133,7 +134,7 @@ function SwipeableCard({
       sx={{
         borderRadius: 1.5, border: '1px solid', boxShadow: 'none',
         overflow: 'hidden', userSelect: 'none', touchAction: 'pan-y',
-        bgcolor: isSelected ? 'rgba(32, 167, 201, 0.06)' : 'background.paper',
+        bgcolor: isSelected ? 'action.hover' : 'background.paper',
         borderColor: isSelected ? 'primary.main' : 'divider',
       }}
     >
@@ -172,9 +173,9 @@ function SwipeableCard({
   );
 }
 
-export default function ResponsiveDataGrid({
+export default function ResponsiveDataGrid<R = any>({
   renderCard, onEdit, onDelete, onBatchDelete, toolbarPageKey, selectedIds: selectedIdsProp, onSelectionChange, ...gridProps
-}: ResponsiveDataGridProps) {
+}: ResponsiveDataGridProps<R>) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [openCardId, setOpenCardId] = useState<string | null>(null);
@@ -226,7 +227,7 @@ export default function ResponsiveDataGrid({
     return <DataGridTable {...gridProps} />;
   }
 
-  const rows = gridProps.rows as Record<string, unknown>[];
+  const rows = gridProps.rows as R[];
   const paginationModel = gridProps.paginationModel as GridPaginationModel | undefined;
   const rowCount = gridProps.rowCount ?? rows.length;
   const pageSize = paginationModel?.pageSize ?? 25;
@@ -240,10 +241,11 @@ export default function ResponsiveDataGrid({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       {rows.map((row, i) => {
-        const cardId = String(row.id ?? i);
+        const recordRow = row as Record<string, unknown>;
+        const cardId = String(recordRow.id ?? i);
         return (
           <SwipeableCard
-            key={cardId} row={row} onEdit={onEdit} onDelete={onDelete}
+            key={cardId} row={recordRow} onEdit={onEdit as ((row: Record<string, unknown>) => void) | undefined} onDelete={onDelete as ((row: Record<string, unknown>) => void) | undefined}
             isOpen={openCardId === cardId} onOpenChange={handleOpenChange}
             isSelected={selectedIds.has(cardId)} showCheckbox={selectedCount > 0} onToggleSelect={handleToggleSelect}
           >

@@ -1,13 +1,15 @@
-import * as echarts from 'echarts/core';
+import * as echartsCore from 'echarts/core';
 import {
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 
-echarts.use([
+echartsCore.use([
   GridComponent, TooltipComponent, LegendComponent, TitleComponent,
   CanvasRenderer,
 ]);
+
+export { echartsCore as echarts };
 
 const registeredTypes = new Set<string>();
 const echartsTypes = new Set(['bar', 'line', 'pie', 'echarts_timeseries_line']);
@@ -17,7 +19,7 @@ async function loadEChartsCharts(): Promise<void> {
   if (chartsLoading) return chartsLoading;
   chartsLoading = (async () => {
     const { BarChart, LineChart, PieChart } = await import('echarts/charts');
-    echarts.use([BarChart, LineChart, PieChart]);
+    echartsCore.use([BarChart, LineChart, PieChart]);
     registeredTypes.add('bar');
     registeredTypes.add('line');
     registeredTypes.add('pie');

@@ -1,5 +1,5 @@
-import { create } from 'zustand';
 import type { ReactNode } from 'react';
+import { create } from 'zustand';
 
 export interface ToolEntry {
   id: string;
@@ -47,6 +47,4 @@ export function useFabTools() {
   return Object.values(registry).flat().filter(t => t.fabIcon).sort((a, b) => a.priority - b.priority);
 }
 
-export function ToolbarProvider({ children }: { children: ReactNode }) {
-  return <>{children}</>;
-}
+
