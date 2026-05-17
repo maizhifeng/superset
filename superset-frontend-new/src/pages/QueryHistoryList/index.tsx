@@ -10,6 +10,7 @@ import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import ListPageLayout from '@/components/ListPageLayout';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
 
@@ -112,11 +113,14 @@ export default function QueryHistoryList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<HistoryIcon />}
-          title="No query history found"
-          description={searchText ? 'Try adjusting your search query' : 'Run queries in SQL Lab to see your history here'}
-        />
+        <>
+          <EmptyState
+            icon={<HistoryIcon />}
+            title="No query history found"
+            description={searchText ? 'Try adjusting your search query' : 'Run queries in SQL Lab to see your history here'}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
       <ResponsiveDataGrid

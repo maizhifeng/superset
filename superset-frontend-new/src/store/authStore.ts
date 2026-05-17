@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import api, { getStoredToken, setStoredToken } from '@/api';
+import api, {
+  getStoredToken,
+  setStoredToken,
+  setStoredRefreshToken,
+  refreshAccessToken,
+  setupTokenRefresh,
+  cancelTokenRefresh,
+} from '@/api';
 
 interface User {
   username: string;
@@ -17,7 +24,7 @@ interface AuthState {
   setToken: (token: string | null) => void;
 }
 
-export const useAuthStore = create<AuthState>()((set, get) => ({
+export const useAuthStore = create<AuthState>()((set, _get) => ({
   token: getStoredToken(),
   user: (() => {
     try {
@@ -43,9 +50,28 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const userData: User = { username: res.data.result.username };
         localStorage.setItem('superset_user', JSON.stringify(userData));
         set({ user: userData, loading: false, isAuthenticated: true });
+        setupTokenRefresh();
       }
     } catch {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+        try {
+          const meRes = await api.get('/me/');
+          if (meRes.data?.result) {
+            const userData: User = { username: meRes.data.result.username };
+            localStorage.setItem('superset_user', JSON.stringify(userData));
+            set({ user: userData, loading: false, isAuthenticated: true });
+            setupTokenRefresh();
+            return;
+          }
+        } catch {
+          // /me/ failed even after refresh, fall through to clear auth
+        }
+      }
+
       setStoredToken(null);
+      setStoredRefreshToken(null);
       set({ token: null, user: null, loading: false, isAuthenticated: false });
     }
   },
@@ -61,15 +87,23 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     if (!accessToken) {
       throw new Error(res.data?.message || 'Login failed');
     }
+    const refreshToken = res.data?.refresh_token;
+
     setStoredToken(accessToken);
+    if (refreshToken) {
+      setStoredRefreshToken(refreshToken);
+    }
     const userData: User = { username };
     localStorage.setItem('superset_user', JSON.stringify(userData));
     set({ token: accessToken, user: userData, isAuthenticated: true });
+    setupTokenRefresh();
   },
 
   logout: () => {
     setStoredToken(null);
+    setStoredRefreshToken(null);
     localStorage.removeItem('superset_user');
+    cancelTokenRefresh();
     set({ token: null, user: null, isAuthenticated: false });
   },
 

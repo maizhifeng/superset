@@ -1,19 +1,23 @@
 import { useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
+import Autocomplete from '@mui/material/Autocomplete';
 import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import PageHeader from '@/components/PageHeader';
 import api from '@/api';
+import rison from 'rison';
 import { parseErrorMessage } from '@/utils/parseErrorMessage';
 import type { Database, TableResult } from '@/types/api';
 
 export default function DatasetCreation() {
   const [databases, setDatabases] = useState<Database[]>([]);
+  const [schemas, setSchemas] = useState<string[]>([]);
   const [tables, setTables] = useState<TableResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schemasLoading, setSchemasLoading] = useState(false);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -21,9 +25,8 @@ export default function DatasetCreation() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const [databaseId, setDatabaseId] = useState<number | ''>('');
+  const [schema, setSchema] = useState('');
   const [tableName, setTableName] = useState('');
-  const [schema, setSchema] = useState('public');
-  const [selectedTable, setSelectedTable] = useState('');
 
   useEffect(() => {
     api
@@ -40,12 +43,33 @@ export default function DatasetCreation() {
 
   useEffect(() => {
     if (databaseId === '') {
+      setSchemas([]);
+      setTables([]);
+      setSchema('');
+      return;
+    }
+    setSchemasLoading(true);
+    api
+      .get<{ result: string[] }>(`/database/${databaseId}/schemas/`)
+      .then(res => {
+        setSchemas(res.data.result);
+        setSchemasLoading(false);
+      })
+      .catch(() => {
+        setSchemas([]);
+        setSchemasLoading(false);
+      });
+  }, [databaseId]);
+
+  useEffect(() => {
+    if (databaseId === '' || !schema) {
       setTables([]);
       return;
     }
     setTablesLoading(true);
+    const qs = rison.encode({ schema_name: schema });
     api
-      .get<{ result: TableResult[] }>(`/database/${databaseId}/tables/`)
+      .get<{ result: TableResult[] }>(`/database/${databaseId}/tables/?q=${qs}`)
       .then(res => {
         setTables(res.data.result);
         setTablesLoading(false);
@@ -54,7 +78,7 @@ export default function DatasetCreation() {
         setTables([]);
         setTablesLoading(false);
       });
-  }, [databaseId]);
+  }, [databaseId, schema]);
 
   const handleSubmit = async () => {
     setSubmitError(null);
@@ -62,7 +86,7 @@ export default function DatasetCreation() {
     setSubmitting(true);
 
     const payload = {
-      table_name: selectedTable || tableName,
+      table_name: tableName,
       database_id: databaseId,
       schema,
     };
@@ -71,9 +95,8 @@ export default function DatasetCreation() {
       await api.post('/dataset/', payload);
       setSubmitSuccess(true);
       setTableName('');
-      setSchema('public');
+      setSchema('');
       setDatabaseId('');
-      setSelectedTable('');
     } catch (err: unknown) {
       setSubmitError(parseErrorMessage(err, 'Failed to create dataset'));
     } finally {
@@ -119,7 +142,7 @@ export default function DatasetCreation() {
           select
           label="Database"
           value={databaseId}
-          onChange={e => setDatabaseId(Number(e.target.value))}
+          onChange={e => { setDatabaseId(Number(e.target.value)); setTableName(''); }}
           fullWidth
         >
           {databases.map(db => (
@@ -131,40 +154,54 @@ export default function DatasetCreation() {
         {databaseId !== '' && (
           <TextField
             select
-            label="Table"
-            value={selectedTable}
-            onChange={e => setSelectedTable(e.target.value)}
+            label="Schema"
+            value={schema}
+            onChange={e => { setSchema(e.target.value); setTableName(''); }}
             fullWidth
-            disabled={tablesLoading}
+            disabled={schemasLoading}
           >
-            {tablesLoading ? (
+            {schemasLoading ? (
               <MenuItem disabled>Loading...</MenuItem>
+            ) : schemas.length === 0 ? (
+              <MenuItem disabled>No schemas found</MenuItem>
             ) : (
-              tables.map(t => (
-                <MenuItem key={t.value} value={t.value}>
-                  {t.label}
+              schemas.map(s => (
+                <MenuItem key={s} value={s}>
+                  {s}
                 </MenuItem>
               ))
             )}
           </TextField>
         )}
-        <TextField
-          label="Table Name"
-          value={tableName}
-          onChange={e => setTableName(e.target.value)}
-          fullWidth
-          helperText="Used when not selecting a table above"
-        />
-        <TextField
-          label="Schema"
-          value={schema}
-          onChange={e => setSchema(e.target.value)}
-          fullWidth
-        />
+        {databaseId !== '' && schema && (
+          <Autocomplete
+            freeSolo
+            options={tables.map(t => t.value)}
+            loading={tablesLoading}
+            inputValue={tableName}
+            onInputChange={(_, v) => setTableName(v)}
+            renderOption={(props, option) => {
+              const t = tables.find(x => x.value === option);
+              return (
+                <li {...props} key={option}>
+                  {option}{t ? ` (${t.type})` : ''}
+                </li>
+              );
+            }}
+            renderInput={params => (
+              <TextField
+                {...params}
+                label="Table Name"
+                fullWidth
+                placeholder="Select or type a table name"
+              />
+            )}
+          />
+        )}
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={submitting || !databaseId || !(selectedTable || tableName)}
+          disabled={submitting || !databaseId || !tableName}
         >
           {submitting ? <CircularProgress size={24} /> : 'Create Dataset'}
         </Button>

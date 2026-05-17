@@ -14,6 +14,7 @@ import { useNotificationStore } from '@/store/notificationStore';
 import PageSpeedDial from '@/components/PageSpeedDial';
 import ChartPreview from './ChartPreview';
 import ChartEditorForm from './ChartEditorForm';
+import ExploreViewContainer from '@/explore/components/ExploreViewContainer';
 import type { Dataset } from '@/types/api';
 
 interface FieldOption { value: string; label: string; group: string }
@@ -456,6 +457,26 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
     return () => unregisterTools('chart_editor');
   }, [registerTools, unregisterTools, handleSubmit, isEditing]);
 
+  const handleRunQuery = useCallback(() => {
+    setLoadingData(true);
+    const query = buildQueryObject(
+      { metrics: buildMetricsPayload(metrics), groupby, viz_type: resolvedType === 'auto' ? 'line' : resolvedType },
+      resolvedType === 'auto' ? 'line' : resolvedType,
+    );
+    api.post('/chart/data', {
+      datasource: { id: Number(datasourceId), type: 'table' },
+      queries: [query],
+      form_data: { viz_type: resolvedType, metrics, groupby },
+    })
+      .then(res => {
+        const result = res.data?.result;
+        const rowData = Array.isArray(result) ? (result[0] || {}) : (result || {});
+        setChartData(rowData);
+      })
+      .catch(() => setChartData({}))
+      .finally(() => setLoadingData(false));
+  }, [datasourceId, resolvedType, metrics, groupby, metricNames]);
+
   const handleChartTypeChange = (val: string) => {
     setVizType(val);
     setUserChangedType(val !== 'auto');
@@ -469,6 +490,10 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <ExploreViewContainer
+        onRunQuery={handleRunQuery}
+        onSaveChart={handleSubmit}
+      />
       {error && (
         <Alert severity="error" sx={{ mx: c(2, 1.5), mt: c(2, 1.5), flexShrink: 0 }} onClose={() => setError(null)}>
           {error}

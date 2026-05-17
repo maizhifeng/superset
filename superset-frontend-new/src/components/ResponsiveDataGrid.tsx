@@ -239,32 +239,34 @@ export default function ResponsiveDataGrid<R = any>({
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {rows.map((row, i) => {
-        const recordRow = row as Record<string, unknown>;
-        const cardId = String(recordRow.id ?? i);
-        return (
-          <SwipeableCard
-            key={cardId} row={recordRow} onEdit={onEdit as ((row: Record<string, unknown>) => void) | undefined} onDelete={onDelete as ((row: Record<string, unknown>) => void) | undefined}
-            isOpen={openCardId === cardId} onOpenChange={handleOpenChange}
-            isSelected={selectedIds.has(cardId)} showCheckbox={selectedCount > 0} onToggleSelect={handleToggleSelect}
-          >
-            {renderCard(row)}
-          </SwipeableCard>
-        );
-      })}
-      {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-          <Pagination
-            count={totalPages}
-            page={page + 1}
-            onChange={handlePageChange}
-            color="primary"
-            shape="rounded"
-            size="small"
-          />
-        </Box>
-      )}
+    <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pb: 2 }}>
+        {rows.map((row, i) => {
+          const recordRow = row as Record<string, unknown>;
+          const cardId = String(recordRow.id ?? i);
+          return (
+            <SwipeableCard
+              key={cardId} row={recordRow} onEdit={onEdit as ((row: Record<string, unknown>) => void) | undefined} onDelete={onDelete as ((row: Record<string, unknown>) => void) | undefined}
+              isOpen={openCardId === cardId} onOpenChange={handleOpenChange}
+              isSelected={selectedIds.has(cardId)} showCheckbox={selectedCount > 0} onToggleSelect={handleToggleSelect}
+            >
+              {renderCard(row)}
+            </SwipeableCard>
+          );
+        })}
+        {totalPages > 1 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+            <Pagination
+              count={totalPages}
+              page={page + 1}
+              onChange={handlePageChange}
+              color="primary"
+              shape="rounded"
+              size="small"
+            />
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }

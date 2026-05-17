@@ -14,6 +14,7 @@ import ListPageLayout from '@/components/ListPageLayout';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
 import type { SavedQuery } from '@/types/api';
@@ -96,11 +97,14 @@ export default function SavedQueryList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<SaveIcon />}
-          title="No saved queries found"
-          description={searchText ? 'Try adjusting your search query' : 'Save a query from SQL Lab to see it here'}
-        />
+        <>
+          <EmptyState
+            icon={<SaveIcon />}
+            title="No saved queries found"
+            description={searchText ? 'Try adjusting your search query' : 'Save a query from SQL Lab to see it here'}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
       <ResponsiveDataGrid

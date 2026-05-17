@@ -117,8 +117,19 @@ export interface DatasetDetail {
 }
 
 export interface QueryResult {
+  status: string;
   columns: { name: string; type?: string }[];
   data: Record<string, unknown>[];
+  query_id?: number;
+  query?: {
+    rows: number;
+    sql: string;
+    state: string;
+    queryId: number;
+    limit: number;
+    limitingFactor: string;
+    progress: number;
+  };
 }
 
 export interface QueryLog {
@@ -139,6 +150,7 @@ export interface AlertReport {
 }
 
 export interface TableResult {
-  label: string;
   value: string;
+  type: string;
+  extra?: Record<string, unknown>;
 }

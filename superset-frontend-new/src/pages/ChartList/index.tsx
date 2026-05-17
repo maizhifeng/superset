@@ -18,6 +18,7 @@ import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
 import ListPageLayout from '@/components/ListPageLayout';
@@ -175,12 +176,15 @@ export default function ChartList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<BarChartIcon />}
-          title="No charts found"
-          description={searchText ? 'Try adjusting your search query' : 'Create your first chart to get started with data visualization'}
-          action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/explore')}>Create Chart</Button> : undefined}
-        />
+        <>
+          <EmptyState
+            icon={<BarChartIcon />}
+            title="No charts found"
+            description={searchText ? 'Try adjusting your search query' : 'Create your first chart to get started with data visualization'}
+            action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/explore')}>Create Chart</Button> : undefined}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
         <ResponsiveDataGrid
