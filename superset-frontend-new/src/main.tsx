@@ -7,7 +7,6 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { CacheProvider } from '@emotion/react';
 import createCache from '@emotion/cache';
 import { theme } from '@/theme';
-import { AuthProvider } from '@/contexts/AuthContext';
 import App from '@/views/App';
 import './index.css';
 
@@ -23,13 +22,11 @@ if (container) {
     <CacheProvider value={emotionCache}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <AuthProvider>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <App />
-            </BrowserRouter>
-          </LocalizationProvider>
-        </AuthProvider>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <App />
+          </BrowserRouter>
+        </LocalizationProvider>
       </ThemeProvider>
     </CacheProvider>,
   );

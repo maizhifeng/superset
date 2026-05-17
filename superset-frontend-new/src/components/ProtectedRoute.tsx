@@ -2,10 +2,11 @@ import { type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/authStore';
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, loading } = useAuth();
+  const isAuthenticated = useAuthStore(s => s.isAuthenticated);
+  const loading = useAuthStore(s => s.loading);
   const location = useLocation();
 
   if (loading) {

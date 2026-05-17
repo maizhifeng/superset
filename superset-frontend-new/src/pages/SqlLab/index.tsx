@@ -18,17 +18,9 @@ import {
 } from '@mui/material';
 import PageHeader from '@/components/PageHeader';
 import { useState, useEffect, useCallback } from 'react';
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
 import api from '@/api';
-
-interface Database {
-  id: number;
-  database_name: string;
-}
-
-interface QueryResult {
-  columns: { name: string; type?: string }[];
-  data: Record<string, unknown>[];
-}
+import type { Database, QueryResult } from '@/types/api';
 
 export default function SqlLab() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -61,9 +53,7 @@ export default function SqlLab() {
       });
       setResult(res.data);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : 'An error occurred while executing the query',
-      );
+      setError(parseErrorMessage(err, 'An error occurred while executing the query'));
     } finally {
       setLoading(false);
     }

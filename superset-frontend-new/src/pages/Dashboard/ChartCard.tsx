@@ -1,23 +1,18 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CircularProgress from '@mui/material/CircularProgress';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DragHandleIcon from '@mui/icons-material/DragIndicator';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
-import * as echarts from 'echarts/core';
-import { buildEChartsOption, ensureChartType } from '@/utils/echarts';
+import { buildEChartsOption, echarts } from '@/utils/echarts';
+import DataPreviewTable from '@/components/DataPreviewTable';
+import { useEChartsType } from '@/hooks/useEChartsType';
 
 interface ChartCardProps {
   chartId: number;
@@ -36,17 +31,8 @@ function ChartCard({
   onRefresh, onEdit,
 }: ChartCardProps) {
   const option = data ? buildEChartsOption(vizType, data) : null;
-  const [chartLibReady, setChartLibReady] = useState(false);
+  const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  useEffect(() => {
-    let cancelled = false;
-    setChartLibReady(false);
-    ensureChartType(vizType).then(() => {
-      if (!cancelled) setChartLibReady(true);
-    });
-    return () => { cancelled = true; };
-  }, [vizType]);
 
   const touchStart = () => {
     if (containerWidth >= 600) return;
@@ -89,39 +75,8 @@ function ChartCard({
         </Tooltip>
       </Box>
       <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0, overflow: 'auto' }}>
-        {vizType === 'table' && data?.data ? (
-          <TableContainer sx={{ flex: 1 }}>
-            <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1, fontSize: '0.75rem' } }}>
-              {(() => {
-                const rows = Array.isArray(data.data) ? (data.data as Record<string, unknown>[]) : [];
-                const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-                return (
-                  <>
-                    <TableHead>
-                      <TableRow>
-                        {keys.map(k => <TableCell key={k} sx={{ fontWeight: 600 }}>{k}</TableCell>)}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {rows.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={keys.length || 1} align="center">
-                            <Typography variant="caption" color="text.secondary" sx={{ py: 2, display: 'block' }}>No data</Typography>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        rows.slice(0, 100).map((row, i) => (
-                          <TableRow key={i}>
-                            {keys.map(k => <TableCell key={k}>{String(row[k] ?? '')}</TableCell>)}
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </>
-                );
-              })()}
-            </Table>
-          </TableContainer>
+        {vizType === 'table' && data ? (
+          <DataPreviewTable data={data} maxRows={100} />
         ) : option && chartLibReady ? (
           <ReactEChartsCore
             echarts={echarts}

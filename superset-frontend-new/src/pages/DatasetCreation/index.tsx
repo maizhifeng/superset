@@ -7,21 +7,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import PageHeader from '@/components/PageHeader';
 import api from '@/api';
-
-interface Database {
-  id: number;
-  database_name: string;
-}
-
-interface DatabaseApiResponse {
-  result: Database[];
-  count: number;
-}
-
-interface TableResult {
-  label: string;
-  value: string;
-}
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
+import type { Database, TableResult } from '@/types/api';
 
 export default function DatasetCreation() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -40,13 +27,13 @@ export default function DatasetCreation() {
 
   useEffect(() => {
     api
-      .get<DatabaseApiResponse>('/database/?q=(page_size:50,page:0)')
+      .get<{ result: Database[] }>('/database/?q=(page_size:50,page:0)')
       .then(res => {
         setDatabases(res.data.result);
         setLoading(false);
       })
       .catch(err => {
-        setError(err?.message ?? 'Failed to load databases');
+        setError(parseErrorMessage(err, 'Failed to load databases'));
         setLoading(false);
       });
   }, []);
@@ -88,12 +75,7 @@ export default function DatasetCreation() {
       setDatabaseId('');
       setSelectedTable('');
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ??
-        (err as Error)?.message ??
-        'Failed to create dataset';
-      setSubmitError(msg);
+      setSubmitError(parseErrorMessage(err, 'Failed to create dataset'));
     } finally {
       setSubmitting(false);
     }

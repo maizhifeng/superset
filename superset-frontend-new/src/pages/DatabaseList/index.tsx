@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Alert from '@mui/material/Alert';
@@ -16,56 +16,24 @@ import Typography from '@mui/material/Typography';
 import type { GridColDef } from '@mui/x-data-grid';
 import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
-import TableSkeleton from '@/components/TableSkeleton';
-import { ConfirmModal } from '@/superset-ui-mui/components';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
+import ListPageLayout from '@/components/ListPageLayout';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import { ConfirmModal } from '@/superset-ui-mui/components';
 import api from '@/api';
-import rison from 'rison';
+import { usePaginatedList } from '@/hooks/usePaginatedList';
 
-interface Database {
-  id: number;
-  database_name: string;
-  backend: string;
-  expose_in_sqllab: boolean;
-  allow_dml: boolean;
-  changed_on_delta_humanized: string;
-}
-
-interface DatabaseResponse {
-  result: Database[];
-  count: number;
-}
+import type { Database } from '@/types/api';
 
 export default function DatabaseList() {
-  const [rows, setRows] = useState<Database[]>([]);
-  const [rowCount, setRowCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createUri, setCreateUri] = useState('');
   const [creating, setCreating] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 50 });
-  const searchLoaded = useRef(false);
+  const { rows, rowCount, loading, error, searchText, paginationModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<Database>({ endpoint: '/database/', filterColumn: 'database_name', errorMessage: 'Failed to load databases' });
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
-
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    setSearchText(v);
-  }, []);
 
   useEffect(() => {
     registerTools('database_list', [
@@ -90,52 +58,6 @@ export default function DatabaseList() {
     ]);
     return () => unregisterTools('database_list');
   }, [registerTools, unregisterTools, handleSearchChange]);
-
-  const fetchData = useCallback(() => {
-    setLoading(true);
-    setError(null);
-
-    const qs = rison.encode({
-      page_size: paginationModel.pageSize,
-      page: paginationModel.page,
-      ...(searchText && { filters: [{ col: 'database_name', opr: 'ct', value: searchText }] }),
-    });
-
-    api
-      .get<DatabaseResponse>(`/database/?q=${qs}`)
-      .then(res => {
-        setRows(res.data.result ?? []);
-        setRowCount(res.data.count);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(
-          err?.response?.data?.message ?? err.message ?? 'Failed to load databases',
-        );
-        setLoading(false);
-      });
-  }, [paginationModel, searchText]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleteLoading(true);
-    setDeleteError(null);
-    try {
-      await api.delete(`/database/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      fetchData();
-    } catch (err: unknown) {
-      setDeleteError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-          || (err instanceof Error ? err.message : 'Delete failed'),
-      );
-      setDeleteTarget(null);
-    } finally {
-      setDeleteLoading(false);
-    }
-  };
 
   const columns: GridColDef[] = [
     { field: 'id', headerName: 'ID', width: 70 },
@@ -194,62 +116,48 @@ export default function DatabaseList() {
     },
   ];
 
-  if (loading && rows.length === 0) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Box sx={{ mt: 2 }}><TableSkeleton /></Box>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box sx={{ p: 3, pt: 2 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>
-      </Box>
-    );
-  }
-
   return (
-    <Box sx={{ p: 3, pt: 2 }}>
-
-      {rows.length === 0 && !loading ? (
+    <ListPageLayout
+      loading={loading}
+      error={error}
+      hasData={rows.length > 0}
+      emptyState={
         <EmptyState
           icon={<StorageIcon />}
           title="No databases connected"
           description={searchText ? 'Try adjusting your search query' : 'Connect a database to start exploring your data'}
         />
-      ) : (
-        <ResponsiveDataGrid
-          rows={rows}
-          columns={columns}
-          loading={loading}
-          autoHeight
-          paginationModel={paginationModel}
-          rowCount={rowCount}
-          paginationMode="server"
-          onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[25, 50, 100]}
-          toolbarPageKey="database_list"
-          onDelete={row => setDeleteTarget({ id: row.id as number, name: row.database_name as string })}
-          onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/database/${id}`))); fetchData(); }}
-          renderCard={row => (
-            <>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
-                {row.database_name as string}
+      }
+    >
+      <ResponsiveDataGrid
+        rows={rows}
+        columns={columns}
+        loading={loading}
+        autoHeight
+        paginationModel={paginationModel}
+        rowCount={rowCount}
+        paginationMode="server"
+        onPaginationModelChange={setPaginationModel}
+        pageSizeOptions={[25, 50, 100]}
+        toolbarPageKey="database_list"
+        onDelete={row => setDeleteTarget({ id: row.id, name: row.database_name })}
+        onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/database/${id}`))); fetchData(); }}
+        renderCard={row => (
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
+              {row.database_name}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
+              <Chip label={row.backend!} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+              <Chip label={row.expose_in_sqllab ? 'Enabled' : 'Disabled'} size="small" color={row.expose_in_sqllab ? 'success' : 'default'} variant={row.expose_in_sqllab ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+              <Chip label={row.allow_dml ? 'DML: Yes' : 'DML: No'} size="small" color={row.allow_dml ? 'success' : 'default'} variant={row.allow_dml ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
+                {row.changed_on_delta_humanized ?? ''}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
-                <Chip label={row.backend as string} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
-                <Chip label={(row.expose_in_sqllab as boolean) ? 'Enabled' : 'Disabled'} size="small" color={(row.expose_in_sqllab as boolean) ? 'success' : 'default'} variant={(row.expose_in_sqllab as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
-                <Chip label={(row.allow_dml as boolean) ? 'DML: Yes' : 'DML: No'} size="small" color={(row.allow_dml as boolean) ? 'success' : 'default'} variant={(row.allow_dml as boolean) ? 'filled' : 'outlined'} sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem' }}>
-                  {(row.changed_on_delta_humanized as string) ?? ''}
-                </Typography>
-              </Box>
-            </>
-          )}
-        />
-      )}
+            </Box>
+          </>
+        )}
+      />
       {deleteError && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{deleteError}</Alert>}
       <ConfirmModal
         open={!!deleteTarget}
@@ -313,6 +221,6 @@ export default function DatabaseList() {
         </DialogActions>
       </Dialog>
       <PageSpeedDial pageKeys="database_list" />
-    </Box>
+    </ListPageLayout>
   );
 }

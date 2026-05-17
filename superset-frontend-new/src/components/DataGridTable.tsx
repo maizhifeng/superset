@@ -1,12 +1,20 @@
-import { DataGrid, type DataGridProps } from '@mui/x-data-grid';
+import { Suspense, lazy } from 'react';
+import type { DataGridProps } from '@mui/x-data-grid';
 import { useMediaQuery, useTheme } from '@mui/material';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
+
+const DataGrid = lazy(() =>
+  import('@mui/x-data-grid').then(m => ({ default: m.DataGrid })),
+);
 
 export default function DataGridTable(props: DataGridProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (
-    <DataGrid
+    <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>}>
+      <DataGrid
       {...props}
       rowHeight={isMobile ? 52 : undefined}
       columnBufferPx={isMobile ? 150 : 200}
@@ -32,14 +40,14 @@ export default function DataGridTable(props: DataGridProps) {
             cursor: props.onRowClick ? 'pointer' : 'default',
             transition: 'background-color 150ms ease, box-shadow 150ms ease',
             '&:hover': {
-              backgroundColor: 'rgba(32, 167, 201, 0.06)',
+              backgroundColor: 'action.hover',
               boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
             },
             '&:nth-of-type(even)': {
               backgroundColor: 'rgba(0,0,0,0.02)',
             },
             '&:nth-of-type(even):hover': {
-              backgroundColor: 'rgba(32, 167, 201, 0.06)',
+              backgroundColor: 'action.hover',
             },
           },
           '& .MuiDataGrid-cell': {
@@ -79,5 +87,6 @@ export default function DataGridTable(props: DataGridProps) {
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),
       ]}
     />
+    </Suspense>
   );
 }

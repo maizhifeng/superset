@@ -1,42 +1,20 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-
-import Card from '@mui/material/Card';
-import CardHeader from '@mui/material/CardHeader';
-import CardContent from '@mui/material/CardContent';
-import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import SaveIcon from '@mui/icons-material/Save';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import ReactEChartsCore from 'echarts-for-react/lib/core';
-import * as echarts from 'echarts/core';
+import type { EChartsOption } from 'echarts';
 import { buildEChartsOption, ensureChartType } from '@/utils/echarts';
 import { buildQueryObject } from '@/utils/query/extractQueryFields';
 import api from '@/api';
+import { parseErrorMessage } from '@/utils/parseErrorMessage';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import { useNotificationStore } from '@/store/notificationStore';
 import PageSpeedDial from '@/components/PageSpeedDial';
-import ChartTypeSelector from './ChartTypeSelector';
-import PickerField from './PickerField';
-
-interface Dataset { id: number; table_name: string }
-interface DatasetApiResponse { result: Dataset[]; count: number }
-
-interface ChartInitialData {
-  slice_name: string;
-  viz_type: string;
-  datasource_id?: number;
-  form_data?: string | Record<string, unknown> | null;
-  params?: string | Record<string, unknown> | null;
-}
+import ChartPreview from './ChartPreview';
+import ChartEditorForm from './ChartEditorForm';
+import type { Dataset } from '@/types/api';
 
 interface FieldOption { value: string; label: string; group: string }
 
@@ -85,6 +63,14 @@ function autoSuggestChartType(
     return { vizType: 'line', groupby: [] };
   }
   return { vizType: 'bar', groupby: dimColumns.length > 0 ? [dimColumns[0].column_name] : [] };
+}
+
+interface ChartInitialData {
+  slice_name: string;
+  viz_type: string;
+  datasource_id?: number;
+  form_data?: string | Record<string, unknown> | null;
+  params?: string | Record<string, unknown> | null;
 }
 
 interface ChartEditorProps {
@@ -173,7 +159,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   };
 
   useEffect(() => {
-    api.get<DatasetApiResponse>('/dataset/?q=(page_size:200,page:0)')
+    api.get<{ result: Dataset[] }>('/dataset/?q=(page_size:200,page:0)')
       .then(res => {
         setDatasets(res.data.result);
         setLoadingDatasets(false);
@@ -234,7 +220,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         restoreFormData(raw ?? null);
       })
       .catch(err => {
-        setError(err?.response?.data?.message ?? err?.message ?? 'Failed to load chart');
+        setError(parseErrorMessage(err, 'Failed to load chart'));
       })
       .finally(() => setLoadingChart(false));
   }, [sliceId, initialData]);
@@ -271,7 +257,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   }, [metrics, columnsList, loadingColumns, groupby, vizType, userChangedType]);
 
   const resolvedType = vizType === 'auto' && suggested ? suggested.vizType : vizType;
-  const hasValidType = resolvedType && resolvedType !== 'auto';
+  const hasValidType = Boolean(resolvedType && resolvedType !== 'auto');
 
   const [chartLibReady, setChartLibReady] = useState(false);
 
@@ -338,7 +324,7 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
   const option = useMemo(() => {
     if (!chartData || !resolvedType || resolvedType === 'auto') return null;
     if (resolvedType === 'table') return null;
-    return buildEChartsOption(resolvedType, chartData);
+    return buildEChartsOption(resolvedType, chartData) as EChartsOption | null;
   }, [chartData, resolvedType]);
 
   const bigNumberValue = useMemo(() => {
@@ -445,10 +431,10 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         notify({ severity: 'success', message: 'Chart saved' });
         navigate('/chart/list');
       }
-    } catch (err: any) {
-      const errMsg = err?.response?.data?.message ?? err?.message ?? 'Failed to save chart';
-      setError(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
-      notify({ severity: 'error', message: typeof errMsg === 'string' ? errMsg : 'Failed to save chart' });
+    } catch (err: unknown) {
+      const errMsg = parseErrorMessage(err, 'Failed to save chart');
+      setError(errMsg);
+      notify({ severity: 'error', message: errMsg });
     } finally {
       setCreating(false);
     }
@@ -475,93 +461,6 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
     setUserChangedType(val !== 'auto');
   };
 
-  const preview = (
-    <Box sx={{ flex: { md: 1 }, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        {datasourceId && (
-          <ChartTypeSelector
-            value={vizType}
-            suggested={suggested?.vizType}
-            disabledReasons={disabledReasons}
-            onChange={handleChartTypeChange}
-          />
-        )}
-      </Box>
-
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper', minHeight: 200, overflow: 'hidden' }}>
-        {!datasourceId ? (
-          <Typography variant="body2" color="text.disabled">Select a dataset to see preview</Typography>
-        ) : !hasValidType ? (
-          <Typography variant="body2" color="text.disabled">Analyzing data for best chart type...</Typography>
-        ) : metrics.length === 0 ? (
-          <Typography variant="body2" color="text.disabled">Select at least one metric</Typography>
-        ) : loadingData && !chartData ? (
-          <CircularProgress size={24} />
-        ) : resolvedType === 'table' ? (
-          <TableContainer sx={{ width: '100%', height: '100%', overflow: 'auto' }}>
-            <Table stickyHeader size="small" sx={{ '& .MuiTableCell-head': { fontWeight: 700, fontSize: '0.75rem', color: 'text.primary', bgcolor: 'grey.100' } }}>
-              {(() => {
-                const rows = Array.isArray(chartData?.data) ? (chartData.data as Record<string, unknown>[]) : [];
-                const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-                const fmt = (key: string, val: unknown): string => {
-                  if (val === null || val === undefined) return '';
-                  if (typeof val === 'number' && /year|date|time/i.test(key)) {
-                    const d = new Date(val);
-                    const y = d.getFullYear();
-                    if (y > 1900 && y < 2100) return d.toLocaleDateString();
-                  }
-                  return String(val);
-                };
-                return (
-                  <>
-                    <TableHead>
-                      <TableRow>
-                        {keys.map(k => <TableCell key={k} sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{k}</TableCell>)}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {rows.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={keys.length || 1} align="center">
-                            <Typography variant="caption" color="text.secondary" sx={{ py: 2, display: 'block' }}>No data</Typography>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        rows.slice(0, 50).map((row, i) => (
-                          <TableRow key={i}>
-                            {keys.map(k => <TableCell key={k} sx={{ fontSize: '0.75rem' }}>{fmt(k, row[k])}</TableCell>)}
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </>
-                );
-              })()}
-            </Table>
-          </TableContainer>
-        ) : bigNumberValue && resolvedType === 'big_number' ? (
-          <Typography variant="h2" sx={{ fontWeight: 700, fontSize: { xs: '2rem', sm: '3rem' }, lineHeight: 1.2 }}>
-            {bigNumberValue}
-          </Typography>
-        ) : option && chartLibReady ? (
-          <ReactEChartsCore
-            echarts={echarts}
-            option={option}
-            style={{ height: '100%', width: '100%', minHeight: 250 }}
-            notMerge
-            lazyUpdate
-          />
-        ) : option ? (
-          <CircularProgress size={20} />
-        ) : chartData ? (
-          <Typography variant="body2" color="text.disabled">No data returned</Typography>
-        ) : (
-          <CircularProgress size={24} />
-        )}
-      </Box>
-    </Box>
-  );
-
   if (loadingChart) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
   }
@@ -576,92 +475,39 @@ export default function ChartEditor({ onChartSaved, initialData, compact }: Char
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: c(1, 0.75), px: c(2, 1), py: c(1, 0.5), borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: c(1, 0.75) }}>
-          <Card elevation={0} sx={{ flex: '0 0 180px', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-            <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
-              title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Name</Typography>}
-            />
-            <CardContent sx={{ p: c(1, 0.75) }}>
-              <TextField
-                placeholder="Chart name..."
-                value={sliceName}
-                onChange={e => setSliceName(e.target.value)}
-                variant="standard"
-                sx={{ width: '100%', '& .MuiInputBase-input': { fontSize: '1.5rem', fontWeight: 600 } }}
-              />
-            </CardContent>
-          </Card>
-
-          <Card elevation={0} sx={{ flex: '2 1 280px', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-          <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
-            title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Dataset</Typography>}
-          />
-          <CardContent sx={{ p: c(1, 0.75) }}>
-            <PickerField
-              label="Dataset"
-              options={datasets.map(d => ({ value: String(d.id), label: d.table_name }))}
-              selected={datasourceId ? [datasourceId] : []}
-              onChange={vals => { setDatasourceId(vals[0] || ''); setMetrics([]); setGroupby([]); setUserChangedType(false); }}
-              loading={loadingDatasets}
-              placeholder="Select dataset..."
-              singleSelect
-              hideGroups
-              hideHeader
-            />
-          </CardContent>
-        </Card>
-        </Box>
-
-        {datasourceId && (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: c(1, 0.75) }}>
-            <Card elevation={0} sx={{ flex: '1 1 40%', minWidth: c(150, 120), borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-              <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
-                title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Metrics</Typography>}
-              />
-              <CardContent sx={{ p: c(1, 0.75) }}>
-                {loadingColumns ? (
-                  <CircularProgress size={16} />
-                ) : (
-                    <PickerField
-                      label="Metrics"
-                      options={metricsOptions}
-                      selected={metrics}
-                      onChange={handleMetricsChange}
-                      placeholder="Add metrics..."
-                      hideHeader
-                      hideGroups
-                    />
-                )}
-              </CardContent>
-            </Card>
-
-            <Card elevation={0} sx={{ flex: '1 1 40%', minWidth: c(150, 120), borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-              <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
-                title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Group By</Typography>}
-              />
-              <CardContent sx={{ p: c(1, 0.75) }}>
-                {loadingColumns ? (
-                  <CircularProgress size={16} />
-                ) : (
-                    <PickerField
-                      label="Group By"
-                      options={dimensionOptions}
-                      selected={groupby}
-                      onChange={v => setGroupby(v)}
-                      placeholder="Add dimensions..."
-                      hideHeader
-                      hideGroups
-                    />
-                )}
-              </CardContent>
-            </Card>
-          </Box>
-        )}
-      </Box>
+      <ChartEditorForm
+        sliceName={sliceName}
+        datasets={datasets}
+        datasourceId={datasourceId}
+        metrics={metrics}
+        groupby={groupby}
+        metricsOptions={metricsOptions}
+        dimensionOptions={dimensionOptions}
+        loadingDatasets={loadingDatasets}
+        loadingColumns={loadingColumns}
+        compact={compact}
+        onSliceNameChange={setSliceName}
+        onDatasourceChange={(id) => { setDatasourceId(id); setMetrics([]); setGroupby([]); setUserChangedType(false); }}
+        onMetricsChange={handleMetricsChange}
+        onGroupbyChange={setGroupby}
+      />
 
       <Box sx={{ flex: 1, p: c(1.5, 0.75), minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {preview}
+        <ChartPreview
+          datasourceId={datasourceId}
+          vizType={vizType}
+          resolvedType={resolvedType}
+          hasValidType={hasValidType}
+          metrics={metrics}
+          chartData={chartData}
+          loadingData={loadingData}
+          suggestedVizType={suggested?.vizType}
+          disabledReasons={disabledReasons}
+          onChartTypeChange={handleChartTypeChange}
+          chartLibReady={chartLibReady}
+          option={option}
+          bigNumberValue={bigNumberValue}
+        />
       </Box>
       {!compact && <PageSpeedDial pageKeys="chart_editor" />}
     </Box>
