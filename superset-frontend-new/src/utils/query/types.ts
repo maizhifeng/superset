@@ -13,6 +13,8 @@ export interface AdhocMetric {
   sqlExpression?: string;
 }
 
+export type QueryOrderBy = [string | AdhocMetric, boolean];
+
 export interface QueryObject {
   result_type?: 'full' | 'columns' | 'post_processed';
   metrics?: (string | AdhocMetric)[];
@@ -28,6 +30,9 @@ export interface QueryObject {
   granularity?: string;
   time_range?: string;
   row_limit?: number;
+  orderby?: QueryOrderBy[];
+  order_desc?: boolean;
+  timeseries_limit_metric?: string | AdhocMetric;
 }
 
 export interface QueryContext {

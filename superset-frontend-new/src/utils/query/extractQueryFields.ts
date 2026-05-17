@@ -1,4 +1,4 @@
-import type { VizType, AdhocMetric, QueryObject } from './types';
+import type { VizType, AdhocMetric, QueryObject, QueryOrderBy } from './types';
 
 const NO_GROUPBY_VIZ: VizType[] = ['big_number'];
 
@@ -9,7 +9,14 @@ function isVizType(v: string): v is VizType {
 export function extractQueryFields(
   formData: Record<string, unknown>,
   vizType?: string,
-): { metrics: (string | AdhocMetric)[]; groupby: string[]; columns: string[] } {
+): {
+  metrics: (string | AdhocMetric)[];
+  groupby: string[];
+  columns: string[];
+  orderby: QueryOrderBy[];
+  order_desc: boolean;
+  timeseries_limit_metric: string | AdhocMetric | undefined;
+} {
   const vt = vizType && isVizType(vizType) ? vizType : undefined;
 
   const rawMetrics = formData.metrics ?? formData.metric ?? [];
@@ -25,10 +32,24 @@ export function extractQueryFields(
     groupby = [];
   }
 
+  const rawOrderby = formData.orderby;
+  const orderby = Array.isArray(rawOrderby) ? rawOrderby as QueryOrderBy[] : [];
+
+  const order_desc = formData.order_desc !== undefined
+    ? Boolean(formData.order_desc)
+    : true;
+
+  const timeseries_limit_metric = formData.timeseries_limit_metric
+    ? formData.timeseries_limit_metric as string | AdhocMetric
+    : undefined;
+
   return {
     metrics: metrics.filter(Boolean),
     groupby: groupby.filter(Boolean),
     columns: columns.filter(Boolean),
+    orderby,
+    order_desc,
+    timeseries_limit_metric,
   };
 }
 
@@ -36,7 +57,7 @@ export function buildQueryObject(
   formData: Record<string, unknown>,
   vizType?: string,
 ): QueryObject {
-  const { metrics, groupby, columns } = extractQueryFields(formData, vizType);
+  const { metrics, groupby, columns, orderby, order_desc, timeseries_limit_metric } = extractQueryFields(formData, vizType);
 
   const query: QueryObject = {
     result_type: 'full',
@@ -49,6 +70,16 @@ export function buildQueryObject(
   if (formData.time_range) query.time_range = formData.time_range as string;
   if (formData.adhoc_filters) query.adhoc_filters = formData.adhoc_filters as QueryObject['adhoc_filters'];
   if (formData.row_limit) query.row_limit = formData.row_limit as number;
+
+  if (orderby.length > 0) {
+    query.orderby = orderby;
+  } else if (metrics.length > 0) {
+    const ascending = !order_desc;
+    query.orderby = [[metrics[0], ascending]];
+  }
+
+  if ('order_desc' in formData) query.order_desc = order_desc;
+  if (timeseries_limit_metric) query.timeseries_limit_metric = timeseries_limit_metric;
 
   return query;
 }

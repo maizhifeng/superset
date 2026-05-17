@@ -9,10 +9,24 @@ import Tooltip from '@mui/material/Tooltip';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DragHandleIcon from '@mui/icons-material/DragIndicator';
+import FlipIcon from '@mui/icons-material/Flip';
+import CloudOffIcon from '@mui/icons-material/CloudOff';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { buildEChartsOption, echarts } from '@/utils/echarts';
 import DataPreviewTable from '@/components/DataPreviewTable';
 import { useEChartsType } from '@/hooks/useEChartsType';
+import MirrorTable from '@/pages/Dashboard/MirrorTable';
+
+export interface CompareDimension {
+  dimension: string;
+  values: string[];
+}
+
+export interface CompareConfig {
+  enabled: boolean;
+  chartId: number;
+  dimensions: CompareDimension[];
+}
 
 interface ChartCardProps {
   chartId: number;
@@ -24,11 +38,14 @@ interface ChartCardProps {
   containerWidth: number;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
+  compareConfig?: CompareConfig | null;
+  mirrorData?: Record<string, unknown>;
+  onToggleCompare: (chartId: number) => void;
 }
 
 function ChartCard({
   chartId, sliceName, vizType, data, meta, isDragging, containerWidth,
-  onRefresh, onEdit,
+  onRefresh, onEdit, compareConfig, mirrorData, onToggleCompare,
 }: ChartCardProps) {
   const option = data ? buildEChartsOption(vizType, data) : null;
   const chartLibReady = useEChartsType(vizType);
@@ -41,6 +58,8 @@ function ChartCard({
   const touchEnd = () => clearTimeout(longPressTimer.current);
   const touchMove = () => clearTimeout(longPressTimer.current);
 
+  const isCompareActive = compareConfig?.enabled && compareConfig.chartId === chartId;
+
   return (
     <Card
       onTouchStart={touchStart}
@@ -48,7 +67,8 @@ function ChartCard({
       onTouchMove={touchMove}
       sx={{
         height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRadius: 2,
-        border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper',
+        border: '1px solid', borderColor: isCompareActive ? 'primary.300' : 'divider',
+        bgcolor: 'background.paper',
         boxShadow: isDragging ? 6 : 0,
         transition: 'box-shadow 200ms ease',
         '&:hover': { boxShadow: 2 },
@@ -61,22 +81,43 @@ function ChartCard({
           borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'grey.50',
         }}
       >
-        <DragHandleIcon sx={{ fontSize: 16, color: 'text.disabled', mr: 0.5, flexShrink: 0 }} />
+        <DragHandleIcon sx={{ fontSize: 18, color: 'text.disabled', mr: 0.5, flexShrink: 0 }} />
         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {meta?.slice_name || sliceName || `Chart #${chartId}`}
         </Typography>
-        <IconButton size="small" onClick={e => { e.stopPropagation(); onRefresh(chartId); }} sx={{ p: 0.5 }}>
-          <RefreshIcon sx={{ fontSize: 14 }} />
-        </IconButton>
+        {vizType === 'table' && (
+          <Tooltip title={isCompareActive ? 'Stop comparing' : 'Compare'}>
+            <IconButton
+              size="small"
+              onClick={e => { e.stopPropagation(); onToggleCompare(chartId); }}
+              sx={{ p: 0.5, color: isCompareActive ? 'primary.main' : undefined }}
+            >
+              <FlipIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Tooltip title="Refresh">
+          <IconButton size="small" onClick={e => { e.stopPropagation(); onRefresh(chartId); }} sx={{ p: 0.5 }}>
+            <RefreshIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Edit Chart">
           <IconButton size="small" onClick={e => { e.stopPropagation(); onEdit(chartId); }} sx={{ p: 0.5 }}>
-            <OpenInNewIcon sx={{ fontSize: 14 }} />
+            <OpenInNewIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
       </Box>
       <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0, overflow: 'auto' }}>
         {vizType === 'table' && data ? (
-          <DataPreviewTable data={data} maxRows={100} />
+          isCompareActive ? (
+            <MirrorTable
+              dimensions={compareConfig.dimensions}
+              data={mirrorData}
+              onClose={() => onToggleCompare(chartId)}
+            />
+          ) : (
+            <DataPreviewTable data={data} maxRows={100} />
+          )
         ) : option && chartLibReady ? (
           <ReactEChartsCore
             echarts={echarts}
@@ -91,6 +132,7 @@ function ChartCard({
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', gap: 0.5 }}>
+            <CloudOffIcon sx={{ fontSize: 28, color: 'text.disabled' }} />
             <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>Chart data unavailable</Typography>
           </Box>
         )}
@@ -106,5 +148,7 @@ export default memo(ChartCard, (prev, next) => {
     && prev.containerWidth === next.containerWidth
     && prev.meta?.slice_name === next.meta?.slice_name
     && prev.sliceName === next.sliceName
-    && prev.data === next.data;
+    && prev.data === next.data
+    && prev.mirrorData === next.mirrorData
+    && prev.compareConfig === next.compareConfig;
 });

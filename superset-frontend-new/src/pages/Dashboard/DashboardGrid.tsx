@@ -2,11 +2,13 @@ import { type RefObject } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import CircularProgress from '@mui/material/CircularProgress';
+import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
 import { GridLayout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import type { ChartData } from '@/types/api';
 import ChartCard from '@/pages/Dashboard/ChartCard';
+import type { CompareConfig } from '@/pages/Dashboard/ChartCard';
 import type { ChartLayoutItem } from '@/utils/dashboard/layout';
 
 interface DashboardGridProps {
@@ -25,17 +27,21 @@ interface DashboardGridProps {
   onResizeStop: () => void;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
+  compareConfig?: CompareConfig | null;
+  mirrorData?: Record<string, unknown>;
+  onToggleCompare: (chartId: number) => void;
 }
 
 export default function DashboardGrid({
   containerWidth, gridLayout, layoutItems, chartMeta, chartData,
   isDragging, saving, containerRef, onLayoutChange,
   onDragStart, onDragStop, onResizeStart, onResizeStop,
-  onRefresh, onEdit,
+  onRefresh, onEdit, compareConfig, mirrorData, onToggleCompare,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
       <Box sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+        <BarChartOutlinedIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
         <Typography color="text.secondary">No charts in this dashboard yet</Typography>
       </Box>
     );
@@ -78,6 +84,9 @@ export default function DashboardGrid({
               containerWidth={containerWidth}
               onRefresh={onRefresh}
               onEdit={onEdit}
+              compareConfig={compareConfig}
+              mirrorData={mirrorData}
+              onToggleCompare={onToggleCompare}
             />
           </div>
         ))}

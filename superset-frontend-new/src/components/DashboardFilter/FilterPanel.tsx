@@ -6,6 +6,7 @@ import Autocomplete from '@mui/material/Autocomplete';
 import IconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
 import CloseIcon from '@mui/icons-material/Close';
+import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
 import api from '@/api';
 import type { FilterConfig, FilterState } from './types';
 
@@ -266,9 +267,12 @@ export default function FilterPanel({
   return (
     <Box sx={{ px: 1.25, py: 0.5 }}>
       {filters.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-          No filters configured for this dashboard.
-        </Typography>
+        <Box sx={{ py: 2, textAlign: 'center' }}>
+          <FilterAltOffIcon sx={{ fontSize: 28, color: 'text.disabled', mb: 0.5 }} />
+          <Typography variant="body2" color="text.secondary">
+            No filters configured for this dashboard.
+          </Typography>
+        </Box>
       ) : (
         <Box sx={{
           display: 'grid',

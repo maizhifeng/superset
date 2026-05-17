@@ -13,7 +13,7 @@ import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
 import Link from '@mui/material/Link';
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
-import type { GridColDef, GridRowParams } from '@mui/x-data-grid';
+import type { GridColDef, GridRowParams, GridSortModel } from '@mui/x-data-grid';
 import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
 import FilterBar from '@/components/FilterBar';
 import { ConfirmModal } from '@/superset-ui-mui/components';
@@ -24,6 +24,7 @@ import PageSpeedDial from '@/components/PageSpeedDial';
 import ListPageLayout from '@/components/ListPageLayout';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
+import type { SortModel } from '@/hooks/usePaginatedList';
 
 import type { ChartRow } from '@/types/api';
 
@@ -49,7 +50,13 @@ const vizTypeLabels: Record<string, string> = {
 
 export default function ChartList() {
   const navigate = useNavigate();
-  const { rows, rowCount, loading, error, searchText, paginationModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<ChartRow>({ endpoint: '/chart/', filterColumn: 'slice_name', errorMessage: 'Failed to load charts' });
+  const { rows, rowCount, loading, error, searchText, paginationModel, sortModel, deleteTarget, deleteLoading, deleteError, setPaginationModel, setSortModel, setDeleteTarget, handleSearchChange, handleDelete, fetchData } = usePaginatedList<ChartRow>({
+    endpoint: '/chart/',
+    filterColumn: 'slice_name',
+    errorMessage: 'Failed to load charts',
+    sortFieldMap: { created_by: 'created_by.username' },
+    defaultSortModel: [{ field: 'changed_on_delta_humanized', sort: 'desc' }],
+  });
   const registerTools = useToolbarStore(s => s.registerTools);
   const unregisterTools = useToolbarStore(s => s.unregisterTools);
 
@@ -195,6 +202,9 @@ export default function ChartList() {
           paginationModel={paginationModel}
           rowCount={rowCount}
           paginationMode="server"
+          sortingMode="server"
+          sortModel={sortModel}
+          onSortModelChange={(model: GridSortModel) => setSortModel(model.filter(s => s.sort != null) as SortModel[])}
           onPaginationModelChange={setPaginationModel}
           pageSizeOptions={[25, 50, 100]}
           onRowClick={handleRowClick}

@@ -24,6 +24,8 @@ import { buildQueryObject } from '@/utils/query/extractQueryFields';
 import { parseErrorMessage } from '@/utils/parseErrorMessage';
 
 import { type LayoutNode, flattenLayout } from '@/utils/dashboard/layout';
+import CompareConfigModal from '@/pages/Dashboard/CompareConfigModal';
+import type { CompareConfig, CompareDimension } from '@/pages/Dashboard/ChartCard';
 
 export default function Dashboard() {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +38,11 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const prevTitleRef = useRef<string | null>(null);
+
+  const [compareConfig, setCompareConfig] = useState<CompareConfig | null>(null);
+  const [mirrorData, setMirrorData] = useState<Record<string, unknown>>({});
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [compareChartId, setCompareChartId] = useState<number | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get('slice_id');
@@ -238,6 +245,52 @@ export default function Dashboard() {
     return dataMap;
   }, []);
 
+  const chartDataRef = useRef(chartData);
+  chartDataRef.current = chartData;
+
+  const filterDataLocal = useCallback((
+    data: Record<string, unknown>, dimensions: CompareDimension[],
+  ): Record<string, unknown> => {
+    if (data?.data && Array.isArray(data.data)) {
+      const filtered = (data.data as Record<string, unknown>[]).filter(row =>
+        dimensions.every(d => d.values.includes(String(row[d.dimension] ?? ''))),
+      );
+      return { ...data, data: filtered };
+    }
+    return data;
+  }, []);
+
+  const fetchMirrorData = useCallback(async (
+    chartId: number, dimensions: CompareDimension[],
+    existingDataOverride?: Record<string, unknown>,
+  ) => {
+    const chart = chartMeta[chartId];
+    if (!chart) return;
+    const existing = existingDataOverride ?? chartDataRef.current[chartId];
+    if (existing?.data && Array.isArray(existing.data)) {
+      setMirrorData(filterDataLocal(existing, dimensions));
+      return;
+    }
+    try {
+      const fd = parseChartConfig(chart);
+      const dsId = chart.datasource_id || (fd.datasource ? Number(String(fd.datasource).split('__')[0]) : 0);
+      if (!dsId) return;
+      const query = buildQueryObject(fd, chart.viz_type);
+      if (!query.metrics || query.metrics.length === 0) return;
+      const adhocFilters = buildAdhocFiltersForDs(dsId);
+      if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+      const payload = {
+        datasource: { id: dsId, type: chart.datasource_type || 'table' },
+        queries: [query], form_data: fd,
+        result_format: 'json', result_type: 'full' as const, force: false,
+      };
+      const postRes = await api.post('/chart/data', payload);
+      const postResult = postRes.data?.result;
+      const rawData = Array.isArray(postResult) ? (postResult[0] || {}) : (postResult || {});
+      setMirrorData(filterDataLocal(rawData, dimensions));
+    } catch { /* mirror fetch failed */ }
+  }, [chartMeta, filterDataLocal]);
+
   const refreshChart = useCallback(async (chartId: number) => {
     const chart = chartMeta[chartId];
     if (!chart) return;
@@ -261,7 +314,11 @@ export default function Dashboard() {
     if (ids.length === 0) return;
     const newData = await getChartDataWithFilters(ids, chartMeta);
     setChartData(newData);
-  }, [chartMeta]);
+    if (compareConfig?.enabled) {
+      const freshData = newData[compareConfig.chartId];
+      fetchMirrorData(compareConfig.chartId, compareConfig.dimensions, freshData);
+    }
+  }, [chartMeta, compareConfig, fetchMirrorData]);
 
   const pageKey = `dashboard_${id}`;
   useDashboardToolbar({
@@ -340,6 +397,25 @@ export default function Dashboard() {
     setFilterDrawerOpen(true);
   }, []);
 
+  const handleToggleCompare = useCallback((chartId: number) => {
+    if (compareConfig?.enabled && compareConfig.chartId === chartId) {
+      setCompareConfig(null);
+      setMirrorData({});
+    } else {
+      setCompareChartId(chartId);
+      setCompareModalOpen(true);
+    }
+  }, [compareConfig]);
+
+  const handleApplyCompare = useCallback((dimensions: CompareDimension[]) => {
+    if (compareChartId == null) return;
+    const cc: CompareConfig = { enabled: true, chartId: compareChartId, dimensions };
+    setCompareConfig(cc);
+    setCompareModalOpen(false);
+    const existingData = chartData[compareChartId];
+    fetchMirrorData(compareChartId, dimensions, existingData);
+  }, [compareChartId, fetchMirrorData, chartData]);
+
   useEffect(() => {
     if (!filterDrawerOpen) setPendingFilterIds([]);
   }, [filterDrawerOpen]);
@@ -387,7 +463,7 @@ export default function Dashboard() {
         onClearAll={handleClearAll}
         pendingFilterIds={pendingFilterIds}
       />
-      <Box sx={{ p: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 0 }}>
         <DashboardGrid
           containerWidth={containerWidth}
           gridLayout={gridLayout}
@@ -404,8 +480,26 @@ export default function Dashboard() {
           onResizeStop={() => setIsDragging(false)}
           onRefresh={refreshChart}
           onEdit={(chartId: number) => setSearchParams({ slice_id: String(chartId) })}
+          compareConfig={compareConfig}
+          mirrorData={mirrorData}
+          onToggleCompare={handleToggleCompare}
         />
       </Box>
+      <CompareConfigModal
+        open={compareModalOpen}
+        columns={(() => {
+          if (compareChartId == null) return [];
+          const chart = chartMeta[compareChartId];
+          if (!chart) return [];
+          const dsId = chart.datasource_id;
+          return dashboardDimensions
+            .filter(d => d.datasetId === dsId)
+            .map(d => ({ datasetId: d.datasetId, column: d.column, name: d.name }));
+        })()}
+        fullData={compareChartId != null ? chartData[compareChartId] : undefined}
+        onApply={handleApplyCompare}
+        onCancel={() => { setCompareModalOpen(false); setCompareChartId(null); }}
+      />
       <Drawer
         anchor="right"
         open={isDrawerOpen}

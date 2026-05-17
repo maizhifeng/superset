@@ -175,7 +175,7 @@ export default function DashboardList() {
         ))}
       </Grid2>
       {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, pr: { xs: 7, sm: 0 } }}>
           <Pagination
             count={totalPages}
             page={paginationModel.page + 1}
