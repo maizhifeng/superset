@@ -13,6 +13,7 @@ import ChatInput from '@/components/ChatInput';
 import DashboardGrid from '@/pages/Dashboard/DashboardGrid';
 import DashboardNav from '@/pages/Dashboard/DashboardNav';
 import useDashboardToolbar from '@/pages/Dashboard/useDashboardToolbar';
+import UndoRedoKeyListeners from '@/dashboard/components/UndoRedoKeyListeners';
 import api from '@/api';
 import {
   DashboardFilterDrawer,
@@ -423,6 +424,12 @@ export default function Dashboard() {
           )}
         </Box>
       </Drawer>
+      <UndoRedoKeyListeners
+        onUndo={() => {}}
+        onRedo={() => {}}
+        onSave={saveLayout}
+        onToggleFullScreen={() => { if (!document.fullscreenElement) { document.documentElement.requestFullscreen(); } else { document.exitFullscreen(); } }}
+      />
       <PageSpeedDial pageKeys={[pageKey, ...(isDrawerOpen ? ['chart_editor'] : [])]} searchTool={{ render: <ChatInput /> }} />
       <DashboardNav open={navOpen} items={navItems} onClose={() => setNavOpen(false)} />
     </>

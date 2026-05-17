@@ -1,4 +1,4 @@
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Drawer from '@mui/material/Drawer';
 import Divider from '@mui/material/Divider';
@@ -8,8 +8,8 @@ import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import Typography from '@mui/material/Typography';
 import Avatar from '@mui/material/Avatar';
-import IconButton from '@mui/material/IconButton';
 import Logout from '@mui/icons-material/Logout';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 interface NavItem {
   id: string;
@@ -28,6 +28,8 @@ interface MobileDrawerProps {
 }
 
 export default function MobileDrawer({ open, onClose, items, enabled, isActive, username, onLogout }: MobileDrawerProps) {
+  const navigate = useNavigate();
+
   return (
     <Drawer
       anchor="left"
@@ -56,14 +58,26 @@ export default function MobileDrawer({ open, onClose, items, enabled, isActive, 
           ))}
         </List>
         <Divider />
-        <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-            {username?.charAt(0).toUpperCase() || 'U'}
-          </Avatar>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>{username || 'User'}</Typography>
+        <Box sx={{ px: 2, py: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Avatar sx={{ width: 28, height: 28, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
+              {username?.charAt(0).toUpperCase() || 'U'}
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>{username || 'User'}</Typography>
+            </Box>
           </Box>
-          <IconButton size="small" onClick={onLogout}><Logout sx={{ fontSize: 18 }} /></IconButton>
+          <ListItemButton
+            onClick={() => { navigate('/settings'); onClose(); }}
+            sx={{ borderRadius: 1, mb: 0.5 }}
+          >
+            <SettingsIcon sx={{ fontSize: 18, mr: 1, color: 'text.secondary' }} />
+            <ListItemText primary="Settings" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
+          </ListItemButton>
+          <ListItemButton onClick={onLogout} sx={{ borderRadius: 1 }}>
+            <Logout sx={{ fontSize: 18, mr: 1, color: 'text.secondary' }} />
+            <ListItemText primary="Logout" slotProps={{ primary: { sx: { fontSize: '0.8125rem' } } }} />
+          </ListItemButton>
         </Box>
       </Box>
     </Drawer>

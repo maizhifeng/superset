@@ -19,6 +19,7 @@ import PageSpeedDial from '@/components/PageSpeedDial';
 import ListPageLayout from '@/components/ListPageLayout';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
 
@@ -101,12 +102,15 @@ export default function DatasetList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<TableChartIcon />}
-          title="No datasets found"
-          description={searchText ? 'Try adjusting your search query' : 'Create your first dataset to start building charts'}
-          action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')}>Create Dataset</Button> : undefined}
-        />
+        <>
+          <EmptyState
+            icon={<TableChartIcon />}
+            title="No datasets found"
+            description={searchText ? 'Try adjusting your search query' : 'Create your first dataset to start building charts'}
+            action={!searchText ? <Button variant="contained" size="small" onClick={() => navigate('/dataset/create')}>Create Dataset</Button> : undefined}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
         <ResponsiveDataGrid

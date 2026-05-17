@@ -37,7 +37,7 @@ export default function useDashboardToolbar({
         id: 'search',
         priority: 0,
         showOnMobile: false,
-        render: <ChatInput />,
+        render: <ChatInput placeholder="Ask anything about this dashboard..." />,
       },
       {
         id: 'filter',

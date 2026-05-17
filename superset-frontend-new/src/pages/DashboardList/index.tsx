@@ -24,6 +24,7 @@ import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
 import { ConfirmModal, Grid2 } from '@/superset-ui-mui/components';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import { cardEnter } from '@/theme/keyframes';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
@@ -81,11 +82,14 @@ export default function DashboardList() {
       error={error}
       hasData={dashboards.length > 0}
       emptyState={
-        <EmptyState
-          icon={<DashboardIcon />}
-          title="No dashboards found"
-          description={searchText ? 'Try adjusting your search query' : 'Create a dashboard to organize your charts in one place'}
-        />
+        <>
+          <EmptyState
+            icon={<DashboardIcon />}
+            title="No dashboards found"
+            description={searchText ? 'Try adjusting your search query' : 'Create a dashboard to organize your charts in one place'}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
       <Grid2 container spacing={2}>

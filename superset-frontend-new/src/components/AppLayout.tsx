@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { type ReactNode, useEffect, useMemo, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import AppBar from '@mui/material/AppBar';
@@ -17,7 +17,13 @@ import { useAuthStore } from '@/store/authStore';
 import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 import { useToolbar } from '@/contexts/ToolbarContext';
 import { useMenuSettings } from '@/store/menuSettings';
+import { useShortcutWithHelp } from '@/hooks/useShortcut';
 import GlobalSnackbar from '@/components/GlobalSnackbar';
+import ChatInput from '@/components/ChatInput';
+import TourGuide from '@/components/TourGuide';
+import ContextTip from '@/components/ContextTip';
+import SearchExamples from '@/components/SearchExamples';
+import { usePageTip } from '@/hooks/usePageTips';
 import AppNavBar from '@/components/AppLayout/AppNavBar';
 import AppBreadcrumbs from '@/components/AppLayout/AppBreadcrumbs';
 import UserMenu from '@/components/AppLayout/UserMenu';
@@ -47,11 +53,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const enabled = useMenuSettings(s => s.enabled);
   const [toolOverflowAnchor, setToolOverflowAnchor] = useState<HTMLElement | null>(null);
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
-  const [navMoreAnchor, setNavMoreAnchor] = useState<HTMLElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const navRef = useRef<HTMLDivElement>(null);
-  const [hiddenNavCount, setHiddenNavCount] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const pageTip = usePageTip();
+
+  useShortcutWithHelp(
+    '/',
+    e => { e.preventDefault(); setSearchOpen(prev => !prev); },
+    { label: 'Open Search', category: 'global', description: 'Press / to search dashboards, charts, datasets, and more.' },
+  );
 
   useEffect(() => {
     const parts = location.pathname.split('/').filter(Boolean);
@@ -81,27 +92,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const navItems = useMemo(() =>
     items.filter(item => item.id !== 'home' && enabled[item.id]),
   [items, enabled]);
-
-  useEffect(() => {
-    const el = navRef.current;
-    if (!el || navItems.length === 0 || el.clientWidth === 0) { setHiddenNavCount(0); return; }
-    const check = () => {
-      if (el.clientWidth === 0) { setHiddenNavCount(0); return; }
-      const children = Array.from(el.children) as HTMLElement[];
-      let w = 0;
-      let visible = 0;
-      for (let i = 0; i < children.length; i++) {
-        w += children[i].offsetWidth;
-        if (w > el.clientWidth) break;
-        visible++;
-      }
-      setHiddenNavCount(Math.max(0, navItems.length - visible));
-    };
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [navItems]);
 
   function isActive(path: string) {
     if (path === '/') return location.pathname === '/';
@@ -174,11 +164,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <AppNavBar
               navItems={navItems}
               isActive={isActive}
-              hiddenNavCount={hiddenNavCount}
-              navMoreAnchor={navMoreAnchor}
-              navRef={navRef}
-              onNavMoreOpen={e => setNavMoreAnchor(e.currentTarget)}
-              onNavMoreClose={() => setNavMoreAnchor(null)}
             />
           </Box>
 
@@ -198,15 +183,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           </IconButton>
           <Dialog
             open={searchOpen}
-            onClose={() => setSearchOpen(false)}
+            onClose={() => { setSearchOpen(false); setSearchQuery(''); }}
             fullWidth
             maxWidth="sm"
-            slotProps={{ paper: { sx: { position: 'fixed', top: 60, m: 0, borderRadius: 2 } } }}
+            slotProps={{
+              paper: {
+                sx: {
+                  position: 'fixed', top: '20vh', m: 0, borderRadius: 2,
+                  width: '90%', maxWidth: 520,
+                },
+              },
+              backdrop: { sx: { bgcolor: 'rgba(0,0,0,0.3)' } },
+            }}
           >
-            <DialogContent sx={{ p: 2 }} onClick={() => setSearchOpen(false)}>
-              {toolbarTools.filter(t => t.id === 'search').map(tool => (
-                <Box key={tool.id} onClick={e => e.stopPropagation()}>{tool.render}</Box>
-              ))}
+            <DialogContent sx={{ p: 2, pt: 2.5 }} onClick={() => setSearchOpen(false)}>
+              <Box onClick={e => e.stopPropagation()}>
+                <ChatInput
+                  autoFocus
+                  placeholder="Ask anything about your data..."
+                  disableMaxWidth
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                />
+                <SearchExamples onSelect={q => setSearchQuery(q)} />
+              </Box>
             </DialogContent>
           </Dialog>
           <AppBreadcrumbs
@@ -215,14 +215,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             customLabel={breadcrumbCustom?.label}
             onCrumbClick={handleCrumbClick}
           />
-          {toolbarTools.filter(t => t.id !== 'search' && !t.primary).length > 0 && (
-          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.5, px: 0.5, overflow: 'hidden', minWidth: 0 }}>
-            {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(0, 3).map((tool, i) => (
+          {toolbarTools.filter(t => t.id !== 'search' && !t.primary && t.render).length > 0 && (
+          <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 0.75, px: 0.5, overflow: 'hidden', minWidth: 0 }}>
+            {toolbarTools.filter(t => t.id !== 'search' && !t.primary && t.render).slice(0, 3).map((tool, i) => (
               <Box key={tool.id} sx={{ display: 'block', animation: `${toolFadeIn} 250ms cubic-bezier(0.4, 0, 0.2, 1) both`, animationDelay: `${i * 50}ms` }}>
                 {tool.render}
               </Box>
             ))}
-            {toolbarTools.filter(t => t.id !== 'search' && !t.primary).length > 3 && (
+            {toolbarTools.filter(t => t.id !== 'search' && !t.primary && t.render).length > 3 && (
               <IconButton size="small" onClick={e => setToolOverflowAnchor(e.currentTarget)}
                 sx={{ transition: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)', transform: Boolean(toolOverflowAnchor) ? 'rotate(90deg)' : 'rotate(0deg)' }}>
                 <MoreHorizIcon sx={{ fontSize: 18 }} />
@@ -231,7 +231,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <Menu anchorEl={toolOverflowAnchor} open={Boolean(toolOverflowAnchor)} onClose={() => setToolOverflowAnchor(null)} onClick={() => setToolOverflowAnchor(null)}
               slots={{ transition: Grow }} slotProps={{ transition: { timeout: 250 }, paper: { sx: { minWidth: 160, overflow: 'visible', filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.16))', mt: 0.75, '&::before': { content: '""', display: 'block', position: 'absolute', top: 0, right: 18, width: 10, height: 10, bgcolor: 'background.paper', transform: 'translateY(-50%) rotate(45deg)', zIndex: 0 } } } }}
               transformOrigin={{ horizontal: 'right', vertical: 'top' }} anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}>
-              {toolbarTools.filter(t => t.id !== 'search' && !t.primary).slice(3).map(tool => (
+              {toolbarTools.filter(t => t.id !== 'search' && !t.primary && t.render).slice(3).map(tool => (
                 <MenuItem key={tool.id} dense sx={{ fontSize: '0.8125rem', minHeight: 36 }}>{tool.render}</MenuItem>
               ))}
             </Menu>
@@ -254,9 +254,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </Toolbar>
       </AppBar>
 
-      <Box component="main" sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+      <Box component="main" sx={{ flex: 1, overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {pageTip && <ContextTip tip={pageTip} />}
         {children}
       </Box>
+      <TourGuide />
       <GlobalSnackbar />
       <MobileDrawer
         open={drawerOpen}

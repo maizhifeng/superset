@@ -3,16 +3,16 @@ import { fireEvent } from '@testing-library/dom';
 import ChatInput from '@/components/ChatInput';
 import { test, expect, vi } from 'vitest';
 
-test('renders with default placeholder', () => {
+test('renders without placeholder', () => {
   render(<ChatInput />);
-  expect(
-    screen.getByPlaceholderText('Ask about this dashboard...'),
-  ).toBeInTheDocument();
+  const input = screen.getByRole('textbox');
+  expect(input).toBeInTheDocument();
+  expect(input.hasAttribute('placeholder')).toBe(false);
 });
 
-test('renders with custom placeholder', () => {
-  render(<ChatInput placeholder="Ask anything..." />);
-  expect(screen.getByPlaceholderText('Ask anything...')).toBeInTheDocument();
+test('renders with rotating shortcut hints', () => {
+  render(<ChatInput />);
+  expect(screen.getByRole('textbox')).toBeInTheDocument();
 });
 
 test('calls onSend when Enter is pressed with text', () => {

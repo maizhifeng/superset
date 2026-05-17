@@ -20,6 +20,7 @@ import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
 import ListPageLayout from '@/components/ListPageLayout';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
@@ -122,11 +123,14 @@ export default function DatabaseList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<StorageIcon />}
-          title="No databases connected"
-          description={searchText ? 'Try adjusting your search query' : 'Connect a database to start exploring your data'}
-        />
+        <>
+          <EmptyState
+            icon={<StorageIcon />}
+            title="No databases connected"
+            description={searchText ? 'Try adjusting your search query' : 'Connect a database to start exploring your data'}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
       <ResponsiveDataGrid

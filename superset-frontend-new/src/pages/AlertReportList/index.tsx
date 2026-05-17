@@ -17,6 +17,7 @@ import ListPageLayout from '@/components/ListPageLayout';
 import { ConfirmModal } from '@/superset-ui-mui/components';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import EmptyState from '@/superset-ui-mui/components/EmptyState';
+import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
 import api from '@/api';
 import { usePaginatedList } from '@/hooks/usePaginatedList';
 
@@ -114,11 +115,14 @@ export default function AlertReportList() {
       error={error}
       hasData={rows.length > 0}
       emptyState={
-        <EmptyState
-          icon={<NotificationsIcon />}
-          title="No alerts or reports found"
-          description={searchText ? 'Try adjusting your search query' : 'Create an alert or report to get notified when conditions are met'}
-        />
+        <>
+          <EmptyState
+            icon={<NotificationsIcon />}
+            title="No alerts or reports found"
+            description={searchText ? 'Try adjusting your search query' : 'Create an alert or report to get notified when conditions are met'}
+          />
+          <EmptyStateShortcutHint />
+        </>
       }
     >
       <ResponsiveDataGrid

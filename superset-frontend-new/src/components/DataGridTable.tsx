@@ -16,11 +16,13 @@ export default function DataGridTable(props: DataGridProps) {
     <Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress size={24} /></Box>}>
       <DataGrid
       {...props}
+      autoHeight={false}
       rowHeight={isMobile ? 52 : undefined}
       columnBufferPx={isMobile ? 150 : 200}
       virtualizeColumnsWithAutoRowHeight={false}
       sx={[
         {
+          height: '100%',
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2,
@@ -81,7 +83,7 @@ export default function DataGridTable(props: DataGridProps) {
             fontSize: '0.75rem',
           },
           '& .MuiDataGrid-virtualScroller': {
-            minHeight: 200,
+            minHeight: 0,
           },
         },
         ...(Array.isArray(props.sx) ? props.sx : [props.sx]),

@@ -21,7 +21,7 @@ export default function AppBreadcrumbs({ items, customStatus, customLabel, onCru
       maxItems={4}
       itemsAfterCollapse={2}
       itemsBeforeCollapse={1}
-      sx={{ fontStyle: 'italic', pr: { xs: 1.5, sm: 0 }, '& .MuiBreadcrumbs-ol': { gap: 0, flexWrap: 'nowrap' } }}
+      sx={{ fontStyle: 'italic', '& .MuiBreadcrumbs-ol': { gap: 0, flexWrap: 'nowrap' } }}
     >
       {items.map((crumb, i) => (
         crumb.isId ? (
