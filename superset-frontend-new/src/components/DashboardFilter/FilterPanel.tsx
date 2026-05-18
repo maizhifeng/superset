@@ -1,14 +1,18 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
-import IconButton from '@mui/material/IconButton';
-import CircularProgress from '@mui/material/CircularProgress';
-import CloseIcon from '@mui/icons-material/Close';
-import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
-import api from '@/api';
-import type { FilterConfig, FilterState } from './types';
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import TextField from "@mui/material/TextField";
+import Autocomplete from "@mui/material/Autocomplete";
+import IconButton from "@mui/material/IconButton";
+import CircularProgress from "@mui/material/CircularProgress";
+import CloseIcon from "@mui/icons-material/Close";
+import FilterAltOffIcon from "@mui/icons-material/FilterAltOff";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
+import api from "@/api";
+import type { FilterConfig, FilterState } from "./types";
 
 interface FilterPanelProps {
   filters: FilterConfig[];
@@ -18,8 +22,8 @@ interface FilterPanelProps {
 }
 
 function formatTimeLabel(v: unknown): string {
-  const s = String(v ?? '');
-  if (!s || s === 'null') return s;
+  const s = String(v ?? "");
+  if (!s || s === "null") return s;
   const num = Number(s);
   if (!isNaN(num) && num > 1e12 && num < 1e16) {
     const d = new Date(num);
@@ -41,9 +45,11 @@ function FilterSelect({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
+  const [options, setOptions] = useState<{ label: string; value: string }[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -52,24 +58,42 @@ function FilterSelect({
     (async () => {
       setLoading(true);
       try {
-        const res = await api.get(`/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/`);
+        const res = await api.get(
+          `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/`,
+        );
         const raw: unknown[] = res.data?.result || [];
         const values: { label: string; value: string }[] = raw
           .filter((v): v is string => v != null)
-          .map(v => ({ value: String(v), label: filter.columnType === 'time' ? formatTimeLabel(v) : String(v) }));
+          .map((v) => ({
+            value: String(v),
+            label:
+              filter.columnType === "time" ? formatTimeLabel(v) : String(v),
+          }));
         if (!cancelled) setOptions(values);
       } catch {
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [filter.datasetId, filter.column, filter.columnType]);
 
   const selected = useMemo(() => {
-    if (Array.isArray(value)) return (value as string[]).map(v => ({ value: v, label: filter.columnType === 'time' ? formatTimeLabel(v) : v }));
-    if (value === undefined || value === null || value === '') return [];
-    return [{ value: String(value), label: filter.columnType === 'time' ? formatTimeLabel(value) : String(value) }];
+    if (Array.isArray(value))
+      return (value as string[]).map((v) => ({
+        value: v,
+        label: filter.columnType === "time" ? formatTimeLabel(v) : v,
+      }));
+    if (value === undefined || value === null || value === "") return [];
+    return [
+      {
+        value: String(value),
+        label:
+          filter.columnType === "time" ? formatTimeLabel(value) : String(value),
+      },
+    ];
   }, [value, filter.columnType]);
 
   return (
@@ -81,21 +105,36 @@ function FilterSelect({
       value={selected}
       inputValue={inputValue}
       onInputChange={(_, v) => setInputValue(v)}
-      onChange={(_, v) => onChange(v ? v.map(x => x.value) : [])}
+      onChange={(_, v) => onChange(v ? v.map((x) => x.value) : [])}
       filterSelectedOptions
       disableCloseOnSelect
+      openOnFocus
+      autoHighlight
       limitTags={2}
-      getOptionLabel={o => o.label}
+      getOptionLabel={(o) => o.label}
       isOptionEqualToValue={(o, v) => o.value === v.value}
+      noOptionsText="No matches"
       sx={{
-        '& .MuiInputBase-root': { minHeight: 36 },
-        '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem', minWidth: 60 },
+        "& .MuiInputBase-root": { minHeight: 36 },
+        "& .MuiInputBase-input": {
+          py: 0.5,
+          fontSize: "0.8125rem",
+          minWidth: 60,
+        },
       }}
       slotProps={{
-        chip: { size: 'small', sx: { height: 20 } },
-        popper: { sx: { '& .MuiAutocomplete-listbox .MuiAutocomplete-option': { minHeight: 28, fontSize: '0.8125rem' } } },
+        chip: { size: "small", sx: { height: 20 } },
+        popper: {
+          sx: {
+            "& .MuiAutocomplete-listbox .MuiAutocomplete-option": {
+              minHeight: 28,
+              fontSize: "0.8125rem",
+            },
+            "& .MuiPaper-root": { border: "1px solid", borderColor: "divider" },
+          },
+        },
       }}
-      renderInput={params => (
+      renderInput={(params) => (
         <TextField
           {...params}
           label={filter.name}
@@ -106,7 +145,9 @@ function FilterSelect({
               ...params.slotProps.input,
               endAdornment: (
                 <>
-                  {loading ? <CircularProgress color="inherit" size={14} /> : null}
+                  {loading ? (
+                    <CircularProgress color="inherit" size={14} />
+                  ) : null}
                   {params.slotProps.input.endAdornment}
                 </>
               ),
@@ -127,11 +168,11 @@ function FilterText({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const [local, setLocal] = useState(String(value || ''));
+  const [local, setLocal] = useState(String(value || ""));
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    setLocal(String(value || ''));
+    setLocal(String(value || ""));
   }, [value]);
 
   const handleChange = (v: string) => {
@@ -149,10 +190,10 @@ function FilterText({
       label={label}
       placeholder="Type..."
       value={local}
-      onChange={e => handleChange(e.target.value)}
+      onChange={(e) => handleChange(e.target.value)}
       sx={{
-        '& .MuiInputBase-root': { minHeight: 36 },
-        '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem' },
+        "& .MuiInputBase-root": { minHeight: 36 },
+        "& .MuiInputBase-input": { py: 0.5, fontSize: "0.8125rem" },
       }}
     />
   );
@@ -165,33 +206,38 @@ function FilterNumericalRange({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const range = (Array.isArray(value) ? value : [undefined, undefined]) as [number | undefined, number | undefined];
+  const range = (Array.isArray(value) ? value : [undefined, undefined]) as [
+    number | undefined,
+    number | undefined,
+  ];
 
   const rangeSx = {
     flex: 1,
-    '& .MuiInputBase-root': { minHeight: 36 },
-    '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem' },
+    "& .MuiInputBase-root": { minHeight: 36 },
+    "& .MuiInputBase-input": { py: 0.5, fontSize: "0.8125rem" },
   };
   return (
-    <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+    <Box sx={{ display: "flex", gap: 0.75, alignItems: "center" }}>
       <TextField
         size="small"
         type="number"
         placeholder="Min"
-        value={range[0] ?? ''}
-        onChange={e => {
+        value={range[0] ?? ""}
+        onChange={(e) => {
           const min = e.target.value ? Number(e.target.value) : undefined;
           onChange([min, range[1]]);
         }}
         sx={rangeSx}
       />
-      <Typography variant="body2" color="text.secondary">—</Typography>
+      <Typography variant="body2" color="text.secondary">
+        —
+      </Typography>
       <TextField
         size="small"
         type="number"
         placeholder="Max"
-        value={range[1] ?? ''}
-        onChange={e => {
+        value={range[1] ?? ""}
+        onChange={(e) => {
           const max = e.target.value ? Number(e.target.value) : undefined;
           onChange([range[0], max]);
         }}
@@ -210,21 +256,72 @@ function FilterDate({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const strVal = typeof value === 'string' ? value : '';
+  const range = (Array.isArray(value) ? value : [null, null]) as [
+    string | null,
+    string | null,
+  ];
+  const start = range[0] ? dayjs(range[0].replace(/\//g, "-")) : null;
+  const end = range[1] ? dayjs(range[1].replace(/\//g, "-")) : null;
+
+  const pickerSx = {
+    width: 190,
+    flexShrink: 0,
+    "& .MuiPickersInputBase-root": { minHeight: 36, fontSize: "0.8125rem" },
+    "& .MuiPickersInputBase-input": { py: 0.5, fontSize: "0.8125rem" },
+    "& .MuiPickersSectionList-sectionContent": { fontSize: "0.8125rem" },
+    "& .MuiPickersSectionList-section": {
+      display: "inline-flex",
+      whiteSpace: "nowrap",
+    },
+    "& .MuiFormLabel-root": { fontSize: "0.8125rem" },
+    "& .MuiSvgIcon-root": { fontSize: 18 },
+  };
+
   return (
-    <TextField
-      size="small"
-      type="date"
-      fullWidth
-      label={label}
-      value={strVal}
-      onChange={e => onChange(e.target.value || undefined)}
-      slotProps={{ inputLabel: { shrink: true } }}
-      sx={{
-        '& .MuiInputBase-root': { minHeight: 36 },
-        '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem' },
-      }}
-    />
+    <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <Box
+        sx={{ display: "flex", gap: 0.75, alignItems: "center", minWidth: 0 }}
+      >
+        <DatePicker
+          label={`${label} (from)`}
+          value={start}
+          onChange={(v) => {
+            const s = v?.isValid() ? v.format("YYYY/MM/DD") : null;
+            onChange([s, range[1]]);
+          }}
+          format="YYYY/MM/DD"
+          slotProps={{
+            textField: {
+              size: "small",
+              sx: pickerSx,
+            },
+          }}
+        />
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          —
+        </Typography>
+        <DatePicker
+          label={`${label} (to)`}
+          value={end}
+          onChange={(v) => {
+            const e = v?.isValid() ? v.format("YYYY/MM/DD") : null;
+            onChange([range[0], e]);
+          }}
+          minDate={start ?? undefined}
+          format="YYYY/MM/DD"
+          slotProps={{
+            textField: {
+              size: "small",
+              sx: pickerSx,
+            },
+          }}
+        />
+      </Box>
+    </LocalizationProvider>
   );
 }
 
@@ -233,17 +330,27 @@ function renderFilterControl(
   value: unknown,
   onChange: (value: unknown) => void,
 ) {
-  if (filter.columnType === 'time' && /_date/i.test(filter.column)) {
-    return <FilterDate label={filter.name} value={value} onChange={onChange} />;
-  }
   switch (filter.filterType) {
-    case 'text':
-      return <FilterText label={filter.name} value={value} onChange={onChange} />;
-    case 'numerical_range':
+    case "text":
+      return (
+        <FilterText label={filter.name} value={value} onChange={onChange} />
+      );
+    case "numerical_range":
       return <FilterNumericalRange value={value} onChange={onChange} />;
-    case 'value':
-    case 'filter_select':
+    case "time_range":
+    case "time_column":
+    case "time_grain":
+      return (
+        <FilterDate label={filter.name} value={value} onChange={onChange} />
+      );
+    case "value":
+    case "filter_select":
     default:
+      if (filter.columnType === "time" && /_date/i.test(filter.column)) {
+        return (
+          <FilterDate label={filter.name} value={value} onChange={onChange} />
+        );
+      }
       return <FilterSelect filter={filter} value={value} onChange={onChange} />;
   }
 }
@@ -259,18 +366,20 @@ export default function FilterPanel({
 
   const visibleFilters = useMemo(() => {
     if (visibleIds) {
-      return filters.filter(f => visibleIds.has(f.id));
+      return filters.filter((f) => visibleIds.has(f.id));
     }
     return filters.slice(0, 8);
   }, [filters, visibleIds]);
 
   const initVisibleIds = useCallback(() => {
     if (!visibleIds && filters.length > 0) {
-      setVisibleIds(new Set(filters.slice(0, 8).map(f => f.id)));
+      setVisibleIds(new Set(filters.slice(0, 8).map((f) => f.id)));
     }
   }, [visibleIds, filters]);
 
-  useEffect(() => { initVisibleIds(); }, [initVisibleIds]);
+  useEffect(() => {
+    initVisibleIds();
+  }, [initVisibleIds]);
 
   useEffect(() => {
     if (pendingFilterIds && visibleIds) {
@@ -288,7 +397,7 @@ export default function FilterPanel({
   }, [pendingFilterIds, visibleIds]);
 
   const handleRemoveFilter = useCallback((id: string) => {
-    setVisibleIds(prev => {
+    setVisibleIds((prev) => {
       const next = new Set(prev);
       next.delete(id);
       return next;
@@ -298,30 +407,59 @@ export default function FilterPanel({
   return (
     <Box sx={{ px: 1.25, py: 0.5 }}>
       {filters.length === 0 ? (
-        <Box sx={{ py: 2, textAlign: 'center' }}>
-          <FilterAltOffIcon sx={{ fontSize: 28, color: 'text.disabled', mb: 0.5 }} />
+        <Box sx={{ py: 2, textAlign: "center" }}>
+          <FilterAltOffIcon
+            sx={{ fontSize: 28, color: "text.disabled", mb: 0.5 }}
+          />
           <Typography variant="body2" color="text.secondary">
             No filters configured for this dashboard.
           </Typography>
         </Box>
       ) : (
-        <Box sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-          gap: 0.75,
-          mt: 0.5,
-        }}>
-          {visibleFilters.map(filter => (
-            <Box key={filter.id} sx={{ position: 'relative' }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(4, 1fr)",
+            },
+            gap: 0.75,
+            mt: 0.5,
+            overflow: "hidden",
+          }}
+        >
+          {visibleFilters.map((filter) => (
+            <Box key={filter.id} sx={{ position: "relative" }}>
               <IconButton
                 size="small"
                 onClick={() => handleRemoveFilter(filter.id)}
-                sx={{ position: 'absolute', top: 0, right: 0, zIndex: 1, p: 0.125, color: '#fff', bgcolor: 'error.main', '&:hover': { bgcolor: 'error.dark' }, width: 14, height: 14, minWidth: 0 }}
+                sx={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  zIndex: 1,
+                  p: 0.125,
+                  color: "#fff",
+                  bgcolor: "error.main",
+                  "&:hover": { bgcolor: "error.dark" },
+                  width: 14,
+                  height: 14,
+                  minWidth: 0,
+                }}
               >
                 <CloseIcon sx={{ fontSize: 8 }} />
               </IconButton>
-              {filter.filterType === 'numerical_range' ? (
-                <Typography variant="caption" sx={{ fontWeight: 500, mb: 0.125, display: 'block', lineHeight: 1.4 }}>
+              {filter.filterType === "numerical_range" ? (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 500,
+                    mb: 0.125,
+                    display: "block",
+                    lineHeight: 1.4,
+                  }}
+                >
                   {filter.name}
                 </Typography>
               ) : null}

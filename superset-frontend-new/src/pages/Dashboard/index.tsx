@@ -19,8 +19,8 @@ import {
   DashboardFilterDrawer,
   useDashboardFilters,
 } from "@/components/DashboardFilter";
-import type { AdhocFilter } from "@/components/DashboardFilter/types";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
+import type { SimpleFilter } from "@/utils/query/types";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
@@ -113,27 +113,48 @@ export default function Dashboard() {
         columnType: "string";
       }[] = [];
       const seen = new Set<string>();
-      const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
       const stringTypes = /varchar|char|text|string/i;
       for (const dsId of dsIds) {
         try {
           const res = await api.get<{
-            result: { columns: { column_name: string; type: string | null }[] };
+            result: {
+              columns: {
+                column_name: string;
+                type: string | null;
+                is_dttm: boolean;
+                expression: string | null;
+                filterable: boolean;
+                extra: string | null;
+              }[];
+            };
           }>(`/dataset/${dsId}`);
           const cols = res.data.result.columns ?? [];
           for (const col of cols) {
             if (!col.column_name || !col.type) continue;
-            if (!timeTypes.test(col.type) && !stringTypes.test(col.type))
-              continue;
             const key = `${dsId}:${col.column_name}`;
             if (seen.has(key)) continue;
             seen.add(key);
-            if (timeTypes.test(col.type))
+            let extra: Record<string, unknown> | null = null;
+            try {
+              extra = col.extra ? JSON.parse(col.extra) : null;
+            } catch {
+              /* ignore */
+            }
+            const dashFilter = extra?.dashboard_filter === true;
+            if (!dashFilter) continue;
+            if (col.is_dttm && col.expression)
               timeCols.push({
                 datasetId: dsId,
                 column: col.column_name,
                 name: col.column_name,
                 columnType: "time",
+              });
+            else if (stringTypes.test(col.type))
+              stringCols.push({
+                datasetId: dsId,
+                column: col.column_name,
+                name: col.column_name,
+                columnType: "string",
               });
             else
               stringCols.push({
@@ -165,8 +186,8 @@ export default function Dashboard() {
     dashboard?.json_metadata ?? null,
     dashboardDimensions,
   );
-  const extraFiltersRef = useRef<AdhocFilter[]>([]);
-  extraFiltersRef.current = buildAdhocFilters();
+  const buildAdhocFiltersRef = useRef(buildAdhocFilters);
+  buildAdhocFiltersRef.current = buildAdhocFilters;
 
   const hiddenFilters = useMemo(() => filters.slice(8), [filters]);
   const [pendingFilterIds, setPendingFilterIds] = useState<string[]>([]);
@@ -363,6 +384,7 @@ export default function Dashboard() {
 
   const getChartDataWithFilters = useCallback(
     async (chartIds: number[], metaMap: Record<number, ChartData>) => {
+      const buildFn = buildAdhocFiltersRef.current;
       const dataPromises = chartIds.map(async (cid) => {
         const chart = metaMap[cid];
         if (!chart) return { id: cid, data: {} };
@@ -375,8 +397,14 @@ export default function Dashboard() {
           const query = buildQueryObject(fd, chart.viz_type);
           if (!query.metrics || query.metrics.length === 0)
             return { id: cid, data: {} };
-          const adhocFilters = buildAdhocFilters(dsId);
-          if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+          const adhocFilters = buildFn(dsId);
+          if (adhocFilters.length > 0) {
+            query.filters = adhocFilters.map((f) => ({
+              col: f.subject,
+              op: f.operator,
+              val: f.comparator,
+            })) as SimpleFilter[];
+          }
           const force =
             adhocFilters.length > 0 || chartDataRef.current[cid]?.data != null;
           const payload = {
@@ -406,8 +434,11 @@ export default function Dashboard() {
       });
       return dataMap;
     },
-    [buildAdhocFilters],
+    [],
   );
+
+  const chartMetaRef = useRef(chartMeta);
+  chartMetaRef.current = chartMeta;
 
   const chartDataRef = useRef(chartData);
   chartDataRef.current = chartData;
@@ -452,8 +483,15 @@ export default function Dashboard() {
         if (!dsId) return;
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || query.metrics.length === 0) return;
-        const adhocFilters = buildAdhocFilters(dsId);
-        if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+        const buildFn = buildAdhocFiltersRef.current;
+        const adhocFilters = buildFn(dsId);
+        if (adhocFilters.length > 0) {
+          query.filters = adhocFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          })) as SimpleFilter[];
+        }
         const force = adhocFilters.length > 0;
         const payload = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
@@ -473,7 +511,7 @@ export default function Dashboard() {
         /* mirror fetch failed */
       }
     },
-    [chartMeta, filterDataLocal, buildAdhocFilters],
+    [chartMeta, filterDataLocal],
   );
 
   const refreshChart = useCallback(
@@ -488,8 +526,15 @@ export default function Dashboard() {
         if (!dsId) return;
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || query.metrics.length === 0) return;
-        const adhocFilters = buildAdhocFilters(dsId);
-        if (adhocFilters.length > 0) query.adhoc_filters = adhocFilters;
+        const buildFn = buildAdhocFiltersRef.current;
+        const adhocFilters = buildFn(dsId);
+        if (adhocFilters.length > 0) {
+          query.filters = adhocFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          })) as SimpleFilter[];
+        }
         const payload = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
           queries: [query],
@@ -510,14 +555,14 @@ export default function Dashboard() {
         /* refresh failed */
       }
     },
-    [chartMeta, buildAdhocFilters],
+    [chartMeta],
   );
 
   const refreshAllCharts = useCallback(async () => {
-    const ids = Object.keys(chartMeta).map(Number);
+    const ids = Array.from(dashboardChartIds);
     if (ids.length === 0) return;
     const newData = await getChartDataWithFilters(ids, chartMeta);
-    setChartData(newData);
+    setChartData((prev) => ({ ...prev, ...newData }));
     if (compareConfig?.enabled) {
       const freshData = newData[compareConfig.chartId];
       fetchMirrorData(
@@ -526,7 +571,15 @@ export default function Dashboard() {
         freshData,
       );
     }
-  }, [chartMeta, compareConfig, fetchMirrorData, getChartDataWithFilters]);
+  }, [
+    dashboardChartIds,
+    chartMeta,
+    compareConfig,
+    fetchMirrorData,
+    getChartDataWithFilters,
+  ]);
+  const refreshAllChartsRef = useRef(refreshAllCharts);
+  refreshAllChartsRef.current = refreshAllCharts;
 
   const pageKey = `dashboard_${id}`;
   useDashboardToolbar({
@@ -567,51 +620,96 @@ export default function Dashboard() {
   );
 
   const saveLayout = useCallback(async () => {
-    if (!id || isSavingRef.current) return;
+    if (!id) {
+      console.warn("[saveLayout] no id");
+      return;
+    }
     isSavingRef.current = true;
     setSaving(true);
     try {
       const updatedPosition = produce(fullPositionRef.current, (draft) => {
+        const d = draft as Record<string, unknown>;
+        d["DASHBOARD_VERSION_KEY"] = "v2";
+
+        // Copy nodes from nodeMap (unfreeze with spread)
         for (const [key, node] of Object.entries(nodeMapRef.current)) {
-          if (node.type) {
-            draft[key] = node as unknown as Record<string, unknown>;
+          if (!node.type) continue;
+          if (
+            node.type === "CHART" &&
+            node.meta?.chartId != null &&
+            !chartMetaRef.current[node.meta.chartId as number]
+          ) {
+            delete d[key];
+            continue;
+          }
+          d[key] = { ...node } as unknown as Record<string, unknown>;
+        }
+
+        // Remove children references to deleted charts
+        for (const key of Object.keys(d)) {
+          const n = d[key] as Record<string, unknown> | undefined;
+          if (
+            n &&
+            typeof n === "object" &&
+            "children" in n &&
+            Array.isArray(n.children)
+          ) {
+            n.children = n.children.filter(
+              (childId: string) => d[childId] && typeof d[childId] === "object",
+            );
           }
         }
-      }) as Record<string, { type?: string; children?: string[] }>;
-      const rootKey = Object.keys(updatedPosition).find(
-        (k) => updatedPosition[k]?.type === "ROOT",
-      );
-      if (rootKey && rootKey !== "ROOT_ID") {
-        updatedPosition["ROOT_ID"] = updatedPosition[rootKey];
-        delete updatedPosition[rootKey];
-        const gridId = updatedPosition["ROOT_ID"]?.children?.[0];
-        if (gridId && gridId !== "GRID_ID" && updatedPosition[gridId]) {
-          updatedPosition["GRID_ID"] = updatedPosition[gridId];
-          delete updatedPosition[gridId];
-          const replaceGrid = (node: {
-            type?: string;
-            children?: string[];
-          }) => {
-            if (node.children) {
-              node.children = node.children.map((c: string) =>
-                c === gridId ? "GRID_ID" : c,
-              );
+
+        // Remove stale CHART nodes that are no longer in nodeMap
+        for (const key of Object.keys(d)) {
+          const n = d[key] as Record<string, unknown> | undefined;
+          if (
+            n &&
+            typeof n === "object" &&
+            n.type === "CHART" &&
+            !nodeMapRef.current[key]
+          ) {
+            delete d[key];
+          }
+        }
+
+        // Normalize ROOT and GRID keys (backend expects ROOT_ID/GRID_ID)
+        const rootKey = Object.keys(d).find((k) => {
+          const v = d[k] as Record<string, unknown> | undefined;
+          return v?.type === "ROOT";
+        });
+        if (rootKey && rootKey !== "ROOT_ID") {
+          const rootVal = d[rootKey] as Record<string, unknown> | undefined;
+          if (rootVal) {
+            d["ROOT_ID"] = { ...rootVal, id: "ROOT_ID" };
+            delete d[rootKey];
+            const children = d["ROOT_ID"] as
+              | Record<string, unknown>
+              | undefined;
+            const gridId = (children?.children as string[] | undefined)?.[0];
+            if (gridId && gridId !== "GRID_ID" && d[gridId]) {
+              const gridVal = d[gridId] as Record<string, unknown> | undefined;
+              if (gridVal) {
+                d["GRID_ID"] = { ...gridVal, id: "GRID_ID" };
+                delete d[gridId];
+                const replaceChildRef = (obj: Record<string, unknown>) => {
+                  const kids = obj.children as string[] | undefined;
+                  if (kids) {
+                    obj.children = kids.map((c) =>
+                      c === gridId ? "GRID_ID" : c,
+                    );
+                  }
+                };
+                replaceChildRef(d["ROOT_ID"] as Record<string, unknown>);
+                replaceChildRef(d["GRID_ID"] as Record<string, unknown>);
+              }
             }
-          };
-          replaceGrid(updatedPosition["ROOT_ID"]!);
-          replaceGrid(updatedPosition["GRID_ID"]!);
-          if (nodeMapRef.current[rootKey]) {
-            nodeMapRef.current["ROOT_ID"] = nodeMapRef.current[rootKey];
-            delete nodeMapRef.current[rootKey];
-          }
-          if (nodeMapRef.current[gridId]) {
-            nodeMapRef.current["GRID_ID"] = nodeMapRef.current[gridId];
-            delete nodeMapRef.current[gridId];
           }
         }
-      }
+      }) as Record<string, Record<string, unknown>>;
+      const saved = JSON.stringify(updatedPosition);
       await api.put(`/dashboard/${id}`, {
-        position_json: JSON.stringify(updatedPosition),
+        position_json: saved,
       });
       fullPositionRef.current = updatedPosition;
     } catch {
@@ -637,19 +735,19 @@ export default function Dashboard() {
       setFilter(id, value);
       if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
       filterTimerRef.current = setTimeout(() => {
-        refreshAllCharts();
+        refreshAllChartsRef.current();
       }, 300);
     },
-    [setFilter, refreshAllCharts],
+    [setFilter],
   );
 
   const handleClearAll = useCallback(() => {
     clearAll();
     if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
     filterTimerRef.current = setTimeout(() => {
-      refreshAllCharts();
+      refreshAllChartsRef.current();
     }, 300);
-  }, [clearAll, refreshAllCharts]);
+  }, [clearAll]);
 
   const handleFilterDrawerClose = useCallback(() => {
     setFilterDrawerOpen(false);
@@ -691,8 +789,29 @@ export default function Dashboard() {
   const handleAddChartSelect = useCallback(
     async (chart: { id: number; slice_name: string; viz_type: string }) => {
       setAddChartDialogOpen(false);
+      const alreadyInLayout = Object.values(nodeMapRef.current).some(
+        (n) => n.type === "CHART" && n.meta?.chartId === chart.id,
+      );
+      if (alreadyInLayout) return;
+
+      let chartMetaData: ChartData | undefined;
+      try {
+        const metaRes = await api.get<{ result: ChartData }>(
+          `/chart/${chart.id}`,
+        );
+        chartMetaData = metaRes.data?.result;
+      } catch {
+        /* ignore */
+      }
+      if (chartMetaData) {
+        chartMetaRef.current = {
+          ...chartMetaRef.current,
+          [chart.id]: chartMetaData,
+        };
+        setChartMeta((prev) => ({ ...prev, [chart.id]: chartMetaData }));
+      }
+
       const chartKey = `CHART-${chart.id}`;
-      if (nodeMapRef.current[chartKey]) return;
       const newNode: LayoutNode = {
         id: chartKey,
         type: "CHART",
@@ -704,40 +823,100 @@ export default function Dashboard() {
           sliceName: chart.slice_name,
         },
       };
-      const gridNode = Object.values(nodeMapRef.current).find(
+      let gridNode = Object.values(nodeMapRef.current).find(
         (n) => n.type === "GRID",
       );
-      if (!gridNode) return;
+      let rootNode = Object.values(nodeMapRef.current).find(
+        (n) => n.type === "ROOT",
+      );
       const updatedNodeMap = { ...nodeMapRef.current, [chartKey]: newNode };
-      const updatedGrid = {
-        ...gridNode,
-        children: [...(gridNode.children || []), chartKey],
-      };
-      updatedNodeMap[gridNode.id] = updatedGrid;
+
+      if (!gridNode || !rootNode) {
+        const gridId = "GRID_ID";
+        const rootId = "ROOT_ID";
+        const grid: LayoutNode = {
+          id: gridId,
+          type: "GRID",
+          children: [chartKey],
+        };
+        const root: LayoutNode = {
+          id: rootId,
+          type: "ROOT",
+          children: [gridId],
+        };
+        updatedNodeMap[rootId] = root;
+        updatedNodeMap[gridId] = grid;
+        setGridId(gridId);
+      } else {
+        const updatedGrid = {
+          ...gridNode,
+          children: [...(gridNode.children || []), chartKey],
+        };
+        updatedNodeMap[gridNode.id] = updatedGrid;
+      }
       nodeMapRef.current = updatedNodeMap;
       setNodeMap(updatedNodeMap);
       fullPositionRef.current = {
         ...fullPositionRef.current,
-        [chartKey]: newNode,
+        ...updatedNodeMap,
       };
-      saveLayout();
-      try {
-        const metaRes = await api.get<{ result: ChartData }>(
-          `/chart/${chart.id}`,
-        );
-        const chartMetaData = metaRes.data?.result;
-        if (chartMetaData) {
-          setChartMeta((prev) => ({ ...prev, [chart.id]: chartMetaData }));
+      await saveLayout();
+      if (chartMetaData) {
+        try {
           const newData = await getChartDataWithFilters([chart.id], {
             [chart.id]: chartMetaData,
           });
           setChartData((prev) => ({ ...prev, ...newData }));
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
     },
     [saveLayout, getChartDataWithFilters],
+  );
+
+  const handleDeleteChart = useCallback(
+    async (chartId: number) => {
+      const chartKey = `CHART-${chartId}`;
+      const node = nodeMapRef.current[chartKey];
+      if (!node || node.type !== "CHART") return;
+
+      const updatedNodeMap: Record<string, LayoutNode> = {};
+      for (const [key, n] of Object.entries(nodeMapRef.current)) {
+        if (n.type === "CHART" && n.meta?.chartId === chartId) continue;
+        if (n.children?.includes(chartKey)) {
+          updatedNodeMap[key] = {
+            ...n,
+            children: n.children.filter((c) => c !== chartKey),
+          };
+        } else {
+          updatedNodeMap[key] = n;
+        }
+      }
+      delete updatedNodeMap[chartKey];
+
+      nodeMapRef.current = updatedNodeMap;
+      setNodeMap(updatedNodeMap);
+      setChartMeta((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+      const metaRef = chartMetaRef.current;
+      if (metaRef[chartId]) {
+        const next = { ...metaRef };
+        delete next[chartId];
+        chartMetaRef.current = next;
+      }
+      setChartData((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
+      setDashboardDimensions([]);
+      await saveLayout();
+    },
+    [saveLayout],
   );
 
   useEffect(() => {
@@ -829,6 +1008,7 @@ export default function Dashboard() {
           onEdit={(chartId: number) =>
             setSearchParams({ slice_id: String(chartId) })
           }
+          onDelete={handleDeleteChart}
           compareConfig={compareConfig}
           mirrorData={mirrorData}
           onToggleCompare={handleToggleCompare}

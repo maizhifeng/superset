@@ -12,7 +12,12 @@ export interface DashboardData {
   position_json: string;
   json_metadata: string;
   charts: string[];
-  created_by?: { email?: string; username?: string; first_name?: string; last_name?: string };
+  created_by?: {
+    email?: string;
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+  };
 }
 
 export interface ChartData {
@@ -72,7 +77,7 @@ export interface DatasetRow {
   table_name: string;
   schema: string | null;
   database: { database_name: string } | null;
-  kind: 'physical' | 'virtual';
+  kind: "physical" | "virtual";
   changed_on_delta_humanized: string;
 }
 
@@ -88,6 +93,7 @@ export interface DatasetColumn {
   groupby: boolean;
   is_active: boolean;
   type_generic: number | null;
+  extra: string | null;
 }
 
 export interface DatasetMetric {

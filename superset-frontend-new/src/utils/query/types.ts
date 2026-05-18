@@ -1,12 +1,12 @@
-export type VizType = 'line' | 'bar' | 'pie' | 'table' | 'big_number' | 'auto';
+export type VizType = "line" | "bar" | "pie" | "table" | "big_number" | "auto";
 
 export interface DatasourceKey {
   id: number;
-  type: 'table' | 'query';
+  type: "table" | "query";
 }
 
 export interface AdhocMetric {
-  expressionType: 'SIMPLE' | 'SQL';
+  expressionType: "SIMPLE" | "SQL";
   column?: { column_name: string };
   aggregate?: string;
   label?: string;
@@ -15,18 +15,25 @@ export interface AdhocMetric {
 
 export type QueryOrderBy = [string | AdhocMetric, boolean];
 
+export interface SimpleFilter {
+  col: string;
+  op: string;
+  val: string;
+}
+
 export interface QueryObject {
-  result_type?: 'full' | 'columns' | 'post_processed';
+  result_type?: "full" | "columns" | "post_processed";
   metrics?: (string | AdhocMetric)[];
   groupby?: string[];
   columns?: string[];
   adhoc_filters?: {
-    clause: 'WHERE' | 'HAVING';
-    expressionType: 'SIMPLE' | 'SQL';
+    clause: "WHERE" | "HAVING";
+    expressionType: "SIMPLE" | "SQL";
     subject: string;
     operator: string;
     comparator: string;
   }[];
+  filters?: SimpleFilter[];
   granularity?: string;
   time_range?: string;
   row_limit?: number;
