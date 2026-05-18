@@ -88,7 +88,8 @@ const GridRow = styled.div<{ editMode: boolean }>`
     width: 100%;
     height: fit-content;
 
-    ${!editMode && css`
+    ${!editMode &&
+    css`
       justify-content: space-between;
     `}
 

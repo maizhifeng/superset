@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react';
+import { memo, useRef, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Card from '@mui/material/Card';
@@ -14,6 +14,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff';
 import ReactEChartsCore from 'echarts-for-react/lib/core';
 import { buildEChartsOption, echarts } from '@/utils/echarts';
 import DataPreviewTable from '@/components/DataPreviewTable';
+import type { CellFormatter } from '@/components/DataPreviewTable';
 import { useEChartsType } from '@/hooks/useEChartsType';
 import MirrorTable from '@/pages/Dashboard/MirrorTable';
 
@@ -50,6 +51,42 @@ function ChartCard({
   const option = data ? buildEChartsOption(vizType, data) : null;
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  function formatDateValue(value: unknown): string | null {
+    if (typeof value === 'number') {
+      if (value > 1e12 && value < 1e16) {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
+      }
+      if (value > 19000000 && value < 21000000 && value < 1e9) {
+        const s = String(Math.floor(value));
+        if (s.length === 8) {
+          return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+        }
+      }
+    }
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+    return null;
+  }
+
+  const tableFormatCell: CellFormatter | undefined = useMemo(() => {
+    const colnames = (data as Record<string, unknown>).colnames as string[] | undefined;
+    const coltypes = (data as Record<string, unknown>).coltypes as number[] | undefined;
+    if (!colnames || !coltypes) return undefined;
+    const dateCols = new Set(colnames.filter((_, i) => coltypes[i] === 2));
+    if (dateCols.size === 0) return undefined;
+    return (key: string, value: unknown) => {
+      if (value === null || value === undefined) return '';
+      if (dateCols.has(key)) {
+        const formatted = formatDateValue(value);
+        if (formatted !== null) return formatted;
+      }
+      return String(value);
+    };
+  }, [data]);
 
   const touchStart = () => {
     if (containerWidth >= 600) return;
@@ -107,16 +144,17 @@ function ChartCard({
           </IconButton>
         </Tooltip>
       </Box>
-      <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', minHeight: 0, overflow: 'auto' }}>
+      <CardContent sx={{ flex: 1, p: 1, '&:last-child': { pb: 1 }, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {vizType === 'table' && data ? (
           isCompareActive ? (
             <MirrorTable
               dimensions={compareConfig.dimensions}
               data={mirrorData}
               onClose={() => onToggleCompare(chartId)}
+              formatCell={tableFormatCell}
             />
           ) : (
-            <DataPreviewTable data={data} maxRows={100} />
+            <DataPreviewTable data={data} maxRows={100} formatCell={tableFormatCell} />
           )
         ) : option && chartLibReady ? (
           <ReactEChartsCore
@@ -150,5 +188,6 @@ export default memo(ChartCard, (prev, next) => {
     && prev.sliceName === next.sliceName
     && prev.data === next.data
     && prev.mirrorData === next.mirrorData
-    && prev.compareConfig === next.compareConfig;
+    && prev.compareConfig === next.compareConfig
+    && prev.onRefresh === next.onRefresh;
 });

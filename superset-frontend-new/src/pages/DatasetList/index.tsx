@@ -87,7 +87,7 @@ export default function DatasetList() {
             </IconButton>
           </Tooltip>
           <Tooltip title="Delete">
-            <IconButton size="small" onClick={() => setDeleteTarget({ id: params.id as number, name: params.row.table_name })}>
+            <IconButton size="small" onClick={e => { e.stopPropagation(); setDeleteTarget({ id: params.id as number, name: params.row.table_name }); }}>
               <DeleteIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -130,9 +130,17 @@ export default function DatasetList() {
           onBatchDelete={async ids => { await Promise.all(ids.map(id => api.delete(`/dataset/${id}`))); fetchData(); }}
           renderCard={row => (
             <>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
-                {row.table_name}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, flex: 1 }}>
+                  {row.table_name}
+                </Typography>
+                <IconButton size="small" onClick={e => { e.stopPropagation(); navigate(`/dataset/edit/${row.id}`); }} sx={{ p: 0.25 }}>
+                  <EditIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+                <IconButton size="small" onClick={e => { e.stopPropagation(); setDeleteTarget({ id: row.id, name: row.table_name }); }} sx={{ p: 0.25, color: 'error.main' }}>
+                  <DeleteIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 0.25, mt: 0.25 }}>
                 {row.schema && <Chip label={row.schema} size="small" variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />}
                 <Chip label={row.kind} size="small" color={row.kind === 'physical' ? 'primary' : 'secondary'} variant="outlined" sx={{ height: 16, fontSize: '0.55rem', '& .MuiChip-label': { px: 0.5 } }} />

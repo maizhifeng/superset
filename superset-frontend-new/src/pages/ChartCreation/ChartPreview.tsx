@@ -41,7 +41,7 @@ export default function ChartPreview({
         )}
       </Box>
 
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper', minHeight: 200, overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper', minHeight: 200, overflow: 'auto' }}>
         {!datasourceId ? (
           <Typography variant="body2" color="text.disabled">Select a dataset to see preview</Typography>
         ) : !hasValidType ? (
@@ -53,7 +53,7 @@ export default function ChartPreview({
         ) : resolvedType === 'table' ? (
           <DataPreviewTable
             data={chartData}
-            maxRows={50}
+            maxRows={500}
             formatCell={(key, val) => {
               if (val === null || val === undefined) return '';
               if (typeof val === 'number' && /year|date|time/i.test(key)) {

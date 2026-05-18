@@ -44,8 +44,12 @@ export function useApiList<D extends object = any>({
   enabled = true,
 }: UseApiListOptions) {
   const queryClient = useQueryClient();
-  const { pageIndex, pageSize, sortBy, filters: filterValues } =
-    fetchDataConfig;
+  const {
+    pageIndex,
+    pageSize,
+    sortBy,
+    filters: filterValues,
+  } = fetchDataConfig;
 
   const filterExps = (baseFilters || [])
     .concat(filterValues || [])
@@ -85,11 +89,14 @@ export function useApiList<D extends object = any>({
         return { result: json.result, count: json.count };
       },
       enabled,
-      placeholderData: (previousData: ApiListResponse<D> | undefined) => previousData,
+      placeholderData: (previousData: ApiListResponse<D> | undefined) =>
+        previousData,
     }),
     queryKey,
     invalidate: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.resource.all(resource) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.resource.all(resource),
+      }),
   };
 }
 

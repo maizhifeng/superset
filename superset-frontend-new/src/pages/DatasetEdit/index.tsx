@@ -21,6 +21,8 @@ import TableRow from '@mui/material/TableRow';
 import { useBreadcrumbStore } from '@/store/breadcrumbStore';
 import { useToolbarStore } from '@/contexts/ToolbarContext';
 import PageSpeedDial from '@/components/PageSpeedDial';
+import DateColumnDetector from '@/components/DateColumnDetector';
+import { detectDateColumnsFromMeta } from '@/utils/dateHeuristics';
 import { parseErrorMessage } from '@/utils/parseErrorMessage';
 import api from '@/api';
 import type { DatasetDetail } from '@/types/api';
@@ -35,6 +37,7 @@ export default function DatasetEdit() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [form, setForm] = useState({ table_name: '', description: '', sql: '' });
+  const [detectedDateColumns, setDetectedDateColumns] = useState<{ columnName: string; format: 'YYYYMMDD' | 'unix_seconds' | 'unix_ms'; confidence: number }[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -45,6 +48,7 @@ export default function DatasetEdit() {
         setDataset(d);
         setCustom({ label: `Edit: ${d.table_name}` });
         setForm({ table_name: d.table_name, description: d.description ?? '', sql: d.sql ?? '' });
+        setDetectedDateColumns(detectDateColumnsFromMeta(d.columns));
         setLoading(false);
       })
       .catch(err => { setError(parseErrorMessage(err, 'Failed to load dataset')); setLoading(false); });
@@ -98,6 +102,25 @@ export default function DatasetEdit() {
     <Box sx={{ p: 3 }}>
       {success && <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>Dataset saved</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
+
+      {detectedDateColumns.length > 0 && id && (
+        <Box sx={{ mb: 2 }}>
+          <DateColumnDetector
+            datasetId={Number(id)}
+            detectedColumns={detectedDateColumns}
+            onColumnCreated={() => {
+              api.get<{ result: DatasetDetail }>(`/dataset/${id}`)
+                .then(res => {
+                  const d = res.data.result;
+                  setDataset(d);
+                  setDetectedDateColumns(detectDateColumnsFromMeta(d.columns));
+                })
+                .catch(() => {});
+            }}
+            onDismiss={() => setDetectedDateColumns([])}
+          />
+        </Box>
+      )}
 
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
         <TextField size="small" label="Table Name" value={form.table_name} onChange={e => setForm(f => ({ ...f, table_name: e.target.value }))} sx={{ flex: 2, minWidth: 180 }} />

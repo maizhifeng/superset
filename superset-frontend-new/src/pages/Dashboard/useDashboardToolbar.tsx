@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import AddIcon from '@mui/icons-material/Add';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChatInput from '@/components/ChatInput';
 import { FilterToolbarButton } from '@/components/DashboardFilter';
@@ -18,11 +19,12 @@ interface UseDashboardToolbarParams {
   onAddFilter: (id: string) => void;
   onRefreshAll: () => void;
   onOpenNav: () => void;
+  onAddChart: () => void;
 }
 
 export default function useDashboardToolbar({
   dashboard, activeCount, hiddenFilters, clearAll,
-  layoutItems, onFilterDrawerOpen, onAddFilter, onRefreshAll, onOpenNav,
+  layoutItems, onFilterDrawerOpen, onAddFilter, onRefreshAll, onOpenNav, onAddChart,
 }: UseDashboardToolbarParams) {
   const setCustom = useBreadcrumbStore(s => s.setCustom);
   const registerTools = useToolbarStore(s => s.registerTools);
@@ -33,6 +35,15 @@ export default function useDashboardToolbar({
     if (!dashboard) return;
     setCustom({ label: dashboard.dashboard_title, status: dashboard.published ? 'published' : 'draft' });
     registerTools(pageKey, [
+      {
+        id: 'add_chart',
+        priority: 5,
+        showOnMobile: true,
+        fabIcon: <AddIcon />,
+        fabLabel: 'Add Chart',
+        action: onAddChart,
+        render: null,
+      },
       {
         id: 'search',
         priority: 0,

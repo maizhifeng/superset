@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -17,12 +17,26 @@ import CloseIcon from '@mui/icons-material/Close';
 import CheckIcon from '@mui/icons-material/Check';
 import InfoIcon from '@mui/icons-material/Info';
 import FilterAltOffIcon from '@mui/icons-material/FilterAltOff';
+import api from '@/api';
 import type { CompareDimension } from '@/pages/Dashboard/ChartCard';
 
-interface ColumnOption {
+export interface ColumnOption {
   datasetId: number;
   column: string;
   name: string;
+}
+
+function formatDateOption(raw: string): string {
+  const num = Number(raw);
+  if (num > 1e12 && num < 1e16) {
+    const d = new Date(num);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString();
+  }
+  const d = new Date(raw);
+  if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) {
+    return d.toLocaleDateString();
+  }
+  return raw;
 }
 
 interface RuleEntry {
@@ -50,6 +64,16 @@ function extractValuesFromData(
   return Array.from(new Set(rows.map(r => String(r[dimension] ?? '')))).filter(Boolean);
 }
 
+async function fetchColumnValues(datasetId: number, column: string): Promise<string[]> {
+  try {
+    const res = await api.get(`/datasource/table/${datasetId}/column/${encodeURIComponent(column)}/values/`);
+    const raw: unknown[] = res.data?.result || [];
+    return raw.filter((v): v is string => v != null).map(String);
+  } catch {
+    return [];
+  }
+}
+
 export default function CompareConfigModal({
   open,
   columns,
@@ -59,6 +83,13 @@ export default function CompareConfigModal({
 }: CompareConfigModalProps) {
   const [rules, setRules] = useState<RuleEntry[]>([makeEmptyRule()]);
 
+  const dateCols = useMemo(() => {
+    const colnames = fullData?.colnames as string[] | undefined;
+    const coltypes = fullData?.coltypes as number[] | undefined;
+    if (!colnames || !coltypes) return new Set<string>();
+    return new Set(colnames.filter((_, i) => coltypes[i] === 2));
+  }, [fullData]);
+
   useEffect(() => {
     if (!open) {
       setRules([makeEmptyRule()]);
@@ -66,22 +97,36 @@ export default function CompareConfigModal({
   }, [open]);
 
   const handleDimensionChange = useCallback((index: number, value: ColumnOption | null) => {
-    const allRows = fullData?.data && Array.isArray(fullData.data) ? fullData.data as Record<string, unknown>[] : null;
     setRules(prev => {
       let valueOptions: string[] = [];
-      if (value && allRows) {
-        const filtered = allRows.filter(row =>
-          prev.every((r, i) =>
-            i >= index || !r.dimension || r.values.length === 0
-              || r.values.includes(String(row[r.dimension.column] ?? ''))
-          ),
-        );
-        valueOptions = extractValuesFromData(filtered, value.column);
+      if (value) {
+        const allRows = fullData?.data && Array.isArray(fullData.data) ? fullData.data as Record<string, unknown>[] : null;
+        if (allRows && allRows.length > 0 && allRows[0] != null && value.column in allRows[0]) {
+          const filtered = allRows.filter(row =>
+            prev.every((r, i) =>
+              i >= index || !r.dimension || r.values.length === 0
+                || r.values.includes(String(row[r.dimension.column] ?? ''))
+            ),
+          );
+          valueOptions = extractValuesFromData(filtered, value.column);
+        }
       }
       return prev.map((r, i) =>
         i === index ? { dimension: value, values: [], valueOptions } : r,
       );
     });
+    if (value) {
+      const allRows = fullData?.data && Array.isArray(fullData.data) ? fullData.data as Record<string, unknown>[] : null;
+      if (!allRows || allRows.length === 0 || !(value.column in allRows[0])) {
+        fetchColumnValues(value.datasetId, value.column).then(vals => {
+          if (vals.length > 0) {
+            setRules(prev => prev.map((r, i) =>
+              i === index && r.dimension?.column === value.column ? { ...r, valueOptions: vals } : r,
+            ));
+          }
+        });
+      }
+    }
   }, [fullData]);
 
   const handleValuesChange = useCallback((index: number, vals: string[]) => {
@@ -151,6 +196,7 @@ export default function CompareConfigModal({
                     options={rule.valueOptions}
                     value={rule.values}
                     onChange={(_, vals) => handleValuesChange(index, vals)}
+                    getOptionLabel={opt => dateCols.has(rule.dimension!.column) ? formatDateOption(opt) : opt}
                     renderInput={params => (
                       <TextField
                         {...params}

@@ -7,7 +7,6 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import Chip from '@mui/material/Chip';
 import Typography from '@mui/material/Typography';
@@ -158,14 +157,9 @@ export default function ChartList() {
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Open in new tab">
-            <IconButton size="small" onClick={e => { e.stopPropagation(); window.open(`/explore?slice_id=${params.id}`, '_blank'); }}>
-              <OpenInNewIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
           <Tooltip title="Delete">
             <IconButton size="small" onClick={e => { e.stopPropagation(); setDeleteTarget({ id: params.id as number, name: params.row.slice_name }); }}>
-              <DeleteIcon sx={{ fontSize: 16 }} />
+              <DeleteIcon sx={{ fontSize: 16, color: 'error.main' }} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -215,7 +209,7 @@ export default function ChartList() {
           renderCard={row => (
             <>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {row.slice_name}
                 </Typography>
                 <Chip label={vizTypeLabels[row.viz_type] || row.viz_type} size="small" variant="outlined" sx={{ fontWeight: 500, fontSize: '0.55rem', height: 16, flexShrink: 0, '& .MuiChip-label': { px: 0.5 } }} />
@@ -231,6 +225,13 @@ export default function ChartList() {
                   {row.created_by?.username ?? 'N/A'}
                   {row.changed_on_delta_humanized ? ` · ${row.changed_on_delta_humanized}` : ''}
                 </Typography>
+                <Box sx={{ flex: 1 }} />
+                <IconButton size="small" onClick={e => { e.stopPropagation(); navigate(`/explore?slice_id=${row.id}`); }} sx={{ p: 0.25 }}>
+                  <EditIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+                <IconButton size="small" onClick={e => { e.stopPropagation(); setDeleteTarget({ id: row.id, name: row.slice_name }); }} sx={{ p: 0.25, color: 'error.main' }}>
+                  <DeleteIcon sx={{ fontSize: 14 }} />
+                </IconButton>
               </Box>
             </>
           )}
