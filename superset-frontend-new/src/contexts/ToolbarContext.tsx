@@ -46,5 +46,3 @@ export function useFabTools() {
   const registry = useToolbarStore(s => s.registry);
   return Object.values(registry).flat().filter(t => t.fabIcon).sort((a, b) => a.priority - b.priority);
 }
-
-

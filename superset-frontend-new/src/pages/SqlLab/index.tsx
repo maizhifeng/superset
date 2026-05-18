@@ -195,7 +195,7 @@ export default function SqlLab() {
     setSaveSuccess(false);
     try {
       await api.post('/dataset/', {
-        database_id: databaseId,
+        database: databaseId,
         table_name: datasetName,
         schema,
         sql,

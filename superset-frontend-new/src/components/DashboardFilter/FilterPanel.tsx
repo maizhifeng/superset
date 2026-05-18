@@ -21,12 +21,13 @@ function formatTimeLabel(v: unknown): string {
   const s = String(v ?? '');
   if (!s || s === 'null') return s;
   const num = Number(s);
-  if (!isNaN(num) && num > 100000) {
+  if (!isNaN(num) && num > 1e12 && num < 1e16) {
     const d = new Date(num);
-    if (d.getFullYear() > 1900 && d.getFullYear() < 2100) {
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
+    if (!isNaN(d.getTime())) return d.toLocaleDateString();
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2100) {
+    return d.toLocaleDateString();
   }
   return s;
 }
@@ -200,11 +201,41 @@ function FilterNumericalRange({
   );
 }
 
+function FilterDate({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const strVal = typeof value === 'string' ? value : '';
+  return (
+    <TextField
+      size="small"
+      type="date"
+      fullWidth
+      label={label}
+      value={strVal}
+      onChange={e => onChange(e.target.value || undefined)}
+      slotProps={{ inputLabel: { shrink: true } }}
+      sx={{
+        '& .MuiInputBase-root': { minHeight: 36 },
+        '& .MuiInputBase-input': { py: 0.5, fontSize: '0.8125rem' },
+      }}
+    />
+  );
+}
+
 function renderFilterControl(
   filter: FilterConfig,
   value: unknown,
   onChange: (value: unknown) => void,
 ) {
+  if (filter.columnType === 'time' && /_date/i.test(filter.column)) {
+    return <FilterDate label={filter.name} value={value} onChange={onChange} />;
+  }
   switch (filter.filterType) {
     case 'text':
       return <FilterText label={filter.name} value={value} onChange={onChange} />;

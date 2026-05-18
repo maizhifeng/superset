@@ -36,13 +36,13 @@ export default function ChartEditorForm({
   const c = (full: number | string, comp: number | string) => compact ? comp : full;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: c(1, 0.75), px: c(2, 1), py: c(1, 0.5), borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: c(0.5, 0.75), px: c(1, 1), py: c(0.5, 0.5), borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
       <Box sx={{ display: 'flex', flexWrap: 'nowrap', gap: c(1, 0.75) }}>
         <Card elevation={0} sx={{ flex: '0 0 180px', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-          <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
+          <CardHeader sx={{ px: c(0.75, 0.75), py: c(0.25, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
             title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Name</Typography>}
           />
-          <CardContent sx={{ p: c(1, 0.75) }}>
+          <CardContent sx={{ p: c(0.75, 0.75) }}>
             <TextField
               placeholder="Chart name..."
               value={sliceName}
@@ -54,10 +54,10 @@ export default function ChartEditorForm({
         </Card>
 
         <Card elevation={0} sx={{ flex: '2 1 280px', borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-          <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
+          <CardHeader sx={{ px: c(0.75, 0.75), py: c(0.25, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
             title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Dataset</Typography>}
           />
-          <CardContent sx={{ p: c(1, 0.75) }}>
+          <CardContent sx={{ p: c(0.75, 0.75) }}>
             <PickerField
               label="Dataset"
               options={datasets.map(d => ({ value: String(d.id), label: d.table_name }))}
@@ -76,10 +76,10 @@ export default function ChartEditorForm({
       {datasourceId && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: c(1, 0.75) }}>
           <Card elevation={0} sx={{ flex: '1 1 40%', minWidth: c(150, 120), borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-            <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
+            <CardHeader sx={{ px: c(0.75, 0.75), py: c(0.25, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
               title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Metrics</Typography>}
             />
-            <CardContent sx={{ p: c(1, 0.75) }}>
+            <CardContent sx={{ p: c(0.75, 0.75) }}>
               {loadingColumns ? (
                 <CircularProgress size={16} />
               ) : (
@@ -97,10 +97,10 @@ export default function ChartEditorForm({
           </Card>
 
           <Card elevation={0} sx={{ flex: '1 1 40%', minWidth: c(150, 120), borderRadius: 2, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-            <CardHeader sx={{ px: c(1, 0.75), py: c(0.5, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
+            <CardHeader sx={{ px: c(0.75, 0.75), py: c(0.25, 0.25), bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}
               title={<Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: compact ? '0.6rem' : undefined }}>Group By</Typography>}
             />
-            <CardContent sx={{ p: c(1, 0.75) }}>
+            <CardContent sx={{ p: c(0.75, 0.75) }}>
               {loadingColumns ? (
                 <CircularProgress size={16} />
               ) : (

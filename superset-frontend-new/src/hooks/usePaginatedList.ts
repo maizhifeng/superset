@@ -58,7 +58,11 @@ export function usePaginatedList<T>(
   const sortLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
+  const configRef = useRef({ endpoint, filterColumn, errorMessage, sortFieldMap });
+  configRef.current = { endpoint, filterColumn, errorMessage, sortFieldMap };
+
   const fetchData = useCallback(() => {
+    const { endpoint, filterColumn, errorMessage, sortFieldMap } = configRef.current;
     setLoading(true);
     setError(null);
 
@@ -85,7 +89,7 @@ export function usePaginatedList<T>(
         setError(parseErrorMessage(err, errorMessage));
         setLoading(false);
       });
-  }, [paginationModel, searchText, sortModel, endpoint, filterColumn, errorMessage, sortFieldMap]);
+  }, [paginationModel, searchText, sortModel]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

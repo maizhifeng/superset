@@ -87,7 +87,7 @@ export default function DatasetCreation() {
 
     const payload = {
       table_name: tableName,
-      database_id: databaseId,
+      database: databaseId,
       schema,
     };
 

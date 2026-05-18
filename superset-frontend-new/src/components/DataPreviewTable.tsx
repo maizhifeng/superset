@@ -1,18 +1,18 @@
-import { useState, useMemo } from 'react';
-import type { SxProps, Theme } from '@mui/material/styles';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
-import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import LockIcon from '@mui/icons-material/Lock';
-import LockOpenIcon from '@mui/icons-material/LockOpen';
+import { useState, useMemo } from "react";
+import type { SxProps, Theme } from "@mui/material/styles";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
+import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import LockIcon from "@mui/icons-material/Lock";
+import LockOpenIcon from "@mui/icons-material/LockOpen";
 
 export type CellFormatter = (key: string, value: unknown) => string;
 
@@ -24,16 +24,20 @@ interface DataPreviewTableProps {
 }
 
 function defaultFormat(_key: string, value: unknown): string {
-  if (value === null || value === undefined) return '';
+  if (value === null || value === undefined) return "";
   return String(value);
 }
 
-function formatCell(key: string, value: unknown, formatter?: CellFormatter): string {
+function formatCell(
+  key: string,
+  value: unknown,
+  formatter?: CellFormatter,
+): string {
   if (formatter) return formatter(key, value);
   return defaultFormat(key, value);
 }
 
-type SortDirection = 'desc' | 'asc';
+type SortDirection = "desc" | "asc";
 
 interface SortEntry {
   column: string;
@@ -42,11 +46,18 @@ interface SortEntry {
 }
 
 export default function DataPreviewTable({
-  data, maxRows = 100, formatCell: formatter, sx,
+  data,
+  maxRows = 100,
+  formatCell: formatter,
+  sx,
 }: DataPreviewTableProps) {
   const [sorts, setSorts] = useState<SortEntry[]>([]);
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
 
-  const rows = Array.isArray(data?.data) ? (data.data as Record<string, unknown>[]) : [];
+  const rows = Array.isArray(data?.data)
+    ? (data.data as Record<string, unknown>[])
+    : [];
   const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
 
   const sortedRows = useMemo(() => {
@@ -60,12 +71,12 @@ export default function DataPreviewTable({
         if (va == null) return 1;
         if (vb == null) return -1;
         let cmp: number;
-        if (typeof va === 'number' && typeof vb === 'number') {
+        if (typeof va === "number" && typeof vb === "number") {
           cmp = va - vb;
         } else {
           cmp = String(va).localeCompare(String(vb));
         }
-        if (cmp !== 0) return s.direction === 'desc' ? -cmp : cmp;
+        if (cmp !== 0) return s.direction === "desc" ? -cmp : cmp;
       }
       return 0;
     });
@@ -73,131 +84,240 @@ export default function DataPreviewTable({
   }, [rows, sorts]);
 
   const handleHeaderClick = (key: string) => {
-    setSorts(prev => {
-      const idx = prev.findIndex(s => s.column === key);
+    setSorts((prev) => {
+      const idx = prev.findIndex((s) => s.column === key);
       if (idx >= 0) {
-        if (prev[idx].direction === 'desc') {
+        if (prev[idx].direction === "desc") {
           const next = [...prev];
-          next[idx] = { ...next[idx], direction: 'asc' };
+          next[idx] = { ...next[idx], direction: "asc" };
           return next;
         }
-        return prev.filter(s => s.column !== key);
+        return prev.filter((s) => s.column !== key);
       }
-      const lastLocked = prev.reduce((last, s, i) => s.locked ? i : last, -1);
+      const lastLocked = prev.reduce((last, s, i) => (s.locked ? i : last), -1);
       if (lastLocked >= 0) {
         const next = [...prev];
-        next.splice(lastLocked + 1, 0, { column: key, direction: 'desc', locked: false });
+        next.splice(lastLocked + 1, 0, {
+          column: key,
+          direction: "desc",
+          locked: false,
+        });
         return next;
       }
-      return [{ column: key, direction: 'desc', locked: false }];
+      return [{ column: key, direction: "desc", locked: false }];
     });
   };
 
   const handleLockToggle = (e: React.MouseEvent, key: string) => {
     e.stopPropagation();
-    setSorts(prev => prev.map(s =>
-      s.column === key ? { ...s, locked: !s.locked } : s,
-    ));
+    setSorts((prev) =>
+      prev.map((s) => (s.column === key ? { ...s, locked: !s.locked } : s)),
+    );
   };
 
-  if (rows.length === 0) {
-    return (
-      <TableContainer sx={{ flex: 1, ...(sx as object) }}>
-        <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1, fontSize: '0.75rem' } }}>
-          <TableHead>
-            <TableRow>
-              <TableCell align="center" colSpan={keys.length || 1}>
-                <Typography variant="caption" color="text.secondary" sx={{ py: 2, display: 'block' }}>
-                  No data
-                </Typography>
-              </TableCell>
-            </TableRow>
-          </TableHead>
-        </Table>
-      </TableContainer>
-    );
-  }
+  const totalPages = Math.ceil(Math.min(sortedRows.length, maxRows) / pageSize);
+  const pageStart = page * pageSize;
+  const pageEnd = Math.min(pageStart + pageSize, maxRows, sortedRows.length);
+
+  const empty = rows.length === 0;
 
   return (
-    <TableContainer sx={{ flex: 1, ...(sx as object) }}>
-      <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.5, px: 1, fontSize: '0.75rem' } }}>
-        <TableHead>
-          <TableRow>
-            {keys.map(k => {
-              const sortEntry = sorts.find(s => s.column === k);
-              const sortIdx = sortEntry ? sorts.indexOf(sortEntry) : -1;
-              return (
-                <TableCell
-                  key={k}
-                  onClick={() => handleHeaderClick(k)}
-                  sx={{
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    whiteSpace: 'nowrap',
-                    '&:hover': { bgcolor: 'action.hover' },
-                  }}
-                >
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
-                    {k}
-                    {sortEntry ? (
-                      sortEntry.direction === 'desc' ? (
-                        <ArrowDownwardIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-                      ) : (
-                        <ArrowUpwardIcon sx={{ fontSize: 14, color: 'primary.main' }} />
-                      )
-                    ) : (
-                      <UnfoldMoreIcon sx={{ fontSize: 14, color: 'action.disabled', opacity: 0.4 }} />
-                    )}
-                    {sortEntry && (
+    <TableContainer
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "background.paper",
+        ...(sx as object),
+      }}
+    >
+      <Box sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+        <Table
+          stickyHeader
+          size="small"
+          sx={{
+            "& .MuiTableCell-root": { py: 0.5, px: 1, fontSize: "0.75rem" },
+          }}
+        >
+          <TableHead
+            sx={{
+              bgcolor: "background.paper",
+              "& .MuiTableRow-root": {
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                bgcolor: "background.paper",
+              },
+            }}
+          >
+            <TableRow sx={{ bgcolor: "background.paper" }}>
+              {empty ? (
+                <TableCell align="center" colSpan={keys.length || 1}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ py: 2, display: "block" }}
+                  >
+                    No data
+                  </Typography>
+                </TableCell>
+              ) : (
+                keys.map((k) => {
+                  const sortEntry = sorts.find((s) => s.column === k);
+                  const sortIdx = sortEntry ? sorts.indexOf(sortEntry) : -1;
+                  return (
+                    <TableCell
+                      key={k}
+                      onClick={() => handleHeaderClick(k)}
+                      sx={{
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        userSelect: "none",
+                        whiteSpace: "nowrap",
+                        bgcolor: "background.paper",
+                        zIndex: 3,
+                        backgroundClip: "padding-box",
+                        "&:hover": { bgcolor: "action.hover" },
+                      }}
+                    >
                       <Box
                         component="span"
-                        onClick={e => handleLockToggle(e, k)}
                         sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          cursor: 'pointer',
-                          color: sortEntry.locked ? 'primary.main' : 'action.disabled',
-                          opacity: sortEntry.locked ? 1 : 0.35,
-                          '&:hover': { opacity: 1, color: 'primary.main' },
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.25,
                         }}
                       >
-                        {sortEntry.locked
-                          ? <LockIcon sx={{ fontSize: 12 }} />
-                          : <LockOpenIcon sx={{ fontSize: 12 }} />}
+                        {k}
+                        {sortEntry ? (
+                          sortEntry.direction === "desc" ? (
+                            <ArrowDownwardIcon
+                              sx={{ fontSize: 14, color: "primary.main" }}
+                            />
+                          ) : (
+                            <ArrowUpwardIcon
+                              sx={{ fontSize: 14, color: "primary.main" }}
+                            />
+                          )
+                        ) : (
+                          <UnfoldMoreIcon
+                            sx={{
+                              fontSize: 14,
+                              color: "action.disabled",
+                              opacity: 0.4,
+                            }}
+                          />
+                        )}
+                        {sortEntry && (
+                          <Box
+                            component="span"
+                            onClick={(e) => handleLockToggle(e, k)}
+                            sx={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              cursor: "pointer",
+                              color: sortEntry.locked
+                                ? "primary.main"
+                                : "action.disabled",
+                              opacity: sortEntry.locked ? 1 : 0.35,
+                              "&:hover": { opacity: 1, color: "primary.main" },
+                            }}
+                          >
+                            {sortEntry.locked ? (
+                              <LockIcon sx={{ fontSize: 12 }} />
+                            ) : (
+                              <LockOpenIcon sx={{ fontSize: 12 }} />
+                            )}
+                          </Box>
+                        )}
+                        {sortEntry?.locked && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{
+                              fontSize: "0.55rem",
+                              fontWeight: 800,
+                              color: "primary.main",
+                              lineHeight: 1,
+                              ml: 0.1,
+                            }}
+                          >
+                            {sortIdx + 1}
+                          </Typography>
+                        )}
                       </Box>
-                    )}
-                    {sortEntry?.locked && (
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        sx={{
-                          fontSize: '0.55rem',
-                          fontWeight: 800,
-                          color: 'primary.main',
-                          lineHeight: 1,
-                          ml: 0.1,
-                        }}
-                      >
-                        {sortIdx + 1}
-                      </Typography>
-                    )}
-                  </Box>
-                </TableCell>
-              );
-            })}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {sortedRows.slice(0, maxRows).map((row, i) => (
-            <TableRow key={i}>
-              {keys.map(k => (
-                <TableCell key={k}>{formatCell(k, row[k], formatter)}</TableCell>
-              ))}
+                    </TableCell>
+                  );
+                })
+              )}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {empty
+              ? null
+              : sortedRows.slice(pageStart, pageEnd).map((row, i) => (
+                  <TableRow key={pageStart + i}>
+                    {keys.map((k) => (
+                      <TableCell key={k}>
+                        {formatCell(k, row[k], formatter)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+          </TableBody>
+        </Table>
+      </Box>
+      {!empty && totalPages > 1 && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 1,
+            py: 1,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            bgcolor: "background.paper",
+            flexShrink: 0,
+          }}
+        >
+          <Typography variant="caption" color="text.secondary">
+            {pageStart + 1}–{pageEnd} of {Math.min(sortedRows.length, maxRows)}
+          </Typography>
+          <Box
+            component="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            sx={{
+              border: "none",
+              bgcolor: "transparent",
+              cursor: page === 0 ? "default" : "pointer",
+              color: page === 0 ? "text.disabled" : "primary.main",
+              fontSize: "0.75rem",
+              px: 1,
+              py: 0.25,
+            }}
+          >
+            ‹ Prev
+          </Box>
+          <Box
+            component="button"
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            sx={{
+              border: "none",
+              bgcolor: "transparent",
+              cursor: page >= totalPages - 1 ? "default" : "pointer",
+              color: page >= totalPages - 1 ? "text.disabled" : "primary.main",
+              fontSize: "0.75rem",
+              px: 1,
+              py: 0.25,
+            }}
+          >
+            Next ›
+          </Box>
+        </Box>
+      )}
     </TableContainer>
   );
 }
