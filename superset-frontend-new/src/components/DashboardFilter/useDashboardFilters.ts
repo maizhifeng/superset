@@ -1,13 +1,15 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from "react";
 import type {
   FilterConfig,
   FilterState,
   UseDashboardFiltersResult,
   NativeFilterConfigRaw,
   AdhocFilter,
-} from './types';
+} from "./types";
 
-function parseJsonMetadata(jsonMetadata: string | undefined | null): NativeFilterConfigRaw[] {
+function parseJsonMetadata(
+  jsonMetadata: string | undefined | null,
+): NativeFilterConfigRaw[] {
   if (!jsonMetadata) return [];
   try {
     const parsed = JSON.parse(jsonMetadata);
@@ -19,42 +21,54 @@ function parseJsonMetadata(jsonMetadata: string | undefined | null): NativeFilte
   }
 }
 
-function normalizeFilterType(rawType: string): FilterConfig['filterType'] {
+function normalizeFilterType(rawType: string): FilterConfig["filterType"] {
   switch (rawType) {
-    case 'filter_select':
-    case 'value':
-      return 'value';
-    case 'text':
-      return 'text';
-    case 'numerical_range':
-      return 'numerical_range';
-    case 'time_range':
-      return 'time_range';
+    case "filter_select":
+    case "value":
+      return "value";
+    case "text":
+      return "text";
+    case "numerical_range":
+      return "numerical_range";
+    case "time_range":
+    case "time_column":
+    case "time_grain":
+      return "time_range";
     default:
-      return 'value';
+      return "value";
   }
 }
 
 interface AutoDimension {
-  datasetId: number; column: string; name: string; columnType?: 'time' | 'string' | 'numeric';
+  datasetId: number;
+  column: string;
+  name: string;
+  columnType?: "time" | "string" | "numeric";
 }
 
 export default function useDashboardFilters(
   jsonMetadata: string | undefined | null,
   autoDimensions: AutoDimension[],
 ): UseDashboardFiltersResult {
-  const nativeConfigs = useMemo(() => parseJsonMetadata(jsonMetadata), [jsonMetadata]);
+  const nativeConfigs = useMemo(
+    () => parseJsonMetadata(jsonMetadata),
+    [jsonMetadata],
+  );
 
   const filters = useMemo<FilterConfig[]>(() => {
     if (nativeConfigs.length > 0) {
-      return nativeConfigs.map(cfg => {
+      return nativeConfigs.map((cfg) => {
         const target = cfg.targets?.[0];
         return {
           id: cfg.id,
-          name: cfg.name || target?.column?.displayName || target?.column?.name || 'Filter',
+          name:
+            cfg.name ||
+            target?.column?.displayName ||
+            target?.column?.name ||
+            "Filter",
           filterType: normalizeFilterType(cfg.filterType),
           datasetId: target?.datasetId ?? 0,
-          column: target?.column?.name || '',
+          column: target?.column?.name || "",
           controlValues: cfg.controlValues,
           chartsInScope: cfg.chartsInScope,
           defaultDataMask: cfg.defaultDataMask,
@@ -67,7 +81,9 @@ export default function useDashboardFilters(
     return autoDimensions.map((dim, idx) => ({
       id: `dim_${idx}`,
       name: dim.name,
-      filterType: 'value' as FilterConfig['filterType'],
+      filterType: (dim.columnType === "time"
+        ? "time_range"
+        : "value") as FilterConfig["filterType"],
       datasetId: dim.datasetId,
       column: dim.column,
       columnType: dim.columnType,
@@ -76,15 +92,18 @@ export default function useDashboardFilters(
 
   const [filterState, setFilterState] = useState<FilterState>({});
 
-  const setFilter = useCallback((id: string, value: unknown, extraFormData?: Record<string, unknown>) => {
-    setFilterState(prev => ({
-      ...prev,
-      [id]: {
-        value,
-        extraFormData: extraFormData || prev[id]?.extraFormData,
-      },
-    }));
-  }, []);
+  const setFilter = useCallback(
+    (id: string, value: unknown, extraFormData?: Record<string, unknown>) => {
+      setFilterState((prev) => ({
+        ...prev,
+        [id]: {
+          value,
+          extraFormData: extraFormData || prev[id]?.extraFormData,
+        },
+      }));
+    },
+    [],
+  );
 
   const clearAll = useCallback(() => {
     setFilterState({});
@@ -94,48 +113,101 @@ export default function useDashboardFilters(
     let count = 0;
     for (const state of Object.values(filterState)) {
       const v = state.value;
-      if (v === undefined || v === null || v === '') continue;
+      if (v === undefined || v === null || v === "") continue;
       if (Array.isArray(v) && v.length === 0) continue;
       count++;
     }
     return count;
   }, [filterState]);
 
-  const buildAdhocFilters = useCallback((datasetId?: number): AdhocFilter[] => {
-    const result: AdhocFilter[] = [];
+  const buildAdhocFilters = useCallback(
+    (datasetId?: number): AdhocFilter[] => {
+      const result: AdhocFilter[] = [];
 
-    for (const filter of filters) {
-      if (datasetId !== undefined && filter.datasetId !== 0 && filter.datasetId !== datasetId) {
-        continue;
+      for (const filter of filters) {
+        if (
+          datasetId !== undefined &&
+          filter.datasetId !== 0 &&
+          filter.datasetId !== datasetId
+        ) {
+          continue;
+        }
+        const state = filterState[filter.id];
+        if (!state) continue;
+        const v = state.value;
+        if (v === undefined || v === null || v === "") continue;
+
+        if (Array.isArray(v) && v.length === 0) continue;
+
+        if (filter.filterType === "time_range" && Array.isArray(v)) {
+          const [start, end] = v as [
+            string | null | undefined,
+            string | null | undefined,
+          ];
+          if (start) {
+            result.push({
+              clause: "WHERE",
+              expressionType: "SIMPLE",
+              subject: filter.column,
+              operator: ">=",
+              comparator: start,
+            });
+          }
+          if (end) {
+            result.push({
+              clause: "WHERE",
+              expressionType: "SIMPLE",
+              subject: filter.column,
+              operator: "<=",
+              comparator: end,
+            });
+          }
+        } else if (
+          filter.filterType === "numerical_range" &&
+          Array.isArray(v)
+        ) {
+          const [min, max] = v as [number | undefined, number | undefined];
+          if (min !== undefined) {
+            result.push({
+              clause: "WHERE",
+              expressionType: "SIMPLE",
+              subject: filter.column,
+              operator: ">=",
+              comparator: String(min),
+            });
+          }
+          if (max !== undefined) {
+            result.push({
+              clause: "WHERE",
+              expressionType: "SIMPLE",
+              subject: filter.column,
+              operator: "<=",
+              comparator: String(max),
+            });
+          }
+        } else if (Array.isArray(v)) {
+          result.push({
+            clause: "WHERE",
+            expressionType: "SIMPLE",
+            subject: filter.column,
+            operator: "IN",
+            comparator: v.join(","),
+          });
+        } else {
+          result.push({
+            clause: "WHERE",
+            expressionType: "SIMPLE",
+            subject: filter.column,
+            operator: "==",
+            comparator: String(v),
+          });
+        }
       }
-      const state = filterState[filter.id];
-      if (!state) continue;
-      const v = state.value;
-      if (v === undefined || v === null || v === '') continue;
 
-      if (Array.isArray(v) && v.length === 0) continue;
-
-      if (Array.isArray(v)) {
-        result.push({
-          clause: 'WHERE',
-          expressionType: 'SIMPLE',
-          subject: filter.column,
-          operator: 'IN',
-          comparator: v.join(','),
-        });
-      } else {
-        result.push({
-          clause: 'WHERE',
-          expressionType: 'SIMPLE',
-          subject: filter.column,
-          operator: '==',
-          comparator: String(v),
-        });
-      }
-    }
-
-    return result;
-  }, [filters, filterState]);
+      return result;
+    },
+    [filters, filterState],
+  );
 
   return {
     filters,

@@ -1,15 +1,15 @@
-import { type RefObject } from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import CircularProgress from '@mui/material/CircularProgress';
-import BarChartOutlinedIcon from '@mui/icons-material/BarChartOutlined';
-import { GridLayout } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
-import type { ChartData } from '@/types/api';
-import ChartCard from '@/pages/Dashboard/ChartCard';
-import type { CompareConfig } from '@/pages/Dashboard/ChartCard';
-import type { ChartLayoutItem } from '@/utils/dashboard/layout';
+import { type RefObject } from "react";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import CircularProgress from "@mui/material/CircularProgress";
+import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
+import { GridLayout } from "react-grid-layout";
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
+import type { ChartData } from "@/types/api";
+import ChartCard from "@/pages/Dashboard/ChartCard";
+import type { CompareConfig } from "@/pages/Dashboard/ChartCard";
+import type { ChartLayoutItem } from "@/utils/dashboard/layout";
 
 interface DashboardGridProps {
   containerWidth: number;
@@ -20,29 +20,59 @@ interface DashboardGridProps {
   isDragging: boolean;
   saving: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
-  onLayoutChange: (layout: { i: string; x: number; y: number; w: number; h: number }[]) => void;
+  onLayoutChange: (
+    layout: { i: string; x: number; y: number; w: number; h: number }[],
+  ) => void;
   onDragStart: () => void;
   onDragStop: () => void;
   onResizeStart: () => void;
   onResizeStop: () => void;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
+  onDelete: (chartId: number) => void;
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
 }
 
 export default function DashboardGrid({
-  containerWidth, gridLayout, layoutItems, chartMeta, chartData,
-  isDragging, saving, containerRef, onLayoutChange,
-  onDragStart, onDragStop, onResizeStart, onResizeStop,
-  onRefresh, onEdit, compareConfig, mirrorData, onToggleCompare,
+  containerWidth,
+  gridLayout,
+  layoutItems,
+  chartMeta,
+  chartData,
+  isDragging,
+  saving,
+  containerRef,
+  onLayoutChange,
+  onDragStart,
+  onDragStop,
+  onResizeStart,
+  onResizeStop,
+  onRefresh,
+  onEdit,
+  onDelete,
+  compareConfig,
+  mirrorData,
+  onToggleCompare,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
-      <Box sx={{ p: 4, textAlign: 'center', border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-        <BarChartOutlinedIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-        <Typography color="text.secondary">No charts in this dashboard yet</Typography>
+      <Box
+        sx={{
+          p: 4,
+          textAlign: "center",
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 2,
+        }}
+      >
+        <BarChartOutlinedIcon
+          sx={{ fontSize: 48, color: "text.disabled", mb: 1 }}
+        />
+        <Typography color="text.secondary">
+          No charts in this dashboard yet
+        </Typography>
       </Box>
     );
   }
@@ -50,40 +80,62 @@ export default function DashboardGrid({
   return (
     <Box
       ref={containerRef}
-      sx={{ width: '100%', position: 'relative', minHeight: 400 }}
+      sx={{ width: "100%", position: "relative", minHeight: 400 }}
     >
       {saving && (
-        <Box sx={{ position: 'absolute', top: 8, left: 8, zIndex: 10, display: 'flex', alignItems: 'center', gap: 0.5, bgcolor: 'background.paper', px: 1, py: 0.25, borderRadius: 1, boxShadow: 1 }}>
+        <Box
+          sx={{
+            position: "absolute",
+            top: 8,
+            left: 8,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            bgcolor: "background.paper",
+            px: 1,
+            py: 0.25,
+            borderRadius: 1,
+            boxShadow: 1,
+          }}
+        >
           <CircularProgress size={10} />
-          <Typography variant="caption" color="text.secondary">Saving...</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Saving...
+          </Typography>
         </Box>
       )}
       <GridLayout
         key={`layout-${containerWidth < 600}`}
         width={containerWidth}
         layout={gridLayout}
-        gridConfig={{ cols: 12, rowHeight: containerWidth < 600 ? 40 : 60, margin: [8, 8] }}
+        gridConfig={{
+          cols: 12,
+          rowHeight: containerWidth < 600 ? 40 : 60,
+          margin: [8, 8],
+        }}
         onLayoutChange={onLayoutChange}
         onDragStart={onDragStart}
         onDragStop={onDragStop}
         onResizeStart={onResizeStart}
         onResizeStop={onResizeStop}
-        dragConfig={{ enabled: containerWidth >= 600, handle: '.drag-handle' }}
-        resizeConfig={{ enabled: containerWidth >= 600, handles: ['se'] }}
+        dragConfig={{ enabled: containerWidth >= 600, handle: ".drag-handle" }}
+        resizeConfig={{ enabled: containerWidth >= 600, handles: ["se"] }}
         autoSize
       >
-        {layoutItems.map(item => (
+        {layoutItems.map((item) => (
           <div key={item.i} data-chart-index={item.chartId}>
             <ChartCard
               chartId={item.chartId}
               sliceName={item.sliceName}
-              vizType={chartMeta[item.chartId]?.viz_type || 'bar'}
+              vizType={chartMeta[item.chartId]?.viz_type || "bar"}
               data={chartData[item.chartId]}
               meta={chartMeta[item.chartId]}
               isDragging={isDragging}
               containerWidth={containerWidth}
               onRefresh={onRefresh}
               onEdit={onEdit}
+              onDelete={onDelete}
               compareConfig={compareConfig}
               mirrorData={mirrorData}
               onToggleCompare={onToggleCompare}
