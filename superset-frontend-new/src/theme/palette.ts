@@ -79,11 +79,13 @@ export const supersetPalette = {
     strong: "rgba(0,0,0,0.15)",
   },
   shadow: {
-    sm: "0 1px 3px rgba(0,0,0,0.08)",
-    md: "0 4px 8px rgba(0,0,0,0.12)",
-    lg: "0 8px 24px rgba(0,0,0,0.12)",
-    card: "0 1px 3px rgba(0,0,0,0.08)",
-    cardHover: "0 4px 8px rgba(0,0,0,0.12)",
+    sm: "0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.08)",
+    md: "0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.10)",
+    lg: "0 4px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.10)",
+    card: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
+    cardHover: "0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.10)",
+    focus: "0 0 0 3px rgba(32, 167, 201, 0.2)",
+    glow: "0 0 0 2px rgba(32, 167, 201, 0.15), 0 0 12px rgba(32, 167, 201, 0.1)",
   },
   status: {
     success: "#5ac189",

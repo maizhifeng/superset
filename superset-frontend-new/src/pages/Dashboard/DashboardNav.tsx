@@ -26,7 +26,20 @@ export default function DashboardNav({
       onClose={onClose}
       fullWidth
       maxWidth="xs"
-      slotProps={{ paper: { sx: { maxHeight: 500, borderRadius: 2 } } }}
+      slotProps={{
+        paper: {
+          sx: {
+            maxHeight: 500,
+            borderRadius: 2,
+            boxShadow:
+              "0 4px 8px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.12)",
+            "& .MuiBackdrop-root": {
+              backgroundColor: "rgba(0, 0, 0, 0.35)",
+              backdropFilter: "blur(2px)",
+            },
+          },
+        },
+      }}
     >
       <DialogContent sx={{ p: 0 }}>
         <List>
@@ -49,7 +62,7 @@ export default function DashboardNav({
                 </ListItemIcon>
                 <ListItemText
                   primary={item.name}
-                  slotProps={{ primary: { sx: { fontSize: "0.9375rem" } } }}
+                  slotProps={{ primary: { sx: { fontSize: "0.875rem" } } }}
                 />
               </ListItemButton>
             </ListItem>

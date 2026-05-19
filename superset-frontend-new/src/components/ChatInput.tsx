@@ -42,7 +42,7 @@ const SEPARATOR_SX = { color: "text.disabled", fontSize: "0.75rem", mx: 0.25 };
 
 const CHIP_BASE = {
   height: 18,
-  fontSize: "0.7rem",
+  fontSize: "0.75rem",
   fontWeight: 700,
   fontFamily: "monospace",
   "& .MuiChip-label": { px: 0.5 },

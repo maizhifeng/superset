@@ -15,4 +15,21 @@ const motion = {
   },
 };
 
+export const timing = {
+  quick: "150ms cubic-bezier(0.2, 0, 0, 1)",
+  standard: "200ms cubic-bezier(0, 0, 0.2, 1)",
+  slow: "300ms cubic-bezier(0.4, 0, 0.2, 1)",
+} as const;
+
+export const transitions = {
+  ...timing,
+  backgroundColor: `background-color ${timing.quick}`,
+  boxShadow: `box-shadow ${timing.standard}`,
+  transform: `transform 200ms cubic-bezier(0.2, 0, 0, 1)`,
+  borderColor: "border-color 200ms ease",
+  color: `color ${timing.quick}`,
+  opacity: "opacity 200ms ease",
+  background: `background ${timing.quick}`,
+} as const;
+
 export default motion;

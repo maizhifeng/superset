@@ -197,7 +197,7 @@ export default function QueryHistoryList() {
                   fontWeight: 600,
                   lineHeight: 1.3,
                   fontFamily: "monospace",
-                  fontSize: "0.7rem",
+                  fontSize: "0.75rem",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -236,7 +236,7 @@ export default function QueryHistoryList() {
                     <Typography
                       variant="caption"
                       color="text.secondary"
-                      sx={{ fontSize: "0.55rem" }}
+                      sx={{ fontSize: "0.75rem" }}
                     >
                       {row.user?.username ?? "N/A"}
                     </Typography>
@@ -245,7 +245,7 @@ export default function QueryHistoryList() {
                     variant="caption"
                     color="text.disabled"
                     sx={{
-                      fontSize: "0.55rem",
+                      fontSize: "0.75rem",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -280,7 +280,7 @@ export default function QueryHistoryList() {
                     variant="caption"
                     sx={{
                       fontWeight: 600,
-                      fontSize: "0.6rem",
+                      fontSize: "0.75rem",
                       color: durationColor(ms),
                     }}
                   >

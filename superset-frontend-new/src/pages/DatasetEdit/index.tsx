@@ -393,7 +393,7 @@ export default function DatasetEdit() {
                                   row._kind === "metric" ? "primary" : "default"
                                 }
                                 variant="outlined"
-                                sx={{ height: 20, fontSize: "0.65rem" }}
+                                sx={{ height: 20, fontSize: "0.75rem" }}
                               />
                             </TableCell>
                             <TableCell sx={{ fontSize: "0.75rem" }}>
@@ -407,7 +407,7 @@ export default function DatasetEdit() {
                                   variant="outlined"
                                   sx={{
                                     height: 20,
-                                    fontSize: "0.65rem",
+                                    fontSize: "0.75rem",
                                     maxWidth: 100,
                                   }}
                                 />
@@ -421,7 +421,7 @@ export default function DatasetEdit() {
                             </TableCell>
                             <TableCell
                               sx={{
-                                fontSize: "0.7rem",
+                                fontSize: "0.75rem",
                                 fontFamily: "monospace",
                                 maxWidth: 250,
                                 overflow: "hidden",

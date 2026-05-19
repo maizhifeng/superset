@@ -372,15 +372,17 @@ export default function SqlLab() {
       EditorView.theme({
         "&": {
           height: "100%",
-          border: "1px solid rgba(0,0,0,0.12)",
-          borderRadius: "4px",
+          border: "1px solid var(--mui-palette-divider, rgba(0,0,0,0.12))",
+          borderRadius: "8px",
           fontFamily:
             "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', monospace",
           fontSize: "0.8125rem",
         },
         "&.cm-focused": { outline: "none" },
         ".cm-scroller": { overflow: "auto" },
-        ".cm-gutters": { borderRight: "1px solid rgba(0,0,0,0.12)" },
+        ".cm-gutters": {
+          borderRight: "1px solid var(--mui-palette-divider, rgba(0,0,0,0.12))",
+        },
         ".cm-gutter": { minWidth: 0 },
       }),
       sqlLang(),

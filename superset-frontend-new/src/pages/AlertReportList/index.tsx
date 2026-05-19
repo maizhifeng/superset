@@ -223,7 +223,7 @@ export default function AlertReportList() {
                 variant="outlined"
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
@@ -234,7 +234,7 @@ export default function AlertReportList() {
                 variant={row.active ? "filled" : "outlined"}
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
@@ -243,7 +243,7 @@ export default function AlertReportList() {
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontSize: "0.55rem" }}
+                  sx={{ fontSize: "0.75rem" }}
                 >
                   {row.crontab}
                 </Typography>
@@ -253,7 +253,7 @@ export default function AlertReportList() {
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontSize: "0.55rem" }}
+                  sx={{ fontSize: "0.75rem" }}
                 >
                   {row.recipients}
                 </Typography>

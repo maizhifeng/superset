@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { produce } from "immer";
 import { useParams, useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
-import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Drawer from "@mui/material/Drawer";
 
@@ -15,12 +14,12 @@ import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
 import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
 import api, { getDataset } from "@/api";
+import { buildQueryObject } from "@/utils/query/extractQueryFields";
+import type { SimpleFilter } from "@/utils/query/types";
 import {
   DashboardFilterDrawer,
   useDashboardFilters,
 } from "@/components/DashboardFilter";
-import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import type { SimpleFilter } from "@/utils/query/types";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
@@ -31,16 +30,19 @@ import type {
   CompareDimension,
 } from "@/pages/Dashboard/ChartCard";
 import type { ColumnOption } from "@/pages/Dashboard/CompareConfigModal";
+import TableSkeleton from "@/components/TableSkeleton";
+import { EmptyState } from "@/superset-ui-mui/components";
+import {
+  useDashboardData,
+  parseChartConfig,
+} from "@/pages/Dashboard/hooks/useDashboardData";
+import { spacing } from "@/theme/spacing";
 
 export default function Dashboard() {
   const { id } = useParams<{ id: string }>();
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [nodeMap, setNodeMap] = useState<Record<string, LayoutNode>>({});
   const [gridId, setGridId] = useState<string | null>(null);
-  const [chartData, setChartData] = useState<
-    Record<number, Record<string, unknown>>
-  >({});
-  const [chartMeta, setChartMeta] = useState<Record<number, ChartData>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -57,12 +59,20 @@ export default function Dashboard() {
     ColumnOption[]
   >([]);
 
-  const [totalRows, setTotalRows] = useState<
-    Record<number, Record<string, unknown> | null>
-  >({});
-  const [otherRows, setOtherRows] = useState<
-    Record<number, Record<string, unknown> | null>
-  >({});
+  const {
+    chartMeta,
+    chartData,
+    totalRows,
+    otherRows,
+    setChartMeta,
+    setChartData,
+    setTotalRows,
+    setOtherRows,
+    buildAdhocFiltersRef,
+    getChartDataWithFilters,
+    refreshChart: refreshChartData,
+    fetchOtherRow: fetchOtherRowData,
+  } = useDashboardData();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get("slice_id");
@@ -191,7 +201,6 @@ export default function Dashboard() {
     dashboard?.json_metadata ?? null,
     dashboardDimensions,
   );
-  const buildAdhocFiltersRef = useRef(buildAdhocFilters);
   buildAdhocFiltersRef.current = buildAdhocFilters;
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
@@ -314,8 +323,12 @@ export default function Dashboard() {
         }
         setChartMeta(metaMap);
 
-        const dMap = await getChartDataWithFilters(chartIds, metaMap);
-        setChartData(dMap);
+        const { dataMap, totalRowMap } = await getChartDataWithFilters(
+          chartIds,
+          metaMap,
+        );
+        setChartData(dataMap);
+        setTotalRows(totalRowMap);
       }
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "Failed to load dashboard"));
@@ -382,106 +395,6 @@ export default function Dashboard() {
     setNavOpen(true);
   };
 
-  function parseChartConfig(chart: ChartData): Record<string, unknown> {
-    const raw = chart.params || chart.form_data || "{}";
-    const fd = typeof raw === "string" ? JSON.parse(raw) : raw;
-    return {
-      ...fd,
-      datasource:
-        fd.datasource ||
-        `${chart.datasource_id}__${chart.datasource_type || "table"}`,
-    };
-  }
-
-  const fetchChartWithTotal = useCallback(
-    async (
-      cid: number,
-      metaMap: Record<number, ChartData>,
-    ): Promise<{
-      id: number;
-      data: Record<string, unknown>;
-      totalRow: Record<string, unknown> | null;
-    }> => {
-      const chart = metaMap[cid];
-      if (!chart) return { id: cid, data: {}, totalRow: null };
-      try {
-        const fd = parseChartConfig(chart);
-        const dsId =
-          chart.datasource_id ||
-          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-        if (!dsId) return { id: cid, data: {}, totalRow: null };
-        const query = buildQueryObject(fd, chart.viz_type);
-        if (!query.metrics || (query.metrics as unknown[]).length === 0)
-          return { id: cid, data: {}, totalRow: null };
-        const adhocFilters = buildAdhocFiltersRef.current(dsId);
-        if (adhocFilters.length > 0) {
-          query.filters = adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          })) as SimpleFilter[];
-        }
-        const force = adhocFilters.length > 0;
-
-        const queries = [query];
-        const totalQuery = buildQueryObject(fd, chart.viz_type);
-        totalQuery.groupby = [];
-        totalQuery.columns = [];
-        delete totalQuery.row_limit;
-        if (adhocFilters.length > 0) {
-          totalQuery.filters = adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          })) as SimpleFilter[];
-        }
-        queries.push(totalQuery);
-
-        const postRes = await api.post("/chart/data", {
-          datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries,
-          result_format: "json",
-          result_type: "full" as const,
-          force,
-        });
-        const results = (
-          Array.isArray(postRes.data?.result) ? postRes.data.result : []
-        ) as Record<string, unknown>[];
-        const first = results[0] || {};
-        const totalRaw = results[1];
-        const totalRow =
-          totalRaw?.data &&
-          Array.isArray(totalRaw.data) &&
-          totalRaw.data.length > 0
-            ? (totalRaw.data[0] as Record<string, unknown>)
-            : null;
-        return { id: cid, data: first, totalRow };
-      } catch {
-        return { id: cid, data: {}, totalRow: null };
-      }
-    },
-    [],
-  );
-
-  const getChartDataWithFilters = useCallback(
-    async (chartIds: number[], metaMap: Record<number, ChartData>) => {
-      const dataMap: Record<number, Record<string, unknown>> = {};
-      const totalRowMap: Record<number, Record<string, unknown> | null> = {};
-      const CONCURRENCY = 3;
-      for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
-        const batch = chartIds.slice(i, i + CONCURRENCY);
-        const results = await Promise.all(
-          batch.map((cid) => fetchChartWithTotal(cid, metaMap)),
-        );
-        results.forEach((r) => {
-          dataMap[r.id] = r.data;
-          totalRowMap[r.id] = r.totalRow;
-        });
-      }
-      return { dataMap, totalRowMap };
-    },
-    [fetchChartWithTotal],
-  );
   const chartMetaRef = useRef(chartMeta);
   chartMetaRef.current = chartMeta;
 
@@ -561,46 +474,16 @@ export default function Dashboard() {
 
   const refreshChart = useCallback(
     async (chartId: number) => {
-      const chart = chartMeta[chartId];
-      if (!chart) return;
-      try {
-        const fd = parseChartConfig(chart);
-        const dsId =
-          chart.datasource_id ||
-          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-        if (!dsId) return;
-        const query = buildQueryObject(fd, chart.viz_type);
-        if (!query.metrics || query.metrics.length === 0) return;
-        const buildFn = buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
-        if (adhocFilters.length > 0) {
-          query.filters = adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          })) as SimpleFilter[];
-        }
-        const payload = {
-          datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries: [query],
-          form_data: fd,
-          result_format: "json",
-          result_type: "full" as const,
-          force: true,
-        };
-        const postRes = await api.post("/chart/data", payload);
-        const postResult = postRes.data?.result;
-        setChartData((prev) => ({
-          ...prev,
-          [chartId]: Array.isArray(postResult)
-            ? postResult[0] || {}
-            : postResult || {},
-        }));
-      } catch {
-        /* refresh failed */
+      const data = await refreshChartData(
+        chartId,
+        chartMeta,
+        buildAdhocFiltersRef.current,
+      );
+      if (data) {
+        setChartData((prev) => ({ ...prev, [chartId]: data }));
       }
     },
-    [chartMeta],
+    [chartMeta, refreshChartData],
   );
 
   const refreshCharts = useCallback(
@@ -637,66 +520,17 @@ export default function Dashboard() {
 
   const fetchOtherRow = useCallback(
     async (chartId: number, excludeColumn: string, excludeValues: string[]) => {
-      const chart = chartMetaRef.current[chartId];
-      if (!chart || excludeValues.length === 0) return;
-
       setOtherRows((prev) => ({ ...prev, [chartId]: null }));
-
-      try {
-        const fd = parseChartConfig(chart);
-        const dsId =
-          chart.datasource_id ||
-          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-        if (!dsId) return;
-
-        const query = buildQueryObject(fd, chart.viz_type);
-        if (!query.metrics || query.metrics.length === 0) return;
-
-        query.groupby = [];
-        query.columns = [];
-        delete (query as Record<string, unknown>).row_limit;
-
-        const buildFn = buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
-        query.filters = [
-          ...adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          })),
-          {
-            col: excludeColumn,
-            op: "NOT IN" as const,
-            val: excludeValues,
-          },
-        ];
-
-        const payload = {
-          datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries: [query],
-          form_data: fd,
-          result_format: "json",
-          result_type: "full" as const,
-        };
-
-        const postRes = await api.post("/chart/data", payload);
-        const postResult = postRes.data?.result;
-        const first = Array.isArray(postResult) ? postResult[0] : postResult;
-
-        if (first?.data && Array.isArray(first.data) && first.data.length > 0) {
-          const otherRow = {
-            ...first.data[0],
-            [excludeColumn]: "其他",
-          } as Record<string, unknown>;
-          setOtherRows((prev) => ({ ...prev, [chartId]: otherRow }));
-        } else {
-          setOtherRows((prev) => {
-            const next = { ...prev };
-            delete next[chartId];
-            return next;
-          });
-        }
-      } catch {
+      const result = await fetchOtherRowData(
+        chartId,
+        excludeColumn,
+        excludeValues,
+        chartMetaRef.current,
+        buildAdhocFiltersRef.current,
+      );
+      if (result) {
+        setOtherRows((prev) => ({ ...prev, [chartId]: result }));
+      } else {
         setOtherRows((prev) => {
           const next = { ...prev };
           delete next[chartId];
@@ -704,7 +538,7 @@ export default function Dashboard() {
         });
       }
     },
-    [],
+    [fetchOtherRowData],
   );
 
   const initialFilterKeysRef = useRef("");
@@ -744,8 +578,8 @@ export default function Dashboard() {
         if (chart) {
           const newMeta = { ...chartMeta, [chartId]: chart };
           setChartMeta(newMeta);
-          const newData = await getChartDataWithFilters([chartId], newMeta);
-          setChartData((prev) => ({ ...prev, ...newData }));
+          const { dataMap } = await getChartDataWithFilters([chartId], newMeta);
+          setChartData((prev) => ({ ...prev, ...dataMap }));
         }
       } catch {
         /* refresh failed */
@@ -1095,15 +929,8 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: 400,
-        }}
-      >
-        <CircularProgress />
+      <Box sx={{ p: 3 }}>
+        <TableSkeleton rows={6} />
       </Box>
     );
   }
@@ -1114,7 +941,7 @@ export default function Dashboard() {
       </Box>
     );
   }
-  if (!dashboard) return null;
+  if (!dashboard) return <EmptyState title="Dashboard not found" />;
 
   return (
     <>
@@ -1128,7 +955,15 @@ export default function Dashboard() {
         onClearAll={handleClearAll}
         pendingFilterIds={pendingFilterIds}
       />
-      <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 0 }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          p: 0,
+          px: { xs: spacing.sm, md: spacing.lg },
+        }}
+      >
         <DashboardGrid
           containerWidth={containerWidth}
           gridLayout={gridLayout}

@@ -54,7 +54,6 @@ export default function DataGridTable(props: DataGridProps) {
             "& .MuiDataGrid-columnHeaderTitle": {
               fontWeight: 600,
               fontSize: "0.75rem",
-              textTransform: "uppercase",
               letterSpacing: "0.04em",
               color: "text.secondary",
             },
@@ -63,10 +62,12 @@ export default function DataGridTable(props: DataGridProps) {
               transition: "background-color 150ms ease, box-shadow 150ms ease",
               "&:hover": {
                 backgroundColor: "action.hover",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                boxShadow:
+                  "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
               },
               "&:nth-of-type(even)": {
-                backgroundColor: "rgba(0,0,0,0.02)",
+                backgroundColor:
+                  "var(--mui-palette-action-hover, rgba(0,0,0,0.04))",
               },
               "&:nth-of-type(even):hover": {
                 backgroundColor: "action.hover",
@@ -86,10 +87,12 @@ export default function DataGridTable(props: DataGridProps) {
               justifyContent: "flex-start",
             },
             "& .MuiDataGrid-cell:focus": {
-              outline: "none",
+              outline: "2px solid var(--mui-palette-primary-main, #20a7c9)",
+              outlineOffset: -2,
             },
             "& .MuiDataGrid-cell:focus-within": {
-              outline: "none",
+              outline: "2px solid var(--mui-palette-primary-main, #20a7c9)",
+              outlineOffset: -2,
             },
             "& .MuiDataGrid-cellContent": {
               lineHeight: 1.5,

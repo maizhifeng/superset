@@ -72,7 +72,7 @@ function SwipeableCard({
     if (slideRef.current) {
       slideRef.current.style.transform = `translateX(${x}px)`;
       slideRef.current.style.transition = smooth
-        ? "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
+        ? "transform 200ms cubic-bezier(0.2, 0, 0, 1)"
         : "none";
     }
   };
@@ -154,20 +154,22 @@ function SwipeableCard({
       }}
       sx={{
         borderRadius: 1.5,
-        border: "1px solid",
-        boxShadow: "none",
+        border: isSelected ? "2px solid" : 0,
+        borderColor: isSelected ? "primary.main" : undefined,
+        boxShadow: isSelected
+          ? "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))"
+          : "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
         overflow: "hidden",
         userSelect: "none",
         touchAction: "pan-y",
         bgcolor: isSelected ? "action.hover" : "background.paper",
-        borderColor: isSelected ? "primary.main" : "divider",
       }}
     >
       <Box
         ref={slideRef}
         sx={{
           display: "flex",
-          transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          transition: "transform 200ms cubic-bezier(0.2, 0, 0, 1)",
         }}
       >
         <Box
@@ -246,7 +248,7 @@ function SwipeableCard({
           <Typography
             variant="caption"
             sx={{
-              fontSize: "0.6rem",
+              fontSize: "0.75rem",
               fontWeight: 600,
               color: "white",
               lineHeight: 1,

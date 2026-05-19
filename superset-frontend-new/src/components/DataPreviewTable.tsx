@@ -255,7 +255,7 @@ export default function DataPreviewTable({
                             component="span"
                             variant="caption"
                             sx={{
-                              fontSize: "0.55rem",
+                              fontSize: "0.75rem",
                               fontWeight: 800,
                               color: "primary.main",
                               lineHeight: 1,

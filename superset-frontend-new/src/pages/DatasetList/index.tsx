@@ -256,7 +256,7 @@ export default function DatasetList() {
                   variant="outlined"
                   sx={{
                     height: 16,
-                    fontSize: "0.55rem",
+                    fontSize: "0.75rem",
                     "& .MuiChip-label": { px: 0.5 },
                   }}
                 />
@@ -268,21 +268,21 @@ export default function DatasetList() {
                 variant="outlined"
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
               <Typography
                 variant="caption"
                 color="text.secondary"
-                sx={{ fontSize: "0.6rem" }}
+                sx={{ fontSize: "0.75rem" }}
               >
                 {row.database?.database_name ?? "Unknown"}
               </Typography>
               <Typography
                 variant="caption"
                 color="text.disabled"
-                sx={{ fontSize: "0.55rem" }}
+                sx={{ fontSize: "0.75rem" }}
               >
                 {row.changed_on_delta_humanized ?? ""}
               </Typography>

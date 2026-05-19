@@ -129,17 +129,17 @@ export default function DashboardList() {
             <Paper
               sx={{
                 p: 2.5,
-                border: "1px solid",
-                borderColor: "divider",
                 borderRadius: 2,
                 cursor: "pointer",
                 position: "relative",
+                boxShadow:
+                  "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
                 transition:
-                  "box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1), transform 250ms cubic-bezier(0.4, 0, 0.2, 1), border-color 250ms ease",
+                  "box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1), transform 250ms cubic-bezier(0.4, 0, 0.2, 1)",
                 "&:hover": {
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+                  boxShadow:
+                    "var(--mui-palette-shadow-md, 0 4px 8px rgba(0,0,0,0.12))",
                   transform: "translateY(-2px)",
-                  borderColor: "primary.light",
                   "& .card-actions": { opacity: 1 },
                 },
                 animation: `${cardEnter} 0.35s ease both`,
@@ -159,7 +159,6 @@ export default function DashboardList() {
                   variant="subtitle1"
                   sx={{
                     fontWeight: 700,
-                    fontSize: "0.9375rem",
                     lineHeight: 1.3,
                   }}
                 >
@@ -177,7 +176,7 @@ export default function DashboardList() {
                     variant="outlined"
                     sx={{
                       height: 22,
-                      "& .MuiChip-label": { fontSize: "0.65rem", px: 0.75 },
+                      "& .MuiChip-label": { fontSize: "0.75rem", px: 0.75 },
                     }}
                   />
                 ) : (
@@ -187,7 +186,7 @@ export default function DashboardList() {
                     variant="outlined"
                     sx={{
                       height: 22,
-                      "& .MuiChip-label": { fontSize: "0.65rem", px: 0.75 },
+                      "& .MuiChip-label": { fontSize: "0.75rem", px: 0.75 },
                     }}
                   />
                 )}
@@ -201,7 +200,7 @@ export default function DashboardList() {
                     <Typography
                       variant="caption"
                       color="text.secondary"
-                      sx={{ fontSize: "0.7rem" }}
+                      sx={{ fontSize: "0.75rem" }}
                     >
                       {dashboard.changed_on_delta_humanized}
                     </Typography>

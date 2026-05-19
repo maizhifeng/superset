@@ -65,8 +65,7 @@ export default function Settings() {
       <Paper
         sx={{
           borderRadius: 2,
-          border: "1px solid",
-          borderColor: "divider",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
           mb: 3,
         }}
       >
@@ -96,7 +95,7 @@ export default function Settings() {
               <Typography
                 variant="caption"
                 color="text.disabled"
-                sx={{ fontSize: "0.7rem", wordBreak: "break-all" }}
+                sx={{ fontSize: "0.75rem", wordBreak: "break-all" }}
               >
                 {item.path}
               </Typography>
@@ -161,8 +160,7 @@ export default function Settings() {
         sx={{
           p: 2,
           borderRadius: 2,
-          border: "1px solid",
-          borderColor: "divider",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
         }}
       >
         <Box
