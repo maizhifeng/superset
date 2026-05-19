@@ -239,7 +239,7 @@ export default function SavedQueryList() {
                 sx={{
                   fontFamily: "monospace",
                   color: "text.secondary",
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -252,7 +252,7 @@ export default function SavedQueryList() {
               <Typography
                 variant="caption"
                 color="text.disabled"
-                sx={{ fontSize: "0.55rem", flexShrink: 0 }}
+                sx={{ fontSize: "0.75rem", flexShrink: 0 }}
               >
                 {row.database?.database_name ?? ""}
                 {row.changed_on_delta_humanized

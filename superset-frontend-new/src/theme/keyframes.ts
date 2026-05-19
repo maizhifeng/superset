@@ -10,7 +10,7 @@ export const toolFadeIn = keyframes`
   to { opacity: 1; transform: scale(1); }
 `;
 
-export const chartLoadingBounce = keyframes`
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
+export const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 `;

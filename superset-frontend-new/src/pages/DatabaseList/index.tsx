@@ -222,7 +222,7 @@ export default function DatabaseList() {
                 variant="outlined"
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
@@ -233,7 +233,7 @@ export default function DatabaseList() {
                 variant={row.expose_in_sqllab ? "filled" : "outlined"}
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
@@ -244,14 +244,14 @@ export default function DatabaseList() {
                 variant={row.allow_dml ? "filled" : "outlined"}
                 sx={{
                   height: 16,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   "& .MuiChip-label": { px: 0.5 },
                 }}
               />
               <Typography
                 variant="caption"
                 color="text.disabled"
-                sx={{ fontSize: "0.55rem" }}
+                sx={{ fontSize: "0.75rem" }}
               >
                 {row.changed_on_delta_humanized ?? ""}
               </Typography>

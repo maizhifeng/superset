@@ -5,6 +5,7 @@ import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import AppLayout from "@/components/AppLayout";
+import PageTransition from "@/components/PageTransition";
 import KeyboardShortcutHelpModal from "@/components/KeyboardShortcutHelpModal";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import { useAuthStore } from "@/store/authStore";
@@ -43,7 +44,9 @@ function LoadingFallback() {
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
     <ProtectedRoute>
-      <AppLayout>{children}</AppLayout>
+      <AppLayout>
+        <PageTransition>{children}</PageTransition>
+      </AppLayout>
     </ProtectedRoute>
   );
 }
@@ -101,7 +104,14 @@ export default function App() {
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route
+          path="/login"
+          element={
+            <PageTransition>
+              <Login />
+            </PageTransition>
+          }
+        />
         <Route
           path="/"
           element={

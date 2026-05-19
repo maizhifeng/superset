@@ -135,7 +135,8 @@ export default function PickerField({
               borderRadius: 2,
               border: "1px solid",
               borderColor: "primary.light",
-              boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+              boxShadow:
+                "0 4px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.12)",
               overflow: "hidden",
             },
           },
@@ -177,9 +178,8 @@ export default function PickerField({
                       fontWeight: 600,
                       color: "text.secondary",
                       bgcolor: "action.hover",
-                      textTransform: "uppercase",
                       letterSpacing: "0.04em",
-                      fontSize: "0.65rem",
+                      fontSize: "0.75rem",
                       position: "sticky",
                       top: 0,
                       zIndex: 1,
@@ -266,7 +266,7 @@ export default function PickerField({
                             sx={{
                               color: "text.disabled",
                               display: "block",
-                              fontSize: "0.65rem",
+                              fontSize: "0.75rem",
                             }}
                           >
                             {opt.group}

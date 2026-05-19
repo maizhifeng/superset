@@ -21,7 +21,13 @@ const barBounce = keyframes`
   50% { transform: scaleY(1); }
 `;
 
-const palette = ["#20a7c9", "#ff7f50", "#5ab1ef", "#ffb980", "#d87a80"];
+const loadingBarColors = [
+  "var(--mui-palette-primary-main, #20a7c9)",
+  "var(--mui-palette-warning-main, #ff7f44)",
+  "var(--mui-palette-info-main, #66bcfe)",
+  "var(--mui-palette-success-main, #5ac189)",
+  "var(--mui-palette-error-main, #e0432e)",
+];
 
 function ChartLoadingSkeleton() {
   return (
@@ -44,7 +50,7 @@ function ChartLoadingSkeleton() {
           height: 80,
         }}
       >
-        {palette.map((color, i) => (
+        {loadingBarColors.map((color, i) => (
           <Box
             key={i}
             sx={{
@@ -60,11 +66,7 @@ function ChartLoadingSkeleton() {
           />
         ))}
       </Box>
-      <Typography
-        variant="caption"
-        color="text.disabled"
-        sx={{ fontSize: "0.6rem" }}
-      >
+      <Typography variant="caption" color="text.disabled">
         Loading...
       </Typography>
     </Box>
@@ -359,12 +361,19 @@ function ChartCard({
         flexDirection: "column",
         overflow: "hidden",
         borderRadius: 2,
-        border: "1px solid",
-        borderColor: isCompareActive ? "primary.300" : "divider",
+        border: 0,
         bgcolor: "background.paper",
-        boxShadow: isDragging ? 6 : 0,
-        transition: "box-shadow 200ms ease",
-        "&:hover": { boxShadow: 2 },
+        boxShadow: isCompareActive
+          ? "0 0 0 2px var(--mui-palette-primary-main, #20a7c9), 0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)"
+          : isDragging
+            ? "0 4px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.10)"
+            : "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
+        transition:
+          "box-shadow 200ms cubic-bezier(0, 0, 0.2, 1), transform 200ms cubic-bezier(0, 0, 0.2, 1)",
+        "&:hover": {
+          transform: "translateY(-1px)",
+          boxShadow: "0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.10)",
+        },
       }}
     >
       <Box
@@ -377,7 +386,9 @@ function ChartCard({
           cursor: "move",
           borderBottom: "1px solid",
           borderColor: "divider",
-          bgcolor: "grey.50",
+          bgcolor: "background.paper",
+          backgroundImage:
+            "linear-gradient(to bottom, rgba(32,167,201,0.03), transparent)",
         }}
       >
         <DragHandleIcon

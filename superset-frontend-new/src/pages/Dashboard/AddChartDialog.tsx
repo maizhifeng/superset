@@ -145,7 +145,7 @@ export default function AddChartDialog({
                 label={chart.viz_type}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: "0.65rem", height: 20 }}
+                sx={{ fontSize: "0.75rem", height: 20 }}
               />
             </ListItemButton>
           ))}

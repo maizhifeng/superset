@@ -301,7 +301,7 @@ export default function ChartList() {
                 variant="outlined"
                 sx={{
                   fontWeight: 500,
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   height: 16,
                   flexShrink: 0,
                   "& .MuiChip-label": { px: 0.5 },
@@ -324,7 +324,7 @@ export default function ChartList() {
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontSize: "0.6rem", lineHeight: 1 }}
+                  sx={{ fontSize: "0.75rem", lineHeight: 1 }}
                 >
                   {row.datasource_name_text ||
                     row.table?.table_name ||
@@ -334,7 +334,7 @@ export default function ChartList() {
               <Typography
                 variant="caption"
                 color="text.disabled"
-                sx={{ fontSize: "0.55rem" }}
+                sx={{ fontSize: "0.75rem" }}
               >
                 {row.created_by?.username ?? "N/A"}
                 {row.changed_on_delta_humanized

@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import { spacing, gap } from "@/theme/spacing";
 
 interface PageHeaderProps {
   title: string;
@@ -19,7 +20,7 @@ export default function PageHeader({
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-start",
-        mb: 2,
+        mb: spacing.md,
       }}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -37,7 +38,7 @@ export default function PageHeader({
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ mt: 0.5, display: "block" }}
+            sx={{ mt: spacing.xs, display: "block" }}
           >
             {subtitle}
           </Typography>
@@ -45,7 +46,12 @@ export default function PageHeader({
       </Box>
       {actions && (
         <Box
-          sx={{ display: "flex", alignItems: "center", gap: 1, flexShrink: 0 }}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: gap.sm,
+            flexShrink: 0,
+          }}
         >
           {actions}
         </Box>

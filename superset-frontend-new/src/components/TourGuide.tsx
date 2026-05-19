@@ -223,7 +223,7 @@ const STEPS: StepDef[] = [
               sx={{
                 fontWeight: 700,
                 fontFamily: "monospace",
-                fontSize: "0.7rem",
+                fontSize: "0.75rem",
                 color: "primary.main",
               }}
             >
@@ -291,7 +291,7 @@ const STEPS: StepDef[] = [
                 sx={{
                   color: node.color,
                   opacity: 0.7,
-                  fontSize: "0.6rem",
+                  fontSize: "0.75rem",
                   textAlign: "center",
                 }}
               >
@@ -393,7 +393,7 @@ const STEPS: StepDef[] = [
                 py: 0.5,
                 bgcolor: "primary.main",
                 color: "common.white",
-                fontSize: "0.6rem",
+                fontSize: "0.75rem",
                 fontWeight: 700,
                 textAlign: "center",
               }}
@@ -415,7 +415,7 @@ const STEPS: StepDef[] = [
                   py: 0.25,
                   borderTop: "1px solid",
                   borderColor: "divider",
-                  fontSize: "0.6rem",
+                  fontSize: "0.75rem",
                 }}
               >
                 <Typography
@@ -602,7 +602,7 @@ const STEPS: StepDef[] = [
                 sx={{
                   display: "block",
                   fontFamily: "monospace",
-                  fontSize: "0.55rem",
+                  fontSize: "0.75rem",
                   lineHeight: 1.6,
                   color: line.color,
                 }}

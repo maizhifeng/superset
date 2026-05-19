@@ -184,7 +184,7 @@ export default function DateColumnDetector({
                     bgcolor: "grey.50",
                     p: 0.5,
                     borderRadius: 1,
-                    fontSize: "0.7rem",
+                    fontSize: "0.75rem",
                     fontFamily: "monospace",
                     color: "text.secondary",
                   }}

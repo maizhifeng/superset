@@ -4,6 +4,7 @@ import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import PageHeader from "@/components/PageHeader";
 import Icon from "@/superset-ui-mui/components/Icon";
+import { fadeInUp } from "@/theme/keyframes";
 import { Grid2 } from "@/superset-ui-mui/components";
 
 const links = [
@@ -12,42 +13,42 @@ const links = [
     path: "/chart/list",
     icon: "chart",
     desc: "Create and manage charts",
-    color: "#20a7c9",
+    color: "primary.main",
   },
   {
     title: "Dashboards",
     path: "/dashboard/list",
     icon: "dashboard",
     desc: "Organize charts into dashboards",
-    color: "#5ac189",
+    color: "success.main",
   },
   {
     title: "SQL Lab",
     path: "/sqllab",
     icon: "code",
     desc: "Write and run SQL queries",
-    color: "#7c3aed",
+    color: "secondary.main",
   },
   {
     title: "Databases",
     path: "/database/list",
     icon: "database",
     desc: "Connect to your data sources",
-    color: "#ff7f44",
+    color: "warning.main",
   },
   {
     title: "Datasets",
     path: "/dataset/list",
     icon: "table",
     desc: "Manage your data tables",
-    color: "#66bcfe",
+    color: "info.main",
   },
   {
     title: "Query History",
     path: "/query_history",
     icon: "history",
     desc: "View past queries",
-    color: "#e0432e",
+    color: "error.main",
   },
 ];
 
@@ -70,15 +71,16 @@ export default function Home() {
               sx={{
                 p: 3,
                 borderRadius: 2,
-                border: "1px solid",
-                borderColor: "divider",
                 cursor: "pointer",
+                boxShadow:
+                  "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
                 transition:
                   "box-shadow 200ms cubic-bezier(0, 0, 0.2, 1), transform 200ms cubic-bezier(0, 0, 0.2, 1)",
-                animation: `fadeInUp 300ms ease-out both`,
+                animation: `${fadeInUp} 300ms ease-out both`,
                 animationDelay: `${i * 50}ms`,
                 "&:hover": {
-                  boxShadow: 4,
+                  boxShadow:
+                    "0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.10)",
                   transform: "translateY(-2px)",
                 },
               }}
@@ -92,7 +94,7 @@ export default function Home() {
                   alignItems: "center",
                   justifyContent: "center",
                   mb: 1.5,
-                  bgcolor: `${link.color}15`,
+                  bgcolor: "action.hover",
                 }}
               >
                 <Icon name={link.icon} size={22} sx={{ color: link.color }} />

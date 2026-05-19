@@ -76,9 +76,8 @@ export default function DashboardGrid({
         sx={{
           p: 4,
           textAlign: "center",
-          border: "1px solid",
-          borderColor: "divider",
           borderRadius: 2,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
         }}
       >
         <BarChartOutlinedIcon

@@ -36,7 +36,7 @@ export default function UserMenu({
           sx={{
             width: 26,
             height: 26,
-            fontSize: "0.7rem",
+            fontSize: "0.75rem",
             bgcolor: "primary.main",
           }}
         >

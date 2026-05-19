@@ -47,7 +47,7 @@ export default function FilterToolbarButton({
         sx={{
           textTransform: "none",
           fontWeight: 600,
-          fontSize: "0.9375rem",
+          fontSize: "0.875rem",
           color: activeCount > 0 ? "primary.main" : "text.secondary",
           px: 0.5,
           py: 0,

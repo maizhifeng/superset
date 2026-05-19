@@ -43,7 +43,7 @@ export default function AppBreadcrumbs({
             sx={{
               textTransform: "none",
               fontWeight: i === items.length - 1 ? 600 : 400,
-              fontSize: "0.9375rem",
+              fontSize: "0.875rem",
               fontStyle: "italic",
               textDecoration: "underline",
               textUnderlineOffset: 2,
@@ -80,7 +80,7 @@ export default function AppBreadcrumbs({
             component={RouterLink}
             to={crumb.path}
             sx={{
-              fontSize: "0.9375rem",
+              fontSize: "0.875rem",
               fontWeight: i === items.length - 1 ? 600 : 400,
               fontStyle: "italic",
               textDecoration: "underline",
