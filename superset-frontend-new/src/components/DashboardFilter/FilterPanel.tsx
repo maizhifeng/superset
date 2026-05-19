@@ -11,6 +11,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
+import rison from "rison";
 import api from "@/api";
 import type { FilterConfig, FilterState } from "./types";
 
@@ -49,17 +50,19 @@ function FilterSelect({
     [],
   );
   const [loading, setLoading] = useState(false);
-  const [inputValue, setInputValue] = useState("");
-  const fetchedRef = useRef(false);
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    let cancelled = false;
-    (async () => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const fetchValues = useCallback(
+    async (search: string) => {
       setLoading(true);
       try {
+        const q: Record<string, unknown> = { page_size: 100, page: 0 };
+        if (search) {
+          q.filters = [{ col: "value", op: "ct", val: search }];
+        }
         const res = await api.get(
-          `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/`,
+          `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
         );
         const raw: unknown[] = res.data?.result || [];
         const values: { label: string; value: string }[] = raw
@@ -69,16 +72,29 @@ function FilterSelect({
             label:
               filter.columnType === "time" ? formatTimeLabel(v) : String(v),
           }));
-        if (!cancelled) setOptions(values);
+        setOptions(values);
       } catch {
+        setOptions([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    })();
+    },
+    [filter.datasetId, filter.column, filter.columnType],
+  );
+
+  useEffect(() => {
+    fetchValues("");
+  }, [fetchValues]);
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      fetchValues(searchTerm);
+    }, 300);
     return () => {
-      cancelled = true;
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [filter.datasetId, filter.column, filter.columnType]);
+  }, [searchTerm, fetchValues]);
 
   const selected = useMemo(() => {
     if (Array.isArray(value))
@@ -103,8 +119,8 @@ function FilterSelect({
       loading={loading}
       options={options}
       value={selected}
-      inputValue={inputValue}
-      onInputChange={(_, v) => setInputValue(v)}
+      inputValue={searchTerm}
+      onInputChange={(_, v) => setSearchTerm(v)}
       onChange={(_, v) => onChange(v ? v.map((x) => x.value) : [])}
       filterSelectedOptions
       disableCloseOnSelect
@@ -138,7 +154,7 @@ function FilterSelect({
         <TextField
           {...params}
           label={filter.name}
-          placeholder="Select..."
+          placeholder={searchTerm ? "Type to search..." : "Select..."}
           slotProps={{
             ...params.slotProps,
             input: {

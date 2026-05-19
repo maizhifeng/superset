@@ -22,9 +22,20 @@ interface ChatInputProps {
 const KEY_COMBO_RE = /[A-Za-z0-9?/]+\+[A-Za-z0-9?/]+/g;
 
 const MODIFIERS = new Set([
-  "Shift", "Ctrl", "Cmd", "Alt",
-  "Enter", "Esc", "Tab", "Del", "BS", "Space",
-  "Up", "Down", "Left", "Right",
+  "Shift",
+  "Ctrl",
+  "Cmd",
+  "Alt",
+  "Enter",
+  "Esc",
+  "Tab",
+  "Del",
+  "BS",
+  "Space",
+  "Up",
+  "Down",
+  "Left",
+  "Right",
 ]);
 
 const SEPARATOR_SX = { color: "text.disabled", fontSize: "0.75rem", mx: 0.25 };
@@ -102,9 +113,7 @@ function renderHintWithChips(hint: string) {
   }
   if (lastIndex < hint.length) {
     const remaining = hint.slice(lastIndex);
-    const label = remaining.startsWith(" to ")
-      ? remaining.slice(4)
-      : remaining;
+    const label = remaining.startsWith(" to ") ? remaining.slice(4) : remaining;
     parts.push(
       <Box key={`eq-${lastIndex}`} component="span" sx={SEPARATOR_SX}>
         {" = "}
@@ -130,7 +139,9 @@ export default function ChatInput({
   const isControlled = controlledValue !== undefined;
   const [internalValue, setInternalValue] = useState("");
   const value = isControlled ? controlledValue : internalValue;
-  const setValue = isControlled ? controlledOnChange ?? (() => {}) : setInternalValue;
+  const setValue = isControlled
+    ? (controlledOnChange ?? (() => {}))
+    : setInternalValue;
 
   const registryHints = useRotatingShortcutHints();
 
@@ -148,7 +159,13 @@ export default function ChatInput({
   };
 
   return (
-    <Box sx={{ width: "100%", maxWidth: disableMaxWidth ? "none" : 400, position: "relative" }}>
+    <Box
+      sx={{
+        width: "100%",
+        maxWidth: disableMaxWidth ? "none" : 400,
+        position: "relative",
+      }}
+    >
       <TextField
         fullWidth
         size="small"

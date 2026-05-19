@@ -5,9 +5,9 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import SaveIcon from "@mui/icons-material/Save";
 import type { EChartsOption } from "echarts";
-import { buildEChartsOption, ensureChartType } from "@/utils/echarts";
+import { buildEChartsOption, loadECharts } from "@/utils/echarts";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import api from "@/api";
+import api, { getDataset } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { useToolbarStore } from "@/contexts/ToolbarContext";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -15,6 +15,7 @@ import PageSpeedDial from "@/components/PageSpeedDial";
 import ChartPreview from "./ChartPreview";
 import ChartEditorForm from "./ChartEditorForm";
 import ExploreViewContainer from "@/explore/components/ExploreViewContainer";
+import ExploreWelcome from "./ExploreWelcome";
 import type { Dataset } from "@/types/api";
 
 interface FieldOption {
@@ -318,10 +319,20 @@ export default function ChartEditor({
       return;
     }
     setLoadingColumns(true);
-    api
-      .get(`/dataset/${datasourceId}`)
-      .then((res) => {
-        const r = res.data?.result ?? {};
+    getDataset<{
+      columns: {
+        column_name: string;
+        type: string | null;
+        expression?: string;
+        is_dttm?: boolean;
+      }[];
+      metrics: {
+        metric_name: string;
+        verbose_name: string | null;
+        expression: string;
+      }[];
+    }>(datasourceId)
+      .then((r) => {
         const cols = (r.columns ?? []) as {
           column_name: string;
           type: string | null;
@@ -368,7 +379,7 @@ export default function ChartEditor({
   useEffect(() => {
     let cancelled = false;
     setChartLibReady(false);
-    ensureChartType(resolvedType).then(() => {
+    loadECharts().then(() => {
       if (!cancelled) setChartLibReady(true);
     });
     return () => {
@@ -387,69 +398,75 @@ export default function ChartEditor({
   }, [datasourceId, resolvedType, metrics, groupby]);
 
   useEffect(() => {
-    if (abortRef.current) abortRef.current.abort();
-    setChartData(null);
-
-    if (!previewParams) return;
     if (
+      !previewParams ||
       previewParams.metrics.length === 0 ||
       loadingColumns ||
       metricNames.size === 0
     ) {
+      setChartData(null);
       setLoadingData(false);
-      setChartData({});
       return;
     }
 
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoadingData(true);
+    const timer = setTimeout(() => {
+      if (abortRef.current) abortRef.current.abort();
 
-    const queryFormData: Record<string, unknown> = {
-      metrics: buildMetricsPayload(previewParams.metrics),
-      groupby: previewParams.groupby,
-      viz_type: previewParams.viz_type,
-    };
-    if (savedFormData) {
-      if (savedFormData.time_range)
-        queryFormData.time_range = savedFormData.time_range;
-      if (savedFormData.adhoc_filters)
-        queryFormData.adhoc_filters = savedFormData.adhoc_filters;
-      if (savedFormData.row_limit)
-        queryFormData.row_limit = savedFormData.row_limit;
-      if (savedFormData.granularity_sqla)
-        queryFormData.granularity_sqla = savedFormData.granularity_sqla;
-    }
-    const query = buildQueryObject(queryFormData, previewParams.viz_type);
-    api
-      .post(
-        "/chart/data",
-        {
-          datasource: { id: previewParams.datasource_id, type: "table" },
-          queries: [query],
-          form_data: {
-            viz_type: previewParams.viz_type,
-            metrics: previewParams.metrics,
-            groupby: previewParams.groupby,
+      setChartData(null);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setLoadingData(true);
+
+      const queryFormData: Record<string, unknown> = {
+        metrics: buildMetricsPayload(previewParams.metrics),
+        groupby: previewParams.groupby,
+        viz_type: previewParams.viz_type,
+      };
+      if (savedFormData) {
+        if (savedFormData.time_range)
+          queryFormData.time_range = savedFormData.time_range;
+        if (savedFormData.adhoc_filters)
+          queryFormData.adhoc_filters = savedFormData.adhoc_filters;
+        if (savedFormData.row_limit)
+          queryFormData.row_limit = savedFormData.row_limit;
+        if (savedFormData.granularity_sqla)
+          queryFormData.granularity_sqla = savedFormData.granularity_sqla;
+      }
+      const query = buildQueryObject(queryFormData, previewParams.viz_type);
+      api
+        .post(
+          "/chart/data",
+          {
+            datasource: { id: previewParams.datasource_id, type: "table" },
+            queries: [query],
+            form_data: {
+              viz_type: previewParams.viz_type,
+              metrics: previewParams.metrics,
+              groupby: previewParams.groupby,
+            },
           },
-        },
-        { signal: controller.signal },
-      )
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        const result = res.data?.result;
-        const rowData = Array.isArray(result) ? result[0] || {} : result || {};
-        setChartData(rowData);
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return;
-        setChartData({});
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingData(false);
-      });
+          { signal: controller.signal },
+        )
+        .then((res) => {
+          if (controller.signal.aborted) return;
+          const result = res.data?.result;
+          const rowData = Array.isArray(result)
+            ? result[0] || {}
+            : result || {};
+          setChartData(rowData);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setChartData({});
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoadingData(false);
+        });
 
-    return () => controller.abort();
+      return () => controller.abort();
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [previewParams, loadingColumns, metricNames, savedFormData]);
 
   const option = useMemo(() => {
@@ -727,21 +744,25 @@ export default function ChartEditor({
           flexDirection: "column",
         }}
       >
-        <ChartPreview
-          datasourceId={datasourceId}
-          vizType={vizType}
-          resolvedType={resolvedType}
-          hasValidType={hasValidType}
-          metrics={metrics}
-          chartData={chartData}
-          loadingData={loadingData}
-          suggestedVizType={suggested?.vizType}
-          disabledReasons={disabledReasons}
-          onChartTypeChange={handleChartTypeChange}
-          chartLibReady={chartLibReady}
-          option={option}
-          bigNumberValue={bigNumberValue}
-        />
+        {!datasourceId ? (
+          <ExploreWelcome />
+        ) : (
+          <ChartPreview
+            datasourceId={datasourceId}
+            vizType={vizType}
+            resolvedType={resolvedType}
+            hasValidType={hasValidType}
+            metrics={metrics}
+            chartData={chartData}
+            loadingData={loadingData}
+            suggestedVizType={suggested?.vizType}
+            disabledReasons={disabledReasons}
+            onChartTypeChange={handleChartTypeChange}
+            chartLibReady={chartLibReady}
+            option={option}
+            bigNumberValue={bigNumberValue}
+          />
+        )}
       </Box>
       {!compact && <PageSpeedDial pageKeys="chart_editor" />}
     </Box>

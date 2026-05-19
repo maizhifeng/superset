@@ -2,6 +2,8 @@ import { type RefObject } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
+import Button from "@mui/material/Button";
+import AddIcon from "@mui/icons-material/Add";
 import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
 import { GridLayout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -30,9 +32,17 @@ interface DashboardGridProps {
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
   onDelete: (chartId: number) => void;
+  onAddChart?: () => void;
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
+  otherRows?: Record<number, Record<string, unknown> | null>;
+  onFetchOtherRow?: (
+    chartId: number,
+    excludeColumn: string,
+    excludeValues: string[],
+  ) => void;
+  totalRows?: Record<number, Record<string, unknown> | null>;
 }
 
 export default function DashboardGrid({
@@ -52,9 +62,13 @@ export default function DashboardGrid({
   onRefresh,
   onEdit,
   onDelete,
+  onAddChart,
   compareConfig,
   mirrorData,
   onToggleCompare,
+  otherRows,
+  onFetchOtherRow,
+  totalRows,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
@@ -70,9 +84,19 @@ export default function DashboardGrid({
         <BarChartOutlinedIcon
           sx={{ fontSize: 48, color: "text.disabled", mb: 1 }}
         />
-        <Typography color="text.secondary">
+        <Typography color="text.secondary" sx={{ mb: 1.5 }}>
           No charts in this dashboard yet
         </Typography>
+        {onAddChart && (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={onAddChart}
+          >
+            Add Chart
+          </Button>
+        )}
       </Box>
     );
   }
@@ -139,6 +163,9 @@ export default function DashboardGrid({
               compareConfig={compareConfig}
               mirrorData={mirrorData}
               onToggleCompare={onToggleCompare}
+              otherRow={otherRows?.[item.chartId]}
+              onFetchOtherRow={onFetchOtherRow}
+              totalRow={totalRows?.[item.chartId]}
             />
           </div>
         ))}

@@ -1,8 +1,8 @@
-import { useAuthStore } from '@/store/authStore';
-import api from '@/api';
-import { vi, test, expect, beforeEach } from 'vitest';
+import { useAuthStore } from "@/store/authStore";
+import api from "@/api";
+import { vi, test, expect, beforeEach } from "vitest";
 
-vi.mock('@/api', () => ({
+vi.mock("@/api", () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -22,7 +22,7 @@ beforeEach(() => {
   });
 });
 
-test('initial state has loading true and no user', () => {
+test("initial state has loading true and no user", () => {
   const state = useAuthStore.getState();
   expect(state.token).toBeNull();
   expect(state.user).toBeNull();
@@ -30,37 +30,37 @@ test('initial state has loading true and no user', () => {
   expect(state.isAuthenticated).toBe(false);
 });
 
-test('login stores token and user', async () => {
-  const mockToken = 'test-access-token';
+test("login stores token and user", async () => {
+  const mockToken = "test-access-token";
   vi.mocked(api.post).mockResolvedValueOnce({
     data: { access_token: mockToken },
   });
 
-  await useAuthStore.getState().login('admin', 'password');
+  await useAuthStore.getState().login("admin", "password");
 
   const state = useAuthStore.getState();
   expect(state.token).toBe(mockToken);
-  expect(state.user).toEqual({ username: 'admin' });
+  expect(state.user).toEqual({ username: "admin" });
   expect(state.isAuthenticated).toBe(true);
-  expect(localStorage.getItem('superset_user')).toBe(
-    JSON.stringify({ username: 'admin' }),
+  expect(localStorage.getItem("superset_user")).toBe(
+    JSON.stringify({ username: "admin" }),
   );
 });
 
-test('login throws on missing access_token', async () => {
+test("login throws on missing access_token", async () => {
   vi.mocked(api.post).mockResolvedValueOnce({
-    data: { message: 'Invalid credentials' },
+    data: { message: "Invalid credentials" },
   });
 
-  await expect(
-    useAuthStore.getState().login('admin', 'wrong'),
-  ).rejects.toThrow('Invalid credentials');
+  await expect(useAuthStore.getState().login("admin", "wrong")).rejects.toThrow(
+    "Invalid credentials",
+  );
 });
 
-test('logout clears auth state', () => {
+test("logout clears auth state", () => {
   useAuthStore.setState({
-    token: 'token',
-    user: { username: 'admin' },
+    token: "token",
+    user: { username: "admin" },
     isAuthenticated: true,
     loading: false,
   });
@@ -73,10 +73,10 @@ test('logout clears auth state', () => {
   expect(state.isAuthenticated).toBe(false);
 });
 
-test('setToken updates token and auth status', () => {
-  useAuthStore.getState().setToken('new-token');
+test("setToken updates token and auth status", () => {
+  useAuthStore.getState().setToken("new-token");
 
-  expect(useAuthStore.getState().token).toBe('new-token');
+  expect(useAuthStore.getState().token).toBe("new-token");
   expect(useAuthStore.getState().isAuthenticated).toBe(true);
 
   useAuthStore.getState().setToken(null);

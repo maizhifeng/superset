@@ -1,73 +1,76 @@
-import react from '@vitejs/plugin-react';
-import checker from 'vite-plugin-checker';
-import { resolve } from 'path';
-import { defineConfig } from 'vitest/config';
+import react from "@vitejs/plugin-react";
+import checker from "vite-plugin-checker";
+import { resolve } from "path";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   optimizeDeps: {
-    include: ['immer'],
+    include: ["immer"],
   },
   plugins: [
     react({
-      jsxImportSource: '@emotion/react',
+      jsxImportSource: "@emotion/react",
       babel: {
-        plugins: ['@emotion/babel-plugin'],
+        plugins: ["@emotion/babel-plugin"],
       },
     }),
     ...(process.env.VITEST ? [] : [checker({ typescript: true })]),
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@superset-ui/core': resolve(__dirname, 'packages/superset-ui-core/src'),
-      '@superset-ui/chart-controls': resolve(
+      "@": resolve(__dirname, "src"),
+      "@superset-ui/core": resolve(__dirname, "packages/superset-ui-core/src"),
+      "@superset-ui/chart-controls": resolve(
         __dirname,
-        'packages/superset-ui-chart-controls/src',
+        "packages/superset-ui-chart-controls/src",
       ),
-      '@superset-ui/switchboard': resolve(
+      "@superset-ui/switchboard": resolve(
         __dirname,
-        'packages/superset-ui-switchboard/src',
+        "packages/superset-ui-switchboard/src",
       ),
-      '@apache-superset/core': resolve(__dirname, 'packages/superset-core/src'),
-      '@fixtures': resolve(__dirname, 'spec/fixtures'),
+      "@apache-superset/core": resolve(__dirname, "packages/superset-core/src"),
+      "@fixtures": resolve(__dirname, "spec/fixtures"),
     },
   },
   css: {
     lightningcss: {},
   },
   build: {
-    outDir: resolve(__dirname, 'dist'),
+    outDir: resolve(__dirname, "dist"),
     emptyOutDir: true,
     sourcemap: true,
   },
   server: {
     port: 9000,
-    host: '0.0.0.0',
+    host: "0.0.0.0",
     proxy: {
-      '/api': {
-        target: process.env.SUPERSET_HOST || 'http://localhost:8088',
+      "/api": {
+        target: process.env.SUPERSET_HOST || "http://localhost:8088",
         changeOrigin: true,
         headers: {
-          'X-Forwarded-Host': 'localhost:9000',
-          'X-Forwarded-Proto': 'http',
+          "X-Forwarded-Host": "localhost:9000",
+          "X-Forwarded-Proto": "http",
         },
       },
-      '/api/v1': {
-        target: process.env.SUPERSET_HOST || 'http://localhost:8088',
+      "/api/v1": {
+        target: process.env.SUPERSET_HOST || "http://localhost:8088",
         changeOrigin: true,
         headers: {
-          'X-Forwarded-Host': 'localhost:9000',
-          'X-Forwarded-Proto': 'http',
+          "X-Forwarded-Host": "localhost:9000",
+          "X-Forwarded-Proto": "http",
         },
       },
     },
   },
   test: {
     globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/setupTests.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}', 'spec/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['node_modules', 'dist'],
+    environment: "jsdom",
+    setupFiles: ["./src/setupTests.ts"],
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "spec/**/*.{test,spec}.{ts,tsx}",
+    ],
+    exclude: ["node_modules", "dist"],
     css: true,
   },
 });

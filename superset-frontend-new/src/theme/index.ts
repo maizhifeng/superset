@@ -1,7 +1,7 @@
-import { createTheme } from '@mui/material/styles';
-import { supersetPalette } from './palette';
-import typography from './typography';
-import components from './components';
+import { createTheme } from "@mui/material/styles";
+import { supersetPalette } from "./palette";
+import typography from "./typography";
+import components from "./components";
 const theme = createTheme({
   cssVariables: true,
   colorSchemes: {

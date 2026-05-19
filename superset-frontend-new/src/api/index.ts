@@ -1,14 +1,14 @@
-import axios, { InternalAxiosRequestConfig } from 'axios';
+import axios, { InternalAxiosRequestConfig } from "axios";
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: "/api/v1",
   timeout: 30000,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  headers: { "Content-Type": "application/json" },
 });
 
-const TOKEN_KEY = 'superset_token';
-const REFRESH_TOKEN_KEY = 'superset_refresh_token';
+const TOKEN_KEY = "superset_token";
+const REFRESH_TOKEN_KEY = "superset_refresh_token";
 
 export function getStoredToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -37,30 +37,57 @@ export function setStoredRefreshToken(token: string | null): void {
 }
 
 let csrfToken: string | null = null;
+let csrfPromise: Promise<string | null> | null = null;
 
 async function ensureCsrfToken(): Promise<string | null> {
   if (csrfToken) return csrfToken;
-  try {
-    const token = getStoredToken();
-    const res = await axios.get('/api/v1/security/csrf_token/', {
+  if (csrfPromise) return csrfPromise;
+  const token = getStoredToken();
+  csrfPromise = axios
+    .get("/api/v1/security/csrf_token/", {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    .then((res) => {
+      csrfToken = res.data?.result ?? null;
+      return csrfToken;
+    })
+    .catch(() => null)
+    .finally(() => {
+      csrfPromise = null;
     });
-    csrfToken = res.data?.result ?? null;
-    return csrfToken;
-  } catch {
-    return null;
-  }
+  return csrfPromise;
 }
 
-api.interceptors.request.use(async config => {
+const datasetCache = new Map<string, Promise<unknown>>();
+const DATASET_CACHE_TTL = 30_000;
+
+export function getDataset<T = unknown>(id: number | string): Promise<T> {
+  const key = String(id);
+  const cached = datasetCache.get(key);
+  if (cached) return cached as Promise<T>;
+  const promise = api
+    .get<{ result: T }>(`/dataset/${key}`)
+    .then((res) => {
+      setTimeout(() => datasetCache.delete(key), DATASET_CACHE_TTL);
+      return res.data.result as T;
+    })
+    .catch((err) => {
+      datasetCache.delete(key);
+      throw err;
+    });
+  datasetCache.set(key, promise);
+  return promise;
+}
+
+api.interceptors.request.use(async (config) => {
   const token = getStoredToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  if (config.method && !['get', 'head', 'options'].includes(config.method)) {
+  if (config.method && !["get", "head", "options"].includes(config.method)) {
     const csrf = await ensureCsrfToken();
     if (csrf) {
-      config.headers['X-CSRFToken'] = csrf;
+      config.headers["X-CSRFToken"] = csrf;
     }
   }
   return config;
@@ -74,7 +101,7 @@ let failedQueue: Array<{
 }> = [];
 
 function processQueue(error: unknown, token: string | null = null) {
-  failedQueue.forEach(prom => {
+  failedQueue.forEach((prom) => {
     if (error) {
       prom.reject(error);
     } else {
@@ -90,7 +117,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   try {
     const res = await axios.post(
-      '/api/v1/security/refresh',
+      "/api/v1/security/refresh",
       {},
       {
         headers: { Authorization: `Bearer ${refreshToken}` },
@@ -117,18 +144,22 @@ interface RetryRequestConfig extends InternalAxiosRequestConfig {
 }
 
 api.interceptors.response.use(
-  response => response,
-  async error => {
+  (response) => response,
+  async (error) => {
     const originalRequest = error.config as RetryRequestConfig | undefined;
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
       const refreshToken = getStoredRefreshToken();
 
-      if (refreshToken && !window.location.pathname.includes('/login')) {
+      if (refreshToken && !window.location.pathname.includes("/login")) {
         if (isRefreshing) {
           return new Promise<string>((resolve, reject) => {
             failedQueue.push({ resolve, reject });
-          }).then(newToken => {
+          }).then((newToken) => {
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             return api(originalRequest);
           });
@@ -148,20 +179,23 @@ api.interceptors.response.use(
 
         processQueue(error, null);
         clearAuth();
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
+        if (!window.location.pathname.includes("/login")) {
+          window.location.href = "/login";
         }
         return Promise.reject(error);
       }
 
       clearAuth();
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      if (!window.location.pathname.includes("/login")) {
+        window.location.href = "/login";
       }
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 400 && originalRequest?.url?.includes('/chart/data')) {
+    if (
+      error.response?.status === 400 &&
+      originalRequest?.url?.includes("/chart/data")
+    ) {
       return Promise.resolve({ data: { result: [{}] } } as any);
     }
     return Promise.reject(error);
@@ -171,13 +205,13 @@ api.interceptors.response.use(
 function clearAuth() {
   setStoredToken(null);
   setStoredRefreshToken(null);
-  localStorage.removeItem('superset_user');
+  localStorage.removeItem("superset_user");
 }
 
 // --- JWT expiration check ---
 function getTokenExpiration(token: string): number | null {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const payload = JSON.parse(atob(token.split(".")[1]));
     return payload.exp ? payload.exp * 1000 : null;
   } catch {
     return null;

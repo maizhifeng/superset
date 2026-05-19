@@ -1,14 +1,14 @@
-import { type ReactElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
-import { render, type RenderOptions } from '@testing-library/react';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { LocalizationProvider } from '@mui/x-date-pickers';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { CacheProvider } from '@emotion/react';
-import createCache from '@emotion/cache';
+import { type ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { render, type RenderOptions } from "@testing-library/react";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { LocalizationProvider } from "@mui/x-date-pickers";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import { CacheProvider } from "@emotion/react";
+import createCache from "@emotion/cache";
 
 const theme = createTheme();
-const emotionCache = createCache({ key: 'test' });
+const emotionCache = createCache({ key: "test" });
 
 interface WrapperOptions {
   initialEntries?: string[];

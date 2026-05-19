@@ -1,19 +1,75 @@
-import { memo, useRef, useMemo } from "react";
+import { memo, useRef, useMemo, useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DragHandleIcon from "@mui/icons-material/DragIndicator";
 import FlipIcon from "@mui/icons-material/Flip";
-import CloudOffIcon from "@mui/icons-material/CloudOff";
 import CloseIcon from "@mui/icons-material/Close";
+import LeaderboardOutlined from "@mui/icons-material/LeaderboardOutlined";
+import { keyframes } from "@emotion/react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
-import { buildEChartsOption, echarts } from "@/utils/echarts";
+import { buildEChartsOption, getECharts } from "@/utils/echarts";
+
+const barBounce = keyframes`
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+`;
+
+const palette = ["#20a7c9", "#ff7f50", "#5ab1ef", "#ffb980", "#d87a80"];
+
+function ChartLoadingSkeleton() {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 0.5,
+        flex: 1,
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          gap: 0.75,
+          height: 80,
+        }}
+      >
+        {palette.map((color, i) => (
+          <Box
+            key={i}
+            sx={{
+              width: 20,
+              height: `${[60, 85, 40, 70, 50][i]}%`,
+              borderRadius: 0.75,
+              bgcolor: color,
+              opacity: 0.4,
+              transformOrigin: "bottom",
+              animation: `${barBounce} ${0.6 + i * 0.15}s ease-in-out infinite`,
+              animationDelay: `${i * 0.1}s`,
+            }}
+          />
+        ))}
+      </Box>
+      <Typography
+        variant="caption"
+        color="text.disabled"
+        sx={{ fontSize: "0.6rem" }}
+      >
+        Loading...
+      </Typography>
+    </Box>
+  );
+}
 import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import { useEChartsType } from "@/hooks/useEChartsType";
@@ -44,6 +100,28 @@ interface ChartCardProps {
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
+  otherRow?: Record<string, unknown> | null;
+  onFetchOtherRow?: (
+    chartId: number,
+    excludeColumn: string,
+    excludeValues: string[],
+  ) => void;
+  totalRow?: Record<string, unknown> | null;
+}
+
+function pct95SplitIndex(
+  sorted: Record<string, unknown>[],
+  col: string,
+): number {
+  const total = sorted.reduce((s, r) => s + Number(r[col]), 0);
+  if (total === 0) return sorted.length;
+  const threshold = total * 0.95;
+  let cum = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    cum += Number(sorted[i][col]);
+    if (cum >= threshold) return i + 1;
+  }
+  return sorted.length;
 }
 
 function ChartCard({
@@ -60,7 +138,11 @@ function ChartCard({
   compareConfig,
   mirrorData,
   onToggleCompare,
+  otherRow,
+  onFetchOtherRow,
+  totalRow,
 }: ChartCardProps) {
+  const [pct95Active, setPct95Active] = useState(true);
   const option = data ? buildEChartsOption(vizType, data) : null;
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -95,16 +177,166 @@ function ChartCard({
       | undefined;
     if (!colnames || !coltypes) return undefined;
     const dateCols = new Set(colnames.filter((_, i) => coltypes[i] === 2));
-    if (dateCols.size === 0) return undefined;
     return (key: string, value: unknown) => {
       if (value === null || value === undefined) return "";
       if (dateCols.has(key)) {
         const formatted = formatDateValue(value);
         if (formatted !== null) return formatted;
       }
+      if (typeof value === "number" && !Number.isInteger(value)) {
+        if (/^(roi_|pay_rate_|retention_)/i.test(key))
+          return value.toFixed(1) + "%";
+        return value.toFixed(1);
+      }
       return String(value);
     };
   }, [data]);
+
+  const { sortMetricCol, dimCol } = useMemo(() => {
+    if (!data) return { sortMetricCol: "", dimCol: "" };
+    const colnames = (data as Record<string, unknown>).colnames as
+      | string[]
+      | undefined;
+    const coltypes = (data as Record<string, unknown>).coltypes as
+      | number[]
+      | undefined;
+    if (!colnames || !coltypes) return { sortMetricCol: "", dimCol: "" };
+    const smCol = colnames.find((c) => /n_unum|na_devnum/i.test(c)) || "";
+    const dCol =
+      colnames.find((c) => /report_date_calc|report_week_calc/i.test(c)) ||
+      colnames.find((c) => /^papp_id$/i.test(c)) ||
+      colnames.find((_, i) => coltypes[i] !== 0 && coltypes[i] !== 3) ||
+      colnames[0] ||
+      "";
+    return { sortMetricCol: smCol, dimCol: dCol };
+  }, [data]);
+
+  const rows = Array.isArray(
+    (data as Record<string, unknown> | undefined)?.data,
+  )
+    ? ((data as Record<string, unknown>).data as Record<string, unknown>[])
+    : [];
+
+  const sorted = useMemo(
+    () =>
+      pct95Active && sortMetricCol
+        ? [...rows].sort(
+            (a, b) => Number(b[sortMetricCol]) - Number(a[sortMetricCol]),
+          )
+        : rows,
+    [rows, pct95Active, sortMetricCol],
+  );
+
+  const splitIdx = useMemo(
+    () =>
+      pct95Active && sortMetricCol
+        ? pct95SplitIndex(sorted, sortMetricCol)
+        : rows.length,
+    [sorted, pct95Active, sortMetricCol],
+  );
+
+  const hasRemaining =
+    pct95Active && !!sortMetricCol && !!dimCol && splitIdx < rows.length;
+
+  const prevDataRef = useRef(data);
+  const prevExcludeRef = useRef<string[] | null>(null);
+
+  useEffect(() => {
+    if (data !== prevDataRef.current) {
+      prevDataRef.current = data;
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (!hasRemaining || !sortMetricCol) return;
+    const colnames_ = (data as Record<string, unknown> | undefined)
+      ?.colnames as string[] | undefined;
+    const coltypes = (data as Record<string, unknown> | undefined)?.coltypes as
+      | number[]
+      | undefined;
+    const dimIdx = colnames_?.indexOf(dimCol) ?? -1;
+    const isDateDim = dimIdx >= 0 && coltypes?.[dimIdx] === 2;
+    const excludeVals = [
+      ...new Set(
+        sorted.slice(0, splitIdx).map((r) => {
+          const raw = r[dimCol];
+          if (isDateDim && typeof raw === "number") {
+            const d = new Date(raw);
+            if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+          }
+          return String(raw);
+        }),
+      ),
+    ];
+    const allDimVals = new Set(
+      sorted.map((r) => {
+        const raw = r[dimCol];
+        if (isDateDim && typeof raw === "number") {
+          const d = new Date(raw);
+          if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+        }
+        return String(raw);
+      }),
+    );
+    if (
+      excludeVals.length > 0 &&
+      excludeVals.length < allDimVals.size &&
+      JSON.stringify(excludeVals) !== JSON.stringify(prevExcludeRef.current) &&
+      onFetchOtherRow
+    ) {
+      prevExcludeRef.current = excludeVals;
+      onFetchOtherRow(chartId, dimCol, excludeVals);
+    }
+  }, [
+    hasRemaining,
+    sortMetricCol,
+    sorted,
+    splitIdx,
+    dimCol,
+    data,
+    chartId,
+    onFetchOtherRow,
+  ]);
+
+  const processedData = useMemo(() => {
+    if (!data) return data;
+
+    let resultRows: Record<string, unknown>[];
+    let hasMods = false;
+
+    if (pct95Active && sortMetricCol && splitIdx < rows.length) {
+      const topRows = sorted.slice(0, splitIdx);
+      if (otherRow) {
+        resultRows = [...topRows, otherRow];
+      } else {
+        resultRows = topRows;
+      }
+      hasMods = true;
+    } else {
+      resultRows = [...rows];
+    }
+
+    if (totalRow && dimCol) {
+      resultRows = [
+        ...resultRows,
+        { ...totalRow, [dimCol]: "合计", __isSummary: true },
+      ];
+      hasMods = true;
+    }
+
+    if (!hasMods) return data;
+    return { ...data, data: resultRows } as Record<string, unknown>;
+  }, [
+    data,
+    rows,
+    sorted,
+    pct95Active,
+    sortMetricCol,
+    splitIdx,
+    otherRow,
+    totalRow,
+    dimCol,
+  ]);
 
   const touchStart = () => {
     if (containerWidth >= 600) return;
@@ -164,21 +396,38 @@ function ChartCard({
           {meta?.slice_name || sliceName || `Chart #${chartId}`}
         </Typography>
         {vizType === "table" && (
-          <Tooltip title={isCompareActive ? "Stop comparing" : "Compare"}>
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleCompare(chartId);
-              }}
-              sx={{
-                p: 0.5,
-                color: isCompareActive ? "primary.main" : undefined,
-              }}
-            >
-              <FlipIcon sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
+          <>
+            <Tooltip title={pct95Active ? "Show all rows" : "95% mode"}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPct95Active((prev) => !prev);
+                }}
+                sx={{
+                  p: 0.5,
+                  color: pct95Active ? "primary.main" : "action.active",
+                }}
+              >
+                <LeaderboardOutlined sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={isCompareActive ? "Stop comparing" : "Compare"}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleCompare(chartId);
+                }}
+                sx={{
+                  p: 0.5,
+                  color: isCompareActive ? "primary.main" : undefined,
+                }}
+              >
+                <FlipIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+          </>
         )}
         <Tooltip title="Refresh">
           <IconButton
@@ -237,50 +486,23 @@ function ChartCard({
             />
           ) : (
             <DataPreviewTable
-              data={data}
+              data={processedData}
               maxRows={100}
               formatCell={tableFormatCell}
             />
           )
         ) : option && chartLibReady ? (
           <ReactEChartsCore
-            echarts={echarts}
+            echarts={getECharts()}
             option={option}
             style={{ height: "100%", width: "100%" }}
             notMerge
             lazyUpdate
           />
         ) : option ? (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-            }}
-          >
-            <CircularProgress size={20} />
-          </Box>
+          <ChartLoadingSkeleton />
         ) : (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              gap: 0.5,
-            }}
-          >
-            <CloudOffIcon sx={{ fontSize: 28, color: "text.disabled" }} />
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ textAlign: "center" }}
-            >
-              Chart data unavailable
-            </Typography>
-          </Box>
+          <ChartLoadingSkeleton />
         )}
       </CardContent>
     </Card>
@@ -298,6 +520,8 @@ export default memo(ChartCard, (prev, next) => {
     prev.data === next.data &&
     prev.mirrorData === next.mirrorData &&
     prev.compareConfig === next.compareConfig &&
-    prev.onRefresh === next.onRefresh
+    prev.onRefresh === next.onRefresh &&
+    prev.otherRow === next.otherRow &&
+    prev.totalRow === next.totalRow
   );
 });

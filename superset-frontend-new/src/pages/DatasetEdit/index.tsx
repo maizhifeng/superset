@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
+import Button from "@mui/material/Button";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Chip from "@mui/material/Chip";
@@ -9,6 +14,8 @@ import Card from "@mui/material/Card";
 import CardHeader from "@mui/material/CardHeader";
 import CardContent from "@mui/material/CardContent";
 import SaveIcon from "@mui/icons-material/Save";
+import AddIcon from "@mui/icons-material/Add";
+import type { DatasetMetric } from "@/types/api";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -23,7 +30,7 @@ import PageSpeedDial from "@/components/PageSpeedDial";
 import DateColumnDetector from "@/components/DateColumnDetector";
 import { detectDateColumnsFromMeta } from "@/utils/dateHeuristics";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
-import api from "@/api";
+import api, { getDataset } from "@/api";
 import type { DatasetDetail, DatasetColumn } from "@/types/api";
 
 export default function DatasetEdit() {
@@ -50,14 +57,20 @@ export default function DatasetEdit() {
   const [modifiedColumns, setModifiedColumns] = useState<
     Record<number, Partial<DatasetColumn>>
   >({});
+  const [addMetricOpen, setAddMetricOpen] = useState(false);
+  const [newMetric, setNewMetric] = useState({
+    metric_name: "",
+    expression: "",
+    verbose_name: "",
+    description: "",
+    d3format: "",
+  });
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api
-      .get<{ result: DatasetDetail }>(`/dataset/${id}`)
-      .then((res) => {
-        const d = res.data.result;
+    getDataset<DatasetDetail>(id)
+      .then((d) => {
         setDataset(d);
         setCustom({ label: `Edit: ${d.table_name}` });
         setForm({
@@ -103,6 +116,16 @@ export default function DatasetEdit() {
           column_name: col.column_name,
         }));
       }
+      if (dataset) {
+        payload.metrics = dataset.metrics.map((m) => ({
+          ...(m.id ? { id: m.id } : {}),
+          metric_name: m.metric_name,
+          expression: m.expression,
+          verbose_name: m.verbose_name ?? null,
+          description: m.description ?? null,
+          d3format: m.d3format ?? null,
+        }));
+      }
       await api.put(`/dataset/${id}`, payload);
       setSuccess(true);
       setTimeout(() => navigate("/dataset/list"), 1200);
@@ -112,8 +135,45 @@ export default function DatasetEdit() {
     }
   }, [id, navigate, modifiedColumns, dataset]);
 
+  const handleAddMetric = useCallback(() => {
+    setNewMetric({
+      metric_name: "",
+      expression: "",
+      verbose_name: "",
+      description: "",
+      d3format: "",
+    });
+    setAddMetricOpen(true);
+  }, []);
+
+  const handleAddMetricSubmit = useCallback(() => {
+    if (!newMetric.metric_name.trim() || !newMetric.expression.trim()) return;
+    const added: DatasetMetric = {
+      id: 0,
+      metric_name: newMetric.metric_name.trim(),
+      expression: newMetric.expression.trim(),
+      verbose_name: newMetric.verbose_name.trim() || null,
+      description: newMetric.description.trim() || null,
+      d3format: newMetric.d3format.trim() || null,
+      currency: null,
+    };
+    setDataset((prev) =>
+      prev ? { ...prev, metrics: [...prev.metrics, added] } : prev,
+    );
+    setAddMetricOpen(false);
+  }, [newMetric]);
+
   useEffect(() => {
     registerTools("dataset_edit", [
+      {
+        id: "add-metric",
+        priority: 20,
+        showOnMobile: true,
+        fabIcon: <AddIcon />,
+        fabLabel: "Add Metric",
+        action: handleAddMetric,
+        render: null,
+      },
       {
         id: "save",
         priority: 30,
@@ -126,7 +186,7 @@ export default function DatasetEdit() {
       },
     ]);
     return () => unregisterTools("dataset_edit");
-  }, [registerTools, unregisterTools, handleSave]);
+  }, [registerTools, unregisterTools, handleSave, handleAddMetric]);
 
   if (loading)
     return (
@@ -166,10 +226,8 @@ export default function DatasetEdit() {
             datasetId={Number(id)}
             detectedColumns={detectedDateColumns}
             onColumnCreated={() => {
-              api
-                .get<{ result: DatasetDetail }>(`/dataset/${id}`)
-                .then((res) => {
-                  const d = res.data.result;
+              getDataset<DatasetDetail>(id)
+                .then((d) => {
                   setDataset(d);
                   setDetectedDateColumns(detectDateColumnsFromMeta(d.columns));
                 })
@@ -256,6 +314,7 @@ export default function DatasetEdit() {
                     <TableHead>
                       <TableRow>
                         {[
+                          "ID",
                           "Name",
                           "Kind",
                           "Type",
@@ -293,6 +352,13 @@ export default function DatasetEdit() {
                         .sort((a, b) => {
                           if (a._kind !== b._kind)
                             return a._kind === "metric" ? -1 : 1;
+                          const aExpr = !!(
+                            a as typeof a & { expression?: string | null }
+                          ).expression;
+                          const bExpr = !!(
+                            b as typeof b & { expression?: string | null }
+                          ).expression;
+                          if (aExpr !== bExpr) return aExpr ? -1 : 1;
                           return (a.id || 0) - (b.id || 0);
                         })
                         .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
@@ -302,6 +368,14 @@ export default function DatasetEdit() {
                             hover
                             sx={{ "&:last-child td": { border: 0 } }}
                           >
+                            <TableCell
+                              sx={{
+                                fontSize: "0.75rem",
+                                color: "text.secondary",
+                              }}
+                            >
+                              {row.id ?? "—"}
+                            </TableCell>
                             <TableCell
                               sx={{ fontSize: "0.75rem", fontWeight: 500 }}
                             >
@@ -435,6 +509,77 @@ export default function DatasetEdit() {
           )}
       </Box>
       <PageSpeedDial pageKeys="dataset_edit" />
+      <Dialog
+        open={addMetricOpen}
+        onClose={() => setAddMetricOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Add Metric</DialogTitle>
+        <DialogContent sx={{ "& > *": { mt: 1.5 } }}>
+          <TextField
+            size="small"
+            label="Metric Name"
+            fullWidth
+            value={newMetric.metric_name}
+            onChange={(e) =>
+              setNewMetric((f) => ({ ...f, metric_name: e.target.value }))
+            }
+          />
+          <TextField
+            size="small"
+            label="Expression"
+            fullWidth
+            value={newMetric.expression}
+            onChange={(e) =>
+              setNewMetric((f) => ({ ...f, expression: e.target.value }))
+            }
+            sx={{ mt: 1.5 }}
+          />
+          <TextField
+            size="small"
+            label="Verbose Name"
+            fullWidth
+            value={newMetric.verbose_name}
+            onChange={(e) =>
+              setNewMetric((f) => ({ ...f, verbose_name: e.target.value }))
+            }
+            sx={{ mt: 1.5 }}
+          />
+          <TextField
+            size="small"
+            label="Description"
+            fullWidth
+            value={newMetric.description}
+            onChange={(e) =>
+              setNewMetric((f) => ({ ...f, description: e.target.value }))
+            }
+            sx={{ mt: 1.5 }}
+          />
+          <TextField
+            size="small"
+            label="D3 Format"
+            fullWidth
+            value={newMetric.d3format}
+            onChange={(e) =>
+              setNewMetric((f) => ({ ...f, d3format: e.target.value }))
+            }
+            sx={{ mt: 1.5 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddMetricOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddMetricSubmit}
+            disabled={
+              !newMetric.metric_name.trim() || !newMetric.expression.trim()
+            }
+          >
+            Add
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

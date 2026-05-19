@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'superset_shortcut_first_use';
+const STORAGE_KEY = "superset_shortcut_first_use";
 
 function getUsedShortcuts(): Set<string> {
   try {

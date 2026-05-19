@@ -18,7 +18,7 @@ export type QueryOrderBy = [string | AdhocMetric, boolean];
 export interface SimpleFilter {
   col: string;
   op: string;
-  val: string;
+  val: string | string[];
 }
 
 export interface QueryObject {

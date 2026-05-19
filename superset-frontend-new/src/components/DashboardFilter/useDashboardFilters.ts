@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import type {
   FilterConfig,
   FilterState,
@@ -91,6 +91,31 @@ export default function useDashboardFilters(
   }, [nativeConfigs, autoDimensions]);
 
   const [filterState, setFilterState] = useState<FilterState>({});
+
+  const now = useMemo(() => new Date(), []);
+  const currentMonthRange = useMemo(() => {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+    return [
+      `${y}/${m}/01`,
+      `${y}/${m}/${String(lastDay).padStart(2, "0")}`,
+    ] as [string, string];
+  }, [now]);
+
+  useEffect(() => {
+    setFilterState((prev) => {
+      let updated = false;
+      const next = { ...prev };
+      for (const filter of filters) {
+        if (filter.filterType !== "time_range") continue;
+        if (next[filter.id]?.value) continue;
+        next[filter.id] = { value: currentMonthRange };
+        updated = true;
+      }
+      return updated ? next : prev;
+    });
+  }, [filters, currentMonthRange]);
 
   const setFilter = useCallback(
     (id: string, value: unknown, extraFormData?: Record<string, unknown>) => {

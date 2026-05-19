@@ -1,6 +1,6 @@
-import { type ReactNode } from 'react';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
+import { type ReactNode } from "react";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 
 export interface EmptyStateProps {
   icon?: ReactNode;
@@ -9,40 +9,48 @@ export interface EmptyStateProps {
   action?: ReactNode;
 }
 
-export default function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+export default function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: EmptyStateProps) {
   return (
     <Box
       sx={{
-        bgcolor: 'background.paper',
+        bgcolor: "background.paper",
         borderRadius: 1,
-        border: '1px solid',
-        borderColor: 'divider',
+        border: "1px solid",
+        borderColor: "divider",
         p: 4,
-        textAlign: 'center',
+        textAlign: "center",
       }}
     >
       {icon && (
         <Box
           sx={{
-            mx: 'auto',
+            mx: "auto",
             width: 48,
             height: 48,
-            bgcolor: 'action.hover',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            bgcolor: "action.hover",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             mb: 1.5,
           }}
         >
           {icon}
         </Box>
       )}
-      <Typography variant="body2" sx={{ fontWeight: 500, color: 'text.primary', mb: 0.5 }}>
+      <Typography
+        variant="body2"
+        sx={{ fontWeight: 500, color: "text.primary", mb: 0.5 }}
+      >
         {title}
       </Typography>
       {description && (
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        <Typography variant="caption" sx={{ color: "text.secondary" }}>
           {description}
         </Typography>
       )}

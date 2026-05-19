@@ -1,7 +1,7 @@
-import Tooltip from '@mui/material/Tooltip';
-import type { ReactNode } from 'react';
-import { useShortcut, formatShortcut } from '@/hooks/useShortcut';
-import type { ExtendedKeyboardEvent } from 'mousetrap';
+import Tooltip from "@mui/material/Tooltip";
+import type { ReactNode } from "react";
+import { useShortcut, formatShortcut } from "@/hooks/useShortcut";
+import type { ExtendedKeyboardEvent } from "mousetrap";
 
 interface KeyboardShortcutButtonProps {
   keybind: string | string[];
@@ -9,7 +9,7 @@ interface KeyboardShortcutButtonProps {
   tooltip?: string;
   onPress?: () => void;
   children: ReactNode;
-  as?: 'button' | 'icon';
+  as?: "button" | "icon";
   disabled?: boolean;
 }
 
@@ -28,7 +28,7 @@ export default function KeyboardShortcutButton({
   });
 
   const keys = Array.isArray(keybind) ? keybind : [keybind];
-  const shortcutText = keys.map(k => formatShortcut(k)).join(' / ');
+  const shortcutText = keys.map((k) => formatShortcut(k)).join(" / ");
 
   const tooltipText = tooltip || `${label} (${shortcutText})`;
 

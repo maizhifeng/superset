@@ -1,4 +1,7 @@
-export function parseErrorMessage(err: unknown, fallback = 'An error occurred'): string {
+export function parseErrorMessage(
+  err: unknown,
+  fallback = "An error occurred",
+): string {
   if (err instanceof Error) return err.message;
 
   const apiErr = err as
