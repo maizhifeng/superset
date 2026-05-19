@@ -1,8 +1,8 @@
-import { type ReactNode } from 'react';
-import { keyframes } from '@mui/material';
-import Box from '@mui/material/Box';
-import Alert from '@mui/material/Alert';
-import TableSkeleton from '@/components/TableSkeleton';
+import { type ReactNode } from "react";
+import { keyframes } from "@mui/material";
+import Box from "@mui/material/Box";
+import Alert from "@mui/material/Alert";
+import TableSkeleton from "@/components/TableSkeleton";
 
 const contentFadeIn = keyframes`
   from { opacity: 0; transform: translateY(4px); }
@@ -20,13 +20,22 @@ interface ListPageLayoutProps {
 }
 
 export default function ListPageLayout({
-  loading, error, hasData,
-  skeleton, errorAlert, emptyState, children,
+  loading,
+  error,
+  hasData,
+  skeleton,
+  errorAlert,
+  emptyState,
+  children,
 }: ListPageLayoutProps) {
   if (loading && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {skeleton ?? <Box sx={{ mt: 2 }}><TableSkeleton /></Box>}
+        {skeleton ?? (
+          <Box sx={{ mt: 2 }}>
+            <TableSkeleton />
+          </Box>
+        )}
       </Box>
     );
   }
@@ -34,7 +43,11 @@ export default function ListPageLayout({
   if (error && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {errorAlert ?? <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+        {errorAlert ?? (
+          <Alert severity="error" sx={{ borderRadius: 2 }}>
+            {error}
+          </Alert>
+        )}
       </Box>
     );
   }
@@ -42,17 +55,27 @@ export default function ListPageLayout({
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         flex: 1,
         minHeight: 0,
-        overflow: 'hidden',
-        p: 3, pt: 2,
+        overflow: "hidden",
+        p: 3,
+        pt: 2,
         animation: `${contentFadeIn} 350ms ease-out both`,
       }}
     >
-      {!hasData && !loading ? emptyState : (
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {!hasData && !loading ? (
+        emptyState
+      ) : (
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           {children}
         </Box>
       )}

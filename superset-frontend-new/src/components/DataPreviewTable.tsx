@@ -58,11 +58,17 @@ export default function DataPreviewTable({
   const rows = Array.isArray(data?.data)
     ? (data.data as Record<string, unknown>[])
     : [];
-  const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const keys =
+    rows.length > 0
+      ? Object.keys(rows[0]).filter((k) => k !== "__isSummary")
+      : [];
 
   const sortedRows = useMemo(() => {
-    if (sorts.length === 0 || rows.length === 0) return rows;
-    const sorted = [...rows];
+    if (rows.length === 0) return rows;
+    const summaryRows = rows.filter((r) => r.__isSummary);
+    const dataRows = rows.filter((r) => !r.__isSummary);
+    if (sorts.length === 0) return rows;
+    const sorted = [...dataRows];
     sorted.sort((a, b) => {
       for (const s of sorts) {
         const va = a[s.column];
@@ -80,7 +86,7 @@ export default function DataPreviewTable({
       }
       return 0;
     });
-    return sorted;
+    return [...sorted, ...summaryRows];
   }, [rows, sorts]);
 
   const handleHeaderClick = (key: string) => {
@@ -115,9 +121,23 @@ export default function DataPreviewTable({
     );
   };
 
-  const totalPages = Math.ceil(Math.min(sortedRows.length, maxRows) / pageSize);
+  const dataRows = useMemo(
+    () => sortedRows.filter((r) => !r.__isSummary),
+    [sortedRows],
+  );
+  const summaryRows = useMemo(
+    () => sortedRows.filter((r) => r.__isSummary),
+    [sortedRows],
+  );
+
+  const totalPages = Math.ceil(Math.min(dataRows.length, maxRows) / pageSize);
   const pageStart = page * pageSize;
-  const pageEnd = Math.min(pageStart + pageSize, maxRows, sortedRows.length);
+  const pageEnd = Math.min(pageStart + pageSize, maxRows, dataRows.length);
+
+  const pageRows = useMemo(
+    () => [...dataRows.slice(pageStart, pageEnd), ...summaryRows],
+    [dataRows, summaryRows, pageStart, pageEnd],
+  );
 
   const empty = rows.length === 0;
 
@@ -255,8 +275,25 @@ export default function DataPreviewTable({
           <TableBody>
             {empty
               ? null
-              : sortedRows.slice(pageStart, pageEnd).map((row, i) => (
-                  <TableRow key={pageStart + i}>
+              : pageRows.map((row, i) => (
+                  <TableRow
+                    key={pageStart + i}
+                    sx={
+                      row.__isSummary
+                        ? {
+                            position: "sticky",
+                            bottom: 0,
+                            zIndex: 4,
+                            "& .MuiTableCell-root": {
+                              fontWeight: 700,
+                              bgcolor: "grey.50",
+                              borderTop: "2px solid",
+                              borderTopColor: "divider",
+                            },
+                          }
+                        : undefined
+                    }
+                  >
                     {keys.map((k) => (
                       <TableCell key={k}>
                         {formatCell(k, row[k], formatter)}

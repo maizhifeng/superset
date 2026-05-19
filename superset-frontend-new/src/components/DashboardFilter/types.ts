@@ -16,10 +16,17 @@ export interface NativeFilterScope {
 export interface FilterConfig {
   id: string;
   name: string;
-  filterType: 'filter_select' | 'text' | 'value' | 'numerical_range' | 'time_range' | 'time_column' | 'time_grain';
+  filterType:
+    | "filter_select"
+    | "text"
+    | "value"
+    | "numerical_range"
+    | "time_range"
+    | "time_column"
+    | "time_grain";
   datasetId: number;
   column: string;
-  columnType?: 'time' | 'string' | 'numeric';
+  columnType?: "time" | "string" | "numeric";
   controlValues?: Record<string, unknown>;
   chartsInScope?: number[];
   defaultDataMask?: DataMask;
@@ -43,10 +50,21 @@ export interface DataMask {
 }
 
 export interface AdhocFilter {
-  clause: 'WHERE' | 'HAVING';
-  expressionType: 'SIMPLE' | 'SQL';
+  clause: "WHERE" | "HAVING";
+  expressionType: "SIMPLE" | "SQL";
   subject: string;
-  operator: '==' | '!=' | '>' | '<' | '>=' | '<=' | 'IN' | 'NOT IN' | 'LIKE' | 'IS NULL' | 'IS NOT NULL';
+  operator:
+    | "=="
+    | "!="
+    | ">"
+    | "<"
+    | ">="
+    | "<="
+    | "IN"
+    | "NOT IN"
+    | "LIKE"
+    | "IS NULL"
+    | "IS NOT NULL";
   comparator: string;
 }
 
@@ -60,7 +78,11 @@ export interface FilterState {
 export interface UseDashboardFiltersResult {
   filters: FilterConfig[];
   filterState: FilterState;
-  setFilter: (id: string, value: unknown, extraFormData?: Record<string, unknown>) => void;
+  setFilter: (
+    id: string,
+    value: unknown,
+    extraFormData?: Record<string, unknown>,
+  ) => void;
   clearAll: () => void;
   buildAdhocFilters: (datasetId?: number) => AdhocFilter[];
   activeCount: number;
@@ -71,7 +93,10 @@ export interface NativeFilterConfigRaw {
   id: string;
   name: string;
   filterType: string;
-  targets?: { datasetId?: number; column?: { name: string; displayName?: string } }[];
+  targets?: {
+    datasetId?: number;
+    column?: { name: string; displayName?: string };
+  }[];
   controlValues?: Record<string, unknown>;
   scope?: NativeFilterScope;
   defaultDataMask?: DataMask;

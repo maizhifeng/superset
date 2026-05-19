@@ -1,5 +1,5 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 export interface NavItem {
   id: string;
@@ -9,25 +9,45 @@ export interface NavItem {
 }
 
 const defaultItems: NavItem[] = [
-  { id: 'dashboards', path: '/dashboard/list', label: 'Dashboards', builtIn: true },
-  { id: 'charts', path: '/chart/list', label: 'Charts', builtIn: true },
-  { id: 'sqllab', path: '/sqllab', label: 'SQL Lab', builtIn: true },
-  { id: 'datasets', path: '/dataset/list', label: 'Datasets', builtIn: true },
-  { id: 'database/list', path: '/database/list', label: 'Databases', builtIn: true },
-  { id: 'saved_query/list', path: '/saved_query/list', label: 'Saved Queries', builtIn: true },
-  { id: 'alert/list', path: '/alert/list', label: 'Alerts', builtIn: true },
-  { id: 'query_history', path: '/query_history', label: 'History', builtIn: true },
+  {
+    id: "dashboards",
+    path: "/dashboard/list",
+    label: "Dashboards",
+    builtIn: true,
+  },
+  { id: "charts", path: "/chart/list", label: "Charts", builtIn: true },
+  { id: "sqllab", path: "/sqllab", label: "SQL Lab", builtIn: true },
+  { id: "datasets", path: "/dataset/list", label: "Datasets", builtIn: true },
+  {
+    id: "database/list",
+    path: "/database/list",
+    label: "Databases",
+    builtIn: true,
+  },
+  {
+    id: "saved_query/list",
+    path: "/saved_query/list",
+    label: "Saved Queries",
+    builtIn: true,
+  },
+  { id: "alert/list", path: "/alert/list", label: "Alerts", builtIn: true },
+  {
+    id: "query_history",
+    path: "/query_history",
+    label: "History",
+    builtIn: true,
+  },
 ];
 
 const defaultEnabled: Record<string, boolean> = {
-  'dashboards': true,
-  'charts': true,
-  'sqllab': true,
-  'datasets': true,
-  'database/list': true,
-  'saved_query/list': true,
-  'alert/list': true,
-  'query_history': true,
+  dashboards: true,
+  charts: true,
+  sqllab: true,
+  datasets: true,
+  "database/list": true,
+  "saved_query/list": true,
+  "alert/list": true,
+  query_history: true,
 };
 
 interface MenuSettingsState {
@@ -36,7 +56,7 @@ interface MenuSettingsState {
   toggle: (id: string) => void;
   addItem: (path: string, label: string) => void;
   removeItem: (id: string) => void;
-  moveItem: (id: string, direction: 'up' | 'down') => void;
+  moveItem: (id: string, direction: "up" | "down") => void;
 }
 
 export const useMenuSettings = create<MenuSettingsState>()(
@@ -67,7 +87,7 @@ export const useMenuSettings = create<MenuSettingsState>()(
         set((state) => {
           const idx = state.items.findIndex((item) => item.id === id);
           if (idx === -1) return state;
-          const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+          const targetIdx = direction === "up" ? idx - 1 : idx + 1;
           if (targetIdx < 0 || targetIdx >= state.items.length) return state;
           const items = [...state.items];
           [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
@@ -75,7 +95,7 @@ export const useMenuSettings = create<MenuSettingsState>()(
         }),
     }),
     {
-      name: 'superset-menu-settings',
+      name: "superset-menu-settings",
     },
   ),
 );

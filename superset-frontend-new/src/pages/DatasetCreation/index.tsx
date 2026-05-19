@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
-import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
-import Button from '@mui/material/Button';
-import MenuItem from '@mui/material/MenuItem';
-import CircularProgress from '@mui/material/CircularProgress';
-import Alert from '@mui/material/Alert';
-import PageHeader from '@/components/PageHeader';
-import api from '@/api';
-import rison from 'rison';
-import { parseErrorMessage } from '@/utils/parseErrorMessage';
-import type { Database, TableResult } from '@/types/api';
+import { useState, useEffect } from "react";
+import Box from "@mui/material/Box";
+import TextField from "@mui/material/TextField";
+import Autocomplete from "@mui/material/Autocomplete";
+import Button from "@mui/material/Button";
+import MenuItem from "@mui/material/MenuItem";
+import CircularProgress from "@mui/material/CircularProgress";
+import Alert from "@mui/material/Alert";
+import PageHeader from "@/components/PageHeader";
+import api from "@/api";
+import rison from "rison";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import type { Database, TableResult } from "@/types/api";
 
 export default function DatasetCreation() {
   const [databases, setDatabases] = useState<Database[]>([]);
@@ -24,34 +24,34 @@ export default function DatasetCreation() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  const [databaseId, setDatabaseId] = useState<number | ''>('');
-  const [schema, setSchema] = useState('');
-  const [tableName, setTableName] = useState('');
+  const [databaseId, setDatabaseId] = useState<number | "">("");
+  const [schema, setSchema] = useState("");
+  const [tableName, setTableName] = useState("");
 
   useEffect(() => {
     api
-      .get<{ result: Database[] }>('/database/?q=(page_size:50,page:0)')
-      .then(res => {
+      .get<{ result: Database[] }>("/database/?q=(page_size:50,page:0)")
+      .then((res) => {
         setDatabases(res.data.result);
         setLoading(false);
       })
-      .catch(err => {
-        setError(parseErrorMessage(err, 'Failed to load databases'));
+      .catch((err) => {
+        setError(parseErrorMessage(err, "Failed to load databases"));
         setLoading(false);
       });
   }, []);
 
   useEffect(() => {
-    if (databaseId === '') {
+    if (databaseId === "") {
       setSchemas([]);
       setTables([]);
-      setSchema('');
+      setSchema("");
       return;
     }
     setSchemasLoading(true);
     api
       .get<{ result: string[] }>(`/database/${databaseId}/schemas/`)
-      .then(res => {
+      .then((res) => {
         setSchemas(res.data.result);
         setSchemasLoading(false);
       })
@@ -62,7 +62,7 @@ export default function DatasetCreation() {
   }, [databaseId]);
 
   useEffect(() => {
-    if (databaseId === '' || !schema) {
+    if (databaseId === "" || !schema) {
       setTables([]);
       return;
     }
@@ -70,7 +70,7 @@ export default function DatasetCreation() {
     const qs = rison.encode({ schema_name: schema });
     api
       .get<{ result: TableResult[] }>(`/database/${databaseId}/tables/?q=${qs}`)
-      .then(res => {
+      .then((res) => {
         setTables(res.data.result);
         setTablesLoading(false);
       })
@@ -92,13 +92,13 @@ export default function DatasetCreation() {
     };
 
     try {
-      await api.post('/dataset/', payload);
+      await api.post("/dataset/", payload);
       setSubmitSuccess(true);
-      setTableName('');
-      setSchema('');
-      setDatabaseId('');
+      setTableName("");
+      setSchema("");
+      setDatabaseId("");
     } catch (err: unknown) {
-      setSubmitError(parseErrorMessage(err, 'Failed to create dataset'));
+      setSubmitError(parseErrorMessage(err, "Failed to create dataset"));
     } finally {
       setSubmitting(false);
     }
@@ -108,7 +108,7 @@ export default function DatasetCreation() {
     return (
       <Box sx={{ p: 3 }}>
         <PageHeader title="Create Dataset" />
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
           <CircularProgress />
         </Box>
       </Box>
@@ -137,26 +137,34 @@ export default function DatasetCreation() {
           {submitError}
         </Alert>
       )}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 480 }}>
+      <Box
+        sx={{ display: "flex", flexDirection: "column", gap: 2, maxWidth: 480 }}
+      >
         <TextField
           select
           label="Database"
           value={databaseId}
-          onChange={e => { setDatabaseId(Number(e.target.value)); setTableName(''); }}
+          onChange={(e) => {
+            setDatabaseId(Number(e.target.value));
+            setTableName("");
+          }}
           fullWidth
         >
-          {databases.map(db => (
+          {databases.map((db) => (
             <MenuItem key={db.id} value={db.id}>
               {db.database_name}
             </MenuItem>
           ))}
         </TextField>
-        {databaseId !== '' && (
+        {databaseId !== "" && (
           <TextField
             select
             label="Schema"
             value={schema}
-            onChange={e => { setSchema(e.target.value); setTableName(''); }}
+            onChange={(e) => {
+              setSchema(e.target.value);
+              setTableName("");
+            }}
             fullWidth
             disabled={schemasLoading}
           >
@@ -165,7 +173,7 @@ export default function DatasetCreation() {
             ) : schemas.length === 0 ? (
               <MenuItem disabled>No schemas found</MenuItem>
             ) : (
-              schemas.map(s => (
+              schemas.map((s) => (
                 <MenuItem key={s} value={s}>
                   {s}
                 </MenuItem>
@@ -173,22 +181,23 @@ export default function DatasetCreation() {
             )}
           </TextField>
         )}
-        {databaseId !== '' && schema && (
+        {databaseId !== "" && schema && (
           <Autocomplete
             freeSolo
-            options={tables.map(t => t.value)}
+            options={tables.map((t) => t.value)}
             loading={tablesLoading}
             inputValue={tableName}
             onInputChange={(_, v) => setTableName(v)}
             renderOption={(props, option) => {
-              const t = tables.find(x => x.value === option);
+              const t = tables.find((x) => x.value === option);
               return (
                 <li {...props} key={option}>
-                  {option}{t ? ` (${t.type})` : ''}
+                  {option}
+                  {t ? ` (${t.type})` : ""}
                 </li>
               );
             }}
-            renderInput={params => (
+            renderInput={(params) => (
               <TextField
                 {...params}
                 label="Table Name"
@@ -203,7 +212,7 @@ export default function DatasetCreation() {
           onClick={handleSubmit}
           disabled={submitting || !databaseId || !tableName}
         >
-          {submitting ? <CircularProgress size={24} /> : 'Create Dataset'}
+          {submitting ? <CircularProgress size={24} /> : "Create Dataset"}
         </Button>
       </Box>
     </Box>

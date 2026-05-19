@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 import api, {
   getStoredToken,
   setStoredToken,
@@ -6,7 +6,7 @@ import api, {
   refreshAccessToken,
   setupTokenRefresh,
   cancelTokenRefresh,
-} from '@/api';
+} from "@/api";
 
 interface User {
   username: string;
@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   token: getStoredToken(),
   user: (() => {
     try {
-      const stored = localStorage.getItem('superset_user');
+      const stored = localStorage.getItem("superset_user");
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -45,10 +45,10 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     }
     api.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
     try {
-      const res = await api.get('/me/');
+      const res = await api.get("/me/");
       if (res.data?.result) {
         const userData: User = { username: res.data.result.username };
-        localStorage.setItem('superset_user', JSON.stringify(userData));
+        localStorage.setItem("superset_user", JSON.stringify(userData));
         set({ user: userData, loading: false, isAuthenticated: true });
         setupTokenRefresh();
       }
@@ -57,10 +57,10 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       if (newToken) {
         api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
         try {
-          const meRes = await api.get('/me/');
+          const meRes = await api.get("/me/");
           if (meRes.data?.result) {
             const userData: User = { username: meRes.data.result.username };
-            localStorage.setItem('superset_user', JSON.stringify(userData));
+            localStorage.setItem("superset_user", JSON.stringify(userData));
             set({ user: userData, loading: false, isAuthenticated: true });
             setupTokenRefresh();
             return;
@@ -77,15 +77,15 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   },
 
   login: async (username: string, password: string) => {
-    const res = await api.post('/security/login', {
+    const res = await api.post("/security/login", {
       username,
       password,
-      provider: 'db',
+      provider: "db",
       refresh: true,
     });
     const accessToken = res.data?.access_token;
     if (!accessToken) {
-      throw new Error(res.data?.message || 'Login failed');
+      throw new Error(res.data?.message || "Login failed");
     }
     const refreshToken = res.data?.refresh_token;
 
@@ -94,7 +94,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       setStoredRefreshToken(refreshToken);
     }
     const userData: User = { username };
-    localStorage.setItem('superset_user', JSON.stringify(userData));
+    localStorage.setItem("superset_user", JSON.stringify(userData));
     set({ token: accessToken, user: userData, isAuthenticated: true });
     setupTokenRefresh();
   },
@@ -102,7 +102,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   logout: () => {
     setStoredToken(null);
     setStoredRefreshToken(null);
-    localStorage.removeItem('superset_user');
+    localStorage.removeItem("superset_user");
     cancelTokenRefresh();
     set({ token: null, user: null, isAuthenticated: false });
   },

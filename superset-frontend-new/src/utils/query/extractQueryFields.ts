@@ -1,9 +1,9 @@
-import type { VizType, AdhocMetric, QueryObject, QueryOrderBy } from './types';
+import type { VizType, AdhocMetric, QueryObject, QueryOrderBy } from "./types";
 
-const NO_GROUPBY_VIZ: VizType[] = ['big_number'];
+const NO_GROUPBY_VIZ: VizType[] = ["big_number"];
 
 function isVizType(v: string): v is VizType {
-  return ['line', 'bar', 'pie', 'table', 'big_number', 'auto'].includes(v);
+  return ["line", "bar", "pie", "table", "big_number", "auto"].includes(v);
 }
 
 export function extractQueryFields(
@@ -33,14 +33,15 @@ export function extractQueryFields(
   }
 
   const rawOrderby = formData.orderby;
-  const orderby = Array.isArray(rawOrderby) ? rawOrderby as QueryOrderBy[] : [];
+  const orderby = Array.isArray(rawOrderby)
+    ? (rawOrderby as QueryOrderBy[])
+    : [];
 
-  const order_desc = formData.order_desc !== undefined
-    ? Boolean(formData.order_desc)
-    : true;
+  const order_desc =
+    formData.order_desc !== undefined ? Boolean(formData.order_desc) : true;
 
   const timeseries_limit_metric = formData.timeseries_limit_metric
-    ? formData.timeseries_limit_metric as string | AdhocMetric
+    ? (formData.timeseries_limit_metric as string | AdhocMetric)
     : undefined;
 
   return {
@@ -57,18 +58,28 @@ export function buildQueryObject(
   formData: Record<string, unknown>,
   vizType?: string,
 ): QueryObject {
-  const { metrics, groupby, columns, orderby, order_desc, timeseries_limit_metric } = extractQueryFields(formData, vizType);
+  const {
+    metrics,
+    groupby,
+    columns,
+    orderby,
+    order_desc,
+    timeseries_limit_metric,
+  } = extractQueryFields(formData, vizType);
 
   const query: QueryObject = {
-    result_type: 'full',
+    result_type: "full",
     metrics,
     groupby,
     columns,
   };
 
-  if (formData.granularity_sqla) query.granularity = formData.granularity_sqla as string;
+  if (formData.granularity_sqla)
+    query.granularity = formData.granularity_sqla as string;
   if (formData.time_range) query.time_range = formData.time_range as string;
-  if (formData.adhoc_filters) query.adhoc_filters = formData.adhoc_filters as QueryObject['adhoc_filters'];
+  if (formData.adhoc_filters)
+    query.adhoc_filters =
+      formData.adhoc_filters as QueryObject["adhoc_filters"];
   if (formData.row_limit) query.row_limit = formData.row_limit as number;
 
   if (orderby.length > 0) {
@@ -78,8 +89,9 @@ export function buildQueryObject(
     query.orderby = [[metrics[0], ascending]];
   }
 
-  if ('order_desc' in formData) query.order_desc = order_desc;
-  if (timeseries_limit_metric) query.timeseries_limit_metric = timeseries_limit_metric;
+  if ("order_desc" in formData) query.order_desc = order_desc;
+  if (timeseries_limit_metric)
+    query.timeseries_limit_metric = timeseries_limit_metric;
 
   return query;
 }
@@ -87,14 +99,18 @@ export function buildQueryObject(
 export function buildChartQuery(
   formData: Record<string, unknown>,
   vizType?: string,
-): { datasource: { id: number; type: 'table' }; queries: QueryObject[]; form_data: Record<string, unknown> } {
+): {
+  datasource: { id: number; type: "table" };
+  queries: QueryObject[];
+  form_data: Record<string, unknown>;
+} {
   const datasourceStr = formData.datasource as string | undefined;
   let dsId = 0;
-  let dsType: 'table' = 'table';
+  let dsType: "table" = "table";
   if (datasourceStr) {
-    const parts = datasourceStr.split('__');
+    const parts = datasourceStr.split("__");
     dsId = Number(parts[0]) || 0;
-    if (parts[1] === 'query') dsType = 'table';
+    if (parts[1] === "query") dsType = "table";
   }
 
   const query = buildQueryObject(formData, vizType);

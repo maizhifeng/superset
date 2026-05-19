@@ -14,7 +14,7 @@ import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
 import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
 import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
-import api from "@/api";
+import api, { getDataset } from "@/api";
 import {
   DashboardFilterDrawer,
   useDashboardFilters,
@@ -56,6 +56,13 @@ export default function Dashboard() {
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
+
+  const [totalRows, setTotalRows] = useState<
+    Record<number, Record<string, unknown> | null>
+  >({});
+  const [otherRows, setOtherRows] = useState<
+    Record<number, Record<string, unknown> | null>
+  >({});
 
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get("slice_id");
@@ -116,19 +123,17 @@ export default function Dashboard() {
       const stringTypes = /varchar|char|text|string/i;
       for (const dsId of dsIds) {
         try {
-          const res = await api.get<{
-            result: {
-              columns: {
-                column_name: string;
-                type: string | null;
-                is_dttm: boolean;
-                expression: string | null;
-                filterable: boolean;
-                extra: string | null;
-              }[];
-            };
-          }>(`/dataset/${dsId}`);
-          const cols = res.data.result.columns ?? [];
+          const dataset = await getDataset<{
+            columns: {
+              column_name: string;
+              type: string | null;
+              is_dttm: boolean;
+              expression: string | null;
+              filterable: boolean;
+              extra: string | null;
+            }[];
+          }>(dsId);
+          const cols = dataset.columns ?? [];
           for (const col of cols) {
             if (!col.column_name || !col.type) continue;
             const key = `${dsId}:${col.column_name}`;
@@ -188,6 +193,8 @@ export default function Dashboard() {
   );
   const buildAdhocFiltersRef = useRef(buildAdhocFilters);
   buildAdhocFiltersRef.current = buildAdhocFilters;
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   const hiddenFilters = useMemo(() => filters.slice(8), [filters]);
   const [pendingFilterIds, setPendingFilterIds] = useState<string[]>([]);
@@ -289,18 +296,23 @@ export default function Dashboard() {
 
       let metaMap: Record<number, ChartData> = {};
       if (chartIds.length > 0) {
-        try {
-          const metaRes = await api.get<{ result: ChartData[] }>(
-            "/chart/?q=(page_size:200,page:0)",
+        const CONCURRENCY = 3;
+        for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
+          const batch = chartIds.slice(i, i + CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map((cid) =>
+              api
+                .get<{ result: ChartData }>(`/chart/${cid}`)
+                .then((res) => res.data.result),
+            ),
           );
-          const allCharts = metaRes.data?.result || [];
-          allCharts.forEach((c) => {
-            metaMap[c.id] = c;
+          results.forEach((r) => {
+            if (r.status === "fulfilled" && r.value) {
+              metaMap[r.value.id] = r.value;
+            }
           });
-          setChartMeta(metaMap);
-        } catch {
-          /* continue */
         }
+        setChartMeta(metaMap);
 
         const dMap = await getChartDataWithFilters(chartIds, metaMap);
         setChartData(dMap);
@@ -330,13 +342,12 @@ export default function Dashboard() {
       /^int\d*$|^bigint$|^smallint$|^tinyint$|^numeric$|^decimal$|^float$|^double$|^real$|^money$/i;
     const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
     const idPattern = /_?id$/i;
-    api
-      .get<{
-        result: { columns: { column_name: string; type: string | null }[] };
-      }>(`/dataset/${dsId}`)
-      .then((res) => {
+    getDataset<{
+      columns: { column_name: string; type: string | null }[];
+    }>(dsId)
+      .then((dataset) => {
         setDatasetCompareColumns(
-          (res.data.result.columns ?? [])
+          (dataset.columns ?? [])
             .filter((c) => {
               if (!c.column_name || !c.type) return true;
               if (timeTypes.test(c.type) || timeTypes.test(c.column_name))
@@ -382,61 +393,95 @@ export default function Dashboard() {
     };
   }
 
-  const getChartDataWithFilters = useCallback(
-    async (chartIds: number[], metaMap: Record<number, ChartData>) => {
-      const buildFn = buildAdhocFiltersRef.current;
-      const dataPromises = chartIds.map(async (cid) => {
-        const chart = metaMap[cid];
-        if (!chart) return { id: cid, data: {} };
-        try {
-          const fd = parseChartConfig(chart);
-          const dsId =
-            chart.datasource_id ||
-            (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-          if (!dsId) return { id: cid, data: {} };
-          const query = buildQueryObject(fd, chart.viz_type);
-          if (!query.metrics || query.metrics.length === 0)
-            return { id: cid, data: {} };
-          const adhocFilters = buildFn(dsId);
-          if (adhocFilters.length > 0) {
-            query.filters = adhocFilters.map((f) => ({
-              col: f.subject,
-              op: f.operator,
-              val: f.comparator,
-            })) as SimpleFilter[];
-          }
-          const force =
-            adhocFilters.length > 0 || chartDataRef.current[cid]?.data != null;
-          const payload = {
-            datasource: { id: dsId, type: chart.datasource_type || "table" },
-            queries: [query],
-            form_data: fd,
-            result_format: "json",
-            result_type: "full" as const,
-            force,
-          };
-          const postRes = await api.post("/chart/data", payload);
-          const postResult = postRes.data?.result;
-          return {
-            id: cid,
-            data: Array.isArray(postResult)
-              ? postResult[0] || {}
-              : postResult || {},
-          };
-        } catch {
-          return { id: cid, data: {} };
+  const fetchChartWithTotal = useCallback(
+    async (
+      cid: number,
+      metaMap: Record<number, ChartData>,
+    ): Promise<{
+      id: number;
+      data: Record<string, unknown>;
+      totalRow: Record<string, unknown> | null;
+    }> => {
+      const chart = metaMap[cid];
+      if (!chart) return { id: cid, data: {}, totalRow: null };
+      try {
+        const fd = parseChartConfig(chart);
+        const dsId =
+          chart.datasource_id ||
+          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
+        if (!dsId) return { id: cid, data: {}, totalRow: null };
+        const query = buildQueryObject(fd, chart.viz_type);
+        if (!query.metrics || (query.metrics as unknown[]).length === 0)
+          return { id: cid, data: {}, totalRow: null };
+        const adhocFilters = buildAdhocFiltersRef.current(dsId);
+        if (adhocFilters.length > 0) {
+          query.filters = adhocFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          })) as SimpleFilter[];
         }
-      });
-      const results = await Promise.all(dataPromises);
-      const dataMap: Record<number, Record<string, unknown>> = {};
-      results.forEach((r) => {
-        dataMap[r.id] = r.data;
-      });
-      return dataMap;
+        const force = adhocFilters.length > 0;
+
+        const queries = [query];
+        const totalQuery = buildQueryObject(fd, chart.viz_type);
+        totalQuery.groupby = [];
+        totalQuery.columns = [];
+        delete totalQuery.row_limit;
+        if (adhocFilters.length > 0) {
+          totalQuery.filters = adhocFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          })) as SimpleFilter[];
+        }
+        queries.push(totalQuery);
+
+        const postRes = await api.post("/chart/data", {
+          datasource: { id: dsId, type: chart.datasource_type || "table" },
+          queries,
+          result_format: "json",
+          result_type: "full" as const,
+          force,
+        });
+        const results = (
+          Array.isArray(postRes.data?.result) ? postRes.data.result : []
+        ) as Record<string, unknown>[];
+        const first = results[0] || {};
+        const totalRaw = results[1];
+        const totalRow =
+          totalRaw?.data &&
+          Array.isArray(totalRaw.data) &&
+          totalRaw.data.length > 0
+            ? (totalRaw.data[0] as Record<string, unknown>)
+            : null;
+        return { id: cid, data: first, totalRow };
+      } catch {
+        return { id: cid, data: {}, totalRow: null };
+      }
     },
     [],
   );
 
+  const getChartDataWithFilters = useCallback(
+    async (chartIds: number[], metaMap: Record<number, ChartData>) => {
+      const dataMap: Record<number, Record<string, unknown>> = {};
+      const totalRowMap: Record<number, Record<string, unknown> | null> = {};
+      const CONCURRENCY = 3;
+      for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
+        const batch = chartIds.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(
+          batch.map((cid) => fetchChartWithTotal(cid, metaMap)),
+        );
+        results.forEach((r) => {
+          dataMap[r.id] = r.data;
+          totalRowMap[r.id] = r.totalRow;
+        });
+      }
+      return { dataMap, totalRowMap };
+    },
+    [fetchChartWithTotal],
+  );
   const chartMetaRef = useRef(chartMeta);
   chartMetaRef.current = chartMeta;
 
@@ -558,28 +603,118 @@ export default function Dashboard() {
     [chartMeta],
   );
 
-  const refreshAllCharts = useCallback(async () => {
-    const ids = Array.from(dashboardChartIds);
-    if (ids.length === 0) return;
-    const newData = await getChartDataWithFilters(ids, chartMeta);
-    setChartData((prev) => ({ ...prev, ...newData }));
-    if (compareConfig?.enabled) {
-      const freshData = newData[compareConfig.chartId];
-      fetchMirrorData(
-        compareConfig.chartId,
-        compareConfig.dimensions,
-        freshData,
+  const refreshCharts = useCallback(
+    async (chartIds?: Set<number>) => {
+      const ids = chartIds
+        ? Array.from(chartIds)
+        : Array.from(dashboardChartIds);
+      if (ids.length === 0) return;
+      const { dataMap, totalRowMap } = await getChartDataWithFilters(
+        ids,
+        chartMeta,
       );
+      setChartData((prev) => ({ ...prev, ...dataMap }));
+      setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
+      if (compareConfig?.enabled) {
+        const freshData = dataMap[compareConfig.chartId];
+        fetchMirrorData(
+          compareConfig.chartId,
+          compareConfig.dimensions,
+          freshData,
+        );
+      }
+    },
+    [
+      dashboardChartIds,
+      chartMeta,
+      compareConfig,
+      fetchMirrorData,
+      getChartDataWithFilters,
+    ],
+  );
+  const refreshChartsRef = useRef(refreshCharts);
+  refreshChartsRef.current = refreshCharts;
+
+  const fetchOtherRow = useCallback(
+    async (chartId: number, excludeColumn: string, excludeValues: string[]) => {
+      const chart = chartMetaRef.current[chartId];
+      if (!chart || excludeValues.length === 0) return;
+
+      setOtherRows((prev) => ({ ...prev, [chartId]: null }));
+
+      try {
+        const fd = parseChartConfig(chart);
+        const dsId =
+          chart.datasource_id ||
+          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
+        if (!dsId) return;
+
+        const query = buildQueryObject(fd, chart.viz_type);
+        if (!query.metrics || query.metrics.length === 0) return;
+
+        query.groupby = [];
+        query.columns = [];
+        delete (query as Record<string, unknown>).row_limit;
+
+        const buildFn = buildAdhocFiltersRef.current;
+        const adhocFilters = buildFn(dsId);
+        query.filters = [
+          ...adhocFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          })),
+          {
+            col: excludeColumn,
+            op: "NOT IN" as const,
+            val: excludeValues,
+          },
+        ];
+
+        const payload = {
+          datasource: { id: dsId, type: chart.datasource_type || "table" },
+          queries: [query],
+          form_data: fd,
+          result_format: "json",
+          result_type: "full" as const,
+        };
+
+        const postRes = await api.post("/chart/data", payload);
+        const postResult = postRes.data?.result;
+        const first = Array.isArray(postResult) ? postResult[0] : postResult;
+
+        if (first?.data && Array.isArray(first.data) && first.data.length > 0) {
+          const otherRow = {
+            ...first.data[0],
+            [excludeColumn]: "其他",
+          } as Record<string, unknown>;
+          setOtherRows((prev) => ({ ...prev, [chartId]: otherRow }));
+        } else {
+          setOtherRows((prev) => {
+            const next = { ...prev };
+            delete next[chartId];
+            return next;
+          });
+        }
+      } catch {
+        setOtherRows((prev) => {
+          const next = { ...prev };
+          delete next[chartId];
+          return next;
+        });
+      }
+    },
+    [],
+  );
+
+  const initialFilterKeysRef = useRef("");
+  useEffect(() => {
+    const keys = Object.keys(filterState).sort().join(",");
+    if (!initialFilterKeysRef.current && keys) {
+      initialFilterKeysRef.current = keys;
+      refreshChartsRef.current();
     }
-  }, [
-    dashboardChartIds,
-    chartMeta,
-    compareConfig,
-    fetchMirrorData,
-    getChartDataWithFilters,
-  ]);
-  const refreshAllChartsRef = useRef(refreshAllCharts);
-  refreshAllChartsRef.current = refreshAllCharts;
+  }, [filterState]);
 
   const pageKey = `dashboard_${id}`;
   useDashboardToolbar({
@@ -590,7 +725,7 @@ export default function Dashboard() {
     layoutItems,
     onFilterDrawerOpen: () => setFilterDrawerOpen(true),
     onAddFilter: (id: string) => setPendingFilterIds((prev) => [...prev, id]),
-    onRefreshAll: refreshAllCharts,
+    onRefreshAll: refreshCharts,
     onOpenNav: openNav,
     onAddChart: () => setAddChartDialogOpen(true),
   });
@@ -734,8 +869,12 @@ export default function Dashboard() {
     (id: string, value: unknown) => {
       setFilter(id, value);
       if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+      const changedFilter = filtersRef.current.find((f) => f.id === id);
+      const affectedIds = changedFilter?.chartsInScope?.length
+        ? new Set(changedFilter.chartsInScope)
+        : undefined;
       filterTimerRef.current = setTimeout(() => {
-        refreshAllChartsRef.current();
+        refreshChartsRef.current(affectedIds);
       }, 300);
     },
     [setFilter],
@@ -745,7 +884,7 @@ export default function Dashboard() {
     clearAll();
     if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
     filterTimerRef.current = setTimeout(() => {
-      refreshAllChartsRef.current();
+      refreshChartsRef.current();
     }, 300);
   }, [clearAll]);
 
@@ -1009,9 +1148,13 @@ export default function Dashboard() {
             setSearchParams({ slice_id: String(chartId) })
           }
           onDelete={handleDeleteChart}
+          onAddChart={() => setAddChartDialogOpen(true)}
           compareConfig={compareConfig}
           mirrorData={mirrorData}
           onToggleCompare={handleToggleCompare}
+          otherRows={otherRows}
+          onFetchOtherRow={fetchOtherRow}
+          totalRows={totalRows}
         />
       </Box>
       <CompareConfigModal

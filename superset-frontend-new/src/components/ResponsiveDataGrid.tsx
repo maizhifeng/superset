@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import React from 'react';
-import Box from '@mui/material/Box';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Checkbox from '@mui/material/Checkbox';
-import DeleteIcon from '@mui/icons-material/Delete';
-import KeyboardArrowRight from '@mui/icons-material/KeyboardArrowRight';
-import Pagination from '@mui/material/Pagination';
-import Typography from '@mui/material/Typography';
-import { useToolbarStore } from '@/contexts/ToolbarContext';
-import { useMediaQuery, useTheme } from '@mui/material';
-import type { DataGridProps, GridPaginationModel } from '@mui/x-data-grid';
-import DataGridTable from './DataGridTable';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import React from "react";
+import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Checkbox from "@mui/material/Checkbox";
+import DeleteIcon from "@mui/icons-material/Delete";
+import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
+import Pagination from "@mui/material/Pagination";
+import Typography from "@mui/material/Typography";
+import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useMediaQuery, useTheme } from "@mui/material";
+import type { DataGridProps, GridPaginationModel } from "@mui/x-data-grid";
+import DataGridTable from "./DataGridTable";
 
 const SWIPE_THRESHOLD = 40;
 const ACTION_WIDTH = 72;
 
-interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, 'rows'> {
+interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, "rows"> {
   rows: readonly R[];
   renderCard?: (row: R) => ReactNode;
   onEdit?: (row: R) => void;
@@ -28,7 +34,15 @@ interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, 'rows'> {
 }
 
 function SwipeableCard({
-  row, children, onEdit, onDelete, isOpen, onOpenChange, isSelected, showCheckbox, onToggleSelect,
+  row,
+  children,
+  onEdit,
+  onDelete,
+  isOpen,
+  onOpenChange,
+  isSelected,
+  showCheckbox,
+  onToggleSelect,
 }: {
   row: Record<string, unknown>;
   children: ReactNode;
@@ -57,7 +71,9 @@ function SwipeableCard({
     offsetRef.current = x;
     if (slideRef.current) {
       slideRef.current.style.transform = `translateX(${x}px)`;
-      slideRef.current.style.transition = smooth ? 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' : 'none';
+      slideRef.current.style.transition = smooth
+        ? "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
+        : "none";
     }
   };
 
@@ -65,25 +81,28 @@ function SwipeableCard({
     onOpenChange(null);
   }, [onOpenChange]);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isOpen) {
-      closeSwipe();
-      return;
-    }
-    if (slideRef.current) slideRef.current.style.transition = 'none';
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    isSwiping.current = false;
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (isOpen) {
+        closeSwipe();
+        return;
+      }
+      if (slideRef.current) slideRef.current.style.transition = "none";
+      touchStartX.current = e.touches[0].clientX;
+      touchStartY.current = e.touches[0].clientY;
+      isSwiping.current = false;
 
-    if (!showCheckbox) {
-      longPressTimer.current = setTimeout(() => {
-        if (!isSwiping.current) {
-          navigator.vibrate?.(10);
-          onToggleSelect(String(row.id ?? ''));
-        }
-      }, 600);
-    }
-  }, [isOpen, closeSwipe, showCheckbox, onToggleSelect, row]);
+      if (!showCheckbox) {
+        longPressTimer.current = setTimeout(() => {
+          if (!isSwiping.current) {
+            navigator.vibrate?.(10);
+            onToggleSelect(String(row.id ?? ""));
+          }
+        }, 600);
+      }
+    },
+    [isOpen, closeSwipe, showCheckbox, onToggleSelect, row],
+  );
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     const dx = e.touches[0].clientX - touchStartX.current;
@@ -100,9 +119,11 @@ function SwipeableCard({
     clearTimeout(longPressTimer.current);
     if (!isSwiping.current) return;
     justSwiped.current = true;
-    setTimeout(() => { justSwiped.current = false; }, 300);
+    setTimeout(() => {
+      justSwiped.current = false;
+    }, 300);
     if (dxRef.current < -SWIPE_THRESHOLD) {
-      onOpenChange(String(row.id ?? ''));
+      onOpenChange(String(row.id ?? ""));
       snapTo(-ACTION_WIDTH);
     } else if (dxRef.current > SWIPE_THRESHOLD && onEdit) {
       navigator.vibrate?.(10);
@@ -126,47 +147,113 @@ function SwipeableCard({
       onClick={() => {
         if (justSwiped.current) return;
         if (isOpen) closeSwipe();
-        else if (showCheckbox) onToggleSelect(String(row.id ?? ''));
+        else if (showCheckbox) onToggleSelect(String(row.id ?? ""));
       }}
       onPointerDown={() => {
         if (!isOpen && !showCheckbox) onOpenChange(null);
       }}
       sx={{
-        borderRadius: 1.5, border: '1px solid', boxShadow: 'none',
-        overflow: 'hidden', userSelect: 'none', touchAction: 'pan-y',
-        bgcolor: isSelected ? 'action.hover' : 'background.paper',
-        borderColor: isSelected ? 'primary.main' : 'divider',
+        borderRadius: 1.5,
+        border: "1px solid",
+        boxShadow: "none",
+        overflow: "hidden",
+        userSelect: "none",
+        touchAction: "pan-y",
+        bgcolor: isSelected ? "action.hover" : "background.paper",
+        borderColor: isSelected ? "primary.main" : "divider",
       }}
     >
-      <Box ref={slideRef} sx={{ display: 'flex', transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-        <Box sx={{ display: 'flex', width: '100%', flexShrink: 0, position: 'relative' }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 0 }}>
-            <Box sx={{ flexShrink: 0, alignSelf: 'center', visibility: showCheckbox ? 'visible' : 'hidden' }}>
+      <Box
+        ref={slideRef}
+        sx={{
+          display: "flex",
+          transition: "transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            width: "100%",
+            flexShrink: 0,
+            position: "relative",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            <Box
+              sx={{
+                flexShrink: 0,
+                alignSelf: "center",
+                visibility: showCheckbox ? "visible" : "hidden",
+              }}
+            >
               <Checkbox
                 checked={isSelected}
                 size="small"
-                onClick={e => { e.stopPropagation(); onToggleSelect(String(row.id ?? '')); }}
-                sx={{ p: '6px', '& .MuiSvgIcon-root': { fontSize: 20 } }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSelect(String(row.id ?? ""));
+                }}
+                sx={{ p: "6px", "& .MuiSvgIcon-root": { fontSize: 20 } }}
               />
             </Box>
-            <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 }, flex: 1 }}>
+            <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, flex: 1 }}>
               {children}
             </CardContent>
           </Box>
-          <Box sx={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'primary.main', opacity: isOpen ? 0 : 1, transition: 'opacity 0.2s ease' }}>
-            <KeyboardArrowRight sx={{ fontSize: 20, color: 'white' }} />
+          <Box
+            sx={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 36,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: "primary.main",
+              opacity: isOpen ? 0 : 1,
+              transition: "opacity 0.2s ease",
+            }}
+          >
+            <KeyboardArrowRight sx={{ fontSize: 20, color: "white" }} />
           </Box>
         </Box>
         <Box
-          onClick={e => { e.stopPropagation(); handleDelete(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete();
+          }}
           sx={{
-            width: ACTION_WIDTH, flexShrink: 0,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.25,
-            bgcolor: 'error.main', cursor: 'pointer',
+            width: ACTION_WIDTH,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 0.25,
+            bgcolor: "error.main",
+            cursor: "pointer",
           }}
         >
-          <DeleteIcon sx={{ fontSize: 22, color: 'white' }} />
-          <Typography variant="caption" sx={{ fontSize: '0.6rem', fontWeight: 600, color: 'white', lineHeight: 1 }}>Delete</Typography>
+          <DeleteIcon sx={{ fontSize: 22, color: "white" }} />
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: "0.6rem",
+              fontWeight: 600,
+              color: "white",
+              lineHeight: 1,
+            }}
+          >
+            Delete
+          </Typography>
         </Box>
       </Box>
     </Card>
@@ -174,15 +261,24 @@ function SwipeableCard({
 }
 
 export default function ResponsiveDataGrid<R = any>({
-  renderCard, onEdit, onDelete, onBatchDelete, toolbarPageKey, selectedIds: selectedIdsProp, onSelectionChange, ...gridProps
+  renderCard,
+  onEdit,
+  onDelete,
+  onBatchDelete,
+  toolbarPageKey,
+  selectedIds: selectedIdsProp,
+  onSelectionChange,
+  ...gridProps
 }: ResponsiveDataGridProps<R>) {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(selectedIdsProp ?? []));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    new Set(selectedIdsProp ?? []),
+  );
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
-  const registerTools = useToolbarStore(s => s.registerTools);
+  const registerTools = useToolbarStore((s) => s.registerTools);
 
   useEffect(() => {
     if (selectedIdsProp) setSelectedIds(new Set(selectedIdsProp));
@@ -193,69 +289,104 @@ export default function ResponsiveDataGrid<R = any>({
   useEffect(() => {
     if (!toolbarPageKey || !onBatchDelete) return;
     if (selectedCount > 0) {
-      registerTools(toolbarPageKey, [{
-        id: 'batch_delete',
-        priority: 12,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <DeleteIcon />,
-        fabLabel: `Delete ${selectedCount}`,
-        fabColor: 'error',
-        action: () => { onBatchDelete(Array.from(selectedIdsRef.current)); setSelectedIds(new Set()); },
-        render: null,
-      }]);
+      registerTools(toolbarPageKey, [
+        {
+          id: "batch_delete",
+          priority: 12,
+          showOnMobile: true,
+          primary: true,
+          fabIcon: <DeleteIcon />,
+          fabLabel: `Delete ${selectedCount}`,
+          fabColor: "error",
+          action: () => {
+            onBatchDelete(Array.from(selectedIdsRef.current));
+            setSelectedIds(new Set());
+          },
+          render: null,
+        },
+      ]);
     } else {
-      const existing = useToolbarStore.getState().registry[toolbarPageKey] || [];
-      registerTools(toolbarPageKey, existing.filter(t => t.id !== 'batch_delete'));
+      const existing =
+        useToolbarStore.getState().registry[toolbarPageKey] || [];
+      registerTools(
+        toolbarPageKey,
+        existing.filter((t) => t.id !== "batch_delete"),
+      );
     }
   }, [selectedCount, toolbarPageKey, onBatchDelete, registerTools]);
 
   const handleOpenChange = useCallback((id: string | null) => {
-    setOpenCardId(prev => prev === id ? null : id);
+    setOpenCardId((prev) => (prev === id ? null : id));
   }, []);
 
-  const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      onSelectionChange?.(Array.from(next));
-      return next;
-    });
-  }, [onSelectionChange]);
+  const handleToggleSelect = useCallback(
+    (id: string) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        onSelectionChange?.(Array.from(next));
+        return next;
+      });
+    },
+    [onSelectionChange],
+  );
 
   if (!isMobile || !renderCard) {
     return <DataGridTable {...gridProps} />;
   }
 
   const rows = gridProps.rows as R[];
-  const paginationModel = gridProps.paginationModel as GridPaginationModel | undefined;
+  const paginationModel = gridProps.paginationModel as
+    | GridPaginationModel
+    | undefined;
   const rowCount = gridProps.rowCount ?? rows.length;
   const pageSize = paginationModel?.pageSize ?? 25;
   const page = paginationModel?.page ?? 0;
   const totalPages = Math.ceil(rowCount / pageSize);
 
   const handlePageChange = (_: React.ChangeEvent<unknown>, p: number) => {
-    gridProps.onPaginationModelChange?.({ page: p - 1, pageSize } as GridPaginationModel, {} as any);
+    gridProps.onPaginationModelChange?.(
+      { page: p - 1, pageSize } as GridPaginationModel,
+      {} as any,
+    );
   };
 
   return (
-    <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, pb: 2 }}>
+    <Box sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1, pb: 2 }}>
         {rows.map((row, i) => {
           const recordRow = row as Record<string, unknown>;
           const cardId = String(recordRow.id ?? i);
           return (
             <SwipeableCard
-              key={cardId} row={recordRow} onEdit={onEdit as ((row: Record<string, unknown>) => void) | undefined} onDelete={onDelete as ((row: Record<string, unknown>) => void) | undefined}
-              isOpen={openCardId === cardId} onOpenChange={handleOpenChange}
-              isSelected={selectedIds.has(cardId)} showCheckbox={selectedCount > 0} onToggleSelect={handleToggleSelect}
+              key={cardId}
+              row={recordRow}
+              onEdit={
+                onEdit as ((row: Record<string, unknown>) => void) | undefined
+              }
+              onDelete={
+                onDelete as ((row: Record<string, unknown>) => void) | undefined
+              }
+              isOpen={openCardId === cardId}
+              onOpenChange={handleOpenChange}
+              isSelected={selectedIds.has(cardId)}
+              showCheckbox={selectedCount > 0}
+              onToggleSelect={handleToggleSelect}
             >
               {renderCard(row)}
             </SwipeableCard>
           );
         })}
         {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2, pr: { xs: 7, sm: 0 } }}>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              py: 2,
+              pr: { xs: 7, sm: 0 },
+            }}
+          >
             <Pagination
               count={totalPages}
               page={page + 1}

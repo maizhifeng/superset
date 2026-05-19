@@ -1,4 +1,4 @@
-declare module 'rison' {
+declare module "rison" {
   export function encode(value: unknown): string;
   export function encode_object(value: Record<string, unknown>): string;
   export function encode_array(value: unknown[]): string;

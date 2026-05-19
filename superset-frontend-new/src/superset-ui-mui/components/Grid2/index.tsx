@@ -1,16 +1,24 @@
-import { forwardRef, type ReactNode } from 'react';
-import MuiGrid from '@mui/material/Grid';
-import type { SxProps, Theme } from '@mui/material/styles';
+import { forwardRef, type ReactNode } from "react";
+import MuiGrid from "@mui/material/Grid";
+import type { SxProps, Theme } from "@mui/material/styles";
 
-type GridSize = 'auto' | 'grow' | number | false;
-type ResponsiveSize = GridSize | { xs?: GridSize; sm?: GridSize; md?: GridSize; lg?: GridSize; xl?: GridSize };
+type GridSize = "auto" | "grow" | number | false;
+type ResponsiveSize =
+  | GridSize
+  | {
+      xs?: GridSize;
+      sm?: GridSize;
+      md?: GridSize;
+      lg?: GridSize;
+      xl?: GridSize;
+    };
 
 export interface Grid2Props {
   container?: boolean;
   size?: ResponsiveSize;
   spacing?: number | string;
   columns?: number;
-  direction?: 'row' | 'row-reverse';
+  direction?: "row" | "row-reverse";
   sx?: SxProps<Theme>;
   children?: ReactNode;
 }
@@ -31,6 +39,6 @@ const SupersetGrid2 = forwardRef<HTMLDivElement, Grid2Props>(
   ),
 );
 
-SupersetGrid2.displayName = 'SupersetGrid2';
+SupersetGrid2.displayName = "SupersetGrid2";
 
 export default SupersetGrid2;

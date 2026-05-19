@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from "react";
 
 interface UseRotatingPlaceholderOptions {
   hints: string[];
@@ -20,12 +20,12 @@ export function useRotatingPlaceholder({
       return;
     }
     timerRef.current = setInterval(() => {
-      setIndex(prev => (prev + 1) % hints.length);
+      setIndex((prev) => (prev + 1) % hints.length);
     }, intervalMs);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [hints.length, intervalMs, enabled]);
 
-  return hints[index] ?? hints[0] ?? '';
+  return hints[index] ?? hints[0] ?? "";
 }

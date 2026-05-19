@@ -1,4 +1,4 @@
-import type { ShortcutEntry, ShortcutCategory } from './constants';
+import type { ShortcutEntry, ShortcutCategory } from "./constants";
 
 type Listener = (entries: ShortcutEntry[]) => void;
 
@@ -11,7 +11,10 @@ class ShortcutRegistryImpl {
     this.notify();
     return () => {
       this.entries = this.entries.filter(
-        e => e.key !== entry.key || e.label !== entry.label || e.category !== entry.category,
+        (e) =>
+          e.key !== entry.key ||
+          e.label !== entry.label ||
+          e.category !== entry.category,
       );
       this.notify();
     };
@@ -22,7 +25,7 @@ class ShortcutRegistryImpl {
   }
 
   getByCategory(category: ShortcutCategory): ShortcutEntry[] {
-    return this.entries.filter(e => e.category === category);
+    return this.entries.filter((e) => e.category === category);
   }
 
   subscribe(listener: Listener): () => void {
@@ -34,7 +37,7 @@ class ShortcutRegistryImpl {
 
   private notify(): void {
     const snapshot = [...this.entries];
-    this.listeners.forEach(fn => fn(snapshot));
+    this.listeners.forEach((fn) => fn(snapshot));
   }
 }
 

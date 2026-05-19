@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import rison from 'rison';
-import api from '@/api';
-import { parseErrorMessage } from '@/utils/parseErrorMessage';
+import { useState, useEffect, useCallback, useRef } from "react";
+import rison from "rison";
+import api from "@/api";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 export interface SortModel {
   field: string;
-  sort: 'asc' | 'desc';
+  sort: "asc" | "desc";
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -42,27 +42,45 @@ export interface PaginatedListResult<T> {
 export function usePaginatedList<T>(
   options: UsePaginatedListOptions,
 ): PaginatedListResult<T> {
-  const { endpoint, filterColumn, pageSize = 50, errorMessage = 'Failed to load data', sortFieldMap, defaultSortModel } = options;
+  const {
+    endpoint,
+    filterColumn,
+    pageSize = 50,
+    errorMessage = "Failed to load data",
+    sortFieldMap,
+    defaultSortModel,
+  } = options;
 
   const [rows, setRows] = useState<T[]>([]);
   const [rowCount, setRowCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState("");
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize });
-  const [sortModel, setSortModel] = useState<SortModel[]>(defaultSortModel ?? []);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [sortModel, setSortModel] = useState<SortModel[]>(
+    defaultSortModel ?? [],
+  );
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const searchLoaded = useRef(false);
   const sortLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const configRef = useRef({ endpoint, filterColumn, errorMessage, sortFieldMap });
+  const configRef = useRef({
+    endpoint,
+    filterColumn,
+    errorMessage,
+    sortFieldMap,
+  });
   configRef.current = { endpoint, filterColumn, errorMessage, sortFieldMap };
 
   const fetchData = useCallback(() => {
-    const { endpoint, filterColumn, errorMessage, sortFieldMap } = configRef.current;
+    const { endpoint, filterColumn, errorMessage, sortFieldMap } =
+      configRef.current;
     setLoading(true);
     setError(null);
 
@@ -76,33 +94,41 @@ export function usePaginatedList<T>(
     const qs = rison.encode({
       page_size: paginationModel.pageSize,
       page: paginationModel.page,
-      ...(searchText && { filters: [{ col: filterColumn, opr: 'ct', value: searchText }] }),
-      ...(orderField && { order_column: orderField, order_direction: orderDirection }),
+      ...(searchText && {
+        filters: [{ col: filterColumn, opr: "ct", value: searchText }],
+      }),
+      ...(orderField && {
+        order_column: orderField,
+        order_direction: orderDirection,
+      }),
     });
-    api.get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`)
-      .then(res => {
+    api
+      .get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`)
+      .then((res) => {
         setRows(res.data.result);
         setRowCount(res.data.count);
         setLoading(false);
       })
-      .catch(err => {
+      .catch((err) => {
         setError(parseErrorMessage(err, errorMessage));
         setLoading(false);
       });
   }, [paginationModel, searchText, sortModel]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   useEffect(() => {
     if (searchLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
+      setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
     searchLoaded.current = true;
   }, [searchText]);
 
   useEffect(() => {
     if (sortLoaded.current) {
-      setPaginationModel(prev => ({ ...prev, page: 0 }));
+      setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
     sortLoaded.current = true;
   }, [sortModel]);
@@ -123,7 +149,7 @@ export function usePaginatedList<T>(
       setDeleteTarget(null);
       fetchData();
     } catch (err: unknown) {
-      setDeleteError(parseErrorMessage(err, 'Delete failed'));
+      setDeleteError(parseErrorMessage(err, "Delete failed"));
       setDeleteTarget(null);
     } finally {
       setDeleteLoading(false);
@@ -131,9 +157,22 @@ export function usePaginatedList<T>(
   };
 
   return {
-    rows, rowCount, loading, error, searchText, paginationModel, sortModel,
-    deleteTarget, deleteLoading, deleteError,
-    setSearchText, setPaginationModel, setSortModel, setDeleteTarget,
-    handleSearchChange, handleDelete, fetchData,
+    rows,
+    rowCount,
+    loading,
+    error,
+    searchText,
+    paginationModel,
+    sortModel,
+    deleteTarget,
+    deleteLoading,
+    deleteError,
+    setSearchText,
+    setPaginationModel,
+    setSortModel,
+    setDeleteTarget,
+    handleSearchChange,
+    handleDelete,
+    fetchData,
   };
 }

@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { useShortcutWithHelp } from '@/hooks/useShortcut';
+import { useCallback } from "react";
+import { useShortcutWithHelp } from "@/hooks/useShortcut";
 
 interface ExploreViewContainerProps {
   onRunQuery: () => void;
@@ -24,51 +24,72 @@ export default function ExploreViewContainer({
   const modOpts = { allowInInput: true };
 
   useShortcutWithHelp(
-    'ctrl+enter',
-    (e) => { e.preventDefault(); onRunQuery(); },
-    { label: 'Run Query', category: 'explore' },
+    "ctrl+enter",
+    (e) => {
+      e.preventDefault();
+      onRunQuery();
+    },
+    { label: "Run Query", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+s',
-    (e) => { e.preventDefault(); (onSaveChart ?? noop)(); },
-    { label: 'Save Chart', category: 'explore' },
+    "ctrl+s",
+    (e) => {
+      e.preventDefault();
+      (onSaveChart ?? noop)();
+    },
+    { label: "Save Chart", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+`',
-    (e) => { e.preventDefault(); (onToggleSqlPane ?? noop)(); },
-    { label: 'Toggle SQL Pane', category: 'explore' },
+    "ctrl+`",
+    (e) => {
+      e.preventDefault();
+      (onToggleSqlPane ?? noop)();
+    },
+    { label: "Toggle SQL Pane", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+d',
-    (e) => { e.preventDefault(); (onToggleDataPane ?? noop)(); },
-    { label: 'Toggle Data Pane', category: 'explore' },
+    "ctrl+d",
+    (e) => {
+      e.preventDefault();
+      (onToggleDataPane ?? noop)();
+    },
+    { label: "Toggle Data Pane", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+shift+a',
-    (e) => { e.preventDefault(); (onOpenAdvancedAnalytics ?? noop)(); },
-    { label: 'Open Advanced Analytics', category: 'explore' },
+    "ctrl+shift+a",
+    (e) => {
+      e.preventDefault();
+      (onOpenAdvancedAnalytics ?? noop)();
+    },
+    { label: "Open Advanced Analytics", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+z',
-    (e) => { e.preventDefault(); (onUndo ?? noop)(); },
-    { label: 'Undo', category: 'explore' },
+    "ctrl+z",
+    (e) => {
+      e.preventDefault();
+      (onUndo ?? noop)();
+    },
+    { label: "Undo", category: "explore" },
     modOpts,
   );
 
   useShortcutWithHelp(
-    'ctrl+y',
-    (e) => { e.preventDefault(); (onRedo ?? noop)(); },
-    { label: 'Redo', category: 'explore' },
+    "ctrl+y",
+    (e) => {
+      e.preventDefault();
+      (onRedo ?? noop)();
+    },
+    { label: "Redo", category: "explore" },
     modOpts,
   );
 

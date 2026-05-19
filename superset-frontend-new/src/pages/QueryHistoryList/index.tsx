@@ -1,20 +1,22 @@
-import { useEffect } from 'react';
-import Box from '@mui/material/Box';
-import HistoryIcon from '@mui/icons-material/History';
-import LinearProgress from '@mui/material/LinearProgress';
-import Typography from '@mui/material/Typography';
-import Tooltip from '@mui/material/Tooltip';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import type { GridColDef } from '@mui/x-data-grid';
-import ResponsiveDataGrid from '@/components/ResponsiveDataGrid';
-import FilterBar from '@/components/FilterBar';
-import ListPageLayout from '@/components/ListPageLayout';
-import EmptyState from '@/superset-ui-mui/components/EmptyState';
-import EmptyStateShortcutHint from '@/components/EmptyStateShortcutHint';
-import { useToolbarStore } from '@/contexts/ToolbarContext';
-import { usePaginatedList } from '@/hooks/usePaginatedList';
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import HistoryIcon from "@mui/icons-material/History";
+import LinearProgress from "@mui/material/LinearProgress";
+import Typography from "@mui/material/Typography";
+import Tooltip from "@mui/material/Tooltip";
+import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import type { GridColDef } from "@mui/x-data-grid";
+import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
+import FilterBar from "@/components/FilterBar";
+import ListPageLayout from "@/components/ListPageLayout";
+import EmptyState from "@/superset-ui-mui/components/EmptyState";
+import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
+import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
 
-import type { QueryLog } from '@/types/api';
+import type { QueryLog } from "@/types/api";
 
 const MAX_DURATION_MS = 300000;
 
@@ -25,64 +27,92 @@ function formatDuration(ms: number): string {
 }
 
 function durationColor(ms: number): string {
-  if (ms < 1000) return '#5ac189';
-  if (ms < 10000) return '#20a7c9';
-  if (ms < 60000) return '#ff7f44';
-  return '#e0432e';
+  if (ms < 1000) return "#5ac189";
+  if (ms < 10000) return "#20a7c9";
+  if (ms < 60000) return "#ff7f44";
+  return "#e0432e";
 }
 
 export default function QueryHistoryList() {
-  const { rows, rowCount, loading, error, searchText, paginationModel, setPaginationModel, handleSearchChange } = usePaginatedList<QueryLog>({ endpoint: '/log/', filterColumn: 'action', errorMessage: 'Failed to load query history' });
-  const registerTools = useToolbarStore(s => s.registerTools);
-  const unregisterTools = useToolbarStore(s => s.unregisterTools);
+  const navigate = useNavigate();
+  const {
+    rows,
+    rowCount,
+    loading,
+    error,
+    searchText,
+    paginationModel,
+    setPaginationModel,
+    handleSearchChange,
+  } = usePaginatedList<QueryLog>({
+    endpoint: "/log/",
+    filterColumn: "action",
+    errorMessage: "Failed to load query history",
+  });
+  const registerTools = useToolbarStore((s) => s.registerTools);
+  const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
   useEffect(() => {
-    registerTools('query_history_list', [
+    registerTools("query_history_list", [
       {
-        id: 'search',
+        id: "search",
         priority: 5,
         showOnMobile: false,
         render: (
-          <FilterBar value="" onChange={handleSearchChange} placeholder="Search queries..." compact sx={{ minWidth: 220 }} />
+          <FilterBar
+            value=""
+            onChange={handleSearchChange}
+            placeholder="Search queries..."
+            compact
+            sx={{ minWidth: 220 }}
+          />
         ),
       },
     ]);
-    return () => unregisterTools('query_history_list');
+    return () => unregisterTools("query_history_list");
   }, [registerTools, unregisterTools, handleSearchChange]);
 
   const columns: GridColDef[] = [
-    { field: 'id', headerName: 'ID', width: 70 },
+    { field: "id", headerName: "ID", width: 70 },
     {
-      field: 'user',
-      headerName: 'User',
+      field: "user",
+      headerName: "User",
       flex: 0.4,
-      renderCell: params => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <AccountCircleIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
-          <span>{params.row.user?.username ?? ''}</span>
+      renderCell: (params) => (
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <AccountCircleIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+          <span>{params.row.user?.username ?? ""}</span>
         </Box>
       ),
     },
-    { field: 'action', headerName: 'Action', flex: 1 },
+    { field: "action", headerName: "Action", flex: 1 },
     {
-      field: 'dttm',
-      headerName: 'Date',
+      field: "dttm",
+      headerName: "Date",
       flex: 0.5,
       valueGetter: (_value, row) => {
-        if (!row.dttm) return '';
+        if (!row.dttm) return "";
         return new Date(row.dttm).toLocaleString();
       },
     },
     {
-      field: 'duration_ms',
-      headerName: 'Duration',
+      field: "duration_ms",
+      headerName: "Duration",
       flex: 0.4,
-      renderCell: params => {
+      renderCell: (params) => {
         const ms = params.row.duration_ms;
         const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
         return (
           <Tooltip title={`${formatDuration(ms)} (${ms}ms)`} arrow>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%', pr: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                width: "100%",
+                pr: 2,
+              }}
+            >
               <LinearProgress
                 variant="determinate"
                 value={pct}
@@ -90,14 +120,22 @@ export default function QueryHistoryList() {
                   flex: 1,
                   height: 6,
                   borderRadius: 3,
-                  bgcolor: 'rgba(0,0,0,0.06)',
-                  '& .MuiLinearProgress-bar': {
+                  bgcolor: "rgba(0,0,0,0.06)",
+                  "& .MuiLinearProgress-bar": {
                     bgcolor: durationColor(ms),
                     borderRadius: 3,
                   },
                 }}
               />
-              <Typography variant="caption" sx={{ fontWeight: 500, whiteSpace: 'nowrap', minWidth: 50, textAlign: 'right' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                  minWidth: 50,
+                  textAlign: "right",
+                }}
+              >
                 {formatDuration(ms)}
               </Typography>
             </Box>
@@ -117,7 +155,22 @@ export default function QueryHistoryList() {
           <EmptyState
             icon={<HistoryIcon />}
             title="No query history found"
-            description={searchText ? 'Try adjusting your search query' : 'Run queries in SQL Lab to see your history here'}
+            description={
+              searchText
+                ? "Try adjusting your search query"
+                : "Run queries in SQL Lab to see your history here"
+            }
+            action={
+              !searchText ? (
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={() => navigate("/sqllab")}
+                >
+                  Open SQL Lab
+                </Button>
+              ) : undefined
+            }
           />
           <EmptyStateShortcutHint />
         </>
@@ -133,29 +186,104 @@ export default function QueryHistoryList() {
         paginationMode="server"
         onPaginationModelChange={setPaginationModel}
         pageSizeOptions={[25, 50, 100]}
-        renderCard={row => {
+        renderCard={(row) => {
           const ms = row.duration_ms;
           const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
           return (
             <>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.3, fontFamily: 'monospace', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  lineHeight: 1.3,
+                  fontFamily: "monospace",
+                  fontSize: "0.7rem",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {row.action}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 0.25 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden' }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
-                    <AccountCircleIcon sx={{ fontSize: 10, color: 'text.disabled' }} />
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.55rem' }}>
-                      {row.user?.username ?? 'N/A'}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mt: 0.25,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.25,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <AccountCircleIcon
+                      sx={{ fontSize: 10, color: "text.disabled" }}
+                    />
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.55rem" }}
+                    >
+                      {row.user?.username ?? "N/A"}
                     </Typography>
                   </Box>
-                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.55rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {row.dttm ? new Date(row.dttm).toLocaleString() : ''}
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{
+                      fontSize: "0.55rem",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {row.dttm ? new Date(row.dttm).toLocaleString() : ""}
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                  <LinearProgress variant="determinate" value={pct} sx={{ width: 40, height: 3, borderRadius: 2, bgcolor: 'rgba(0,0,0,0.06)', '& .MuiLinearProgress-bar': { bgcolor: durationColor(ms), borderRadius: 2 } }} />
-                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.6rem', color: durationColor(ms) }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    flexShrink: 0,
+                  }}
+                >
+                  <LinearProgress
+                    variant="determinate"
+                    value={pct}
+                    sx={{
+                      width: 40,
+                      height: 3,
+                      borderRadius: 2,
+                      bgcolor: "rgba(0,0,0,0.06)",
+                      "& .MuiLinearProgress-bar": {
+                        bgcolor: durationColor(ms),
+                        borderRadius: 2,
+                      },
+                    }}
+                  />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      fontSize: "0.6rem",
+                      color: durationColor(ms),
+                    }}
+                  >
                     {formatDuration(ms)}
                   </Typography>
                 </Box>

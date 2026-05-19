@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
-import Tabs from '@mui/material/Tabs';
-import Tab from '@mui/material/Tab';
+import { useMemo } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 
 interface NavItem {
   id: string;
@@ -16,7 +16,7 @@ interface AppNavBarProps {
 
 export default function AppNavBar({ navItems, isActive }: AppNavBarProps) {
   const activeIndex = useMemo(() => {
-    const i = navItems.findIndex(item => isActive(item.path));
+    const i = navItems.findIndex((item) => isActive(item.path));
     return i >= 0 ? i : false;
   }, [navItems, isActive]);
 
@@ -31,11 +31,11 @@ export default function AppNavBar({ navItems, isActive }: AppNavBarProps) {
       sx={{
         minHeight: 0,
         flex: 1,
-        '& .MuiTabs-scrollButtons': { width: 24 },
-        '& .MuiTabs-indicator': { height: 2 },
+        "& .MuiTabs-scrollButtons": { width: 24 },
+        "& .MuiTabs-indicator": { height: 2 },
       }}
     >
-      {navItems.map(item => (
+      {navItems.map((item) => (
         <Tab
           key={item.id}
           label={item.label}
@@ -45,13 +45,13 @@ export default function AppNavBar({ navItems, isActive }: AppNavBarProps) {
             minHeight: 0,
             py: 0.375,
             px: 0.75,
-            minWidth: 'auto',
-            flex: 'none',
-            fontSize: '0.8125rem',
+            minWidth: "auto",
+            flex: "none",
+            fontSize: "0.8125rem",
             fontWeight: isActive(item.path) ? 600 : 400,
-            textTransform: 'none',
-            color: isActive(item.path) ? 'primary.main' : 'text.secondary',
-            '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
+            textTransform: "none",
+            color: isActive(item.path) ? "primary.main" : "text.secondary",
+            "&:hover": { bgcolor: "action.hover", color: "text.primary" },
           }}
         />
       ))}
