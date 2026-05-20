@@ -8,7 +8,6 @@ import Drawer from "@mui/material/Drawer";
 import type { DashboardData, ChartData } from "@/types/api";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import ChartEditor from "@/pages/ChartCreation/ChartEditor";
-import ChatInput from "@/components/ChatInput";
 import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
 import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
@@ -1075,6 +1074,36 @@ export default function Dashboard() {
           totalRows={totalRows}
         />
       </Box>
+      <Drawer
+        variant="temporary"
+        anchor="right"
+        open={isDrawerOpen}
+        onClose={handleCloseDrawer}
+        slotProps={{
+          paper: {
+            sx: {
+              width: { xs: "100vw", md: "50vw" },
+              top: 0,
+              height: "100vh",
+              borderRight: "none",
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+            },
+          },
+        }}
+      >
+        <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          {isDrawerOpen && (
+            <ChartEditor
+              compact
+              onChartSaved={handleChartSaved}
+              initialData={
+                editingSliceId ? chartMeta[Number(editingSliceId)] : null
+              }
+            />
+          )}
+        </Box>
+      </Drawer>
       <CompareConfigModal
         open={compareModalOpen}
         columns={datasetCompareColumns}
@@ -1101,36 +1130,6 @@ export default function Dashboard() {
         onSelect={handleAddChartSelect}
         onClose={() => setAddChartDialogOpen(false)}
       />
-      <Drawer
-        variant="persistent"
-        anchor="right"
-        open={isDrawerOpen}
-        onClose={handleCloseDrawer}
-        slotProps={{
-          paper: {
-            sx: {
-              width: { xs: "100vw", md: "30vw" },
-              top: 0,
-              height: "100vh",
-              borderRight: "none",
-              borderTopLeftRadius: 12,
-              borderBottomLeftRadius: 12,
-            },
-          },
-        }}
-      >
-        <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-          {isDrawerOpen && (
-            <ChartEditor
-              compact
-              onChartSaved={handleChartSaved}
-              initialData={
-                editingSliceId ? chartMeta[Number(editingSliceId)] : null
-              }
-            />
-          )}
-        </Box>
-      </Drawer>
       <UndoRedoKeyListeners
         onUndo={() => {}}
         onRedo={() => {}}
@@ -1145,7 +1144,6 @@ export default function Dashboard() {
       />
       <PageSpeedDial
         pageKeys={[pageKey, ...(isDrawerOpen ? ["chart_editor"] : [])]}
-        searchTool={{ render: <ChatInput /> }}
       />
       <DashboardNav
         open={navOpen}
