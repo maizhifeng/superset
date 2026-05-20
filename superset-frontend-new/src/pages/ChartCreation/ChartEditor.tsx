@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import SaveIcon from "@mui/icons-material/Save";
 import type { EChartsOption } from "echarts";
 import { buildEChartsOption, loadECharts } from "@/utils/echarts";
@@ -764,7 +765,20 @@ export default function ChartEditor({
           />
         )}
       </Box>
-      {!compact && <PageSpeedDial pageKeys="chart_editor" />}
+      {compact ? (
+        <Box sx={{ p: 2, pt: 0 }}>
+          <Button
+            variant="contained"
+            fullWidth
+            startIcon={<SaveIcon />}
+            onClick={handleSubmit}
+          >
+            {isEditing ? "Save" : "Create"}
+          </Button>
+        </Box>
+      ) : (
+        <PageSpeedDial pageKeys="chart_editor" />
+      )}
     </Box>
   );
 }

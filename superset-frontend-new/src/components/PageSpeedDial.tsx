@@ -2,12 +2,6 @@ import { useState, type ReactNode } from "react";
 import SpeedDial from "@mui/material/SpeedDial";
 import SpeedDialAction from "@mui/material/SpeedDialAction";
 import SpeedDialIcon from "@mui/material/SpeedDialIcon";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import SearchIcon from "@mui/icons-material/Search";
-import Box from "@mui/material/Box";
-import ChatInput from "@/components/ChatInput";
-import SearchExamples from "@/components/SearchExamples";
 import { useToolbarStore } from "@/contexts/ToolbarContext";
 import type { ToolEntry } from "@/contexts/ToolbarContext";
 
@@ -45,21 +39,17 @@ function pickPageTools(
 
 interface PageSpeedDialProps {
   pageKeys: string | string[];
-  searchTool?: { render: ReactNode };
 }
 
 export default function PageSpeedDial({
   pageKeys,
-  searchTool,
 }: PageSpeedDialProps) {
   const registry = useToolbarStore((s) => s.registry);
   const keys = Array.isArray(pageKeys) ? pageKeys : [pageKeys];
   const tools = pickPageTools(registry, keys);
   const [open, setOpen] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
-  if (tools.length === 0 && !searchTool) return null;
+  if (tools.length === 0) return null;
 
   return (
     <>
@@ -80,16 +70,6 @@ export default function PageSpeedDial({
           "& .MuiSpeedDialAction-fab": { width: 56, height: 56 },
         })}
       >
-        {searchTool && (
-          <SpeedDialAction
-            icon={<SearchIcon />}
-            title="Ask..."
-            onClick={() => {
-              setOpen(false);
-              setDialogOpen(true);
-            }}
-          />
-        )}
         {tools.map((tool) => (
           <SpeedDialAction
             key={tool.id}
@@ -117,46 +97,6 @@ export default function PageSpeedDial({
           />
         ))}
       </SpeedDial>
-      {searchTool && (
-        <Dialog
-          open={dialogOpen}
-          onClose={() => {
-            setDialogOpen(false);
-            setSearchQuery("");
-          }}
-          fullWidth
-          maxWidth="sm"
-          slotProps={{
-            paper: {
-              sx: {
-                position: "fixed",
-                top: "20vh",
-                m: 0,
-                borderRadius: 2,
-                width: "90%",
-                maxWidth: 520,
-              },
-            },
-            backdrop: { sx: { bgcolor: "rgba(0,0,0,0.3)" } },
-          }}
-        >
-          <DialogContent
-            sx={{ p: 2, pt: 2.5 }}
-            onClick={() => setDialogOpen(false)}
-          >
-            <Box onClick={(e) => e.stopPropagation()}>
-              <ChatInput
-                autoFocus
-                placeholder="Ask anything about your data..."
-                disableMaxWidth
-                value={searchQuery}
-                onChange={setSearchQuery}
-              />
-              <SearchExamples onSelect={(q) => setSearchQuery(q)} />
-            </Box>
-          </DialogContent>
-        </Dialog>
-      )}
     </>
   );
 }

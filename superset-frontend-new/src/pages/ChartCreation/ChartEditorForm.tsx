@@ -197,7 +197,7 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  Metrics
+                  Group By
                 </Typography>
               }
             />
@@ -206,11 +206,12 @@ export default function ChartEditorForm({
                 <CircularProgress size={16} />
               ) : (
                 <PickerField
-                  label="Metrics"
-                  options={metricsOptions}
-                  selected={metrics}
-                  onChange={onMetricsChange}
-                  placeholder="Add metrics..."
+                  label="Group By"
+                  options={dimensionOptions}
+                  selected={groupby}
+                  onChange={onGroupbyChange}
+                  placeholder="Add dimensions..."
+                  compact
                   hideHeader
                   hideGroups
                 />
@@ -247,7 +248,7 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  Group By
+                  Metrics
                 </Typography>
               }
             />
@@ -256,13 +257,14 @@ export default function ChartEditorForm({
                 <CircularProgress size={16} />
               ) : (
                 <PickerField
-                  label="Group By"
-                  options={dimensionOptions}
-                  selected={groupby}
-                  onChange={onGroupbyChange}
-                  placeholder="Add dimensions..."
+                  label="Metrics"
+                  options={metricsOptions}
+                  selected={metrics}
+                  onChange={onMetricsChange}
+                  placeholder="Add metrics..."
                   hideHeader
                   hideGroups
+                  compact
                 />
               )}
             </CardContent>
