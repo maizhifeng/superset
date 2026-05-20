@@ -37,6 +37,8 @@ function formatTimeLabel(v: unknown): string {
   return s;
 }
 
+const valuesCache = new Map<string, { label: string; value: string }[]>();
+
 function FilterSelect({
   filter,
   value,
@@ -55,24 +57,45 @@ function FilterSelect({
 
   const fetchValues = useCallback(
     async (search: string) => {
+      if (search) {
+        setLoading(true);
+        try {
+          const q: Record<string, unknown> = { page_size: 100, page: 0, filters: [{ col: "value", op: "ct", val: search }] };
+          const res = await api.get(
+            `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
+          );
+          const raw: unknown[] = res.data?.result || [];
+          const vals = raw.filter((v): v is string => v != null).map((v) => ({ value: String(v), label: filter.columnType === "time" ? formatTimeLabel(v) : String(v) }));
+          setOptions(vals);
+        } catch {
+          setOptions([]);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      const cacheKey = `${filter.datasetId}:${filter.column}`;
+      const cached = valuesCache.get(cacheKey);
+      if (cached) {
+        setOptions(cached);
+        return;
+      }
       setLoading(true);
       try {
         const q: Record<string, unknown> = { page_size: 100, page: 0 };
-        if (search) {
-          q.filters = [{ col: "value", op: "ct", val: search }];
-        }
         const res = await api.get(
           `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
         );
         const raw: unknown[] = res.data?.result || [];
-        const values: { label: string; value: string }[] = raw
+        const vals: { label: string; value: string }[] = raw
           .filter((v): v is string => v != null)
           .map((v) => ({
             value: String(v),
-            label:
-              filter.columnType === "time" ? formatTimeLabel(v) : String(v),
+            label: filter.columnType === "time" ? formatTimeLabel(v) : String(v),
           }));
-        setOptions(values);
+        valuesCache.set(cacheKey, vals);
+        setOptions(vals);
       } catch {
         setOptions([]);
       } finally {
@@ -121,7 +144,10 @@ function FilterSelect({
       value={selected}
       inputValue={searchTerm}
       onInputChange={(_, v) => setSearchTerm(v)}
-      onChange={(_, v) => onChange(v ? v.map((x) => x.value) : [])}
+      onChange={(_, v) => {
+        const vals = v ? v.map((x) => x.value) : [];
+        onChange(vals.length === options.length ? [] : vals);
+      }}
       filterSelectedOptions
       disableCloseOnSelect
       openOnFocus
@@ -442,7 +468,7 @@ export default function FilterPanel({
             },
             gap: 0.75,
             mt: 0.5,
-            overflow: "hidden",
+            overflow: "visible",
           }}
         >
           {visibleFilters.map((filter) => (

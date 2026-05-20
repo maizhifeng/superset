@@ -24,6 +24,7 @@ import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
 import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
+import CompareModal from "@/pages/Dashboard/CompareModal";
 import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
 import type {
   CompareConfig,
@@ -55,6 +56,10 @@ export default function Dashboard() {
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [compareChartId, setCompareChartId] = useState<number | null>(null);
   const [addChartDialogOpen, setAddChartDialogOpen] = useState(false);
+  const [periodModalOpen, setPeriodModalOpen] = useState(false);
+  const [periodModalChartData, setPeriodModalChartData] = useState<
+    Record<string, unknown> | undefined
+  >(undefined);
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
@@ -74,6 +79,7 @@ export default function Dashboard() {
     fetchOtherRow: fetchOtherRowData,
   } = useDashboardData();
 
+  const [chartLoading, setChartLoading] = useState<Record<number, boolean>>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get("slice_id");
   const isDrawerOpen = Boolean(editingSliceId);
@@ -157,7 +163,7 @@ export default function Dashboard() {
             }
             const dashFilter = extra?.dashboard_filter === true;
             if (!dashFilter) continue;
-            if (col.is_dttm && col.expression)
+            if (col.is_dttm)
               timeCols.push({
                 datasetId: dsId,
                 column: col.column_name,
@@ -321,6 +327,62 @@ export default function Dashboard() {
             }
           });
         }
+
+        const dsIds = new Set<number>();
+        for (const chart of Object.values(metaMap)) {
+          const dsId =
+            chart.datasource_id ||
+            (chart.datasource_id ?? 0);
+          if (dsId) dsIds.add(dsId);
+        }
+        if (dsIds.size > 0) {
+          const timeCols: {
+            datasetId: number;
+            column: string;
+            name: string;
+            columnType: "time";
+          }[] = [];
+          const stringCols: {
+            datasetId: number;
+            column: string;
+            name: string;
+            columnType: "string";
+          }[] = [];
+          const seen = new Set<string>();
+          const stringTypes = /varchar|char|text|string/i;
+          for (const dsId of dsIds) {
+            try {
+              const dataset = await getDataset<{
+                columns: {
+                  column_name: string;
+                  type: string | null;
+                  is_dttm: boolean;
+                  extra: string | null;
+                }[];
+              }>(dsId);
+              const cols = dataset.columns ?? [];
+              for (const col of cols) {
+                if (!col.column_name || !col.type) continue;
+                const key = `${dsId}:${col.column_name}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                let extra: Record<string, unknown> | null = null;
+                try {
+                  extra = col.extra ? JSON.parse(col.extra) : null;
+                } catch { /* ignore */ }
+                const dashFilter = extra?.dashboard_filter === true;
+                if (!dashFilter) continue;
+                if (col.is_dttm)
+                  timeCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "time" });
+                else if (stringTypes.test(col.type))
+                  stringCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "string" });
+                else
+                  stringCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "string" });
+              }
+            } catch { /* ignore */ }
+          }
+          setDashboardDimensions([...timeCols, ...stringCols]);
+        }
         setChartMeta(metaMap);
 
         const { dataMap, totalRowMap } = await getChartDataWithFilters(
@@ -474,13 +536,18 @@ export default function Dashboard() {
 
   const refreshChart = useCallback(
     async (chartId: number) => {
-      const data = await refreshChartData(
-        chartId,
-        chartMeta,
-        buildAdhocFiltersRef.current,
-      );
-      if (data) {
-        setChartData((prev) => ({ ...prev, [chartId]: data }));
+      setChartLoading((prev) => ({ ...prev, [chartId]: true }));
+      try {
+        const data = await refreshChartData(
+          chartId,
+          chartMeta,
+          buildAdhocFiltersRef.current,
+        );
+        if (data) {
+          setChartData((prev) => ({ ...prev, [chartId]: data }));
+        }
+      } finally {
+        setChartLoading((prev) => ({ ...prev, [chartId]: false }));
       }
     },
     [chartMeta, refreshChartData],
@@ -490,25 +557,37 @@ export default function Dashboard() {
     async (chartIds?: Set<number>) => {
       const ids = chartIds
         ? Array.from(chartIds)
-        : Array.from(dashboardChartIds);
+        : Object.keys(chartMeta).map(Number);
       if (ids.length === 0) return;
-      const { dataMap, totalRowMap } = await getChartDataWithFilters(
-        ids,
-        chartMeta,
-      );
-      setChartData((prev) => ({ ...prev, ...dataMap }));
-      setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
-      if (compareConfig?.enabled) {
-        const freshData = dataMap[compareConfig.chartId];
-        fetchMirrorData(
-          compareConfig.chartId,
-          compareConfig.dimensions,
-          freshData,
+      setChartLoading((prev) => {
+        const next = { ...prev };
+        for (const id of ids) next[id] = true;
+        return next;
+      });
+      try {
+        const { dataMap, totalRowMap } = await getChartDataWithFilters(
+          ids,
+          chartMeta,
         );
+        setChartData((prev) => ({ ...prev, ...dataMap }));
+        setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
+        if (compareConfig?.enabled) {
+          const freshData = dataMap[compareConfig.chartId];
+          fetchMirrorData(
+            compareConfig.chartId,
+            compareConfig.dimensions,
+            freshData,
+          );
+        }
+      } finally {
+        setChartLoading((prev) => {
+          const next = { ...prev };
+          for (const id of ids) next[id] = false;
+          return next;
+        });
       }
     },
     [
-      dashboardChartIds,
       chartMeta,
       compareConfig,
       fetchMirrorData,
@@ -540,15 +619,6 @@ export default function Dashboard() {
     },
     [fetchOtherRowData],
   );
-
-  const initialFilterKeysRef = useRef("");
-  useEffect(() => {
-    const keys = Object.keys(filterState).sort().join(",");
-    if (!initialFilterKeysRef.current && keys) {
-      initialFilterKeysRef.current = keys;
-      refreshChartsRef.current();
-    }
-  }, [filterState]);
 
   const pageKey = `dashboard_${id}`;
   useDashboardToolbar({
@@ -707,11 +777,19 @@ export default function Dashboard() {
       const affectedIds = changedFilter?.chartsInScope?.length
         ? new Set(changedFilter.chartsInScope)
         : undefined;
+      setChartLoading((prev) => {
+        const next = { ...prev };
+        const ids = affectedIds
+          ? Array.from(affectedIds)
+          : Object.keys(chartMeta).map(Number);
+        for (const chartId of ids) next[chartId] = true;
+        return next;
+      });
       filterTimerRef.current = setTimeout(() => {
         refreshChartsRef.current(affectedIds);
       }, 300);
     },
-    [setFilter],
+    [setFilter, chartMeta],
   );
 
   const handleClearAll = useCallback(() => {
@@ -959,9 +1037,9 @@ export default function Dashboard() {
         sx={{
           flex: 1,
           minHeight: 0,
+          minWidth: 0,
           overflow: "auto",
-          p: 0,
-          px: { xs: spacing.sm, md: spacing.lg },
+          px: { xs: spacing.xs, md: spacing.md },
         }}
       >
         <DashboardGrid
@@ -970,6 +1048,7 @@ export default function Dashboard() {
           layoutItems={layoutItems}
           chartMeta={chartMeta}
           chartData={chartData}
+          chartLoading={chartLoading}
           isDragging={isDragging}
           saving={saving}
           containerRef={containerRef}
@@ -987,6 +1066,10 @@ export default function Dashboard() {
           compareConfig={compareConfig}
           mirrorData={mirrorData}
           onToggleCompare={handleToggleCompare}
+          onOpenCompareBigScreen={(chartId, chartData) => {
+            setPeriodModalChartData(chartData);
+            setPeriodModalOpen(true);
+          }}
           otherRows={otherRows}
           onFetchOtherRow={fetchOtherRow}
           totalRows={totalRows}
@@ -1004,6 +1087,14 @@ export default function Dashboard() {
           setCompareChartId(null);
         }}
       />
+      <CompareModal
+        open={periodModalOpen}
+        chartData={periodModalChartData}
+        onClose={() => {
+          setPeriodModalOpen(false);
+          setPeriodModalChartData(undefined);
+        }}
+      />
       <AddChartDialog
         open={addChartDialogOpen}
         excludeIds={dashboardChartIds}
@@ -1011,6 +1102,7 @@ export default function Dashboard() {
         onClose={() => setAddChartDialogOpen(false)}
       />
       <Drawer
+        variant="persistent"
         anchor="right"
         open={isDrawerOpen}
         onClose={handleCloseDrawer}

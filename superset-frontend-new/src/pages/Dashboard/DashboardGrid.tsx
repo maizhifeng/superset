@@ -19,6 +19,7 @@ interface DashboardGridProps {
   layoutItems: ChartLayoutItem[];
   chartMeta: Record<number, ChartData>;
   chartData: Record<number, Record<string, unknown>>;
+  chartLoading: Record<number, boolean>;
   isDragging: boolean;
   saving: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -36,6 +37,7 @@ interface DashboardGridProps {
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
+  onOpenCompareBigScreen?: (chartId: number, chartData?: Record<string, unknown>) => void;
   otherRows?: Record<number, Record<string, unknown> | null>;
   onFetchOtherRow?: (
     chartId: number,
@@ -51,6 +53,7 @@ export default function DashboardGrid({
   layoutItems,
   chartMeta,
   chartData,
+  chartLoading,
   isDragging,
   saving,
   containerRef,
@@ -66,6 +69,7 @@ export default function DashboardGrid({
   compareConfig,
   mirrorData,
   onToggleCompare,
+  onOpenCompareBigScreen,
   otherRows,
   onFetchOtherRow,
   totalRows,
@@ -153,6 +157,7 @@ export default function DashboardGrid({
               sliceName={item.sliceName}
               vizType={chartMeta[item.chartId]?.viz_type || "bar"}
               data={chartData[item.chartId]}
+              loading={!!chartLoading[item.chartId]}
               meta={chartMeta[item.chartId]}
               isDragging={isDragging}
               containerWidth={containerWidth}
@@ -162,6 +167,7 @@ export default function DashboardGrid({
               compareConfig={compareConfig}
               mirrorData={mirrorData}
               onToggleCompare={onToggleCompare}
+              onOpenCompareBigScreen={onOpenCompareBigScreen}
               otherRow={otherRows?.[item.chartId]}
               onFetchOtherRow={onFetchOtherRow}
               totalRow={totalRows?.[item.chartId]}

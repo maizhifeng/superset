@@ -75,7 +75,7 @@ export default function PageSpeedDial({
           bottom: { xs: 16, sm: 24 },
           right: { xs: 16, sm: 24 },
           display: { xs: "flex", sm: "flex" },
-          zIndex: theme.zIndex.drawer + 1,
+          zIndex: theme.zIndex.modal + 1,
           "& .MuiSpeedDial-fab": { width: 56, height: 56 },
           "& .MuiSpeedDialAction-fab": { width: 56, height: 56 },
         })}

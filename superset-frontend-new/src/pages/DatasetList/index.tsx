@@ -143,6 +143,7 @@ export default function DatasetList() {
           <Tooltip title="Delete">
             <IconButton
               size="small"
+              color="error"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteTarget({
@@ -194,7 +195,6 @@ export default function DatasetList() {
         rows={rows}
         columns={columns}
         loading={loading}
-        autoHeight
         paginationModel={paginationModel}
         rowCount={rowCount}
         paginationMode="server"
