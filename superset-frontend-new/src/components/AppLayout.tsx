@@ -467,6 +467,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          position: "relative",
         }}
       >
         {pageTip && <ContextTip tip={pageTip} />}

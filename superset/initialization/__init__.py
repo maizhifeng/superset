@@ -955,6 +955,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             csrf_exempt_list = self.config["WTF_CSRF_EXEMPT_LIST"]
             for ex in csrf_exempt_list:
                 csrf.exempt(ex)
+            # Papp metadata endpoints
+            csrf.exempt("superset.project.papp.api.list_papp")
+            csrf.exempt("superset.project.papp.api.get_papp")
+            csrf.exempt("superset.project.papp.api.put_papp")
+            csrf.exempt("superset.project.papp.api.delete_papp")
 
     def configure_async_queries(self) -> None:
         if feature_flag_manager.is_feature_enabled("GLOBAL_ASYNC_QUERIES"):
@@ -975,6 +980,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
                 self.superset_app.register_blueprint(bp)
             except Exception:  # pylint: disable=broad-except
                 logger.exception("blueprint registration failed")
+
+        # Register papp metadata blueprint
+        from superset.project.papp.api import papp_blueprint
+
+        self.superset_app.register_blueprint(papp_blueprint)
 
     def setup_bundle_manifest(self) -> None:
         manifest_processor.init_app(self.superset_app)

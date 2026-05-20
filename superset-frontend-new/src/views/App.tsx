@@ -21,6 +21,7 @@ const DatabaseList = lazy(() => import("@/pages/DatabaseList"));
 const DatasetList = lazy(() => import("@/pages/DatasetList"));
 const DatasetCreation = lazy(() => import("@/pages/DatasetCreation"));
 const DatasetEdit = lazy(() => import("@/pages/DatasetEdit"));
+const ProjectConfig = lazy(() => import("@/pages/ProjectConfig"));
 const SavedQueryList = lazy(() => import("@/pages/SavedQueryList"));
 const AlertReportList = lazy(() => import("@/pages/AlertReportList"));
 const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
@@ -197,6 +198,14 @@ export default function App() {
           element={
             <ProtectedLayout>
               <DatasetEdit />
+            </ProtectedLayout>
+          }
+        />
+        <Route
+          path="/project/config"
+          element={
+            <ProtectedLayout>
+              <ProjectConfig />
             </ProtectedLayout>
           }
         />
