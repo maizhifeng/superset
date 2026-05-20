@@ -5,8 +5,8 @@ import Alert from "@mui/material/Alert";
 import TableSkeleton from "@/components/TableSkeleton";
 
 const contentFadeIn = keyframes`
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 `;
 
 interface ListPageLayoutProps {

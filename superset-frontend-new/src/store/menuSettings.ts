@@ -37,6 +37,12 @@ const defaultItems: NavItem[] = [
     label: "History",
     builtIn: true,
   },
+  {
+    id: "project_config",
+    path: "/project/config",
+    label: "Config",
+    builtIn: true,
+  },
 ];
 
 const defaultEnabled: Record<string, boolean> = {
@@ -48,6 +54,7 @@ const defaultEnabled: Record<string, boolean> = {
   "saved_query/list": true,
   "alert/list": true,
   query_history: true,
+  project_config: true,
 };
 
 interface MenuSettingsState {
@@ -57,6 +64,21 @@ interface MenuSettingsState {
   addItem: (path: string, label: string) => void;
   removeItem: (id: string) => void;
   moveItem: (id: string, direction: "up" | "down") => void;
+}
+
+function mergeDefaults(
+  persisted: { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
+): { items: NavItem[]; enabled: Record<string, boolean> } {
+  const items = persisted?.items ?? [...defaultItems];
+  const enabled = { ...(persisted?.enabled ?? defaultEnabled) };
+  const knownIds = new Set(items.map((i) => i.id));
+  for (const def of defaultItems) {
+    if (!knownIds.has(def.id)) {
+      items.push(def);
+      enabled[def.id] = defaultEnabled[def.id] ?? true;
+    }
+  }
+  return { items, enabled };
 }
 
 export const useMenuSettings = create<MenuSettingsState>()(
@@ -96,6 +118,14 @@ export const useMenuSettings = create<MenuSettingsState>()(
     }),
     {
       name: "superset-menu-settings",
+      merge: (persisted, current) => ({
+        ...current,
+        ...mergeDefaults(
+          persisted as
+            | { items: NavItem[]; enabled: Record<string, boolean> }
+            | undefined,
+        ),
+      }),
     },
   ),
 );
