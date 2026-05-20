@@ -93,6 +93,7 @@ interface ChartCardProps {
   sliceName?: string;
   vizType: string;
   data?: Record<string, unknown>;
+  loading?: boolean;
   meta?: { slice_name?: string };
   isDragging: boolean;
   containerWidth: number;
@@ -102,6 +103,7 @@ interface ChartCardProps {
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
+  onOpenCompareBigScreen?: (chartId: number, chartData?: Record<string, unknown>) => void;
   otherRow?: Record<string, unknown> | null;
   onFetchOtherRow?: (
     chartId: number,
@@ -131,6 +133,7 @@ function ChartCard({
   sliceName,
   vizType,
   data,
+  loading: chartLoading,
   meta,
   isDragging,
   containerWidth,
@@ -140,6 +143,7 @@ function ChartCard({
   compareConfig,
   mirrorData,
   onToggleCompare,
+  onOpenCompareBigScreen,
   otherRow,
   onFetchOtherRow,
   totalRow,
@@ -428,7 +432,11 @@ function ChartCard({
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onToggleCompare(chartId);
+                  if (onOpenCompareBigScreen) {
+                    onOpenCompareBigScreen(chartId, data);
+                  } else {
+                    onToggleCompare(chartId);
+                  }
                 }}
                 sx={{
                   p: 0.5,
@@ -487,7 +495,9 @@ function ChartCard({
           minHeight: 0,
         }}
       >
-        {vizType === "table" && data ? (
+        {chartLoading ? (
+          <ChartLoadingSkeleton />
+        ) : vizType === "table" && data ? (
           isCompareActive ? (
             <MirrorTable
               dimensions={compareConfig.dimensions}
@@ -529,6 +539,7 @@ export default memo(ChartCard, (prev, next) => {
     prev.meta?.slice_name === next.meta?.slice_name &&
     prev.sliceName === next.sliceName &&
     prev.data === next.data &&
+    prev.loading === next.loading &&
     prev.mirrorData === next.mirrorData &&
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&

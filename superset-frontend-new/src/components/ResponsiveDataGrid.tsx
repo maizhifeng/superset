@@ -335,7 +335,11 @@ export default function ResponsiveDataGrid<R = any>({
   );
 
   if (!isMobile || !renderCard) {
-    return <DataGridTable {...gridProps} />;
+    return (
+      <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+        <DataGridTable {...gridProps} />
+      </Box>
+    );
   }
 
   const rows = gridProps.rows as R[];

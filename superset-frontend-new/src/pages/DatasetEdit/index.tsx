@@ -22,8 +22,14 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import TablePagination from "@mui/material/TablePagination";
 import Checkbox from "@mui/material/Checkbox";
+import Collapse from "@mui/material/Collapse";
+import Typography from "@mui/material/Typography";
+import IconButton from "@mui/material/IconButton";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useToolbarStore } from "@/contexts/ToolbarContext";
 import PageSpeedDial from "@/components/PageSpeedDial";
@@ -58,6 +64,7 @@ export default function DatasetEdit() {
     Record<number, Partial<DatasetColumn>>
   >({});
   const [addMetricOpen, setAddMetricOpen] = useState(false);
+  const [sqlExpanded, setSqlExpanded] = useState(false);
   const [newMetric, setNewMetric] = useState({
     metric_name: "",
     expression: "",
@@ -103,18 +110,31 @@ export default function DatasetEdit() {
     setError(null);
     setSuccess(false);
     try {
+      const sqlChanged = dataset && f.sql !== dataset.sql;
+      const endpoint = sqlChanged
+        ? `/dataset/${id}?override_columns=true`
+        : `/dataset/${id}`;
+
       const payload: Record<string, unknown> = {
         table_name: f.table_name,
         description: f.description || null,
         sql: f.sql || null,
       };
-      const modKeys = Object.keys(modifiedColumns);
-      if (modKeys.length > 0 && dataset) {
+      if (sqlChanged && dataset) {
         payload.columns = dataset.columns.map((col) => ({
-          ...modifiedColumns[col.id],
-          id: col.id,
           column_name: col.column_name,
+          type: col.type,
+          is_dttm: col.is_dttm,
         }));
+      } else {
+        const modKeys = Object.keys(modifiedColumns);
+        if (modKeys.length > 0 && dataset) {
+          payload.columns = dataset.columns.map((col) => ({
+            ...modifiedColumns[col.id],
+            id: col.id,
+            column_name: col.column_name,
+          }));
+        }
       }
       if (dataset) {
         payload.metrics = dataset.metrics.map((m) => ({
@@ -126,7 +146,7 @@ export default function DatasetEdit() {
           d3format: m.d3format ?? null,
         }));
       }
-      await api.put(`/dataset/${id}`, payload);
+      await api.put(endpoint, payload);
       setSuccess(true);
       setTimeout(() => navigate("/dataset/list"), 1200);
     } catch (err: unknown) {
@@ -266,38 +286,54 @@ export default function DatasetEdit() {
         />
       </Box>
 
-      <Box sx={{ display: "flex", gap: 1.5, mt: 1.5 }}>
+      <Box sx={{ mt: 1.5 }}>
         {dataset?.kind !== "physical" && (
-          <Card sx={{ flex: 3, minWidth: 0 }}>
-            <CardHeader title="SQL" sx={cardHeaderSx} />
-            <CardContent sx={{ pt: 0 }}>
-              <TextField
-                size="small"
-                value={form.sql}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, sql: e.target.value }))
-                }
-                fullWidth
-                multiline
-                minRows={2}
-                maxRows={6}
-                sx={{
-                  "& textarea": {
-                    fontFamily: "monospace",
-                    fontSize: "0.8125rem",
-                    lineHeight: 1.5,
-                  },
-                }}
-              />
-            </CardContent>
+          <Card
+            sx={{
+              mb: 1.5,
+              "& .MuiCardHeader-action": { alignSelf: "center", mr: 1 },
+            }}
+          >
+            <CardHeader
+              title="SQL"
+              sx={cardHeaderSx}
+              action={
+                <IconButton
+                  size="small"
+                  onClick={() => setSqlExpanded((p) => !p)}
+                >
+                  {sqlExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                </IconButton>
+              }
+            />
+            <Collapse in={sqlExpanded}>
+              <CardContent sx={{ pt: 0 }}>
+                <TextField
+                  size="small"
+                  value={form.sql}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sql: e.target.value }))
+                  }
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  maxRows={6}
+                  sx={{
+                    "& textarea": {
+                      fontFamily: "monospace",
+                      fontSize: "0.8125rem",
+                      lineHeight: 1.5,
+                    },
+                  }}
+                />
+              </CardContent>
+            </Collapse>
           </Card>
         )}
 
         {dataset &&
           (dataset.metrics.length > 0 || dataset.columns.length > 0) && (
-            <Card
-              sx={{ flex: dataset?.kind !== "physical" ? 7 : 1, minWidth: 0 }}
-            >
+            <Card sx={{ mt: 1.5 }}>
               <CardHeader title={`Fields (${totalRows})`} sx={cardHeaderSx} />
               <CardContent sx={{ pt: 0 }}>
                 <TableContainer
@@ -306,29 +342,31 @@ export default function DatasetEdit() {
                     border: "1px solid",
                     borderColor: "divider",
                     borderRadius: 1,
-                    maxHeight: "calc(100vh - 320px)",
-                    overflowX: "auto",
+                    maxHeight: "calc(100vh - 370px)",
+                    overflow: "auto",
                   }}
                 >
-                  <Table size="small" stickyHeader>
+                  <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
                     <TableHead>
                       <TableRow>
                         {[
-                          "ID",
-                          "Name",
-                          "Kind",
-                          "Type",
-                          "Verbose Name",
-                          "Expression",
-                          "Description",
-                          "Dashboard Filter",
-                        ].map((h) => (
+                          ["ID", "6%"],
+                          ["Name", "12%"],
+                          ["Kind", "6%"],
+                          ["Type", "8%"],
+                          ["Verbose Name", "10%"],
+                          ["Expression", "22%"],
+                          ["Description", "18%"],
+                          ["is_dttm", "6%"],
+                          ["Dashboard Filter", "6%"],
+                        ].map(([h, w]) => (
                           <TableCell
                             key={h}
                             sx={{
                               fontWeight: 700,
                               bgcolor: "grey.50",
                               fontSize: "0.75rem",
+                              width: w,
                               py: 1,
                             }}
                           >
@@ -442,6 +480,33 @@ export default function DatasetEdit() {
                             >
                               {row.description ?? ""}
                             </TableCell>
+                            <TableCell sx={{ fontSize: "0.75rem", textAlign: "center" }}>
+                              {row._kind === "column" && (() => {
+                                const colId = (
+                                  row as typeof row & { id: number }
+                                ).id;
+                                const modified = modifiedColumns[colId];
+                                const checked =
+                                  modified?.is_dttm ??
+                                  !!(row as typeof row & { is_dttm: boolean }).is_dttm;
+                                return (
+                                  <Checkbox
+                                    size="small"
+                                    checked={checked}
+                                    onChange={(_, chk) => {
+                                      setModifiedColumns((prev) => ({
+                                        ...prev,
+                                        [colId]: {
+                                          ...prev[colId],
+                                          is_dttm: chk,
+                                        },
+                                      }));
+                                    }}
+                                    sx={{ p: 0.25 }}
+                                  />
+                                );
+                              })()}
+                            </TableCell>
                             <TableCell
                               sx={{ fontSize: "0.75rem", maxWidth: 200 }}
                             >
@@ -496,14 +561,41 @@ export default function DatasetEdit() {
                     </TableBody>
                   </Table>
                 </TableContainer>
-                <TablePagination
-                  component="div"
-                  count={totalRows}
-                  page={page}
-                  onPageChange={(_, p) => setPage(p)}
-                  rowsPerPage={rowsPerPage}
-                  rowsPerPageOptions={[]}
-                />
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    py: 0.75,
+                    px: 2,
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "grey.50",
+                  }}
+                >
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontSize: "0.75rem" }}
+                  >
+                    {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, totalRows)} of {totalRows}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    disabled={page === 0}
+                    onClick={() => setPage(page - 1)}
+                    sx={{ ml: 1 }}
+                  >
+                    <ChevronLeftIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    disabled={(page + 1) * rowsPerPage >= totalRows}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    <ChevronRightIcon fontSize="small" />
+                  </IconButton>
+                </Box>
               </CardContent>
             </Card>
           )}
