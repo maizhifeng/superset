@@ -223,15 +223,24 @@ export default function Dashboard() {
   const [containerWidth, setContainerWidth] = useState(window.innerWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const handler = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
-      }
+    let timer: ReturnType<typeof setTimeout>;
+    const updateWidth = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (containerRef.current) {
+          setContainerWidth(containerRef.current.offsetWidth);
+        }
+      }, 100);
     };
-    handler();
-    const observer = new ResizeObserver(handler);
+    window.addEventListener("resize", updateWidth);
+    const observer = new ResizeObserver(updateWidth);
     if (containerRef.current) observer.observe(containerRef.current);
-    return () => observer.disconnect();
+    updateWidth();
+    return () => {
+      window.removeEventListener("resize", updateWidth);
+      observer.disconnect();
+      clearTimeout(timer);
+    };
   }, []);
 
   const supportedVizTypes = useMemo(
@@ -1038,6 +1047,7 @@ export default function Dashboard() {
           minHeight: 0,
           minWidth: 0,
           overflow: "auto",
+          maxWidth: "100%",
           px: { xs: spacing.xs, md: spacing.md },
         }}
       >

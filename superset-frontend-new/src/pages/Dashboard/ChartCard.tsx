@@ -1,4 +1,5 @@
 import { memo, useRef, useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
@@ -6,11 +7,13 @@ import CardContent from "@mui/material/CardContent";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 
+import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import DragHandleIcon from "@mui/icons-material/DragIndicator";
 import FlipIcon from "@mui/icons-material/Flip";
 import CloseIcon from "@mui/icons-material/Close";
+import FullscreenOutlined from "@mui/icons-material/FullscreenOutlined";
 import LeaderboardOutlined from "@mui/icons-material/LeaderboardOutlined";
 import { keyframes } from "@emotion/react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
@@ -31,8 +34,9 @@ const loadingBarColors = [
 
 function ChartLoadingSkeleton() {
   return (
-    <Box
-      sx={{
+      <Box
+        onClick={e => e.stopPropagation()}
+        sx={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -76,6 +80,9 @@ import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import { useEChartsType } from "@/hooks/useEChartsType";
 import MirrorTable from "@/pages/Dashboard/MirrorTable";
+import { formatNumber, formatPercentage } from "@/utils/formatNumber";
+import { useNotificationStore } from "@/store/notificationStore";
+import { useFullscreenStore } from "@/store/fullscreenStore";
 
 export interface CompareDimension {
   dimension: string;
@@ -149,9 +156,51 @@ function ChartCard({
   totalRow,
 }: ChartCardProps) {
   const [pct95Active, setPct95Active] = useState(true);
-  const option = data ? buildEChartsOption(vizType, data) : null;
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const chartRef = useRef<any>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const notify = useNotificationStore(s => s.notify);
+  const fullscreen = useFullscreenStore();
+  const isActiveFullscreen = fullscreen.activeChartId === chartId;
+
+  const copyData = async () => {
+    try {
+      if (vizType === "table") {
+        const raw = data as Record<string, unknown> | undefined;
+        const colnames = (raw?.colnames as string[] | undefined) ?? [];
+        const rows = Array.isArray(raw?.data)
+          ? (raw.data as Record<string, unknown>[])
+          : [];
+        if (colnames.length === 0) return;
+        const header = colnames.join("\t");
+        const body = rows
+          .map(r => colnames.map(c => String(r[c] ?? "")).join("\t"))
+          .join("\n");
+        await navigator.clipboard.writeText(`${header}\n${body}`);
+        notify({ severity: "success", message: "Copied to clipboard" });
+      } else {
+        if (typeof ClipboardItem === "undefined") {
+          notify({ severity: "error", message: "Image copy not supported on this browser" });
+          return;
+        }
+        const instance = chartRef.current?.getEchartsInstance();
+        if (!instance) return;
+        const dataUrl = instance.getDataURL({
+          type: "png",
+          pixelRatio: 2,
+          backgroundColor: "#fff",
+        });
+        const blob = await fetch(dataUrl).then(r => r.blob());
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+        notify({ severity: "success", message: "Copied to clipboard" });
+      }
+    } catch {
+      notify({ severity: "error", message: "Copy failed" });
+    }
+  };
 
   function formatDateValue(value: unknown): string | null {
     if (typeof value === "number") {
@@ -189,10 +238,10 @@ function ChartCard({
         const formatted = formatDateValue(value);
         if (formatted !== null) return formatted;
       }
-      if (typeof value === "number" && !Number.isInteger(value)) {
+      if (typeof value === "number") {
         if (/^(roi_|pay_rate_|retention_)/i.test(key))
-          return value.toFixed(1) + "%";
-        return value.toFixed(1);
+          return formatPercentage(value);
+        return formatNumber(value);
       }
       return String(value);
     };
@@ -207,7 +256,9 @@ function ChartCard({
       | number[]
       | undefined;
     if (!colnames || !coltypes) return { sortMetricCol: "", dimCol: "" };
-    const smCol = colnames.find((c) => /n_unum|na_devnum/i.test(c)) || "";
+    const smCol = colnames.find(
+      (_, i) => i > 0 && coltypes[i] !== 0 && coltypes[i] !== 2 && coltypes[i] !== 3,
+    ) || colnames[1] || "";
     const dCol =
       colnames.find((c) => /report_date_calc|report_week_calc/i.test(c)) ||
       colnames.find((c) => /^papp_id$/i.test(c)) ||
@@ -322,7 +373,7 @@ function ChartCard({
       resultRows = [...rows];
     }
 
-    if (totalRow && dimCol) {
+    if (totalRow && dimCol && vizType === "table") {
       resultRows = [
         ...resultRows,
         { ...totalRow, [dimCol]: "合计", __isSummary: true },
@@ -344,6 +395,43 @@ function ChartCard({
     dimCol,
   ]);
 
+  const option = processedData
+    ? buildEChartsOption(vizType, processedData)
+    : null;
+
+  const toggleFullScreen = async () => {
+    fullscreen.setFullscreen(chartId);
+    const isLandscape =
+      (screen.orientation as any)?.type?.startsWith?.("landscape");
+    if (isLandscape) return;
+    const canLock = typeof (screen.orientation as any)?.lock === "function";
+    if (canLock) {
+      try {
+        await (screen.orientation as any).lock("landscape");
+      } catch {
+        fullscreen.setForceLandscape(true);
+      }
+    } else {
+      fullscreen.setForceLandscape(true);
+    }
+  };
+
+  const exitFullScreen = () => {
+    fullscreen.exit();
+    (screen.orientation as any)?.unlock?.();
+  };
+
+  useEffect(() => {
+    if (!isActiveFullscreen || !fullscreen.forceLandscape) return;
+    const mql = window.matchMedia("(orientation: landscape)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) fullscreen.setForceLandscape(false);
+    };
+    handler(mql);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [isActiveFullscreen, fullscreen.forceLandscape]);
+
   const touchStart = () => {
     if (containerWidth >= 600) return;
     longPressTimer.current = setTimeout(() => onEdit(chartId), 600);
@@ -353,9 +441,12 @@ function ChartCard({
 
   const isCompareActive =
     compareConfig?.enabled && compareConfig.chartId === chartId;
+  const isMobile = containerWidth < 600;
 
   return (
+    <>
     <Card
+      ref={cardRef}
       onTouchStart={touchStart}
       onTouchEnd={touchEnd}
       onTouchMove={touchMove}
@@ -395,9 +486,13 @@ function ChartCard({
             "linear-gradient(to bottom, rgba(32,167,201,0.03), transparent)",
         }}
       >
-        <DragHandleIcon
-          sx={{ fontSize: 18, color: "text.disabled", mr: 0.5, flexShrink: 0 }}
-        />
+        <IconButton
+          size="small"
+          disabled
+          sx={{ p: 0.5, mr: isMobile ? 0.5 : 0, cursor: "move", color: "text.disabled" }}
+        >
+          <DragHandleIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+        </IconButton>
         <Typography
           variant="body2"
           sx={{
@@ -410,43 +505,43 @@ function ChartCard({
         >
           {meta?.slice_name || sliceName || `Chart #${chartId}`}
         </Typography>
+        <Tooltip title={pct95Active ? "Show all rows" : "95% mode"}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPct95Active((prev) => !prev);
+            }}
+            sx={{
+              p: 0.5,
+              ml: isMobile ? 0.5 : 0,
+              color: pct95Active ? "primary.main" : "action.active",
+            }}
+          >
+            <LeaderboardOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
+          </IconButton>
+        </Tooltip>
         {vizType === "table" && (
-          <>
-            <Tooltip title={pct95Active ? "Show all rows" : "95% mode"}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPct95Active((prev) => !prev);
-                }}
-                sx={{
-                  p: 0.5,
-                  color: pct95Active ? "primary.main" : "action.active",
-                }}
-              >
-                <LeaderboardOutlined sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={isCompareActive ? "Stop comparing" : "Compare"}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onOpenCompareBigScreen) {
-                    onOpenCompareBigScreen(chartId, data);
-                  } else {
-                    onToggleCompare(chartId);
-                  }
-                }}
-                sx={{
-                  p: 0.5,
-                  color: isCompareActive ? "primary.main" : undefined,
-                }}
-              >
-                <FlipIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          </>
+          <Tooltip title={isCompareActive ? "Stop comparing" : "Compare"}>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onOpenCompareBigScreen) {
+                  onOpenCompareBigScreen(chartId, data);
+                } else {
+                  onToggleCompare(chartId);
+                }
+              }}
+              sx={{
+                p: 0.5,
+                ml: isMobile ? 0.5 : 0,
+                color: isCompareActive ? "primary.main" : undefined,
+              }}
+            >
+              <FlipIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+            </IconButton>
+          </Tooltip>
         )}
         <Tooltip title="Refresh">
           <IconButton
@@ -455,11 +550,24 @@ function ChartCard({
               e.stopPropagation();
               onRefresh(chartId);
             }}
-            sx={{ p: 0.5 }}
+            sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
           >
-            <RefreshIcon sx={{ fontSize: 18 }} />
+            <RefreshIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
           </IconButton>
         </Tooltip>
+        <Tooltip title={vizType === "table" ? "Copy as text" : "Copy as image"}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              copyData();
+            }}
+            sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+          >
+            <ContentCopy sx={{ fontSize: isMobile ? 22 : 18 }} />
+          </IconButton>
+        </Tooltip>
+        {!isMobile && (
         <Tooltip title="Edit Chart">
           <IconButton
             size="small"
@@ -472,6 +580,18 @@ function ChartCard({
             <OpenInNewIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Tooltip>
+        )}
+        {isMobile && (
+          <Tooltip title={isActiveFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+            <IconButton
+              size="small"
+              onClick={() => toggleFullScreen()}
+              sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+            >
+              <FullscreenOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title="Remove from Dashboard">
           <IconButton
             size="small"
@@ -479,9 +599,9 @@ function ChartCard({
               e.stopPropagation();
               onDelete(chartId);
             }}
-            sx={{ p: 0.5, color: "error.main" }}
+            sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "error.main" }}
           >
-            <CloseIcon sx={{ fontSize: 18 }} />
+            <CloseIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
           </IconButton>
         </Tooltip>
       </Box>
@@ -514,6 +634,7 @@ function ChartCard({
           )
         ) : option && chartLibReady ? (
           <ReactEChartsCore
+            ref={chartRef}
             echarts={getECharts()}
             option={option}
             style={{ height: "100%", width: "100%" }}
@@ -527,6 +648,90 @@ function ChartCard({
         )}
       </CardContent>
     </Card>
+    {isActiveFullscreen && createPortal(
+      <>
+      <Box
+        sx={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 99998,
+          bgcolor: "rgba(0,0,0,0.5)",
+        }}
+        onClick={exitFullScreen}
+      />
+      <Box
+        onClick={e => e.stopPropagation()}
+        sx={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          width: "90vw",
+          height: "90vh",
+          transform: "translate(-50%, -50%)",
+          zIndex: 99999,
+          overflow: "hidden",
+          bgcolor: "background.paper",
+          borderRadius: 2,
+          boxShadow: 24,
+        }}
+      >
+        <Box
+          sx={fullscreen.forceLandscape ? {
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: "90vh",
+            height: "90vw",
+            transform: "translate(-50%, -50%) rotate(90deg)",
+            display: "flex",
+            flexDirection: "column",
+          } : {
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            px: 1.5,
+            py: 0.5,
+            bgcolor: "background.paper",
+            paddingTop: "calc(4px + env(safe-area-inset-top, 0px))",
+          }}
+        >
+          <Box sx={{ flex: 1, fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {meta?.slice_name || sliceName || `Chart #${chartId}`}
+          </Box>
+            <Tooltip title="Exit fullscreen">
+              <IconButton size="small" onClick={exitFullScreen} sx={{ p: 0.5 }}>
+                <CloseIcon sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Tooltip>
+        </Box>
+        <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {vizType === "table" && data ? (
+            <DataPreviewTable data={processedData} maxRows={100} formatCell={tableFormatCell} />
+          ) : option && chartLibReady ? (
+            <ReactEChartsCore
+              echarts={getECharts()}
+              option={option}
+              style={{ height: "100%", width: "100%" }}
+              notMerge
+              lazyUpdate
+            />
+          ) : (
+            <ChartLoadingSkeleton />
+          )}
+        </Box>
+        </Box>
+      </Box>
+      </>,
+      document.body,
+    )}
+  </>
   );
 }
 

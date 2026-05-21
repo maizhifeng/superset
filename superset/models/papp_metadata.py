@@ -6,6 +6,7 @@ from sqlalchemy import Column, Integer, String
 
 class PappMetadata(Model):
     __tablename__ = "papp_metadata"
+    __table_args__ = {"schema": "config"}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     papp_id = Column(Integer, nullable=False, unique=True)

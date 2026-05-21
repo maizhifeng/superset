@@ -219,36 +219,8 @@ export default function DatasetList() {
               >
                 {row.table_name}
               </Typography>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/dataset/edit/${row.id}`);
-                }}
-                sx={{ p: 0.25 }}
-              >
-                <EditIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget({ id: row.id, name: row.table_name });
-                }}
-                sx={{ p: 0.25, color: "error.main" }}
-              >
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
             </Box>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                columnGap: 0.25,
-                mt: 0.25,
-              }}
-            >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
               {row.schema && (
                 <Chip
                   label={row.schema}
@@ -279,6 +251,8 @@ export default function DatasetList() {
               >
                 {row.database?.database_name ?? "Unknown"}
               </Typography>
+            </Box>
+            <Box sx={{ display: "flex", alignItems: "center", mt: 0.25 }}>
               <Typography
                 variant="caption"
                 color="text.disabled"

@@ -133,12 +133,15 @@ export default function DashboardGrid({
         </Box>
       )}
       <GridLayout
-        key={`layout-${containerWidth < 600}`}
+        key={`layout-${containerWidth}`}
         width={containerWidth}
         layout={gridLayout}
         gridConfig={{
           cols: 12,
-          rowHeight: containerWidth < 600 ? 40 : 60,
+          rowHeight:
+            containerWidth < 600
+              ? 40
+              : Math.max(40, Math.round(containerWidth / 20)),
           margin: [8, 8],
         }}
         onLayoutChange={onLayoutChange}

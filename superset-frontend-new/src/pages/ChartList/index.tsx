@@ -308,29 +308,27 @@ export default function ChartList() {
                 }}
               />
             </Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+              <TableChartOutlinedIcon
+                sx={{ fontSize: 10, color: "primary.main" }}
+              />
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ fontSize: "0.75rem", lineHeight: 1 }}
+              >
+                {row.datasource_name_text ||
+                  row.table?.table_name ||
+                  "Unknown"}
+              </Typography>
+            </Box>
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
-                flexWrap: "wrap",
-                columnGap: 0.5,
                 mt: 0.25,
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-                <TableChartOutlinedIcon
-                  sx={{ fontSize: 10, color: "primary.main" }}
-                />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontSize: "0.75rem", lineHeight: 1 }}
-                >
-                  {row.datasource_name_text ||
-                    row.table?.table_name ||
-                    "Unknown"}
-                </Typography>
-              </Box>
               <Typography
                 variant="caption"
                 color="text.disabled"
@@ -341,27 +339,6 @@ export default function ChartList() {
                   ? ` · ${row.changed_on_delta_humanized}`
                   : ""}
               </Typography>
-              <Box sx={{ flex: 1 }} />
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/explore?slice_id=${row.id}`);
-                }}
-                sx={{ p: 0.25 }}
-              >
-                <EditIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteTarget({ id: row.id, name: row.slice_name });
-                }}
-                sx={{ p: 0.25, color: "error.main" }}
-              >
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
             </Box>
           </>
         )}

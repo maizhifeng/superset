@@ -6,6 +6,7 @@ import type { EChartsOption } from "echarts";
 import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
 import ChartTypeSelector from "./ChartTypeSelector";
+import { formatNumber, formatPercentage } from "@/utils/formatNumber";
 
 interface ChartPreviewProps {
   datasourceId: string;
@@ -100,9 +101,9 @@ export default function ChartPreview({
                 const y = d.getFullYear();
                 if (y > 1900 && y < 2100) return d.toLocaleDateString();
               }
-              if (typeof val === "number" && !Number.isInteger(val)) {
-                if (/^roi_/i.test(key)) return val.toFixed(1) + "%";
-                return val.toFixed(1);
+              if (typeof val === "number") {
+                if (/^roi_/i.test(key)) return formatPercentage(val);
+                return formatNumber(val);
               }
               return String(val);
             }}

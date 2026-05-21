@@ -1,3 +1,5 @@
+import { formatNumber } from "./formatNumber";
+
 type EChartsModule = typeof import("echarts/core");
 
 let echartsModule: EChartsModule | null = null;
@@ -50,7 +52,11 @@ export function buildEChartsOption(
 
   if (vizType === "pie") {
     return {
-      tooltip: { trigger: "item" as const },
+      tooltip: {
+        trigger: "item" as const,
+        formatter: (params: { name: string; value: number; percent: number }) =>
+          `${params.name}: ${formatNumber(params.value)} (${params.percent}%)`,
+      },
       animation: true,
       animationDuration: 300,
       series: [
@@ -140,7 +146,17 @@ export function buildEChartsOption(
         ];
 
   return {
-    tooltip: { trigger: "axis" as const },
+    tooltip: {
+      trigger: "axis" as const,
+      formatter: (params: { seriesName: string; name: string; value: number }[]) => {
+        if (!Array.isArray(params) || params.length === 0) return "";
+        const axisName = params[0].name;
+        const lines = params.map(
+          (p) => `${p.seriesName}: ${formatNumber(p.value)}`
+        );
+        return `${axisName}<br/>${lines.join("<br/>")}`;
+      },
+    },
     legend:
       series.length > 1
         ? {
@@ -170,12 +186,7 @@ export function buildEChartsOption(
     yAxis: {
       type: "value" as const,
       axisLabel: {
-        formatter: (v: number) => {
-          if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(1) + "B";
-          if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + "M";
-          if (Math.abs(v) >= 1e3) return (v / 1e3).toFixed(1) + "K";
-          return String(v);
-        },
+        formatter: (v: number) => formatNumber(v),
       },
     },
     series,

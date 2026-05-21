@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import checker from "vite-plugin-checker";
+import { VitePWA } from "vite-plugin-pwa";
 import { resolve } from "path";
 import { defineConfig } from "vitest/config";
 
@@ -15,6 +16,37 @@ export default defineConfig({
       },
     }),
     ...(process.env.VITEST ? [] : [checker({ typescript: true })]),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["favicon.svg"],
+      manifest: {
+        name: "starfly",
+        short_name: "starfly",
+        description: "Data Dashboard",
+        theme_color: "#20a7c9",
+        background_color: "#ffffff",
+        display: "standalone",
+        orientation: "any",
+        start_url: "/",
+        icons: [
+          { src: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        runtimeCaching: [
+          {
+            urlPattern: /^\/api\/.*/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "api-cache",
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
+            },
+          },
+        ],
+      },
+    }),
   ],
   resolve: {
     alias: {

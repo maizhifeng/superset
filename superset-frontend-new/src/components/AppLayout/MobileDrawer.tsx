@@ -44,11 +44,11 @@ export default function MobileDrawer({
       open={open}
       onClose={onClose}
       sx={{ display: { xs: "block", sm: "none" } }}
-      slotProps={{ paper: { sx: { width: { xs: "80vw", sm: 260 } } } }}
+      slotProps={{ paper: { sx: { width: { xs: "50vw", sm: 260 } } } }}
     >
       <Box
         sx={{
-          width: { xs: "30vw", sm: 260 },
+          width: "100%",
           display: "flex",
           flexDirection: "column",
           height: "100%",
