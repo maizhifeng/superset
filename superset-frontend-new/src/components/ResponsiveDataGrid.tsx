@@ -205,7 +205,14 @@ function SwipeableCard({
                 sx={{ p: "6px", "& .MuiSvgIcon-root": { fontSize: 20 } }}
               />
             </Box>
-            <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 }, flex: 1 }}>
+            <CardContent
+              sx={{
+                p: 1.5,
+                pr: "36px",
+                "&:last-child": { pb: 1.5 },
+                flex: 1,
+              }}
+            >
               {children}
             </CardContent>
           </Box>

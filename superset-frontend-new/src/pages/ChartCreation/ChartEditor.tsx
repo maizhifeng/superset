@@ -18,6 +18,7 @@ import ChartEditorForm from "./ChartEditorForm";
 import ExploreViewContainer from "@/explore/components/ExploreViewContainer";
 import ExploreWelcome from "./ExploreWelcome";
 import type { Dataset } from "@/types/api";
+import { formatBigInt } from "@/utils/formatNumber";
 
 interface FieldOption {
   value: string;
@@ -485,9 +486,9 @@ export default function ChartEditor({
     const keys = Object.keys(rows[0]);
     for (const key of keys) {
       const val = rows[0][key];
-      if (typeof val === "number") return val.toLocaleString();
+      if (typeof val === "number") return formatBigInt(val);
       const num = Number(val);
-      if (!isNaN(num)) return num.toLocaleString();
+      if (!isNaN(num)) return formatBigInt(num);
     }
     return null;
   }, [chartData]);

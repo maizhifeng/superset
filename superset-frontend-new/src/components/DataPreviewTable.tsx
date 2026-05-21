@@ -13,6 +13,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
+import { formatNumber } from "@/utils/formatNumber";
 
 export type CellFormatter = (key: string, value: unknown) => string;
 
@@ -25,6 +26,7 @@ interface DataPreviewTableProps {
 
 function defaultFormat(_key: string, value: unknown): string {
   if (value === null || value === undefined) return "";
+  if (typeof value === "number") return formatNumber(value);
   return String(value);
 }
 

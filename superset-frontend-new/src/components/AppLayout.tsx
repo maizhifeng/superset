@@ -257,7 +257,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             >
               starfly
             </Typography>
-            <AppNavBar navItems={navItems} isActive={isActive} />
+            <Box
+              sx={{
+                "@media (max-width: 600px)": {
+                  display: "none",
+                },
+              }}
+            >
+              <AppNavBar navItems={navItems} isActive={isActive} />
+            </Box>
           </Box>
 
           <Box
