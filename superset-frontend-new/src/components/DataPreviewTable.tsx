@@ -17,6 +17,11 @@ import { formatNumber } from "@/utils/formatNumber";
 
 export type CellFormatter = (key: string, value: unknown) => string;
 
+function stripAgg(name: string): string {
+  const m = name.match(/^(SUM|AVG|COUNT|MIN|MAX)\((.+)\)$/);
+  return m ? m[2] : name;
+}
+
 interface DataPreviewTableProps {
   data: { data?: unknown } | undefined | null;
   maxRows?: number;
@@ -210,7 +215,7 @@ export default function DataPreviewTable({
                           gap: 0.25,
                         }}
                       >
-                        {k}
+                        {stripAgg(k)}
                         {sortEntry ? (
                           sortEntry.direction === "desc" ? (
                             <ArrowDownwardIcon

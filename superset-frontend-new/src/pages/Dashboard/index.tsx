@@ -13,7 +13,10 @@ import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
 import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
 import api, { getDataset } from "@/api";
-import { buildQueryObject } from "@/utils/query/extractQueryFields";
+import {
+  buildQueryObject,
+  extractQueryFields,
+} from "@/utils/query/extractQueryFields";
 import type { SimpleFilter } from "@/utils/query/types";
 import {
   DashboardFilterDrawer,
@@ -56,10 +59,16 @@ export default function Dashboard() {
   const [compareChartId, setCompareChartId] = useState<number | null>(null);
   const [addChartDialogOpen, setAddChartDialogOpen] = useState(false);
   const [periodModalOpen, setPeriodModalOpen] = useState(false);
+  const [periodModalChartId, setPeriodModalChartId] = useState<
+    number | null
+  >(null);
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
+    ColumnOption[]
+  >([]);
+  const [initialCompareColumns, setInitialCompareColumns] = useState<
     ColumnOption[]
   >([]);
 
@@ -414,13 +423,28 @@ export default function Dashboard() {
   useEffect(() => {
     if (!compareModalOpen || compareChartId == null) {
       setDatasetCompareColumns([]);
+      setInitialCompareColumns([]);
       return;
     }
     const dsId = chartMeta[compareChartId]?.datasource_id;
     if (!dsId) {
       setDatasetCompareColumns([]);
+      setInitialCompareColumns([]);
       return;
     }
+
+    let chartGroupbyCols: string[] = [];
+    try {
+      const chart = chartMeta[compareChartId];
+      if (chart) {
+        const fd = parseChartConfig(chart);
+        const { groupby, columns } = extractQueryFields(fd, chart.viz_type);
+        chartGroupbyCols = [...groupby, ...columns].filter(Boolean);
+      }
+    } catch {
+      // ignore
+    }
+
     const numericTypes =
       /^int\d*$|^bigint$|^smallint$|^tinyint$|^numeric$|^decimal$|^float$|^double$|^real$|^money$/i;
     const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
@@ -429,23 +453,28 @@ export default function Dashboard() {
       columns: { column_name: string; type: string | null }[];
     }>(dsId)
       .then((dataset) => {
-        setDatasetCompareColumns(
-          (dataset.columns ?? [])
-            .filter((c) => {
-              if (!c.column_name || !c.type) return true;
-              if (timeTypes.test(c.type) || timeTypes.test(c.column_name))
-                return true;
-              if (idPattern.test(c.column_name)) return true;
-              return !numericTypes.test(c.type);
-            })
-            .map((c) => ({
-              datasetId: dsId,
-              column: c.column_name,
-              name: c.column_name,
-            })),
+        const allColumns: ColumnOption[] = (dataset.columns ?? [])
+          .filter((c) => {
+            if (!c.column_name || !c.type) return true;
+            if (timeTypes.test(c.type) || timeTypes.test(c.column_name))
+              return true;
+            if (idPattern.test(c.column_name)) return true;
+            return !numericTypes.test(c.type);
+          })
+          .map((c) => ({
+            datasetId: dsId,
+            column: c.column_name,
+            name: c.column_name,
+          }));
+        setDatasetCompareColumns(allColumns);
+        setInitialCompareColumns(
+          allColumns.filter((c) => chartGroupbyCols.includes(c.column)),
         );
       })
-      .catch(() => setDatasetCompareColumns([]));
+      .catch(() => {
+        setDatasetCompareColumns([]);
+        setInitialCompareColumns([]);
+      });
   }, [compareModalOpen, compareChartId, chartMeta]);
 
   const [navOpen, setNavOpen] = useState(false);
@@ -495,14 +524,20 @@ export default function Dashboard() {
       chartId: number,
       dimensions: CompareDimension[],
       existingDataOverride?: Record<string, unknown>,
+      forceServerQuery?: boolean,
     ) => {
       const chart = chartMeta[chartId];
       if (!chart) return;
-      const existing = existingDataOverride ?? chartDataRef.current[chartId];
-      if (existing?.data && Array.isArray(existing.data)) {
-        setMirrorData(filterDataLocal(existing, dimensions));
-        return;
+
+      // If not forcing a fresh query and existing data is available, filter locally
+      if (!forceServerQuery) {
+        const existing = existingDataOverride ?? chartDataRef.current[chartId];
+        if (existing?.data && Array.isArray(existing.data)) {
+          setMirrorData(filterDataLocal(existing, dimensions));
+          return;
+        }
       }
+
       try {
         const fd = parseChartConfig(chart);
         const dsId =
@@ -511,16 +546,25 @@ export default function Dashboard() {
         if (!dsId) return;
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || query.metrics.length === 0) return;
+
+        // Add compare dimension filters to the SQL query
+        const dimensionFilters: SimpleFilter[] = dimensions.map((d) => ({
+          col: d.dimension,
+          op: "IN",
+          val: d.values,
+        }));
+
         const buildFn = buildAdhocFiltersRef.current;
         const adhocFilters = buildFn(dsId);
-        if (adhocFilters.length > 0) {
-          query.filters = adhocFilters.map((f) => ({
+        query.filters = [
+          ...(adhocFilters.map((f) => ({
             col: f.subject,
             op: f.operator,
             val: f.comparator,
-          })) as SimpleFilter[];
-        }
-        const force = adhocFilters.length > 0;
+          })) as SimpleFilter[]),
+          ...dimensionFilters,
+        ];
+        const force = adhocFilters.length > 0 || dimensions.length > 0;
         const payload = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
           queries: [query],
@@ -534,9 +578,13 @@ export default function Dashboard() {
         const rawData = Array.isArray(postResult)
           ? postResult[0] || {}
           : postResult || {};
-        setMirrorData(filterDataLocal(rawData, dimensions));
+        setMirrorData(rawData);
       } catch {
-        /* mirror fetch failed */
+        // Fall back to client-side filtering on server error
+        const existing = existingDataOverride ?? chartDataRef.current[chartId];
+        if (existing?.data && Array.isArray(existing.data)) {
+          setMirrorData(filterDataLocal(existing, dimensions));
+        }
       }
     },
     [chartMeta, filterDataLocal],
@@ -553,12 +601,22 @@ export default function Dashboard() {
         );
         if (data) {
           setChartData((prev) => ({ ...prev, [chartId]: data }));
+          if (
+            compareConfig?.enabled &&
+            compareConfig.chartId === chartId
+          ) {
+            fetchMirrorData(
+              chartId,
+              compareConfig.dimensions,
+              data,
+            );
+          }
         }
       } finally {
         setChartLoading((prev) => ({ ...prev, [chartId]: false }));
       }
     },
-    [chartMeta, refreshChartData],
+    [chartMeta, refreshChartData, compareConfig, fetchMirrorData],
   );
 
   const refreshCharts = useCallback(
@@ -839,10 +897,9 @@ export default function Dashboard() {
       };
       setCompareConfig(cc);
       setCompareModalOpen(false);
-      const existingData = chartData[compareChartId];
-      fetchMirrorData(compareChartId, dimensions, existingData);
+      fetchMirrorData(compareChartId, dimensions, undefined, true);
     },
-    [compareChartId, fetchMirrorData, chartData],
+    [compareChartId, fetchMirrorData],
   );
 
   const handleAddChartSelect = useCallback(
@@ -1076,6 +1133,7 @@ export default function Dashboard() {
           mirrorData={mirrorData}
           onToggleCompare={handleToggleCompare}
           onOpenCompareBigScreen={(chartId, chartData) => {
+            setPeriodModalChartId(chartId);
             setPeriodModalChartData(chartData);
             setPeriodModalOpen(true);
           }}
@@ -1117,6 +1175,7 @@ export default function Dashboard() {
       <CompareConfigModal
         open={compareModalOpen}
         columns={datasetCompareColumns}
+        initialColumns={initialCompareColumns}
         fullData={
           compareChartId != null ? chartData[compareChartId] : undefined
         }
@@ -1128,9 +1187,11 @@ export default function Dashboard() {
       />
       <CompareModal
         open={periodModalOpen}
+        chartId={periodModalChartId}
         chartData={periodModalChartData}
         onClose={() => {
           setPeriodModalOpen(false);
+          setPeriodModalChartId(null);
           setPeriodModalChartData(undefined);
         }}
       />

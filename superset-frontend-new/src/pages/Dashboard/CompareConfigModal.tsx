@@ -48,6 +48,7 @@ interface RuleEntry {
 interface CompareConfigModalProps {
   open: boolean;
   columns: ColumnOption[];
+  initialColumns?: ColumnOption[];
   fullData?: Record<string, unknown>;
   onApply: (dimensions: CompareDimension[]) => void;
   onCancel: () => void;
@@ -84,6 +85,7 @@ async function fetchColumnValues(
 export default function CompareConfigModal({
   open,
   columns,
+  initialColumns,
   fullData,
   onApply,
   onCancel,
@@ -100,8 +102,27 @@ export default function CompareConfigModal({
   useEffect(() => {
     if (!open) {
       setRules([makeEmptyRule()]);
+      return;
     }
-  }, [open]);
+    if (initialColumns && initialColumns.length > 0) {
+      const allRows =
+        fullData?.data && Array.isArray(fullData.data)
+          ? (fullData.data as Record<string, unknown>[])
+          : [];
+      setRules(
+        initialColumns.map((col) => ({
+          dimension: col,
+          values: [],
+          valueOptions:
+            allRows.length > 0
+              ? extractValuesFromData(allRows, col.column)
+              : [],
+        })),
+      );
+    } else {
+      setRules([makeEmptyRule()]);
+    }
+  }, [open, initialColumns]);
 
   const handleDimensionChange = useCallback(
     (index: number, value: ColumnOption | null) => {
