@@ -93,7 +93,7 @@ export default function DashboardList() {
   const totalPages = Math.ceil(rowCount / PAGE_SIZE);
 
   return (
-    <ListPageLayout
+    <><ListPageLayout
       loading={loading}
       error={error}
       hasData={dashboards.length > 0}
@@ -296,50 +296,51 @@ export default function DashboardList() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
-      <Dialog
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Create Dashboard</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Dashboard Name"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            variant="outlined"
-            size="small"
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            disabled={creating || !createName.trim()}
-            onClick={async () => {
-              setCreating(true);
-              try {
-                const res = await api.post("/dashboard/", {
-                  dashboard_title: createName.trim(),
-                });
-                const newId = res.data?.id;
-                setCreateDialogOpen(false);
-                if (newId) navigate(`/dashboard/${newId}`);
-              } catch {
-                /* ignore */
-              }
-              setCreating(false);
-            }}
-          >
-            {creating ? "Creating..." : "Create"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <PageSpeedDial pageKeys="dashboard_list" />
     </ListPageLayout>
+    <Dialog
+      open={createDialogOpen}
+      onClose={() => setCreateDialogOpen(false)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle>Create Dashboard</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus
+          fullWidth
+          label="Dashboard Name"
+          value={createName}
+          onChange={(e) => setCreateName(e.target.value)}
+          variant="outlined"
+          size="small"
+          sx={{ mt: 1 }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+        <Button
+          variant="contained"
+          disabled={creating || !createName.trim()}
+          onClick={async () => {
+            setCreating(true);
+            try {
+              const res = await api.post("/dashboard/", {
+                dashboard_title: createName.trim(),
+              });
+              const newId = res.data?.id;
+              setCreateDialogOpen(false);
+              if (newId) navigate(`/dashboard/${newId}`);
+            } catch {
+              /* ignore */
+            }
+            setCreating(false);
+          }}
+        >
+          {creating ? "Creating..." : "Create"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    <PageSpeedDial pageKeys="dashboard_list" />
+    </>
   );
 }

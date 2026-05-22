@@ -192,12 +192,8 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (
-      error.response?.status === 400 &&
-      originalRequest?.url?.includes("/chart/data")
-    ) {
-      return Promise.resolve({ data: { result: [{}] } } as any);
-    }
+    // Do NOT swallow 400 errors on /chart/data — let callers handle them
+
     return Promise.reject(error);
   },
 );
