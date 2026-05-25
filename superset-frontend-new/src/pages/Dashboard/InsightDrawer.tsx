@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
@@ -12,13 +12,18 @@ import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import ExpandMore from "@mui/icons-material/ExpandMore";
 import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
 import SettingsIcon from "@mui/icons-material/Settings";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import InputLabel from "@mui/material/InputLabel";
+import FormControl from "@mui/material/FormControl";
 import type { ChartData } from "@/types/api";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useNotificationStore } from "@/store/notificationStore";
+import { PRESETS } from "@/api/aiModelConfig";
+import InsightSectionCard from "@/pages/Dashboard/InsightSectionCard";
 
 const blink = keyframes`
   0%, 100% { opacity: 1; }
@@ -32,6 +37,25 @@ interface InsightDrawerProps {
   chartMeta?: ChartData;
   filters?: Record<string, unknown>;
   onClose: () => void;
+}
+
+function splitSections(text: string): { title: string; content: string }[] {
+  const result: { title: string; content: string }[] = [];
+  let current: { title: string; content: string } | null = null;
+  for (const line of text.split("\n")) {
+    const m = line.match(/^## (.+)/);
+    if (m) {
+      current = { title: m[1].trim(), content: "" };
+      result.push(current);
+    } else if (current) {
+      current.content += (current.content ? "\n" : "") + line;
+    }
+  }
+  if (!result.length && text.trim()) {
+    result.push({ title: "分析", content: text.trim() });
+  }
+  for (const s of result) s.content = s.content.trim();
+  return result;
 }
 
 export default function InsightDrawer({
@@ -48,7 +72,6 @@ export default function InsightDrawer({
     reasoningText,
     loading,
     error,
-    currentToolCalls,
     generate,
     sendMessage,
     clear,
@@ -56,8 +79,21 @@ export default function InsightDrawer({
     modelConfig,
     updateModelConfig,
   } = useInsight();
+
+  const sections = useMemo(() => {
+    const parsed = splitSections(insightText);
+    if (reasoningText) {
+      const hasThinking = parsed.some(
+        (s) => s.title === "思考" || s.title === "推理",
+      );
+      if (!hasThinking) {
+        parsed.unshift({ title: "思考", content: reasoningText });
+      }
+    }
+    return parsed;
+  }, [insightText, reasoningText]);
+
   const notify = useNotificationStore((s) => s.notify);
-  const [reasoningOpen, setReasoningOpen] = useState(false);
   const [followUp, setFollowUp] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevOpenRef = useRef(open);
@@ -71,11 +107,9 @@ export default function InsightDrawer({
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       clear();
-      setReasoningOpen(false);
       setSettingsOpen(false);
       setFollowUp("");
     } else if (!open) {
-      setReasoningOpen(false);
       setSettingsOpen(false);
     }
     prevOpenRef.current = open;
@@ -85,11 +119,14 @@ export default function InsightDrawer({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [insightText, currentToolCalls, reasoningText]);
+  }, [insightText, reasoningText]);
 
-  const handleCopy = async () => {
+  const handleCopyAll = async () => {
     try {
-      await navigator.clipboard.writeText(insightText);
+      const markdown = sections
+        .map((s) => `## ${s.title}\n\n${s.content}`)
+        .join("\n\n");
+      await navigator.clipboard.writeText(markdown);
       notify({ severity: "success", message: "分析结果已复制到剪贴板" });
     } catch {
       notify({ severity: "error", message: "复制失败" });
@@ -149,15 +186,28 @@ export default function InsightDrawer({
           </Box>
 
           <Collapse in={settingsOpen}>
-            <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: "divider", display: "flex", gap: 1.5, alignItems: "flex-end" }}>
-              <TextField size="small" label="供应商（Provider ID）" value={modelConfig.provider}
-                onChange={(e) => updateModelConfig({ ...modelConfig, provider: e.target.value })}
-                sx={{ minWidth: 120 }} placeholder="lm_studio" />
-              <TextField size="small" label="模型（Model ID）" value={modelConfig.model}
-                onChange={(e) => updateModelConfig({ ...modelConfig, model: e.target.value })}
-                sx={{ minWidth: 160 }} placeholder="gemma-4-e4b-it" />
+            <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: "divider", display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <FormControl size="small" fullWidth>
+                <InputLabel>预设方案</InputLabel>
+                <Select value="" label="预设方案"
+                  onChange={(e) => {
+                    const p = PRESETS.find((p) => p.label === e.target.value);
+                    if (p) updateModelConfig({ provider: p.provider, model: p.model });
+                  }}>
+                  {PRESETS.map((p) => <MenuItem key={p.label} value={p.label}>{p.label}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <Box sx={{ display: "flex", gap: 1.5 }}>
+                <TextField size="small" label="供应商（Provider ID）" value={modelConfig.provider}
+                  onChange={(e) => updateModelConfig({ ...modelConfig, provider: e.target.value })}
+                  sx={{ flex: 1 }} />
+                <TextField size="small" label="模型（Model ID）" value={modelConfig.model}
+                  onChange={(e) => updateModelConfig({ ...modelConfig, model: e.target.value })}
+                  sx={{ flex: 1 }} />
+              </Box>
             </Box>
           </Collapse>
+
           <Box
             ref={scrollRef}
             sx={{
@@ -180,22 +230,6 @@ export default function InsightDrawer({
               </Box>
             )}
 
-            {currentToolCalls.length > 0 && (
-              <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: "action.hover", border: "1px solid", borderColor: "info.light" }}>
-                <Typography variant="caption" color="info.main" sx={{ fontWeight: 600 }}>
-                  AI 正在分析…
-                </Typography>
-                {currentToolCalls.map((tc, i) => (
-                  <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    {tc.status === "calling" ? <CircularProgress size={10} /> : (
-                      <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "success.main" }} />
-                    )}
-                    <Typography variant="caption" color="text.secondary">调用 {tc.tool}</Typography>
-                  </Box>
-                ))}
-              </Box>
-            )}
-
             {error ? (
               <Box sx={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
                 <Typography color="error" variant="body2" sx={{ textAlign: "center" }}>{error}</Typography>
@@ -204,35 +238,17 @@ export default function InsightDrawer({
                   重试
                 </Button>
               </Box>
-            ) : insightText ? (<>
-              {/* Reasoning folding */}
-              {reasoningText && (
-                <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, overflow: "hidden" }}>
-                  <Box onClick={() => setReasoningOpen((v) => !v)}
-                    sx={{ display: "flex", alignItems: "center", px: 1.5, py: 1, cursor: "pointer", bgcolor: "action.hover", userSelect: "none" }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>思考过程</Typography>
-                    <ExpandMore sx={{ fontSize: 18, color: "text.disabled",
-                      transform: reasoningOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-                  </Box>
-                  <Collapse in={reasoningOpen}>
-                    <Box sx={{ px: 1.5, py: 1, borderTop: "1px solid", borderColor: "divider" }}>
-                      <Typography variant="caption" color="text.secondary"
-                        sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.6 }}>
-                        {reasoningText}
-                      </Typography>
-                    </Box>
-                  </Collapse>
-                </Box>
-              )}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.7 }}>
-                  {insightText}
-                </Typography>
-                {loading && <Box component="span" sx={{ display: "inline-block", width: 8, height: 16,
-                  bgcolor: "text.primary", animation: `${blink} 1s step-end infinite`, ml: 0.5, verticalAlign: "text-bottom" }} />}
-              </Box>
+            ) : sections.length > 0 ? (<>
+              {sections.map((s, i) => (
+                <InsightSectionCard
+                  key={i}
+                  title={s.title}
+                  content={s.content + (loading && i === sections.length - 1 ? "▎" : "")}
+                  defaultCollapsed={s.title === "思考"}
+                />
+              ))}
               <Box sx={{ display: "flex", gap: 1 }}>
-                <Button variant="outlined" size="small" startIcon={<ContentCopy />} onClick={handleCopy}>复制结果</Button>
+                <Button variant="outlined" size="small" startIcon={<ContentCopy />} onClick={handleCopyAll}>复制全部</Button>
                 {!loading && <Button variant="outlined" size="small" startIcon={<RefreshIcon />}
                   onClick={() => chartId && generate(chartId, filtersRef.current || {})}>
                   重新生成

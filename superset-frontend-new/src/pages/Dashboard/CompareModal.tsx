@@ -24,7 +24,7 @@ import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { extractQueryFields, buildQueryObject } from "@/utils/query/extractQueryFields";
 import { formatNumber } from "@/utils/formatNumber";
 import type { SimpleFilter } from "@/utils/query/types";
-import type { QueryResult } from "@/types/api";
+import type { QueryResult, ChartData } from "@/types/api";
 
 interface GameOption {
   papp_id: string;
@@ -59,9 +59,10 @@ interface CompareModalProps {
   chartId: number | null;
   onClose: () => void;
   chartData?: Record<string, unknown>;
+  chartMeta?: ChartData;
 }
 
-export default function CompareModal({ open, chartId, onClose, chartData }: CompareModalProps) {
+export default function CompareModal({ open, chartId, onClose, chartData, chartMeta }: CompareModalProps) {
   const [games, setGames] = useState<GameOption[]>([]);
   const [selectedGames, setSelectedGames] = useState<SelectedGame[]>([]);
   const [primaryPappId, setPrimaryPappId] = useState<string | null>(null);
@@ -109,64 +110,89 @@ export default function CompareModal({ open, chartId, onClose, chartData }: Comp
       setChartFormData(null);
       setChartVizType(undefined);
       setChartDsId(null);
+      setChartDsType("table");
       setQueryResult(null);
       setError(null);
       setSelectedCchNames([]);
       setSelectedChannels([]);
+      setCchNameValues([]);
+      setChannelValues([]);
+      setGames([]);
+      setPrimaryPappId(null);
       return;
     }
     setLoading(true);
     setError(null);
+    let cancelled = false;
 
-    const loadMeta = async () => {
-      if (chartId) {
+    // Helper: fire column value API calls once dsId is known
+    const fetchColumnValues = (id: number) => {
+      api
+        .get<{ result: (string | null)[] }>(
+          `/datasource/table/${id}/column/cch_name/values/`,
+        )
+        .then((res) => {
+          if (cancelled) return;
+          const vals = (res.data.result ?? []).filter((v): v is string => v != null);
+          setCchNameValues(vals.sort());
+        })
+        .catch(() => {});
+      api
+        .get<{ result: (string | null)[] }>(
+          `/datasource/table/${id}/column/channel_name/values/`,
+        )
+        .then((res) => {
+          if (cancelled) return;
+          const vals = (res.data.result ?? []).filter((v): v is string => v != null);
+          setChannelValues(vals.sort());
+        })
+        .catch(() => {});
+    };
+
+    // Initialise chart form data synchronously from chartMeta
+    if (chartId && chartMeta) {
+      const raw = chartMeta.params || chartMeta.form_data || "{}";
+      const fd = typeof raw === "string" ? JSON.parse(raw) : raw;
+      setChartFormData(fd);
+      setChartVizType(chartMeta.viz_type);
+      if (chartMeta.datasource_type) setChartDsType(chartMeta.datasource_type);
+      const dsId =
+        chartMeta.datasource_id ??
+        (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : null);
+      setChartDsId(dsId);
+      // Column values fire immediately (parallel with games)
+      if (dsId) fetchColumnValues(dsId);
+    } else if (chartId) {
+      // Fallback: fetch chart metadata from API
+      (async () => {
         try {
-          const res = await api.get<{ result: { params?: string; form_data?: string; datasource_id?: number; viz_type?: string; datasource_type?: string } }>(
-            `/chart/${chartId}`,
-          );
+          const res = await api.get<{ result: ChartData }>(`/chart/${chartId}`);
           const chart = res.data.result;
           const raw = chart.params || chart.form_data || "{}";
           const fd = typeof raw === "string" ? JSON.parse(raw) : raw;
+          if (cancelled) return;
           setChartFormData(fd);
           setChartVizType(chart.viz_type);
           if (chart.datasource_type) setChartDsType(chart.datasource_type);
           const dsId =
             chart.datasource_id ??
             (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : null);
+          if (cancelled) return;
           setChartDsId(dsId);
-
-          // Fetch cch_name values from the dataset column values API
-          if (dsId) {
-            api.get<{ result: (string | null)[] }>(
-              `/datasource/table/${dsId}/column/cch_name/values/`,
-            )
-              .then((res) => {
-                const vals = (res.data.result ?? []).filter((v): v is string => v != null);
-                setCchNameValues(vals.sort());
-              })
-              .catch(() => {});
-
-            api.get<{ result: (string | null)[] }>(
-              `/datasource/table/${dsId}/column/channel_name/values/`,
-            )
-              .then((res) => {
-                const vals = (res.data.result ?? []).filter((v): v is string => v != null);
-                setChannelValues(vals.sort());
-              })
-              .catch(() => {});
-          }
+          if (dsId) fetchColumnValues(dsId);
         } catch {
           // ignore
         }
-      }
-    };
-    loadMeta();
+      })();
+    }
 
+    // Games list — fires in parallel with column value calls
     api
       .get<{ result: { papp_id: number; papp_name: string; 上线时间: string; cch_name?: string }[] }>(
         "/project/papp",
       )
       .then((res) => {
+        if (cancelled) return;
         const list = (res.data.result ?? []).map((r) => ({
           papp_id: String(r.papp_id),
           papp_name: r.papp_name ?? "",
@@ -175,9 +201,17 @@ export default function CompareModal({ open, chartId, onClose, chartData }: Comp
         }));
         setGames(list.filter((g) => g.上线时间));
       })
-      .catch((err) => setError(parseErrorMessage(err, "Failed to load games")))
-      .finally(() => setLoading(false));
-  }, [open, chartId]);
+      .catch((err) => {
+        if (!cancelled) setError(parseErrorMessage(err, "Failed to load games"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, chartId, chartMeta]);
 
   const gameOptions = useMemo(
     () =>
@@ -521,6 +555,7 @@ export default function CompareModal({ open, chartId, onClose, chartData }: Comp
           autoHighlight
           noOptionsText="No matches"
           sx={{
+            minWidth: 250,
             maxWidth: 400,
             "& .MuiInputBase-root": { minHeight: 36 },
             "& .MuiInputBase-input": {
@@ -553,40 +588,39 @@ export default function CompareModal({ open, chartId, onClose, chartData }: Comp
             />
           )}
         />
-        {cchNameOptions.length > 0 && (
-          <Autocomplete
-            multiple
-            value={selectedCchNames}
-            inputValue={cchNameInput}
-            onInputChange={(_, v) => setCchNameInput(v)}
-            options={cchNameOptions}
-            onChange={(_, value) => setSelectedCchNames(value)}
-            filterSelectedOptions
-            disableCloseOnSelect
-            size="small"
-            sx={{ maxWidth: 300 }}
-            renderInput={(params) => (
-              <TextField {...params} label="cch_name" placeholder="Select cch_name" />
-            )}
-          />
-        )}
-        {channelOptions.length > 0 && (
-          <Autocomplete
-            multiple
-            value={selectedChannels}
-            inputValue={channelInput}
-            onInputChange={(_, v) => setChannelInput(v)}
-            options={channelOptions}
-            onChange={(_, value) => setSelectedChannels(value)}
-            filterSelectedOptions
-            disableCloseOnSelect
-            size="small"
-            sx={{ maxWidth: 300 }}
-            renderInput={(params) => (
-              <TextField {...params} label="channel" placeholder="Select channel" />
-            )}
-          />
-        )}
+        {/* Always render — options populate asynchronously */}
+        <Autocomplete
+          multiple
+          value={selectedCchNames}
+          inputValue={cchNameInput}
+          onInputChange={(_, v) => setCchNameInput(v)}
+          options={cchNameOptions}
+          onChange={(_, value) => setSelectedCchNames(value)}
+          filterSelectedOptions
+          disableCloseOnSelect
+          size="small"
+          sx={{ minWidth: 200, maxWidth: 300 }}
+          noOptionsText="No options"
+          renderInput={(params) => (
+            <TextField {...params} label="cch_name" placeholder="Select cch_name" />
+          )}
+        />
+        <Autocomplete
+          multiple
+          value={selectedChannels}
+          inputValue={channelInput}
+          onInputChange={(_, v) => setChannelInput(v)}
+          options={channelOptions}
+          onChange={(_, value) => setSelectedChannels(value)}
+          filterSelectedOptions
+          disableCloseOnSelect
+          size="small"
+          sx={{ minWidth: 200, maxWidth: 300 }}
+          noOptionsText="No options"
+          renderInput={(params) => (
+            <TextField {...params} label="channel" placeholder="Select channel" />
+          )}
+        />
         </Box>
 
         {selectedGames.length > 0 && (

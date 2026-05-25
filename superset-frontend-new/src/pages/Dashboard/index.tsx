@@ -1212,6 +1212,7 @@ export default function Dashboard() {
         open={periodModalOpen}
         chartId={periodModalChartId}
         chartData={periodModalChartData}
+        chartMeta={periodModalChartId != null ? chartMeta[periodModalChartId] : undefined}
         onClose={() => {
           setPeriodModalOpen(false);
           setPeriodModalChartId(null);
