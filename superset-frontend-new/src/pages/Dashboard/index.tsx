@@ -28,6 +28,7 @@ import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
 import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
 import CompareModal from "@/pages/Dashboard/CompareModal";
 import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
+import InsightDrawer from "@/pages/Dashboard/InsightDrawer";
 import type {
   CompareConfig,
   CompareDimension,
@@ -65,6 +66,9 @@ export default function Dashboard() {
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
+  const [insightOpen, setInsightOpen] = useState(false);
+  const [insightChartId, setInsightChartId] = useState<number | null>(null);
+  const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
@@ -874,6 +878,24 @@ export default function Dashboard() {
     setFilterDrawerOpen(true);
   }, []);
 
+  const handleOpenInsight = useCallback((chartId: number) => {
+    setInsightChartId(chartId);
+    setInsightOpen(true);
+    // Collect active filter IDs and values
+    const activeFilters: Record<string, unknown> = {};
+    for (const f of filters) {
+      const state = filterState[f.id];
+      if (state?.value != null) {
+        activeFilters[f.id] = {
+          value: state.value,
+          column: f.column,
+          filterType: f.filterType,
+        };
+      }
+    }
+    setFilterValues(activeFilters);
+  }, [filters, filterState]);
+
   const handleToggleCompare = useCallback(
     (chartId: number) => {
       if (compareConfig?.enabled && compareConfig.chartId === chartId) {
@@ -1128,6 +1150,7 @@ export default function Dashboard() {
             setSearchParams({ slice_id: String(chartId) })
           }
           onDelete={handleDeleteChart}
+          onInsight={handleOpenInsight}
           onAddChart={() => setAddChartDialogOpen(true)}
           compareConfig={compareConfig}
           mirrorData={mirrorData}
@@ -1200,6 +1223,17 @@ export default function Dashboard() {
         excludeIds={dashboardChartIds}
         onSelect={handleAddChartSelect}
         onClose={() => setAddChartDialogOpen(false)}
+      />
+      <InsightDrawer
+        open={insightOpen}
+        chartId={insightChartId}
+        chartData={insightChartId != null ? chartData[insightChartId] : undefined}
+        chartMeta={insightChartId != null ? chartMeta[insightChartId] : undefined}
+        filters={filterValues}
+        onClose={() => {
+          setInsightOpen(false);
+          setInsightChartId(null);
+        }}
       />
       <UndoRedoKeyListeners
         onUndo={() => {}}

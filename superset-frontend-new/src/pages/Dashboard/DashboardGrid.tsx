@@ -33,6 +33,7 @@ interface DashboardGridProps {
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
   onDelete: (chartId: number) => void;
+  onInsight?: (chartId: number) => void;
   onAddChart?: () => void;
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
@@ -65,6 +66,7 @@ export default function DashboardGrid({
   onRefresh,
   onEdit,
   onDelete,
+  onInsight,
   onAddChart,
   compareConfig,
   mirrorData,
@@ -167,6 +169,7 @@ export default function DashboardGrid({
               onRefresh={onRefresh}
               onEdit={onEdit}
               onDelete={onDelete}
+              onInsight={onInsight}
               compareConfig={compareConfig}
               mirrorData={mirrorData}
               onToggleCompare={onToggleCompare}
