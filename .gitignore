@@ -141,3 +141,4 @@ oxc-custom-build/
 *.duckdb
 .playwright-mcp/
 pgdata
+superset-frontend-new/config.json
