@@ -80,8 +80,12 @@ async function _streamSession(sessionId: string, events: Awaited<ReturnType<type
         break;
       case "message.part.updated": {
         const part = (props.part || {}) as Record<string, unknown>;
-        if (part.type === "reasoning" && part.text) {
-          callbacks.onReasoning?.(part.text as string);
+        if (part.type === "reasoning") {
+          if ((props.delta as string) && callbacks.onReasoning) {
+            callbacks.onReasoning(props.delta as string);
+          } else if (part.text) {
+            callbacks.onReasoning?.(part.text as string);
+          }
         } else if (part.type === "text" && part.text && !hadTextDelta) {
           callbacks.onText(part.text as string);
           await _yieldToReact();
@@ -89,7 +93,9 @@ async function _streamSession(sessionId: string, events: Awaited<ReturnType<type
         break;
       }
       case "message.part.delta": {
-        if ((props.field as string) === "text" && props.delta) {
+        if ((props.field as string) === "reasoning" && (props.delta as string)) {
+          callbacks.onReasoning?.(props.delta as string);
+        } else if ((props.field as string) === "text" && props.delta) {
           hadTextDelta = true;
           callbacks.onText(props.delta as string);
           await _yieldToReact();
@@ -112,16 +118,6 @@ async function _streamSession(sessionId: string, events: Awaited<ReturnType<type
   }
 }
 
-/** Update default model on opencode server via PATCH /config */
-async function _updateModel(cfg: ModelConfig): Promise<void> {
-  try {
-    await fetch("/opencode/config", {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: `${cfg.provider}/${cfg.model}` }),
-    });
-  } catch { /* best-effort */ }
-}
-
 /** Send prompt via raw fetch (SDK can't resolve /opencode proxy path) */
 async function _sendPrompt(sessionId: string, body: Record<string, unknown>, modelCfg?: ModelConfig) {
   const payload = { ...body } as Record<string, unknown>;
@@ -134,9 +130,8 @@ async function _sendPrompt(sessionId: string, body: Record<string, unknown>, mod
   if (!res.ok) throw new Error(`Send prompt failed: ${res.status}`);
 }
 
-/** Create session via raw fetch, optionally set default model first */
-async function _createSession(title: string, modelCfg?: ModelConfig): Promise<string> {
-  if (modelCfg) _updateModel(modelCfg); // fire-and-forget, don't block
+/** Create session via raw fetch */
+async function _createSession(title: string): Promise<string> {
   const res = await fetch("/opencode/session", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title }),
@@ -180,18 +175,31 @@ export async function streamChartInsight(
     callbacks.onStatus?.("数据获取完成");
     callbacks.onStatus?.("正在分析…");
 
+    /* Format as a readable table (chart SQL is already aggregated) */
+    const shortNames = colnames.map((c: string) =>
+      c.replace(/^SUM\(/, "").replace(/\)$/, ""),
+    );
+    const sorted = [...data].sort((a, b) => {
+      const va = Number(Object.values(a).find((v) => typeof v === "number")) || 0;
+      const vb = Number(Object.values(b).find((v) => typeof v === "number")) || 0;
+      return vb - va;
+    });
+    const tableStr = [
+      shortNames.join("\t"),
+      ...sorted.map((r) => shortNames.map((_, i) => {
+        const v = r[colnames[i]];
+        return v == null ? "-" : (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(2)) : String(v));
+      }).join("\t")),
+    ].join("\n");
+
     const contextLines = [`图表: ${info.name}`, `类型: ${info.vizType}`,
-      `数据列: ${colnames.join(", ")}`,
-      `数据行: ${data.length}`,
+      `数据行: ${data.length}`, `数据列: ${shortNames.join(", ")}`,
     ];
     if (fi.text) contextLines.push(`\n${fi.text}`);
-    const jsonStr = JSON.stringify(data);
-    const dataBlock = jsonStr.length > 50000
-      ? `\n完整数据 (前 50000 字符):\n${jsonStr.slice(0, 50000)}\n… (共 ${jsonStr.length} 字符，数据已截断)`
-      : `\n完整数据:\n${jsonStr}`;
-    const instruction = `你是 Apache Superset 的数据分析助手。分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}\n\n输出中文格式：\n【趋势】整体数据趋势分析\n【发现】关键数据发现\n【异常】异常值或异常趋势\n【建议】优化建议或后续分析方向`;
+    const dataBlock = data.length ? `\n数据:\n${tableStr}` : "";
+    const instruction = `分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}`;
 
-    const sessionId = await _createSession(`Chart #${chartId} Insight`, modelCfg);
+    const sessionId = await _createSession(`Chart #${chartId} Insight`);
     callbacks.onSession?.(sessionId);
 
     // Subscribe to events BEFORE sending prompt (no buffered events to miss)
@@ -213,7 +221,7 @@ async function _fallbackViaMCP(
   callbacks: InsightCallbacks, signal?: AbortSignal,
   modelCfg?: ModelConfig,
 ): Promise<string> {
-  const sessionId = await _createSession(`Chart #${chartId} Insight`, modelCfg);
+  const sessionId = await _createSession(`Chart #${chartId} Insight`);
   callbacks.onSession?.(sessionId);
   const events = await oc.event.subscribe();
   const extraFormJSON = fi.query.length ? JSON.stringify({ filters: fi.query }) : "";

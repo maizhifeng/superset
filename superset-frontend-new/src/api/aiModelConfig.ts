@@ -5,16 +5,18 @@ export interface ModelConfig {
   model: string;
 }
 
-export interface ProviderOption {
-  id: string;
-  name: string;
-  models: { id: string; name: string }[];
+export interface ProviderPreset {
+  label: string;
+  provider: string;
+  model: string;
 }
 
-const DEFAULT: ModelConfig = {
-  provider: "lmstudio",
-  model: "gemma-4-e4b-it",
-};
+export const PRESETS: ProviderPreset[] = [
+  { label: "LM Studio (local)", provider: "lmstudio", model: "gemma-4-e4b-it" },
+  { label: "Opencode Zen", provider: "opencode", model: "deepseek-v4-flash-free" },
+];
+
+const DEFAULT: ModelConfig = { provider: "lmstudio", model: "gemma-4-e4b-it" };
 
 export function getModelConfig(): ModelConfig {
   try {
@@ -26,20 +28,4 @@ export function getModelConfig(): ModelConfig {
 
 export function setModelConfig(cfg: ModelConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
-}
-
-export async function fetchProviders(): Promise<ProviderOption[]> {
-  try {
-    const res = await fetch("/opencode/provider", { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return [];
-    const body = await res.json();
-    const all: { id: string; name: string; models: Record<string, { id: string; name: string }> }[] = body.all ?? [];
-    return all.map((p) => ({
-      id: p.id,
-      name: p.name,
-      models: Object.values(p.models ?? {}).map((m) => ({ id: m.id, name: m.name })),
-    }));
-  } catch {
-    return [];
-  }
 }
