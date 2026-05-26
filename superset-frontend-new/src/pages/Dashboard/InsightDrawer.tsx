@@ -139,7 +139,7 @@ export default function InsightDrawer({
         slotProps={{
           paper: {
             sx: {
-              width: { xs: "100vw", md: "35vw" },
+              width: { xs: "100vw", md: 420 },
               top: 0,
               height: "100vh",
               borderRight: "none",
