@@ -26,6 +26,9 @@ import { ConfirmModal, Grid2 } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { cardEnter } from "@/theme/keyframes";
+import { colorSlide } from "@/theme/vibrantKeyframes";
+import { useThemeStore } from "@/store/themeStore";
+import { cardAccents } from "@/theme/vibrantPalette";
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 import type { DashboardListItem } from "@/types/api";
@@ -52,10 +55,12 @@ export default function DashboardList() {
     endpoint: "/dashboard/",
     filterColumn: "dashboard_title",
     pageSize: PAGE_SIZE,
-    errorMessage: "Failed to load dashboards",
+    errorMessage: "加载仪表板失败",
   });
+  const themeMode = useThemeStore((s) => s.theme);
+  const isVibrant = themeMode === "vibrant";
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createName, setCreateName] = useState("New Dashboard");
+  const [createName, setCreateName] = useState("新建仪表板");
   const [creating, setCreating] = useState(false);
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -70,7 +75,7 @@ export default function DashboardList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search dashboards..."
+            placeholder="搜索仪表板..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -82,7 +87,7 @@ export default function DashboardList() {
         showOnMobile: true,
         primary: true,
         fabIcon: <DashboardIcon />,
-        fabLabel: "New Dashboard",
+        fabLabel: "新建仪表板",
         action: () => setCreateDialogOpen(true),
         render: null,
       },
@@ -101,11 +106,11 @@ export default function DashboardList() {
         <>
           <EmptyState
             icon={<DashboardIcon />}
-            title="No dashboards found"
+            title="未找到仪表板"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Create a dashboard to organize your charts in one place"
+                ? "请调整搜索条件"
+                : "创建仪表板将图表集中管理"
             }
             action={
               !searchText ? (
@@ -114,7 +119,7 @@ export default function DashboardList() {
                   size="small"
                   onClick={() => setCreateDialogOpen(true)}
                 >
-                  Create Dashboard
+                  创建仪表板
                 </Button>
               ) : undefined
             }
@@ -132,17 +137,30 @@ export default function DashboardList() {
                 borderRadius: 2,
                 cursor: "pointer",
                 position: "relative",
-                boxShadow:
-                  "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
+                border: isVibrant ? "none" : "1px solid",
+                borderColor: isVibrant ? undefined : "border.light",
+                borderTop: isVibrant ? "3px solid" : "1px solid",
+                borderTopColor: isVibrant ? cardAccents[i % cardAccents.length] : undefined,
+                bgcolor: "surface.main",
+                boxShadow: isVibrant
+                  ? (() => {
+                      const c = cardAccents[i % cardAccents.length];
+                      return `0 1px 2px rgba(30,41,59,0.02), 0 2px 6px ${c}15, 0 4px 12px rgba(30,41,59,0.03)`;
+                    })()
+                  : "0 1px 2px rgba(44,36,22,0.02), 0 1px 4px rgba(44,36,22,0.03), 0 2px 8px rgba(44,36,22,0.02)",
                 transition:
-                  "box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1), transform 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+                  "box-shadow 250ms cubic-bezier(0.25,0.1,0.15,1), transform 250ms cubic-bezier(0.25,0.1,0.15,1)",
                 "&:hover": {
-                  boxShadow:
-                    "var(--mui-palette-shadow-md, 0 4px 8px rgba(0,0,0,0.12))",
+                  boxShadow: isVibrant
+                    ? (() => {
+                        const c = cardAccents[i % cardAccents.length];
+                        return `0 2px 4px ${c}10, 0 8px 20px ${c}18, 0 12px 32px rgba(30,41,59,0.05)`;
+                      })()
+                    : "0 2px 4px rgba(44,36,22,0.03), 0 4px 12px rgba(44,36,22,0.05), 0 8px 24px rgba(184,101,58,0.04)",
                   transform: "translateY(-2px)",
                   "& .card-actions": { opacity: 1 },
                 },
-                animation: `${cardEnter} 0.35s ease both`,
+                animation: `${isVibrant ? colorSlide : cardEnter} 0.35s cubic-bezier(0.25,0.1,0.15,1) both`,
                 animationDelay: `${i * 0.04}s`,
               }}
               onClick={() => navigate(`/dashboard/${dashboard.id}`)}
@@ -170,7 +188,7 @@ export default function DashboardList() {
               >
                 {dashboard.published ? (
                   <Chip
-                    label="Published"
+                    label="已发布"
                     size="small"
                     color="success"
                     variant="outlined"
@@ -181,7 +199,7 @@ export default function DashboardList() {
                   />
                 ) : (
                   <Chip
-                    label="Draft"
+                    label="草稿"
                     size="small"
                     variant="outlined"
                     sx={{
@@ -217,7 +235,7 @@ export default function DashboardList() {
                   transition: "opacity 200ms ease",
                 }}
               >
-                <Tooltip title="Open dashboard">
+                <Tooltip title="打开仪表板">
                   <IconButton
                     size="small"
                     onClick={(e) => {
@@ -234,7 +252,7 @@ export default function DashboardList() {
                     <VisibilityIcon sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Delete">
+                <Tooltip title="删除">
                   <IconButton
                     size="small"
                     onClick={(e) => {
@@ -287,10 +305,10 @@ export default function DashboardList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Dashboard"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除仪表板"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}
@@ -303,12 +321,12 @@ export default function DashboardList() {
       maxWidth="xs"
       fullWidth
     >
-      <DialogTitle>Create Dashboard</DialogTitle>
+      <DialogTitle>创建仪表板</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
           fullWidth
-          label="Dashboard Name"
+          label="仪表板名称"
           value={createName}
           onChange={(e) => setCreateName(e.target.value)}
           variant="outlined"
@@ -336,7 +354,7 @@ export default function DashboardList() {
             setCreating(false);
           }}
         >
-          {creating ? "Creating..." : "Create"}
+          {creating ? "创建中..." : "创建"}
         </Button>
       </DialogActions>
     </Dialog>

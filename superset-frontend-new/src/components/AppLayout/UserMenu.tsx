@@ -5,8 +5,11 @@ import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Divider from "@mui/material/Divider";
 import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 import Logout from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
+import PaletteIcon from "@mui/icons-material/Palette";
+import { useThemeStore } from "@/store/themeStore";
 
 interface UserMenuProps {
   username?: string;
@@ -24,6 +27,8 @@ export default function UserMenu({
   onLogout,
 }: UserMenuProps) {
   const navigate = useNavigate();
+  const themeMode = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   return (
     <>
@@ -68,14 +73,26 @@ export default function UserMenu({
           <ListItemIcon sx={{ minWidth: 28 }}>
             <SettingsIcon sx={{ fontSize: 18 }} />
           </ListItemIcon>
-          Settings
+          设置
+        </MenuItem>
+        <MenuItem
+          dense
+          onClick={toggleTheme}
+          sx={{ fontSize: "0.8125rem" }}
+        >
+          <ListItemIcon sx={{ minWidth: 28 }}>
+            <PaletteIcon sx={{ fontSize: 18 }} />
+          </ListItemIcon>
+          <ListItemText>
+            主题: {themeMode === "paper" ? "纸本" : "缤纷"}
+          </ListItemText>
         </MenuItem>
         <Divider />
         <MenuItem dense onClick={onLogout} sx={{ fontSize: "0.8125rem" }}>
           <ListItemIcon sx={{ minWidth: 28 }}>
             <Logout sx={{ fontSize: 18 }} />
           </ListItemIcon>
-          Logout
+          退出登录
         </MenuItem>
       </Menu>
     </>

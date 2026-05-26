@@ -11,87 +11,87 @@ export interface PageTip {
 const PAGE_TIPS: Record<string, PageTip> = {
   home: {
     id: "home",
-    title: "Home",
+    title: "首页",
     message:
-      "Use G+C to view Charts, G+B for Dashboards, G+Q for SQL Lab. Press / to search anything.",
+      "按 G+C 查看图表，G+B 查看仪表板，G+Q 跳转 SQL 实验室。按 / 搜索任何内容。",
   },
   dashboard_list: {
     id: "dashboard_list",
-    title: "Dashboards",
+    title: "仪表板",
     message:
-      "Press / to quickly search, or click + to create a new dashboard. Use G+B to jump here anytime.",
+      "按 / 快速搜索，或点击 + 新建仪表板。随时按 G+B 跳转至此。",
   },
   chart_list: {
     id: "chart_list",
-    title: "Charts",
+    title: "图表",
     message:
-      "Browse and manage your saved charts. Press G+C to jump here. Click a chart to open it in Explore.",
+      "浏览和管理已保存的图表。按 G+C 跳转至此。点击图表在探索中打开。",
   },
   explore: {
     id: "explore",
-    title: "Explore",
+    title: "探索",
     message:
-      "Select a dataset, pick a chart type, then drag dimensions and metrics from the left panel. Ctrl+Enter to run preview, Ctrl+S to save.",
+      "选择数据集，选择图表类型，然后从左面板拖拽维度和指标。Ctrl+Enter 运行预览，Ctrl+S 保存。",
   },
   sqllab: {
     id: "sqllab",
-    title: "SQL Lab",
+    title: "SQL 实验室",
     message:
-      "Write SQL and press Ctrl+Enter to run. Ctrl+Shift+F to format, Ctrl+T for a new tab, Ctrl+R to re-run.",
+      "编写 SQL 并按 Ctrl+Enter 运行。Ctrl+Shift+F 格式化，Ctrl+T 新建标签页，Ctrl+R 重新运行。",
   },
   dataset_list: {
     id: "dataset_list",
-    title: "Datasets",
+    title: "数据集",
     message:
-      "A dataset maps a database table for charting. Press G+D to jump here. Define dimensions (categories) and metrics (numbers) for each column.",
+      "数据集将数据库表映射为图表数据。按 G+D 跳转至此。为每列定义维度（分类）和指标（数值）。",
   },
   database_list: {
     id: "database_list",
-    title: "Databases",
+    title: "数据库",
     message:
-      "Connect to PostgreSQL, MySQL, BigQuery, or any supported database. This is the first step in the data pipeline.",
+      "连接 PostgreSQL、MySQL、BigQuery 或任何支持的数据库。这是数据管线的第一步。",
   },
   dashboard: {
     id: "dashboard",
-    title: "Dashboard",
+    title: "仪表板",
     message:
-      "Use the + button to add charts, apply cross-filters, and compare dimensions. Ctrl+E to edit layout, Ctrl+S to save changes.",
+      "使用 + 按钮添加图表、应用交叉筛选和对比维度。Ctrl+S 保存更改。",
   },
   saved_query_list: {
     id: "saved_query_list",
-    title: "Saved Queries",
+    title: "已保存查询",
     message:
-      "Your saved SQL queries are listed here for quick reuse. Run them again or turn them into datasets.",
+      "已保存的 SQL 查询列于此，方便快速复用。可再次运行或转为数据集。",
   },
   alert_list: {
     id: "alert_list",
-    title: "Alerts & Reports",
+    title: "告警与报告",
     message:
-      "Set up alerts and scheduled reports for your data. Get notified when metrics cross thresholds.",
+      "为您的数据设置告警和定时报告。当指标超出阈值时收到通知。",
   },
   query_history: {
     id: "query_history",
-    title: "Query History",
+    title: "查询历史",
     message:
-      "Review past SQL queries executed in SQL Lab. Useful for debugging and re-running analysis.",
+      "查看在 SQL 实验室中执行的过往查询。有助于调试和重新运行分析。",
   },
   dataset_create: {
     id: "dataset_create",
-    title: "Create Dataset",
+    title: "创建数据集",
     message:
-      "Pick a database, then select a schema and table. Starfly will detect column types automatically.",
+      "选择数据库，然后选择模式和表。Starfly 将自动检测列类型。",
   },
   dataset_edit: {
     id: "dataset_edit",
-    title: "Edit Dataset",
+    title: "编辑数据集",
     message:
-      "Configure column metadata, add metrics, and toggle filter behavior. For SQL datasets, you can edit the query directly.",
+      "配置列元数据、添加指标和切换筛选行为。对于 SQL 数据集，可直接编辑查询。",
   },
   settings: {
     id: "settings",
-    title: "Settings",
+    title: "设置",
     message:
-      "Customize your navigation menu — reorder items, toggle visibility, or add custom routes.",
+      "自定义导航菜单 — 重新排序项、切换可见性或添加自定义路由。",
   },
 };
 

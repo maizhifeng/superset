@@ -47,7 +47,7 @@ export default function QueryHistoryList() {
   } = usePaginatedList<QueryLog>({
     endpoint: "/log/",
     filterColumn: "action",
-    errorMessage: "Failed to load query history",
+    errorMessage: "加载查询历史失败",
   });
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -62,7 +62,7 @@ export default function QueryHistoryList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search queries..."
+            placeholder="搜索查询..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -76,7 +76,7 @@ export default function QueryHistoryList() {
     { field: "id", headerName: "ID", width: 70 },
     {
       field: "user",
-      headerName: "User",
+      headerName: "用户",
       flex: 0.4,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -85,10 +85,10 @@ export default function QueryHistoryList() {
         </Box>
       ),
     },
-    { field: "action", headerName: "Action", flex: 1 },
+    { field: "action", headerName: "操作", flex: 1 },
     {
       field: "dttm",
-      headerName: "Date",
+      headerName: "日期",
       flex: 0.5,
       valueGetter: (_value, row) => {
         if (!row.dttm) return "";
@@ -97,7 +97,7 @@ export default function QueryHistoryList() {
     },
     {
       field: "duration_ms",
-      headerName: "Duration",
+      headerName: "耗时",
       flex: 0.4,
       renderCell: (params) => {
         const ms = params.row.duration_ms;
@@ -154,11 +154,11 @@ export default function QueryHistoryList() {
         <>
           <EmptyState
             icon={<HistoryIcon />}
-            title="No query history found"
+            title="未找到查询历史"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Run queries in SQL Lab to see your history here"
+                ? "请调整搜索条件"
+                : "在SQL实验室中运行查询以在此处查看历史"
             }
             action={
               !searchText ? (
@@ -167,7 +167,7 @@ export default function QueryHistoryList() {
                   size="small"
                   onClick={() => navigate("/sqllab")}
                 >
-                  Open SQL Lab
+                  打开 SQL 实验室
                 </Button>
               ) : undefined
             }
@@ -238,7 +238,7 @@ export default function QueryHistoryList() {
                       color="text.secondary"
                       sx={{ fontSize: "0.75rem" }}
                     >
-                      {row.user?.username ?? "N/A"}
+                      {row.user?.username ?? "无"}
                     </Typography>
                   </Box>
                   <Typography

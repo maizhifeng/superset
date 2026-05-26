@@ -92,12 +92,20 @@ interface ChartEditorProps {
   showPreview?: boolean;
   initialData?: ChartInitialData | null;
   compact?: boolean;
+  buildDashboardAdhocFilters?: (datasetId?: number) => {
+    clause: "WHERE" | "HAVING";
+    expressionType: "SIMPLE" | "SQL";
+    subject: string;
+    operator: string;
+    comparator: string;
+  }[];
 }
 
 export default function ChartEditor({
   onChartSaved,
   initialData,
   compact,
+  buildDashboardAdhocFilters,
 }: ChartEditorProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -138,7 +146,7 @@ export default function ChartEditor({
       items.push({
         value: m.metric_name,
         label: m.verbose_name || m.metric_name,
-        group: "Metrics",
+        group: "指标",
       });
     }
     for (const c of columnsList) {
@@ -146,7 +154,7 @@ export default function ChartEditor({
       items.push({
         value: c.column_name,
         label: c.column_name,
-        group: "Columns",
+        group: "列",
       });
     }
     return items;
@@ -165,7 +173,7 @@ export default function ChartEditor({
     if (!columnsList.length) return fieldOptions;
     const numericTypes = /int|float|double|decimal|number|bigint|numeric|real/i;
     return fieldOptions.filter((o) => {
-      if (o.group === "Metrics") return true;
+      if (o.group === "指标") return true;
       const col = columnsList.find((c) => c.column_name === o.value);
       if (!col) return false;
       if (idColumnNames.has(o.value)) return false;
@@ -180,7 +188,7 @@ export default function ChartEditor({
     return columnsList.map((c) => ({
       value: c.column_name,
       label: c.column_name,
-      group: "Dimensions",
+      group: "维度",
     }));
   }, [columnsList]);
 
@@ -231,7 +239,7 @@ export default function ChartEditor({
         setLoadingDatasets(false);
       })
       .catch((err) => {
-        setError(err?.message ?? "Failed to load datasets");
+        setError(err?.message ?? "加载数据集失败");
         setLoadingDatasets(false);
       });
   }, []);
@@ -309,7 +317,7 @@ export default function ChartEditor({
         restoreFormData(raw ?? null);
       })
       .catch((err) => {
-        setError(parseErrorMessage(err, "Failed to load chart"));
+        setError(parseErrorMessage(err, "加载图表失败"));
       })
       .finally(() => setLoadingChart(false));
   }, [sliceId, initialData]);
@@ -435,6 +443,16 @@ export default function ChartEditor({
           queryFormData.granularity_sqla = savedFormData.granularity_sqla;
       }
       const query = buildQueryObject(queryFormData, previewParams.viz_type);
+      const dashboardFilters = buildDashboardAdhocFilters?.(
+        previewParams.datasource_id,
+      );
+      if (dashboardFilters && dashboardFilters.length > 0) {
+        query.filters = dashboardFilters.map((f) => ({
+          col: f.subject,
+          op: f.operator,
+          val: f.comparator,
+        }));
+      }
       api
         .post(
           "/chart/data",
@@ -469,7 +487,13 @@ export default function ChartEditor({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [previewParams, loadingColumns, metricNames, savedFormData]);
+  }, [
+    previewParams,
+    loadingColumns,
+    metricNames,
+    savedFormData,
+    buildDashboardAdhocFilters,
+  ]);
 
   const option = useMemo(() => {
     if (!chartData || !resolvedType || resolvedType === "auto") return null;
@@ -522,20 +546,20 @@ export default function ChartEditor({
   const disabledReasons = useMemo(() => {
     const reasons: Record<string, string> = {};
     if (metrics.length === 0) {
-      reasons["line"] = "No metrics selected";
-      reasons["bar"] = "No metrics selected";
-      reasons["pie"] = "No metrics selected";
-      reasons["big_number"] = "No metrics selected";
+      reasons["line"] = "未选择指标";
+      reasons["bar"] = "未选择指标";
+      reasons["pie"] = "未选择指标";
+      reasons["big_number"] = "未选择指标";
     }
     if (pieDisabled) {
       const parts: string[] = [];
-      if (groupby.length >= 2) parts.push("multiple dimensions selected");
+      if (groupby.length >= 2) parts.push("已选择多个维度");
       if (pieDisabled && !parts.length)
-        parts.push("dimension has >6 unique values");
-      reasons["pie"] = `Pie not available: ${parts.join(", ")}`;
+        parts.push("维度超过 6 个唯一值");
+      reasons["pie"] = `饼图不可用：${parts.join(", ")}`;
     }
     if (hasGroupBy || metrics.length !== 1) {
-      reasons["big_number"] = "Big Number requires 1 metric with no grouping";
+      reasons["big_number"] = "大数字需要 1 个指标且无分组";
     }
     return reasons;
   }, [metrics.length, hasGroupBy, pieDisabled, groupby.length]);
@@ -551,7 +575,7 @@ export default function ChartEditor({
       notify({
         severity: "warning",
         message:
-          "Please select a dataset and ensure a chart type is available before saving",
+          "请选择数据集并确保图表类型可用后再保存",
       });
       return;
     }
@@ -570,7 +594,7 @@ export default function ChartEditor({
       };
       const queryContext = buildQueryObject(formData, effectiveType);
       const body = {
-        slice_name: sliceName || selectedDataset?.table_name || "Untitled",
+        slice_name: sliceName || selectedDataset?.table_name || "未命名",
         viz_type: effectiveType,
         datasource_id: Number(datasourceId),
         datasource_type: "table",
@@ -588,14 +612,14 @@ export default function ChartEditor({
       }
 
       if (onChartSaved && savedId) {
-        notify({ severity: "success", message: "Chart saved" });
+        notify({ severity: "success", message: "图表已保存" });
         onChartSaved(savedId);
       } else {
-        notify({ severity: "success", message: "Chart saved" });
+        notify({ severity: "success", message: "图表已保存" });
         navigate("/chart/list");
       }
     } catch (err: unknown) {
-      const errMsg = parseErrorMessage(err, "Failed to save chart");
+      const errMsg = parseErrorMessage(err, "保存图表失败");
       setError(errMsg);
       notify({ severity: "error", message: errMsg });
     } finally {
@@ -624,7 +648,7 @@ export default function ChartEditor({
         showOnMobile: true,
         primary: true,
         fabIcon: <SaveIcon />,
-        fabLabel: isEditing ? "Save" : "Create",
+        fabLabel: isEditing ? "保存" : "创建",
         action: handleSubmit,
         render: null,
       },
@@ -653,6 +677,14 @@ export default function ChartEditor({
       queryFormData,
       resolvedType === "auto" ? "line" : resolvedType,
     );
+    const dashboardFilters = buildDashboardAdhocFilters?.(Number(datasourceId));
+    if (dashboardFilters && dashboardFilters.length > 0) {
+      query.filters = dashboardFilters.map((f) => ({
+        col: f.subject,
+        op: f.operator,
+        val: f.comparator,
+      }));
+    }
     api
       .post("/chart/data", {
         datasource: { id: Number(datasourceId), type: "table" },
@@ -673,6 +705,7 @@ export default function ChartEditor({
     groupby,
     metricNames,
     savedFormData,
+    buildDashboardAdhocFilters,
   ]);
 
   const handleChartTypeChange = (val: string) => {
@@ -774,7 +807,7 @@ export default function ChartEditor({
             startIcon={<SaveIcon />}
             onClick={handleSubmit}
           >
-            {isEditing ? "Save" : "Create"}
+            {isEditing ? "保存" : "创建"}
           </Button>
         </Box>
       ) : (

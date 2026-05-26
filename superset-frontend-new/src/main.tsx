@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
@@ -6,7 +7,8 @@ import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { CacheProvider } from "@emotion/react";
 import createCache from "@emotion/cache";
-import { theme } from "@/theme";
+import { getTheme } from "@/theme";
+import { useThemeStore } from "@/store/themeStore";
 import App from "@/views/App";
 import "./index.css";
 
@@ -15,10 +17,15 @@ const emotionCache = createCache({
   prepend: false,
 });
 
-const container = document.getElementById("app");
-if (container) {
-  const root = createRoot(container);
-  root.render(
+function Root() {
+  const themeMode = useThemeStore((s) => s.theme);
+  const theme = useMemo(() => getTheme(themeMode), [themeMode]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", themeMode);
+  }, [themeMode]);
+
+  return (
     <CacheProvider value={emotionCache}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
@@ -30,6 +37,12 @@ if (container) {
           </BrowserRouter>
         </LocalizationProvider>
       </ThemeProvider>
-    </CacheProvider>,
+    </CacheProvider>
   );
+}
+
+const container = document.getElementById("app");
+if (container) {
+  const root = createRoot(container);
+  root.render(<Root />);
 }

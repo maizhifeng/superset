@@ -62,12 +62,19 @@ export default function DateColumnDetector({
         setCreatedNames((prev) => new Set(prev).add(target.columnName));
         notify({
           severity: "info",
-          message: `Column "${newColName}" already exists`,
+          message: `列 "${newColName}" 已存在`,
         });
         onColumnCreated();
         setCreating(false);
         return;
       }
+
+      const pythonDateFormat =
+        target.format === "YYYYMMDD"
+          ? "%Y-%m-%d"
+          : target.format === "unix_ms"
+            ? "epoch_ms"
+            : "epoch_s";
 
       const newColumn = {
         column_name: newColName,
@@ -77,7 +84,8 @@ export default function DateColumnDetector({
         groupby: true,
         filterable: true,
         is_active: true,
-        description: `Auto-parsed date from ${target.columnName} (${target.format})`,
+        python_date_format: pythonDateFormat,
+        description: `自动解析日期从 ${target.columnName} (${target.format})`,
       };
 
       const columnsPayload = [
@@ -135,12 +143,12 @@ export default function DateColumnDetector({
       setCreatedNames((prev) => new Set(prev).add(target.columnName));
       notify({
         severity: "success",
-        message: `Computed column "${newColName}" created`,
+        message: `计算列 "${newColName}" 已创建`,
       });
       onColumnCreated();
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : "Failed to create computed column";
+        err instanceof Error ? err.message : "创建计算列失败";
       notify({ severity: "error", message: msg });
     } finally {
       setCreating(false);
@@ -169,7 +177,7 @@ export default function DateColumnDetector({
             >
               <Box sx={{ flex: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Detected date column: {col.columnName}
+                  检测到日期列：{col.columnName}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Format: {col.format} &middot; Confidence:{" "}
@@ -203,7 +211,7 @@ export default function DateColumnDetector({
                   {creating ? (
                     <CircularProgress size={14} sx={{ mr: 0.5 }} />
                   ) : null}
-                  Create
+                  创建
                 </Button>
                 <Button
                   size="small"
@@ -211,7 +219,7 @@ export default function DateColumnDetector({
                   disabled={creating}
                   onClick={onDismiss}
                 >
-                  Skip
+                  跳过
                 </Button>
               </Box>
             </Box>

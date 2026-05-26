@@ -1,4 +1,7 @@
 :root {
+  /* Design tokens — single source of truth.
+     Values mirror src/theme/spacing.ts and src/theme/motion.ts.
+     Update both locations when changing tokens. */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
@@ -16,4 +19,77 @@
   --space-4: 1rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+}
+
+[data-theme="paper"]::-webkit-scrollbar,
+[data-theme="paper"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme="paper"]::-webkit-scrollbar-track,
+[data-theme="paper"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-theme="paper"]::-webkit-scrollbar-thumb,
+[data-theme="paper"] ::-webkit-scrollbar-thumb {
+  background: rgba(44, 36, 22, 0.12);
+  border-radius: 3px;
+}
+[data-theme="paper"]::-webkit-scrollbar-thumb:hover,
+[data-theme="paper"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(44, 36, 22, 0.2);
+}
+
+[data-theme="vibrant"]::-webkit-scrollbar,
+[data-theme="vibrant"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+[data-theme="vibrant"]::-webkit-scrollbar-track,
+[data-theme="vibrant"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-theme="vibrant"]::-webkit-scrollbar-thumb,
+[data-theme="vibrant"] ::-webkit-scrollbar-thumb {
+  background: rgba(108, 92, 231, 0.2);
+  border-radius: 3px;
+}
+[data-theme="vibrant"]::-webkit-scrollbar-thumb:hover,
+[data-theme="vibrant"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(108, 92, 231, 0.35);
+}
+
+[data-theme="paper"]::selection,
+[data-theme="paper"] ::selection {
+  background: rgba(184, 101, 58, 0.15);
+  color: inherit;
+}
+
+[data-theme="vibrant"]::selection,
+[data-theme="vibrant"] ::selection {
+  background: rgba(108, 92, 231, 0.15);
+  color: inherit;
+}
+
+[data-theme="paper"] *:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(184, 101, 58, 0.2);
+  border-radius: 2px;
+}
+
+[data-theme="vibrant"] *:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.25);
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

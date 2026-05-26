@@ -62,7 +62,7 @@ export default function MirrorTable({
           variant="caption"
           sx={{ fontWeight: 600, color: "primary.700" }}
         >
-          Comparing by:
+          对比依据：
         </Typography>
         {dimensions.map((d, i) => (
           <Chip

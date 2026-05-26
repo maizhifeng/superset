@@ -22,12 +22,12 @@ import { resetAllOnboarding } from "@/hooks/useDismissible";
 import type { ShortcutEntry, ShortcutCategory } from "@/hooks/useShortcut";
 
 const CATEGORY_LABELS: Record<ShortcutCategory, string> = {
-  global: "Global",
-  navigation: "Navigation",
-  sql_lab: "SQL Lab",
-  explore: "Explore",
-  dashboard: "Dashboard",
-  list_view: "List View",
+  global: "全局",
+  navigation: "导航",
+  sql_lab: "SQL 实验室",
+  explore: "探索",
+  dashboard: "仪表板",
+  list_view: "列表视图",
 };
 
 const CATEGORY_COLORS: Record<ShortcutCategory, string> = {
@@ -90,7 +90,7 @@ export default function KeyboardShortcutHelpModal({
           justifyContent: "space-between",
         }}
       >
-        <Typography variant="h6">Keyboard Shortcuts</Typography>
+        <Typography variant="h6">快捷键</Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
         </IconButton>
@@ -118,8 +118,8 @@ export default function KeyboardShortcutHelpModal({
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600 }}>Shortcut</TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>Action</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>快捷键</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>操作</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -147,7 +147,7 @@ export default function KeyboardShortcutHelpModal({
             color="text.secondary"
             sx={{ py: 4, textAlign: "center" }}
           >
-            No keyboard shortcuts registered.
+            暂无已注册的快捷键。
           </Typography>
         )}
         <Box sx={{ display: "flex", justifyContent: "center", pt: 1, pb: 1 }}>
@@ -160,7 +160,7 @@ export default function KeyboardShortcutHelpModal({
             }}
             sx={{ color: "text.secondary", fontSize: "0.75rem" }}
           >
-            Show Tour Guide
+            显示引导教程
           </Button>
         </Box>
       </DialogContent>

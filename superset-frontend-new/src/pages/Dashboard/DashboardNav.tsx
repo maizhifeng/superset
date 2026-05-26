@@ -83,7 +83,7 @@ export default function DashboardNav({
                 color="text.secondary"
                 sx={{ fontSize: "0.8125rem" }}
               >
-                No charts found
+                未找到图表
               </Typography>
             </ListItem>
           )}

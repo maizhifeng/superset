@@ -72,7 +72,7 @@ function ChartLoadingSkeleton() {
         ))}
       </Box>
       <Typography variant="caption" color="text.disabled">
-        Loading...
+        加载中...
       </Typography>
     </Box>
   );
@@ -181,10 +181,10 @@ function ChartCard({
           .map(r => colnames.map(c => String(r[c] ?? "")).join("\t"))
           .join("\n");
         await navigator.clipboard.writeText(`${header}\n${body}`);
-        notify({ severity: "success", message: "Copied to clipboard" });
+        notify({ severity: "success", message: "已复制到剪贴板" });
       } else {
         if (typeof ClipboardItem === "undefined") {
-          notify({ severity: "error", message: "Image copy not supported on this browser" });
+          notify({ severity: "error", message: "此浏览器不支持复制图片" });
           return;
         }
         const instance = chartRef.current?.getEchartsInstance();
@@ -198,10 +198,10 @@ function ChartCard({
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": blob }),
         ]);
-        notify({ severity: "success", message: "Copied to clipboard" });
+        notify({ severity: "success", message: "已复制到剪贴板" });
       }
     } catch {
-      notify({ severity: "error", message: "Copy failed" });
+      notify({ severity: "error", message: "复制失败" });
     }
   };
 
@@ -211,16 +211,28 @@ function ChartCard({
         const d = new Date(value);
         if (!isNaN(d.getTime())) return d.toLocaleDateString();
       }
-      if (value > 19000000 && value < 21000000 && value < 1e9) {
+      if (value > 19000000 && value <= 22000000 && value < 1e9) {
         const s = String(Math.floor(value));
         if (s.length === 8) {
           return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
         }
       }
+      if (value > 1e8 && value < 1e12) {
+        const d = new Date(value * 1000);
+        if (!isNaN(d.getTime()) && d.getFullYear() > 1900 && d.getFullYear() < 2200) {
+          return d.toLocaleDateString();
+        }
+      }
     }
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    if (typeof value === "string") {
+      if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)) {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
+      }
+      const num = Number(value);
+      if (!isNaN(num) && num > 19000000) {
+        return formatDateValue(num);
+      }
     }
     return null;
   }
@@ -508,7 +520,7 @@ function ChartCard({
         >
           {meta?.slice_name || sliceName || `Chart #${chartId}`}
         </Typography>
-        <Tooltip title={pct95Active ? "Show all rows" : "95% mode"}>
+        <Tooltip title={pct95Active ? "显示所有行" : "精简模式"}>
           <IconButton
             size="small"
             onClick={(e) => {
@@ -525,7 +537,7 @@ function ChartCard({
           </IconButton>
         </Tooltip>
         {vizType === "table" && (
-          <Tooltip title={isCompareActive ? "Stop comparing" : "Compare"}>
+          <Tooltip title={isCompareActive ? "停止对比" : "对比"}>
             <IconButton
               size="small"
               onClick={(e) => {
@@ -546,7 +558,7 @@ function ChartCard({
             </IconButton>
           </Tooltip>
         )}
-        <Tooltip title="Refresh">
+        <Tooltip title="刷新">
           <IconButton
             size="small"
             onClick={(e) => {
@@ -558,7 +570,7 @@ function ChartCard({
             <RefreshIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
           </IconButton>
         </Tooltip>
-          <Tooltip title={vizType === "table" ? "Copy as text" : "Copy as image"}>
+          <Tooltip title={vizType === "table" ? "复制为文本" : "复制为图片"}>
           <IconButton
             size="small"
             onClick={(e) => {
@@ -583,7 +595,7 @@ function ChartCard({
           </IconButton>
         </Tooltip>
         {!isMobile && (
-        <Tooltip title="Edit Chart">
+        <Tooltip title="编辑图表">
           <IconButton
             size="small"
             onClick={(e) => {
@@ -597,7 +609,7 @@ function ChartCard({
         </Tooltip>
         )}
         {isMobile && (
-          <Tooltip title={isActiveFullscreen ? "Exit fullscreen" : "Fullscreen"}>
+          <Tooltip title={isActiveFullscreen ? "退出全屏" : "全屏"}>
             <IconButton
               size="small"
               onClick={() => toggleFullScreen()}
@@ -607,7 +619,7 @@ function ChartCard({
             </IconButton>
           </Tooltip>
         )}
-        <Tooltip title="Remove from Dashboard">
+        <Tooltip title="从仪表板移除">
           <IconButton
             size="small"
             onClick={(e) => {
@@ -720,7 +732,7 @@ function ChartCard({
           <Box sx={{ flex: 1, fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {meta?.slice_name || sliceName || `Chart #${chartId}`}
           </Box>
-            <Tooltip title="Exit fullscreen">
+            <Tooltip title="退出全屏">
               <IconButton size="small" onClick={exitFullScreen} sx={{ p: 0.5 }}>
                 <CloseIcon sx={{ fontSize: 22 }} />
               </IconButton>

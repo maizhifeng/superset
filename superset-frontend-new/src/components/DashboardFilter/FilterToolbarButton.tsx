@@ -56,7 +56,7 @@ export default function FilterToolbarButton({
           lineHeight: 1.2,
         }}
       >
-        Filter
+        筛选
       </Button>
       {(activeCount > 0 || hiddenFilters.length > 0) && (
         <IconButton
@@ -82,7 +82,7 @@ export default function FilterToolbarButton({
           <ListItemIcon>
             <FilterListIcon fontSize="small" />
           </ListItemIcon>
-          Filter panel
+          筛选面板
         </MenuItem>
         {activeCount > 0 && (
           <MenuItem
@@ -95,7 +95,7 @@ export default function FilterToolbarButton({
             <ListItemIcon>
               <ClearAllIcon fontSize="small" />
             </ListItemIcon>
-            Clear all
+            清除全部
           </MenuItem>
         )}
         {hiddenFilters.length > 0 && <Divider />}
@@ -121,7 +121,7 @@ export default function FilterToolbarButton({
             dense
             sx={{ fontSize: "0.75rem", color: "text.secondary" }}
           >
-            +{hiddenFilters.length - 20} more
+            +{hiddenFilters.length - 20} 更多
           </MenuItem>
         )}
       </Menu>

@@ -89,7 +89,7 @@ export default function DatasetEdit() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(parseErrorMessage(err, "Failed to load dataset"));
+        setError(parseErrorMessage(err, "加载数据集失败"));
         setLoading(false);
       });
   }, [id, setCustom]);
@@ -150,7 +150,7 @@ export default function DatasetEdit() {
       setSuccess(true);
       setTimeout(() => navigate("/dataset/list"), 1200);
     } catch (err: unknown) {
-      const msg = parseErrorMessage(err, "Save failed");
+      const msg = parseErrorMessage(err, "保存失败");
       setError(msg);
     }
   }, [id, navigate, modifiedColumns, dataset]);
@@ -190,7 +190,7 @@ export default function DatasetEdit() {
         priority: 20,
         showOnMobile: true,
         fabIcon: <AddIcon />,
-        fabLabel: "Add Metric",
+        fabLabel: "添加指标",
         action: handleAddMetric,
         render: null,
       },
@@ -200,7 +200,7 @@ export default function DatasetEdit() {
         showOnMobile: true,
         primary: true,
         fabIcon: <SaveIcon />,
-        fabLabel: "Save",
+        fabLabel: "保存",
         action: handleSave,
         render: null,
       },
@@ -231,7 +231,7 @@ export default function DatasetEdit() {
     <Box sx={{ p: 3 }}>
       {success && (
         <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
-          Dataset saved
+          数据集已保存
         </Alert>
       )}
       {error && (
@@ -261,7 +261,7 @@ export default function DatasetEdit() {
       <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
         <TextField
           size="small"
-          label="Table Name"
+          label="表名称"
           value={form.table_name}
           onChange={(e) =>
             setForm((f) => ({ ...f, table_name: e.target.value }))
@@ -270,7 +270,7 @@ export default function DatasetEdit() {
         />
         <TextField
           size="small"
-          label="Description"
+          label="描述"
           value={form.description}
           onChange={(e) =>
             setForm((f) => ({ ...f, description: e.target.value }))
@@ -279,7 +279,7 @@ export default function DatasetEdit() {
         />
         <TextField
           size="small"
-          label="Database Connection"
+          label="数据库连接"
           value={`${dataset?.database.database_name} · ${dataset?.schema ?? "public"}`}
           slotProps={{ input: { readOnly: true } }}
           sx={{ flex: 1, minWidth: 180 }}
@@ -334,7 +334,7 @@ export default function DatasetEdit() {
         {dataset &&
           (dataset.metrics.length > 0 || dataset.columns.length > 0) && (
             <Card sx={{ mt: 1.5 }}>
-              <CardHeader title={`Fields (${totalRows})`} sx={cardHeaderSx} />
+              <CardHeader title={`字段 (${totalRows})`} sx={cardHeaderSx} />
               <CardContent sx={{ pt: 0 }}>
                 <TableContainer
                   ref={columnsRef}
@@ -351,14 +351,14 @@ export default function DatasetEdit() {
                       <TableRow>
                         {[
                           ["ID", "6%"],
-                          ["Name", "12%"],
-                          ["Kind", "6%"],
-                          ["Type", "8%"],
-                          ["Verbose Name", "10%"],
-                          ["Expression", "22%"],
-                          ["Description", "18%"],
+                          ["名称", "12%"],
+                          ["类型", "6%"],
+                          ["数据类型", "8%"],
+                          ["显示名称", "10%"],
+                          ["表达式", "22%"],
+                          ["描述", "18%"],
                           ["is_dttm", "6%"],
-                          ["Dashboard Filter", "6%"],
+                          ["仪表板筛选", "6%"],
                         ].map(([h, w]) => (
                           <TableCell
                             key={h}
@@ -607,11 +607,11 @@ export default function DatasetEdit() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Add Metric</DialogTitle>
+        <DialogTitle>添加指标</DialogTitle>
         <DialogContent sx={{ "& > *": { mt: 1.5 } }}>
           <TextField
             size="small"
-            label="Metric Name"
+            label="指标名称"
             fullWidth
             value={newMetric.metric_name}
             onChange={(e) =>
@@ -620,7 +620,7 @@ export default function DatasetEdit() {
           />
           <TextField
             size="small"
-            label="Expression"
+            label="表达式"
             fullWidth
             value={newMetric.expression}
             onChange={(e) =>
@@ -630,7 +630,7 @@ export default function DatasetEdit() {
           />
           <TextField
             size="small"
-            label="Verbose Name"
+            label="显示名称"
             fullWidth
             value={newMetric.verbose_name}
             onChange={(e) =>
@@ -640,7 +640,7 @@ export default function DatasetEdit() {
           />
           <TextField
             size="small"
-            label="Description"
+            label="描述"
             fullWidth
             value={newMetric.description}
             onChange={(e) =>
@@ -650,7 +650,7 @@ export default function DatasetEdit() {
           />
           <TextField
             size="small"
-            label="D3 Format"
+            label="D3 格式"
             fullWidth
             value={newMetric.d3format}
             onChange={(e) =>
@@ -660,7 +660,7 @@ export default function DatasetEdit() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddMetricOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddMetricOpen(false)}>取消</Button>
           <Button
             variant="contained"
             onClick={handleAddMetricSubmit}
@@ -668,7 +668,7 @@ export default function DatasetEdit() {
               !newMetric.metric_name.trim() || !newMetric.expression.trim()
             }
           >
-            Add
+            添加
           </Button>
         </DialogActions>
       </Dialog>

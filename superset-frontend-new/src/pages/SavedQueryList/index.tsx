@@ -41,7 +41,7 @@ export default function SavedQueryList() {
   } = usePaginatedList<SavedQuery>({
     endpoint: "/saved_query/",
     filterColumn: "label",
-    errorMessage: "Failed to load saved queries",
+    errorMessage: "加载保存的查询失败",
   });
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -56,7 +56,7 @@ export default function SavedQueryList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search saved queries..."
+            placeholder="搜索保存的查询..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -70,7 +70,7 @@ export default function SavedQueryList() {
     { field: "id", headerName: "ID", width: 70 },
     {
       field: "label",
-      headerName: "Label",
+      headerName: "标签",
       flex: 1,
       renderCell: (params) => (
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -80,7 +80,7 @@ export default function SavedQueryList() {
     },
     {
       field: "sql",
-      headerName: "SQL Preview",
+      headerName: "SQL 预览",
       flex: 2,
       renderCell: (params) => {
         const sql = params.value ?? "";
@@ -135,13 +135,13 @@ export default function SavedQueryList() {
     },
     {
       field: "database",
-      headerName: "Database",
+      headerName: "数据库",
       flex: 0.4,
       valueGetter: (_value, row) => row.database?.database_name ?? "",
     },
     {
       field: "changed_on_delta_humanized",
-      headerName: "Last Modified",
+      headerName: "最后修改",
       flex: 0.4,
     },
     {
@@ -150,7 +150,7 @@ export default function SavedQueryList() {
       width: 80,
       sortable: false,
       renderCell: (params) => (
-        <Tooltip title="Delete">
+        <Tooltip title="删除">
           <IconButton
             size="small"
             onClick={() =>
@@ -176,11 +176,11 @@ export default function SavedQueryList() {
         <>
           <EmptyState
             icon={<SaveIcon />}
-            title="No saved queries found"
+            title="未找到保存的查询"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Save a query from SQL Lab to see it here"
+                ? "请调整搜索条件"
+                : "在SQL实验室中保存查询以在此处查看"
             }
             action={
               !searchText ? (
@@ -189,7 +189,7 @@ export default function SavedQueryList() {
                   size="small"
                   onClick={() => navigate("/sqllab")}
                 >
-                  Open SQL Lab
+                  打开 SQL 实验室
                 </Button>
               ) : undefined
             }
@@ -270,10 +270,10 @@ export default function SavedQueryList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Saved Query"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除保存的查询"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}

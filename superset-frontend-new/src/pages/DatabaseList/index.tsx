@@ -50,7 +50,7 @@ export default function DatabaseList() {
   } = usePaginatedList<Database>({
     endpoint: "/database/",
     filterColumn: "database_name",
-    errorMessage: "Failed to load databases",
+    errorMessage: "加载数据库失败",
   });
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -65,7 +65,7 @@ export default function DatabaseList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search databases..."
+            placeholder="搜索数据库..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -77,7 +77,7 @@ export default function DatabaseList() {
         showOnMobile: true,
         primary: true,
         fabIcon: <StorageIcon />,
-        fabLabel: "Connect Database",
+        fabLabel: "连接数据库",
         action: () => setCreateDialogOpen(true),
         render: null,
       },
@@ -87,10 +87,10 @@ export default function DatabaseList() {
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
-    { field: "database_name", headerName: "Database", flex: 1 },
+    { field: "database_name", headerName: "数据库", flex: 1 },
     {
       field: "backend",
-      headerName: "Backend",
+      headerName: "后端",
       flex: 0.4,
       renderCell: (params) => (
         <Chip label={params.value} size="small" variant="outlined" />
@@ -98,11 +98,11 @@ export default function DatabaseList() {
     },
     {
       field: "expose_in_sqllab",
-      headerName: "SQL Lab",
+      headerName: "SQL 实验室",
       width: 100,
       renderCell: (params) => (
         <Chip
-          label={params.value ? "Enabled" : "Disabled"}
+          label={params.value ? "已启用" : "已禁用"}
           color={params.value ? "success" : "default"}
           size="small"
           variant={params.value ? "filled" : "outlined"}
@@ -115,7 +115,7 @@ export default function DatabaseList() {
       width: 100,
       renderCell: (params) => (
         <Chip
-          label={params.value ? "Yes" : "No"}
+          label={params.value ? "是" : "否"}
           color={params.value ? "success" : "default"}
           size="small"
           variant={params.value ? "filled" : "outlined"}
@@ -124,7 +124,7 @@ export default function DatabaseList() {
     },
     {
       field: "changed_on_delta_humanized",
-      headerName: "Last Modified",
+      headerName: "最后修改",
       flex: 0.4,
     },
     {
@@ -133,7 +133,7 @@ export default function DatabaseList() {
       width: 80,
       sortable: false,
       renderCell: (params) => (
-        <Tooltip title="Delete">
+        <Tooltip title="删除">
           <IconButton
             size="small"
             onClick={() =>
@@ -159,11 +159,11 @@ export default function DatabaseList() {
         <>
           <EmptyState
             icon={<StorageIcon />}
-            title="No databases connected"
+            title="未连接数据库"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Connect a database to start exploring your data"
+                ? "请调整搜索条件"
+                : "连接数据库开始探索您的数据"
             }
             action={
               !searchText ? (
@@ -172,7 +172,7 @@ export default function DatabaseList() {
                   size="small"
                   onClick={() => setCreateDialogOpen(true)}
                 >
-                  Connect Database
+                  连接数据库
                 </Button>
               ) : undefined
             }
@@ -227,7 +227,7 @@ export default function DatabaseList() {
                 }}
               />
               <Chip
-                label={row.expose_in_sqllab ? "Enabled" : "Disabled"}
+                label={row.expose_in_sqllab ? "已启用" : "已禁用"}
                 size="small"
                 color={row.expose_in_sqllab ? "success" : "default"}
                 variant={row.expose_in_sqllab ? "filled" : "outlined"}
@@ -238,7 +238,7 @@ export default function DatabaseList() {
                 }}
               />
               <Chip
-                label={row.allow_dml ? "DML: Yes" : "DML: No"}
+                label={row.allow_dml ? "DML: 是" : "DML: 否"}
                 size="small"
                 color={row.allow_dml ? "success" : "default"}
                 variant={row.allow_dml ? "filled" : "outlined"}
@@ -266,10 +266,10 @@ export default function DatabaseList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Database"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除数据库"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}
@@ -281,12 +281,12 @@ export default function DatabaseList() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Connect Database</DialogTitle>
+        <DialogTitle>连接数据库</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
             fullWidth
-            label="Database Name"
+            label="数据库名称"
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
             variant="outlined"
@@ -295,7 +295,7 @@ export default function DatabaseList() {
           />
           <TextField
             fullWidth
-            label="SQLAlchemy URI"
+            label="数据库连接串"
             value={createUri}
             onChange={(e) => setCreateUri(e.target.value)}
             variant="outlined"
@@ -304,7 +304,7 @@ export default function DatabaseList() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateDialogOpen(false)}>取消</Button>
           <Button
             variant="contained"
             disabled={creating || !createName.trim() || !createUri.trim()}
@@ -323,7 +323,7 @@ export default function DatabaseList() {
               setCreating(false);
             }}
           >
-            {creating ? "Connecting..." : "Connect"}
+            {creating ? "连接中..." : "连接"}
           </Button>
         </DialogActions>
       </Dialog>

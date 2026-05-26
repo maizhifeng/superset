@@ -21,13 +21,23 @@ export default function PageHeader({
         justifyContent: "space-between",
         alignItems: "flex-start",
         mb: spacing.md,
+        position: "relative",
       }}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box
+          sx={{
+            width: 32,
+            height: 3,
+            borderRadius: 1.5,
+            bgcolor: "primary.main",
+            mb: 1,
+          }}
+        />
         <Typography
           variant="h5"
           sx={{
-            fontWeight: 700,
+            fontWeight: 650,
             letterSpacing: "-0.01em",
             color: "text.primary",
           }}
@@ -51,6 +61,7 @@ export default function PageHeader({
             alignItems: "center",
             gap: gap.sm,
             flexShrink: 0,
+            mt: 3,
           }}
         >
           {actions}

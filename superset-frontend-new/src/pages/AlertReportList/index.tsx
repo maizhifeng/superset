@@ -42,7 +42,7 @@ export default function AlertReportList() {
   } = usePaginatedList<AlertReport>({
     endpoint: "/report/",
     filterColumn: "name",
-    errorMessage: "Failed to load alerts & reports",
+    errorMessage: "加载警报和报告失败",
   });
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -57,7 +57,7 @@ export default function AlertReportList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search alerts..."
+            placeholder="搜索警报..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -69,10 +69,10 @@ export default function AlertReportList() {
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
-    { field: "name", headerName: "Name", flex: 1 },
+    { field: "name", headerName: "名称", flex: 1 },
     {
       field: "type",
-      headerName: "Type",
+      headerName: "类型",
       flex: 0.4,
       renderCell: (params) => (
         <Chip
@@ -96,11 +96,11 @@ export default function AlertReportList() {
     },
     {
       field: "active",
-      headerName: "Status",
+      headerName: "状态",
       width: 100,
       renderCell: (params) => (
         <Chip
-          label={params.value ? "Active" : "Inactive"}
+          label={params.value ? "活跃" : "不活跃"}
           size="small"
           color={params.value ? "success" : "default"}
           variant={params.value ? "filled" : "outlined"}
@@ -109,7 +109,7 @@ export default function AlertReportList() {
     },
     {
       field: "crontab",
-      headerName: "Schedule",
+      headerName: "调度",
       flex: 0.4,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -120,7 +120,7 @@ export default function AlertReportList() {
     },
     {
       field: "recipients",
-      headerName: "Recipients",
+      headerName: "收件人",
       flex: 1,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -135,7 +135,7 @@ export default function AlertReportList() {
       width: 80,
       sortable: false,
       renderCell: (params) => (
-        <Tooltip title="Delete">
+        <Tooltip title="删除">
           <IconButton
             size="small"
             onClick={() =>
@@ -161,11 +161,11 @@ export default function AlertReportList() {
         <>
           <EmptyState
             icon={<NotificationsIcon />}
-            title="No alerts or reports found"
+            title="未找到警报或报告"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Create an alert or report to get notified when conditions are met"
+                ? "请调整搜索条件"
+                : "创建警报或报告以在条件满足时收到通知"
             }
           />
           <EmptyStateShortcutHint />
@@ -228,7 +228,7 @@ export default function AlertReportList() {
                 }}
               />
               <Chip
-                label={row.active ? "Active" : "Inactive"}
+                label={row.active ? "活跃" : "不活跃"}
                 size="small"
                 color={row.active ? "success" : "default"}
                 variant={row.active ? "filled" : "outlined"}
@@ -269,10 +269,10 @@ export default function AlertReportList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Alert/Report"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除警报/报告"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}

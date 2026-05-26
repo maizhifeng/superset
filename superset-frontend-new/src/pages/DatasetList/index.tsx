@@ -46,7 +46,7 @@ export default function DatasetList() {
     endpoint: "/dataset/",
     filterColumn: "table_name",
     pageSize: 25,
-    errorMessage: "Failed to load datasets",
+    errorMessage: "加载数据集失败",
   });
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
@@ -61,7 +61,7 @@ export default function DatasetList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search datasets..."
+            placeholder="搜索数据集..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -73,7 +73,7 @@ export default function DatasetList() {
         showOnMobile: true,
         primary: true,
         fabIcon: <FunctionsIcon />,
-        fabLabel: "New Dataset",
+        fabLabel: "新建数据集",
         action: () => navigate("/dataset/create"),
         render: null,
       },
@@ -83,10 +83,10 @@ export default function DatasetList() {
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
-    { field: "table_name", headerName: "Table Name", flex: 1, minWidth: 120 },
+    { field: "table_name", headerName: "表名称", flex: 1, minWidth: 120 },
     {
       field: "schema",
-      headerName: "Schema",
+      headerName: "模式",
       flex: 0.5,
       minWidth: 80,
       renderCell: (params) => {
@@ -97,20 +97,20 @@ export default function DatasetList() {
     },
     {
       field: "database",
-      headerName: "Database",
+      headerName: "数据库",
       flex: 0.7,
       minWidth: 100,
       valueGetter: (_value, row) => row.database?.database_name ?? "",
     },
     {
       field: "changed_on_delta_humanized",
-      headerName: "Last Modified",
+      headerName: "最后修改",
       flex: 0.6,
       minWidth: 100,
     },
     {
       field: "kind",
-      headerName: "Kind",
+      headerName: "类型",
       flex: 0.4,
       minWidth: 80,
       renderCell: (params) => (
@@ -129,7 +129,7 @@ export default function DatasetList() {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 0.5 }}>
-          <Tooltip title="Edit dataset">
+          <Tooltip title="编辑数据集">
             <IconButton
               size="small"
               onClick={(e) => {
@@ -140,7 +140,7 @@ export default function DatasetList() {
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          <Tooltip title="删除">
             <IconButton
               size="small"
               color="error"
@@ -169,11 +169,11 @@ export default function DatasetList() {
         <>
           <EmptyState
             icon={<TableChartIcon />}
-            title="No datasets found"
+            title="未找到数据集"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Create your first dataset to start building charts"
+                ? "请调整搜索条件"
+                : "创建第一个数据集开始构建图表"
             }
             action={
               !searchText ? (
@@ -182,7 +182,7 @@ export default function DatasetList() {
                   size="small"
                   onClick={() => navigate("/dataset/create")}
                 >
-                  Create Dataset
+                  创建数据集
                 </Button>
               ) : undefined
             }
@@ -249,7 +249,7 @@ export default function DatasetList() {
                 color="text.secondary"
                 sx={{ fontSize: "0.75rem" }}
               >
-                {row.database?.database_name ?? "Unknown"}
+                {row.database?.database_name ?? "未知"}
               </Typography>
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", mt: 0.25 }}>
@@ -271,10 +271,10 @@ export default function DatasetList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Dataset"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除数据集"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}

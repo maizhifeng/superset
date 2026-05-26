@@ -24,17 +24,16 @@ export default function ExploreWelcome() {
         variant="h6"
         sx={{ fontWeight: 600, color: "text.secondary" }}
       >
-        Start Building Your Chart
+        开始构建图表
       </Typography>
       <Typography
         variant="body2"
         color="text.disabled"
         sx={{ textAlign: "center", maxWidth: 360 }}
       >
-        Select a dataset from the dropdown above, then choose dimensions and
-        metrics.
+        从上方下拉列表选择数据集，然后选择维度和指标。
         {}
-        Starfly will suggest a chart type based on your data.
+        Starfly 会根据您的数据建议图表类型。
       </Typography>
       <Box
         sx={{
@@ -46,7 +45,7 @@ export default function ExploreWelcome() {
           fontSize: "0.75rem",
         }}
       >
-        <Typography variant="caption">Select dataset</Typography>
+          <Typography variant="caption">选择数据集</Typography>
         <ArrowDownwardIcon sx={{ fontSize: 14 }} />
       </Box>
     </Box>

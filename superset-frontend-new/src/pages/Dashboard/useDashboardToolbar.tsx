@@ -51,7 +51,7 @@ export default function useDashboardToolbar({
         priority: 5,
         showOnMobile: true,
         fabIcon: <AddIcon />,
-        fabLabel: "Add Chart",
+        fabLabel: "添加图表",
         action: onAddChart,
         render: null,
       },
@@ -60,7 +60,7 @@ export default function useDashboardToolbar({
         priority: 0,
         showOnMobile: false,
         render: (
-          <ChatInput placeholder="Ask anything about this dashboard..." />
+          <ChatInput placeholder="询问关于此仪表板的问题..." />
         ),
       },
       {
@@ -69,7 +69,7 @@ export default function useDashboardToolbar({
         showOnMobile: true,
         primary: true,
         fabIcon: <FilterListIcon />,
-        fabLabel: "Filter",
+        fabLabel: "筛选",
         action: onFilterDrawerOpen,
         render: (
           <FilterToolbarButton
@@ -89,7 +89,7 @@ export default function useDashboardToolbar({
         priority: 20,
         showOnMobile: false,
         fabIcon: <RefreshIcon />,
-        fabLabel: "Refresh",
+        fabLabel: "刷新",
         action: onRefreshAll,
         render: null,
       },
@@ -100,7 +100,7 @@ export default function useDashboardToolbar({
               priority: 25,
               showOnMobile: true,
               fabIcon: <MenuIcon />,
-              fabLabel: "Jump to chart",
+              fabLabel: "跳转到图表",
               action: onOpenNav,
               render: null,
             },

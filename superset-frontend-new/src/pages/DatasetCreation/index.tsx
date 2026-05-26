@@ -36,7 +36,7 @@ export default function DatasetCreation() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(parseErrorMessage(err, "Failed to load databases"));
+        setError(parseErrorMessage(err, "加载数据库失败"));
         setLoading(false);
       });
   }, []);
@@ -98,7 +98,7 @@ export default function DatasetCreation() {
       setSchema("");
       setDatabaseId("");
     } catch (err: unknown) {
-      setSubmitError(parseErrorMessage(err, "Failed to create dataset"));
+      setSubmitError(parseErrorMessage(err, "创建数据集失败"));
     } finally {
       setSubmitting(false);
     }
@@ -107,7 +107,7 @@ export default function DatasetCreation() {
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
-        <PageHeader title="Create Dataset" />
+        <PageHeader title="创建数据集" />
         <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
           <CircularProgress />
         </Box>
@@ -118,7 +118,7 @@ export default function DatasetCreation() {
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
-        <PageHeader title="Create Dataset" />
+        <PageHeader title="创建数据集" />
         <Alert severity="error">{error}</Alert>
       </Box>
     );
@@ -126,10 +126,10 @@ export default function DatasetCreation() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <PageHeader title="Create Dataset" />
+      <PageHeader title="创建数据集" />
       {submitSuccess && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          Dataset created successfully
+          数据集创建成功
         </Alert>
       )}
       {submitError && (
@@ -142,7 +142,7 @@ export default function DatasetCreation() {
       >
         <TextField
           select
-          label="Database"
+          label="数据库"
           value={databaseId}
           onChange={(e) => {
             setDatabaseId(Number(e.target.value));
@@ -159,7 +159,7 @@ export default function DatasetCreation() {
         {databaseId !== "" && (
           <TextField
             select
-            label="Schema"
+            label="模式"
             value={schema}
             onChange={(e) => {
               setSchema(e.target.value);
@@ -169,9 +169,9 @@ export default function DatasetCreation() {
             disabled={schemasLoading}
           >
             {schemasLoading ? (
-              <MenuItem disabled>Loading...</MenuItem>
+              <MenuItem disabled>加载中...</MenuItem>
             ) : schemas.length === 0 ? (
-              <MenuItem disabled>No schemas found</MenuItem>
+              <MenuItem disabled>未找到模式</MenuItem>
             ) : (
               schemas.map((s) => (
                 <MenuItem key={s} value={s}>
@@ -200,9 +200,9 @@ export default function DatasetCreation() {
             renderInput={(params) => (
               <TextField
                 {...params}
-                label="Table Name"
+                label="表名称"
                 fullWidth
-                placeholder="Select or type a table name"
+                placeholder="选择或输入表名称"
               />
             )}
           />
@@ -212,7 +212,7 @@ export default function DatasetCreation() {
           onClick={handleSubmit}
           disabled={submitting || !databaseId || !tableName}
         >
-          {submitting ? <CircularProgress size={24} /> : "Create Dataset"}
+          {submitting ? <CircularProgress size={24} /> : "创建数据集"}
         </Button>
       </Box>
     </Box>

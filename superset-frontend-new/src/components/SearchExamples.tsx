@@ -2,11 +2,11 @@ import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 
 const EXAMPLES = [
-  { label: "revenue by month", query: "revenue by month" },
-  { label: "top customers", query: "top customers" },
-  { label: "sales trends", query: "sales trends" },
-  { label: "user activity", query: "user activity" },
-  { label: "forecast", query: "forecast" },
+  { label: "月度收入", query: "revenue by month" },
+  { label: "头部客户", query: "top customers" },
+  { label: "销售趋势", query: "sales trends" },
+  { label: "用户活跃", query: "user activity" },
+  { label: "预测", query: "forecast" },
 ];
 
 interface SearchExamplesProps {

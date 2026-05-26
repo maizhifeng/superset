@@ -90,7 +90,7 @@ export default function DashboardGrid({
           sx={{ fontSize: 48, color: "text.disabled", mb: 1 }}
         />
         <Typography color="text.secondary" sx={{ mb: 1.5 }}>
-          No charts in this dashboard yet
+          此仪表板暂无图表
         </Typography>
         {onAddChart && (
           <Button
@@ -99,7 +99,7 @@ export default function DashboardGrid({
             startIcon={<AddIcon />}
             onClick={onAddChart}
           >
-            Add Chart
+            添加图表
           </Button>
         )}
       </Box>
@@ -130,7 +130,7 @@ export default function DashboardGrid({
         >
           <CircularProgress size={10} />
           <Typography variant="caption" color="text.secondary">
-            Saving...
+            保存中...
           </Typography>
         </Box>
       )}

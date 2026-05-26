@@ -9,10 +9,10 @@ export default function PageTransition({ children }: { children: ReactNode }) {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        animation: "pageEnter 200ms ease-out both",
+        animation: "pageEnter 350ms cubic-bezier(0.25, 0.1, 0.15, 1) both",
         "@keyframes pageEnter": {
-          from: { opacity: 0 },
-          to: { opacity: 1 },
+          from: { opacity: 0, transform: "translateY(8px)" },
+          to: { opacity: 1, transform: "translateY(0)" },
         },
       }}
     >

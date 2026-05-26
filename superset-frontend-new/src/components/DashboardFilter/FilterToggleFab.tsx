@@ -40,7 +40,7 @@ export default function FilterToggleFab({
   return (
     <>
       <Tooltip
-        title={activeCount > 0 ? `${activeCount} active filters` : "Filters"}
+        title={activeCount > 0 ? `${activeCount} 个活跃筛选` : "筛选"}
       >
         <IconButton onClick={handleClick} size="small" sx={{ p: 0.5 }}>
           <Badge
@@ -71,7 +71,7 @@ export default function FilterToggleFab({
           <ListItemIcon>
             <FilterListIcon fontSize="small" />
           </ListItemIcon>
-          Filter panel
+          筛选面板
         </MenuItem>
         {activeCount > 0 && (
           <MenuItem
@@ -84,7 +84,7 @@ export default function FilterToggleFab({
             <ListItemIcon>
               <ClearAllIcon fontSize="small" />
             </ListItemIcon>
-            Clear all
+            清除全部
           </MenuItem>
         )}
         {hiddenCount > 0 && <Divider />}
@@ -110,7 +110,7 @@ export default function FilterToggleFab({
             dense
             sx={{ fontSize: "0.75rem", color: "text.secondary" }}
           >
-            +{hiddenCount - 20} more
+            +{hiddenCount - 20} 更多
           </MenuItem>
         )}
       </Menu>

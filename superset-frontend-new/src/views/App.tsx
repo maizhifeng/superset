@@ -59,39 +59,39 @@ function GlobalShortcuts() {
   if (!isAuthenticated) return null;
 
   useShortcutWithHelp("shift+/", () => setHelpOpen((prev) => !prev), {
-    label: "Open Keyboard Shortcuts Help",
+    label: "打开快捷键帮助",
     category: "global",
-    description: "Press Shift+? to view all keyboard shortcuts at a glance.",
+    description: "按 Shift+? 查看所有快捷键",
   });
 
   useShortcutWithHelp("g q", () => navigate("/sqllab"), {
-    label: "Navigate to SQL Lab",
+    label: "跳转到 SQL 实验室",
     category: "navigation",
-    description: "Press G + Q to jump directly to SQL Lab.",
+    description: "按 G + Q 直接跳转到 SQL 实验室",
   });
 
   useShortcutWithHelp("g b", () => navigate("/dashboard/list"), {
-    label: "Navigate to Dashboards",
+    label: "跳转到仪表板",
     category: "navigation",
-    description: "Press G + B to browse all dashboards.",
+    description: "按 G + B 浏览所有仪表板",
   });
 
   useShortcutWithHelp("g d", () => navigate("/dataset/list"), {
-    label: "Navigate to Datasets",
+    label: "跳转到数据集",
     category: "navigation",
-    description: "Press G + D to manage your datasets.",
+    description: "按 G + D 管理数据集",
   });
 
   useShortcutWithHelp("g c", () => navigate("/chart/list"), {
-    label: "Navigate to Charts",
+    label: "跳转到图表",
     category: "navigation",
-    description: "Press G + C to see all your charts.",
+    description: "按 G + C 查看所有图表",
   });
 
   useShortcutWithHelp("g h", () => navigate("/"), {
-    label: "Navigate to Home",
+    label: "跳转到首页",
     category: "navigation",
-    description: "Press G + H to return to the home page.",
+    description: "按 G + H 返回首页",
   });
 
   const handleCloseHelp = useCallback(() => setHelpOpen(false), []);

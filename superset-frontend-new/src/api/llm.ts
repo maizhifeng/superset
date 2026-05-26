@@ -1,4 +1,4 @@
-import { getLlmConfig } from "@/config/llm";
+import { getActivePreset } from "@/config/aiConfig";
 
 async function checkResponse(res: Response): Promise<void> {
   if (!res.ok) {
@@ -38,8 +38,9 @@ export async function generateInsightStream(
   userPrompt: string,
   onContent: (token: string) => void,
   onReasoning?: (token: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
-  const { model, baseUrl } = getLlmConfig();
+  const { model, baseUrl } = getActivePreset();
   const body = JSON.stringify({
     model,
     input: userPrompt,
@@ -53,6 +54,7 @@ export async function generateInsightStream(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
+    signal,
   });
 
   await checkResponse(res);

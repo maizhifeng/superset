@@ -68,7 +68,7 @@ function entriesToHints(entries: ShortcutEntry[]): string[] {
   });
 }
 
-const FALLBACK_HINTS = ["Press Shift+? for keyboard shortcuts"];
+const FALLBACK_HINTS = ["按 Shift+? 查看快捷键"];
 
 export function useRotatingShortcutHints(): string[] {
   const [hints, setHints] = useState<string[]>(() =>

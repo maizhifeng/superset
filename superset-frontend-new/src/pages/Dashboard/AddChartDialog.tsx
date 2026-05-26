@@ -60,7 +60,7 @@ export default function AddChartDialog({
         setLoading(false);
       })
       .catch((err) => {
-        setError(parseErrorMessage(err, "Failed to load charts"));
+        setError(parseErrorMessage(err, "加载图表失败"));
         setLoading(false);
       });
   }, [open]);
@@ -90,13 +90,13 @@ export default function AddChartDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add Chart to Dashboard</DialogTitle>
+      <DialogTitle>添加图表到仪表板</DialogTitle>
       <DialogContent sx={{ minHeight: 300 }}>
         <TextField
           autoFocus
           fullWidth
           size="small"
-          placeholder="Search charts..."
+          placeholder="搜索图表..."
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -117,8 +117,8 @@ export default function AddChartDialog({
         {!loading && !error && filtered.length === 0 && (
           <Box sx={{ textAlign: "center", py: 4, color: "text.secondary" }}>
             {search
-              ? "No charts match your search"
-              : "No charts available to add"}
+              ? "没有匹配的图表"
+              : "没有可添加的图表"}
           </Box>
         )}
         <List dense sx={{ maxHeight: 360, overflow: "auto" }}>
@@ -152,13 +152,13 @@ export default function AddChartDialog({
         </List>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>取消</Button>
         <Button
           variant="contained"
           onClick={handleConfirm}
           disabled={selectedId == null}
         >
-          Add Chart
+          添加图表
         </Button>
       </DialogActions>
     </Dialog>

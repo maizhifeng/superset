@@ -17,8 +17,11 @@ import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import MenuItem from "@mui/material/MenuItem";
 import Menu from "@mui/material/Menu";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import MenuIcon from "@mui/icons-material/Menu";
+
+
 import { useAuthStore } from "@/store/authStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useToolbar } from "@/contexts/ToolbarContext";
@@ -26,6 +29,7 @@ import { useMenuSettings } from "@/store/menuSettings";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import GlobalSnackbar from "@/components/GlobalSnackbar";
 import ChatInput from "@/components/ChatInput";
+import AiAssistantDrawer from "@/components/AiAssistantDrawer";
 import TourGuide from "@/components/TourGuide";
 import ContextTip from "@/components/ContextTip";
 import SearchExamples from "@/components/SearchExamples";
@@ -70,6 +74,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     null,
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const pageTip = usePageTip();
@@ -81,9 +86,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       setSearchOpen((prev) => !prev);
     },
     {
-      label: "Open Search",
+      label: "搜索",
       category: "global",
-      description: "Press / to search dashboards, charts, datasets, and more.",
+      description: "按 / 搜索仪表板、图表、数据集等",
     },
   );
 
@@ -209,7 +214,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        bgcolor: "grey.100",
+        bgcolor: "background.default",
       }}
     >
       <AppBar
@@ -332,7 +337,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <Box onClick={(e) => e.stopPropagation()}>
                   <ChatInput
                     autoFocus
-                    placeholder="Ask anything about your data..."
+                    placeholder="询问关于数据的问题..."
                     disableMaxWidth
                     value={searchQuery}
                     onChange={setSearchQuery}
@@ -341,6 +346,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 </Box>
               </DialogContent>
             </Dialog>
+            <IconButton
+              size="small"
+              onClick={() => setAiAssistantOpen(true)}
+              sx={{ color: "primary.main", mr: 0.5 }}
+            >
+              <AutoAwesomeIcon sx={{ fontSize: 20 }} />
+            </IconButton>
             <AppBreadcrumbs
               items={breadcrumbItems}
               customStatus={breadcrumbCustom?.status}
@@ -464,8 +476,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               ))}
             </Menu>
           </Box>
-        </Toolbar>
-      </AppBar>
+          </Toolbar>
+        </AppBar>
 
       <Box
         component="main"
@@ -483,6 +495,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </Box>
       <TourGuide />
       <GlobalSnackbar />
+      <AiAssistantDrawer
+        open={aiAssistantOpen}
+        onClose={() => setAiAssistantOpen(false)}
+      />
       <MobileDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
