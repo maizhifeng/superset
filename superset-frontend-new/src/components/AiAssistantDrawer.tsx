@@ -16,7 +16,10 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import StorageIcon from "@mui/icons-material/Storage";
+import ArticleIcon from "@mui/icons-material/Article";
 import AiConfigDialog from "@/components/AiConfigDialog";
+import LightMdRenderer from "@/components/LightMdRenderer";
+import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { blink } from "@/theme/keyframes";
@@ -41,6 +44,12 @@ interface KnowledgeCard {
 }
 
 const knowledgeCards: KnowledgeCard[] = [
+  {
+    title: "生成日报",
+    description: "一键生成昨日数据日报，含项目、渠道、媒体多维分析",
+    icon: <ArticleIcon sx={{ fontSize: 24 }} />,
+    prompt: DAILY_REPORT_PROMPT,
+  },
   {
     title: "使用手册",
     description: "平台功能、操作指南与最佳实践",
@@ -177,6 +186,51 @@ function useAiChat() {
     }
   };
 
+  const startDailyReport = async (reportPrompt: string, promptTemplate: string) => {
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    // Show loading state immediately
+    setMessages([{ role: "user", content: "📊 正在从数据集查询昨日数据..." }]);
+    setLoading(true);
+    setCurrentText("");
+    setSessionKey((k) => k + 1);
+
+    try {
+      const { fetchDailyReportData } = await import("@/api/dailyReport");
+      const { summaryContext } = await fetchDailyReportData();
+
+      const fullPrompt = [
+        promptTemplate,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据生成完整日报。",
+      ].join("\n");
+
+      setMessages([{ role: "user", content: reportPrompt }]);
+
+      const fullContent = await streamChat(fullPrompt, abort.signal);
+      setMessages((prev) => [...prev, { role: "assistant", content: fullContent }]);
+      setCurrentText("");
+    } catch (e: unknown) {
+      if ((e as Error).name === "AbortError") return;
+      setCurrentText("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const stop = () => {
     abortRef.current?.abort();
     setLoading(false);
@@ -191,7 +245,7 @@ function useAiChat() {
     setSessionKey((k) => k + 1);
   };
 
-  return { messages, loading, currentText, sessionKey, sendMessage, startNewChat, stop, clear };
+  return { messages, loading, currentText, sessionKey, sendMessage, startNewChat, startDailyReport, stop, clear };
 }
 
 function ChatBubble({ msg }: { msg: Message }) {
@@ -216,7 +270,7 @@ function ChatBubble({ msg }: { msg: Message }) {
       )}
       <Box
         sx={{
-          maxWidth: "80%",
+          maxWidth: "92%",
           px: 1.5,
           py: 1,
           borderRadius: 2,
@@ -226,12 +280,13 @@ function ChatBubble({ msg }: { msg: Message }) {
           borderColor: "divider",
           fontSize: "0.8125rem",
           lineHeight: 1.6,
-          whiteSpace: "pre-wrap",
+          whiteSpace: isUser ? "pre-wrap" : undefined,
           wordBreak: "break-word",
           boxShadow: isUser ? "none" : "0 1px 2px rgba(0,0,0,0.04)",
+          overflow: "hidden",
         }}
       >
-        {msg.content}
+        {isUser ? msg.content : <LightMdRenderer content={msg.content} />}
       </Box>
       {isUser && (
         <FaceIcon
@@ -251,7 +306,7 @@ export default function AiAssistantDrawer({
   open,
   onClose,
 }: AiAssistantDrawerProps) {
-  const { messages, loading, currentText, sessionKey, sendMessage, startNewChat, stop, clear } =
+  const { messages, loading, currentText, sessionKey, sendMessage, startNewChat, startDailyReport, stop, clear } =
     useAiChat();
   const [input, setInput] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
@@ -270,7 +325,11 @@ export default function AiAssistantDrawer({
     if (card.docKey) {
       setActiveDoc(card.docKey);
     } else if (card.prompt) {
-      startNewChat(card.prompt);
+      if (card.title === "生成日报") {
+        startDailyReport("请生成昨日数据日报", card.prompt);
+      } else {
+        startNewChat(card.prompt);
+      }
     }
   };
 
@@ -290,7 +349,7 @@ export default function AiAssistantDrawer({
       slotProps={{
         paper: {
           sx: {
-            width: { xs: "100vw", md: 420 },
+            width: { xs: "100vw", md: "50vw" },
             top: 0,
             height: "100vh",
             borderRight: "none",
@@ -483,7 +542,7 @@ export default function AiAssistantDrawer({
               />
               <Box
                 sx={{
-                  maxWidth: "80%",
+                  maxWidth: "92%",
                   px: 1.5,
                   py: 1,
                   borderRadius: 2,
@@ -492,12 +551,12 @@ export default function AiAssistantDrawer({
                   borderColor: "divider",
                   fontSize: "0.8125rem",
                   lineHeight: 1.6,
-                  whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                   boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                  overflow: "hidden",
                 }}
               >
-                {currentText}
+                <LightMdRenderer content={currentText} />
                 <Box
                   component="span"
                   sx={{

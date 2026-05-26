@@ -515,14 +515,19 @@ export default function DatasetEdit() {
                                   const colId = (
                                     row as typeof row & { id: number }
                                   ).id;
+                                  const hasMod =
+                                    Object.prototype.hasOwnProperty.call(
+                                      modifiedColumns,
+                                      colId,
+                                    );
                                   const modified = modifiedColumns[colId];
-                                  const currentExtra =
-                                    modified?.extra ??
-                                    (
-                                      row as typeof row & {
-                                        extra?: string | null;
-                                      }
-                                    ).extra;
+                                  const currentExtra = hasMod
+                                    ? modified?.extra ?? null
+                                    : (
+                                        row as typeof row & {
+                                          extra?: string | null;
+                                        }
+                                      ).extra;
                                   let parsed: Record<string, unknown> = {};
                                   try {
                                     parsed = currentExtra
