@@ -1,12 +1,12 @@
 import { type ReactNode } from "react";
-import { keyframes } from "@mui/material";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import TableSkeleton from "@/components/TableSkeleton";
+import { keyframes } from "@mui/material";
 
 const contentFadeIn = keyframes`
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 `;
 
 interface ListPageLayoutProps {
@@ -62,7 +62,7 @@ export default function ListPageLayout({
         overflow: "auto",
         p: 3,
         pt: 2,
-        animation: `${contentFadeIn} 350ms ease-out both`,
+        animation: `${contentFadeIn} 400ms cubic-bezier(0.25, 0.1, 0.15, 1) both`,
       }}
     >
       {!hasData && !loading ? (

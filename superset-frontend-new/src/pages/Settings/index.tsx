@@ -30,11 +30,11 @@ export default function Settings() {
 
   const handleAdd = () => {
     if (!newPath.trim()) {
-      setAddError("Path is required");
+      setAddError("路径不能为空");
       return;
     }
     if (!newLabel.trim()) {
-      setAddError("Label is required");
+      setAddError("标签不能为空");
       return;
     }
     const formattedPath = newPath.startsWith("/")
@@ -48,7 +48,7 @@ export default function Settings() {
 
   return (
     <Box sx={{ p: 3, maxWidth: "md", mx: "auto" }}>
-      <PageHeader title="Settings" subtitle="Customize your navigation menu" />
+      <PageHeader title="设置" subtitle="自定义导航菜单" />
 
       <Typography
         variant="subtitle2"
@@ -59,7 +59,7 @@ export default function Settings() {
           fontSize: "0.8125rem",
         }}
       >
-        Navigation Items
+        导航项
       </Typography>
 
       <Paper
@@ -101,7 +101,7 @@ export default function Settings() {
               </Typography>
             </Box>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-              <Tooltip title="Move up">
+              <Tooltip title="上移">
                 <span>
                   <IconButton
                     size="small"
@@ -112,7 +112,7 @@ export default function Settings() {
                   </IconButton>
                 </span>
               </Tooltip>
-              <Tooltip title="Move down">
+              <Tooltip title="下移">
                 <span>
                   <IconButton
                     size="small"
@@ -130,7 +130,7 @@ export default function Settings() {
               size="small"
             />
             {!item.builtIn && (
-              <Tooltip title="Remove">
+              <Tooltip title="移除">
                 <IconButton
                   size="small"
                   color="error"
@@ -153,7 +153,7 @@ export default function Settings() {
           fontSize: "0.8125rem",
         }}
       >
-        Add Custom Route
+        添加自定义路由
       </Typography>
 
       <Paper
@@ -192,7 +192,7 @@ export default function Settings() {
           />
           <TextField
             size="small"
-            placeholder="Label"
+            placeholder="标签"
             value={newLabel}
             onChange={(e) => setNewLabel(e.target.value)}
             sx={{ minWidth: 140, flex: 1 }}
@@ -204,7 +204,7 @@ export default function Settings() {
             onClick={handleAdd}
             sx={{ flexShrink: 0 }}
           >
-            Add
+            添加
           </Button>
         </Box>
         {addError && (

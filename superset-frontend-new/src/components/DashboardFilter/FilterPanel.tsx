@@ -155,7 +155,7 @@ function FilterSelect({
       limitTags={2}
       getOptionLabel={(o) => o.label}
       isOptionEqualToValue={(o, v) => o.value === v.value}
-      noOptionsText="No matches"
+      noOptionsText="无匹配"
       sx={{
         "& .MuiInputBase-root": { minHeight: 36 },
         "& .MuiInputBase-input": {
@@ -180,7 +180,7 @@ function FilterSelect({
         <TextField
           {...params}
           label={filter.name}
-          placeholder={searchTerm ? "Type to search..." : "Select..."}
+          placeholder={searchTerm ? "输入搜索..." : "选择..."}
           slotProps={{
             ...params.slotProps,
             input: {
@@ -230,7 +230,7 @@ function FilterText({
       size="small"
       fullWidth
       label={label}
-      placeholder="Type..."
+      placeholder="输入..."
       value={local}
       onChange={(e) => handleChange(e.target.value)}
       sx={{
@@ -263,7 +263,7 @@ function FilterNumericalRange({
       <TextField
         size="small"
         type="number"
-        placeholder="Min"
+        placeholder="最小值"
         value={range[0] ?? ""}
         onChange={(e) => {
           const min = e.target.value ? Number(e.target.value) : undefined;
@@ -277,7 +277,7 @@ function FilterNumericalRange({
       <TextField
         size="small"
         type="number"
-        placeholder="Max"
+        placeholder="最大值"
         value={range[1] ?? ""}
         onChange={(e) => {
           const max = e.target.value ? Number(e.target.value) : undefined;
@@ -454,7 +454,7 @@ export default function FilterPanel({
             sx={{ fontSize: 28, color: "text.disabled", mb: 0.5 }}
           />
           <Typography variant="body2" color="text.secondary">
-            No filters configured for this dashboard.
+            此仪表板未配置筛选条件。
           </Typography>
         </Box>
       ) : (

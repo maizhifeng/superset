@@ -239,7 +239,7 @@ export default function CompareConfigModal({
     <Dialog open={open} onClose={onCancel} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <CompareArrowsIcon sx={{ fontSize: 20, color: "primary.main" }} />
-        Compare Table
+        对比表格
       </DialogTitle>
       <DialogContent
         sx={{
@@ -273,7 +273,7 @@ export default function CompareConfigModal({
                     <TextField
                       {...params}
                       label={`Dimension ${index + 1}`}
-                      placeholder="Select dimension"
+                      placeholder="选择维度"
                       size="small"
                     />
                   )}
@@ -293,8 +293,8 @@ export default function CompareConfigModal({
                     renderInput={(params) => (
                       <TextField
                         {...params}
-                        label="Values"
-                        placeholder="Select values"
+                        label="值"
+                        placeholder="选择值"
                         size="small"
                       />
                     )}
@@ -308,7 +308,7 @@ export default function CompareConfigModal({
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                   >
                     <InfoIcon sx={{ fontSize: 13 }} />
-                    Chart data not available
+                    图表数据不可用
                   </Typography>
                 )}
                 {rule.dimension &&
@@ -320,7 +320,7 @@ export default function CompareConfigModal({
                       sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                     >
                       <FilterAltOffIcon sx={{ fontSize: 13 }} />
-                      No matching values from previous filters
+                      没有匹配之前筛选条件的值
                     </Typography>
                   )}
               </Box>
@@ -342,12 +342,12 @@ export default function CompareConfigModal({
           size="small"
           sx={{ alignSelf: "flex-start" }}
         >
-          Add dimension
+          添加维度
         </Button>
       </DialogContent>
       <DialogActions>
         <Button onClick={onCancel} startIcon={<CloseIcon />}>
-          Cancel
+          取消
         </Button>
         <Button
           onClick={handleApply}
@@ -355,7 +355,7 @@ export default function CompareConfigModal({
           disabled={!canApply}
           startIcon={<CheckIcon />}
         >
-          Apply
+          应用
         </Button>
       </DialogActions>
     </Dialog>

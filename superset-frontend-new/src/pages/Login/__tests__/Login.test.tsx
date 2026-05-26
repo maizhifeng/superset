@@ -31,19 +31,19 @@ function renderLogin() {
 test("renders login form", () => {
   renderLogin();
   expect(screen.getByText("starfly")).toBeInTheDocument();
-  expect(screen.getByText("Sign in to continue")).toBeInTheDocument();
-  expect(screen.getByLabelText("Username")).toBeInTheDocument();
-  expect(screen.getByLabelText("Password")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Sign In" })).toBeInTheDocument();
+  expect(screen.getByText("登录以继续")).toBeInTheDocument();
+  expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+  expect(screen.getByLabelText("密码")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
 });
 
 test("shows error on failed login", async () => {
   mockLogin.mockRejectedValue(new Error("Invalid credentials"));
   renderLogin();
 
-  await userEvent.type(screen.getByLabelText("Username"), "admin");
-  await userEvent.type(screen.getByLabelText("Password"), "wrong");
-  await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+  await userEvent.type(screen.getByLabelText("用户名"), "admin");
+  await userEvent.type(screen.getByLabelText("密码"), "wrong");
+  await userEvent.click(screen.getByRole("button", { name: "登录" }));
 
   expect(await screen.findByText("Invalid credentials")).toBeInTheDocument();
 });
@@ -52,16 +52,16 @@ test("navigates to home on successful login", async () => {
   mockLogin.mockResolvedValue(undefined);
   renderLogin();
 
-  await userEvent.type(screen.getByLabelText("Username"), "admin");
-  await userEvent.type(screen.getByLabelText("Password"), "pass");
-  await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+  await userEvent.type(screen.getByLabelText("用户名"), "admin");
+  await userEvent.type(screen.getByLabelText("密码"), "pass");
+  await userEvent.click(screen.getByRole("button", { name: "登录" }));
 
-  await screen.findByText("Sign In");
+  await screen.findByText("登录");
   expect(window.location.href).toBe("http://localhost:3000/");
 });
 
 test("renders with username autoFocus", () => {
   renderLogin();
-  const usernameInput = screen.getByLabelText("Username");
+  const usernameInput = screen.getByLabelText("用户名");
   expect(document.activeElement).toBe(usernameInput);
 });

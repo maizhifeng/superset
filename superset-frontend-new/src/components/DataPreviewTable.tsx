@@ -163,7 +163,7 @@ export default function DataPreviewTable({
           stickyHeader
           size="small"
           sx={{
-            "& .MuiTableCell-root": { py: 0.5, px: 1, fontSize: "0.75rem" },
+            "& .MuiTableCell-root": { py: 0.5, px: 1, fontSize: "0.75rem", whiteSpace: "nowrap" },
           }}
         >
           <TableHead
@@ -185,7 +185,7 @@ export default function DataPreviewTable({
                     color="text.secondary"
                     sx={{ py: 2, display: "block" }}
                   >
-                    No data
+                    无数据
                   </Typography>
                 </TableCell>
               ) : (
@@ -342,7 +342,7 @@ export default function DataPreviewTable({
               py: 0.25,
             }}
           >
-            ‹ Prev
+            ‹ 上一页
           </Box>
           <Box
             component="button"
@@ -358,7 +358,7 @@ export default function DataPreviewTable({
               py: 0.25,
             }}
           >
-            Next ›
+            下一页 ›
           </Box>
         </Box>
       )}

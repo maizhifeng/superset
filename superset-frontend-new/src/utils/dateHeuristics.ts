@@ -64,7 +64,7 @@ export function generateDateExpression(
 ): string {
   switch (format) {
     case "YYYYMMDD":
-      return `CASE WHEN ${columnName} > 0 THEN TO_DATE(CAST(${columnName} AS TEXT), 'YYYYMMDD') END`;
+      return `CASE WHEN ${columnName} > 0 AND LENGTH(CAST(${columnName} AS TEXT)) = 8 THEN TO_DATE(CAST(${columnName} AS TEXT), 'YYYYMMDD') END`;
     case "unix_ms":
       return `CASE WHEN ${columnName} > 0 THEN (TIMESTAMP 'epoch' + (${columnName} / 1000) * INTERVAL '1 second') END`;
     case "unix_seconds":

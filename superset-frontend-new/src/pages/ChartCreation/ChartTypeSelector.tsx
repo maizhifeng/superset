@@ -27,12 +27,12 @@ interface ChartTypeMeta {
 }
 
 const chartTypeMeta: ChartTypeMeta[] = [
-  { value: "auto", icon: <AutoFixHighIcon />, label: "Auto" },
-  { value: "line", icon: <ShowChartIcon />, label: "Line" },
-  { value: "bar", icon: <BarChartIcon />, label: "Bar" },
-  { value: "pie", icon: <DonutSmallIcon />, label: "Pie" },
-  { value: "table", icon: <TableChartIcon />, label: "Table" },
-  { value: "big_number", icon: <PinIcon />, label: "Big Number" },
+  { value: "auto", icon: <AutoFixHighIcon />, label: "自动" },
+  { value: "line", icon: <ShowChartIcon />, label: "折线" },
+  { value: "bar", icon: <BarChartIcon />, label: "柱状" },
+  { value: "pie", icon: <DonutSmallIcon />, label: "饼图" },
+  { value: "table", icon: <TableChartIcon />, label: "表格" },
+  { value: "big_number", icon: <PinIcon />, label: "大数字" },
 ];
 
 interface ChartTypeSelectorProps {

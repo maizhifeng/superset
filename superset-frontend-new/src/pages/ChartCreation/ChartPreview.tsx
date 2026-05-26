@@ -78,15 +78,15 @@ export default function ChartPreview({
       >
         {!datasourceId ? (
           <Typography variant="body2" color="text.disabled">
-            Select a dataset to see preview
+            选择数据集以查看预览
           </Typography>
         ) : !hasValidType ? (
           <Typography variant="body2" color="text.disabled">
-            Analyzing data for best chart type...
+            正在分析数据以获取最佳图表类型...
           </Typography>
         ) : metrics.length === 0 ? (
           <Typography variant="body2" color="text.disabled">
-            Select at least one metric
+            请至少选择一个指标
           </Typography>
         ) : loadingData && !chartData ? (
           <CircularProgress size={24} />
@@ -131,7 +131,7 @@ export default function ChartPreview({
           <CircularProgress size={20} />
         ) : chartData ? (
           <Typography variant="body2" color="text.disabled">
-            No data returned
+            未返回数据
           </Typography>
         ) : (
           <CircularProgress size={24} />

@@ -32,22 +32,22 @@ import type { SortModel } from "@/hooks/usePaginatedList";
 import type { ChartRow } from "@/types/api";
 
 const vizTypeLabels: Record<string, string> = {
-  line: "Line Chart",
-  bar: "Bar Chart",
-  table: "Table",
-  pie: "Pie Chart",
-  histogram: "Histogram",
-  scatter: "Scatter Plot",
-  big_number: "Big Number",
-  big_number_total: "Big Number Total",
-  time_table: "Time Table",
-  box_plot: "Box Plot",
-  treemap: "Treemap",
-  heatmap: "Heatmap",
-  word_cloud: "Word Cloud",
-  sunburst: "Sunburst",
-  sankey: "Sankey",
-  map: "Map",
+  line: "折线图",
+  bar: "柱状图",
+  table: "表格",
+  pie: "饼图",
+  histogram: "直方图",
+  scatter: "散点图",
+  big_number: "大数字",
+  big_number_total: "大数字总计",
+  time_table: "时间表",
+  box_plot: "箱线图",
+  treemap: "矩形树图",
+  heatmap: "热力图",
+  word_cloud: "词云",
+  sunburst: "旭日图",
+  sankey: "桑基图",
+  map: "地图",
   deckgl: "Deck.gl",
 };
 
@@ -73,7 +73,7 @@ export default function ChartList() {
   } = usePaginatedList<ChartRow>({
     endpoint: "/chart/",
     filterColumn: "slice_name",
-    errorMessage: "Failed to load charts",
+    errorMessage: "加载图表失败",
     sortFieldMap: { created_by: "created_by.username" },
     defaultSortModel: [{ field: "changed_on_delta_humanized", sort: "desc" }],
   });
@@ -90,7 +90,7 @@ export default function ChartList() {
           <FilterBar
             value=""
             onChange={handleSearchChange}
-            placeholder="Search charts..."
+            placeholder="搜索图表..."
             compact
             sx={{ minWidth: 220 }}
           />
@@ -102,7 +102,7 @@ export default function ChartList() {
         showOnMobile: true,
         primary: true,
         fabIcon: <BarChartIcon />,
-        fabLabel: "New Chart",
+        fabLabel: "新建图表",
         action: () => navigate("/explore"),
         render: null,
       },
@@ -114,7 +114,7 @@ export default function ChartList() {
     { field: "id", headerName: "ID", width: 70 },
     {
       field: "slice_name",
-      headerName: "Chart Name",
+      headerName: "图表名称",
       flex: 1,
       renderCell: (params) => (
         <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -124,7 +124,7 @@ export default function ChartList() {
     },
     {
       field: "viz_type",
-      headerName: "Type",
+      headerName: "类型",
       flex: 0.4,
       minWidth: 100,
       renderCell: (params) => (
@@ -138,7 +138,7 @@ export default function ChartList() {
     },
     {
       field: "datasource_name_text",
-      headerName: "Dataset",
+      headerName: "数据集",
       flex: 0.7,
       minWidth: 120,
       valueGetter: (_value, row) =>
@@ -172,14 +172,14 @@ export default function ChartList() {
     },
     {
       field: "created_by",
-      headerName: "Created By",
+      headerName: "创建者",
       flex: 0.4,
       minWidth: 100,
       valueGetter: (_value, row) => row.created_by?.username ?? "",
     },
     {
       field: "changed_on_delta_humanized",
-      headerName: "Last Modified",
+      headerName: "最后修改",
       flex: 0.4,
     },
     {
@@ -189,7 +189,7 @@ export default function ChartList() {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", gap: 0.5 }}>
-          <Tooltip title="Edit chart">
+          <Tooltip title="编辑图表">
             <IconButton
               size="small"
               onClick={(e) => {
@@ -200,7 +200,7 @@ export default function ChartList() {
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Delete">
+          <Tooltip title="删除">
             <IconButton
               size="small"
               onClick={(e) => {
@@ -232,11 +232,11 @@ export default function ChartList() {
         <>
           <EmptyState
             icon={<BarChartIcon />}
-            title="No charts found"
+            title="未找到图表"
             description={
               searchText
-                ? "Try adjusting your search query"
-                : "Create your first chart to get started with data visualization"
+                ? "请调整搜索条件"
+                : "创建第一个图表开始数据可视化"
             }
             action={
               !searchText ? (
@@ -245,7 +245,7 @@ export default function ChartList() {
                   size="small"
                   onClick={() => navigate("/explore")}
                 >
-                  Create Chart
+                  创建图表
                 </Button>
               ) : undefined
             }
@@ -319,7 +319,7 @@ export default function ChartList() {
               >
                 {row.datasource_name_text ||
                   row.table?.table_name ||
-                  "Unknown"}
+                  "未知"}
               </Typography>
             </Box>
             <Box
@@ -334,7 +334,7 @@ export default function ChartList() {
                 color="text.disabled"
                 sx={{ fontSize: "0.75rem" }}
               >
-                {row.created_by?.username ?? "N/A"}
+                {row.created_by?.username ?? "无"}
                 {row.changed_on_delta_humanized
                   ? ` · ${row.changed_on_delta_humanized}`
                   : ""}
@@ -350,10 +350,10 @@ export default function ChartList() {
       )}
       <ConfirmModal
         open={!!deleteTarget}
-        title="Delete Chart"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
+        title="删除图表"
+        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+        confirmText="删除"
+        cancelText="取消"
         confirmLoading={deleteLoading}
         danger
         onConfirm={handleDelete}

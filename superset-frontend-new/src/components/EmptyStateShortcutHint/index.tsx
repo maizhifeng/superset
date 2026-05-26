@@ -7,7 +7,7 @@ interface EmptyStateShortcutHintProps {
 }
 
 export default function EmptyStateShortcutHint({
-  message = "Press Shift+? to view all keyboard shortcuts",
+  message = "按 Shift+? 查看所有快捷键",
 }: EmptyStateShortcutHintProps) {
   return (
     <Box

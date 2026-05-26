@@ -99,9 +99,9 @@ export default function ProjectConfig() {
         count++;
       }
       await fetchRows();
-      setSuccess(`Synced ${count} entries`);
+      setSuccess(`已同步 ${count} 条`);
     } catch (err: unknown) {
-      setError(parseErrorMessage(err, "Sync failed"));
+      setError(parseErrorMessage(err, "同步失败"));
     } finally {
       setSyncing(false);
     }
@@ -117,9 +117,9 @@ export default function ProjectConfig() {
         updated_at: row.updated_at,
         上线时间: row.上线时间,
       });
-      setSuccess(`Saved ${row.papp_name}`);
+      setSuccess(`已保存 ${row.papp_name}`);
     } catch (err: unknown) {
-      setError(parseErrorMessage(err, "Failed to save"));
+      setError(parseErrorMessage(err, "保存失败"));
     } finally {
       setSaving((prev) => ({ ...prev, [row.papp_id]: false }));
     }
@@ -138,7 +138,7 @@ export default function ProjectConfig() {
         priority: 20,
         showOnMobile: true,
         fabIcon: <SyncIcon />,
-        fabLabel: "Sync",
+        fabLabel: "同步",
         action: handleSync,
         render: null,
       },
@@ -161,7 +161,7 @@ export default function ProjectConfig() {
   if (loading) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-        <Typography variant="body2" color="text.secondary">Loading...</Typography>
+        <Typography variant="body2" color="text.secondary">加载中...</Typography>
       </Box>
     );
   }
@@ -191,7 +191,7 @@ export default function ProjectConfig() {
         }}
       >
         <CardHeader
-          title={`Games (${totalRows})`}
+          title={`游戏 (${totalRows})`}
           sx={cardHeaderSx}
           action={
             <Box sx={{ display: "flex", gap: 1, pr: 0.5 }}>
@@ -202,7 +202,7 @@ export default function ProjectConfig() {
                 onClick={handleSync}
                 disabled={syncing}
               >
-                {syncing ? "Syncing..." : "Sync"}
+                {syncing ? "同步中..." : "同步"}
               </Button>
             </Box>
           }
@@ -211,7 +211,7 @@ export default function ProjectConfig() {
           <CardContent sx={{ flex: 1 }}>
             <Box sx={{ textAlign: "center", py: 6 }}>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                No data loaded. Click Sync to load from database.
+                未加载数据。点击同步从数据库加载。
               </Typography>
               <Button
                 variant="outlined"
@@ -219,7 +219,7 @@ export default function ProjectConfig() {
                 onClick={handleSync}
                 disabled={syncing}
               >
-                {syncing ? "Syncing..." : "Sync"}
+                {syncing ? "同步中..." : "同步"}
               </Button>
             </Box>
           </CardContent>

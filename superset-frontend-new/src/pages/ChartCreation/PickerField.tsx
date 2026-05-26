@@ -241,7 +241,7 @@ export default function PickerField({
   selected,
   onChange,
   loading,
-  placeholder = "Select...",
+  placeholder = "选择...",
   singleSelect,
   hideGroups,
   hideHeader,
@@ -382,14 +382,14 @@ export default function PickerField({
                 {label}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {singleSelect ? "" : `${selected.length} selected`}
+                {singleSelect ? "" : `${selected.length} 已选择`}
               </Typography>
             </Box>
           )}
 
           <Box sx={{ px: 2, py: 1 }}>
             <TextField
-              placeholder={`Search ${label.toLowerCase()}...`}
+              placeholder={`搜索 ${label.toLowerCase()}...`}
               size="small"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -442,7 +442,7 @@ export default function PickerField({
                       fontSize: "0.7rem",
                     }}
                   >
-                    SELECTED ({selectedOptions.length})
+                    已选择 ({selectedOptions.length})
                   </Typography>
                 </Box>
                 <Box>
@@ -514,12 +514,12 @@ export default function PickerField({
                     fontSize: "0.7rem",
                   }}
                 >
-                  {searchQuery ? "SEARCH RESULTS" : "AVAILABLE"}
+                  {searchQuery ? "搜索结果" : "可用"}
                 </Typography>
               </Box>
               {unselectedOptions.length === 0 ? (
                 <Box sx={{ px: 2, py: 3, textAlign: "center", color: "text.secondary" }}>
-                  <Typography variant="body2">No options available</Typography>
+                  <Typography variant="body2">无可用选项</Typography>
                 </Box>
               ) : (
                 unselectedOptions.map((opt) => (
@@ -536,7 +536,7 @@ export default function PickerField({
 
           <Box sx={{ px: 2, py: 1, borderTop: "1px solid", borderColor: "divider", display: "flex", justifyContent: "flex-end", bgcolor: "grey.50" }}>
             <Chip
-              label="Done"
+              label="完成"
               size="small"
               onClick={() => setAnchorEl(null)}
               variant="outlined"

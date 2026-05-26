@@ -17,7 +17,7 @@ interface FilterBarProps {
 export default function FilterBar({
   value,
   onChange,
-  placeholder = "Search...",
+  placeholder = "搜索...",
   sx,
   compact = false,
 }: FilterBarProps) {

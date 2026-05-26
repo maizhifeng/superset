@@ -261,7 +261,7 @@ function SwipeableCard({
               lineHeight: 1,
             }}
           >
-            Delete
+            删除
           </Typography>
         </Box>
       </Box>

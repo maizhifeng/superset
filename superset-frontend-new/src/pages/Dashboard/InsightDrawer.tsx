@@ -5,9 +5,7 @@ import IconButton from "@mui/material/IconButton";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
-import Collapse from "@mui/material/Collapse";
 import Drawer from "@mui/material/Drawer";
-import { keyframes } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import ContentCopy from "@mui/icons-material/ContentCopy";
@@ -15,20 +13,11 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
 import SettingsIcon from "@mui/icons-material/Settings";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
-import InputLabel from "@mui/material/InputLabel";
-import FormControl from "@mui/material/FormControl";
 import type { ChartData } from "@/types/api";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useNotificationStore } from "@/store/notificationStore";
-import { PRESETS } from "@/api/aiModelConfig";
+import AiConfigDialog from "@/components/AiConfigDialog";
 import InsightSectionCard from "@/pages/Dashboard/InsightSectionCard";
-
-const blink = keyframes`
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-`;
 
 interface InsightDrawerProps {
   open: boolean;
@@ -76,8 +65,6 @@ export default function InsightDrawer({
     sendMessage,
     clear,
     stop,
-    modelConfig,
-    updateModelConfig,
   } = useInsight();
 
   const sections = useMemo(() => {
@@ -95,7 +82,7 @@ export default function InsightDrawer({
 
   const notify = useNotificationStore((s) => s.notify);
   const [followUp, setFollowUp] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const prevOpenRef = useRef(open);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -107,10 +94,10 @@ export default function InsightDrawer({
   useEffect(() => {
     if (open && !prevOpenRef.current) {
       clear();
-      setSettingsOpen(false);
+      setConfigOpen(false);
       setFollowUp("");
     } else if (!open) {
-      setSettingsOpen(false);
+      setConfigOpen(false);
     }
     prevOpenRef.current = open;
   }, [open, clear]);
@@ -177,36 +164,14 @@ export default function InsightDrawer({
             <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }}>
               AI 洞察分析
             </Typography>
-            <IconButton size="small" onClick={() => setSettingsOpen((v) => !v)} sx={{ mr: 0.5 }}>
+            <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
+            <IconButton size="small" onClick={() => setConfigOpen(true)} sx={{ mr: 0.5 }}>
               <SettingsIcon sx={{ fontSize: 20 }} />
             </IconButton>
             <IconButton size="small" onClick={handleClose}>
               <CloseIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Box>
-
-          <Collapse in={settingsOpen}>
-            <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid", borderColor: "divider", display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>预设方案</InputLabel>
-                <Select value="" label="预设方案"
-                  onChange={(e) => {
-                    const p = PRESETS.find((p) => p.label === e.target.value);
-                    if (p) updateModelConfig({ provider: p.provider, model: p.model });
-                  }}>
-                  {PRESETS.map((p) => <MenuItem key={p.label} value={p.label}>{p.label}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <Box sx={{ display: "flex", gap: 1.5 }}>
-                <TextField size="small" label="供应商（Provider ID）" value={modelConfig.provider}
-                  onChange={(e) => updateModelConfig({ ...modelConfig, provider: e.target.value })}
-                  sx={{ flex: 1 }} />
-                <TextField size="small" label="模型（Model ID）" value={modelConfig.model}
-                  onChange={(e) => updateModelConfig({ ...modelConfig, model: e.target.value })}
-                  sx={{ flex: 1 }} />
-              </Box>
-            </Box>
-          </Collapse>
 
           <Box
             ref={scrollRef}

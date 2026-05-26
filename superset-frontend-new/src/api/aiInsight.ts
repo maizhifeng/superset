@@ -4,7 +4,10 @@
 
 import api from "@/api";
 import { createOpencodeClient } from "@opencode-ai/sdk";
-import type { ModelConfig } from "@/api/aiModelConfig";
+interface ModelConfig {
+  provider: string;
+  model: string;
+}
 
 /** SDK client — baseUrl 末尾加 / 确保 Vite proxy 路径正确拼接 */
 const oc = createOpencodeClient({ baseUrl: "http://localhost:9000/opencode/" });
@@ -246,4 +249,29 @@ export async function streamChat(
 
 export async function abortSession(sessionId: string) {
   try { await fetch(`/opencode/session/${sessionId}/abort`, { method: "POST" }); } catch { /* */ }
+}
+
+export async function streamDirectChat(
+  prompt: string,
+  systemPrompt: string,
+  callbacks: InsightCallbacks,
+  signal?: AbortSignal,
+  modelCfg?: ModelConfig,
+): Promise<string> {
+  callbacks.onStatus?.("正在创建会话…");
+  const sessionId = await _createSession("AI Chat");
+  callbacks.onSession?.(sessionId);
+  const events = await oc.event.subscribe();
+  const payload: Record<string, unknown> = {
+    parts: [
+      { type: "text", text: `[System Instructions]\n${systemPrompt}\n\n${prompt}` },
+    ],
+  };
+  if (modelCfg) {
+    payload.model = { providerID: modelCfg.provider, modelID: modelCfg.model };
+  }
+  callbacks.onStatus?.("正在获取回答…");
+  await _sendPrompt(sessionId, payload, modelCfg);
+  await _streamSession(sessionId, events, callbacks, signal);
+  return sessionId;
 }

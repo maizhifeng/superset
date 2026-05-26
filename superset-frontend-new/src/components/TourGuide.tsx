@@ -25,29 +25,29 @@ const PIPELINE_STEP = 3;
 const pipelineNodes = [
   {
     icon: <StorageIcon />,
-    label: "Database",
-    desc: "Connect your data source",
+    label: "数据库",
+    desc: "连接数据源",
     color: "#1565c0",
     bg: "#e3f2fd",
   },
   {
     icon: <TableChartIcon />,
-    label: "Dataset",
-    desc: "Map tables & define columns",
+    label: "数据集",
+    desc: "映射表与定义列",
     color: "#2e7d32",
     bg: "#e8f5e9",
   },
   {
     icon: <BarChartIcon />,
-    label: "Chart",
-    desc: "Pick viz type & drag fields",
+    label: "图表",
+    desc: "选择可视化类型与拖拽字段",
     color: "#e65100",
     bg: "#fff3e0",
   },
   {
     icon: <DashboardIcon />,
-    label: "Dashboard",
-    desc: "Combine & share insights",
+    label: "仪表板",
+    desc: "组合与分享洞察",
     color: "#6a1b9a",
     bg: "#f3e5f5",
   },
@@ -63,9 +63,9 @@ interface StepDef {
 const STEPS: StepDef[] = [
   {
     icon: <ExploreIcon sx={{ fontSize: 48 }} />,
-    title: "Welcome to Starfly",
+    title: "欢迎使用 Starfly",
     description:
-      "Your data exploration platform. Browse dashboards, build charts, and query data — all in one place.",
+      "您的数据探索平台。浏览仪表板、构建图表、查询数据——一站式完成。",
     graphic: (
       <Box
         sx={{
@@ -77,9 +77,9 @@ const STEPS: StepDef[] = [
         }}
       >
         {[
-          { icon: <DashboardIcon />, label: "Dashboards", color: "#6a1b9a" },
-          { icon: <BarChartIcon />, label: "Charts", color: "#e65100" },
-          { icon: <CodeIcon />, label: "SQL Lab", color: "#1565c0" },
+          { icon: <DashboardIcon />, label: "仪表板", color: "#6a1b9a" },
+          { icon: <BarChartIcon />, label: "图表", color: "#e65100" },
+          { icon: <CodeIcon />, label: "SQL 实验室", color: "#1565c0" },
         ].map((item) => (
           <Box
             key={item.label}
@@ -113,9 +113,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <SearchIcon sx={{ fontSize: 48 }} />,
-    title: "Search & Navigate",
+    title: "搜索与导航",
     description:
-      "Press / to search anything. Use keyboard combos to jump between pages instantly.",
+      "按 / 搜索任何内容。使用快捷键在页面间快速跳转。",
     graphic: (
       <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 1 }}>
         <Box
@@ -138,7 +138,7 @@ const STEPS: StepDef[] = [
             color="text.disabled"
             sx={{ fontStyle: "italic" }}
           >
-            Search dashboards, charts, datasets...
+            搜索仪表板、图表、数据集...
           </Typography>
           <Chip label="/" size="small" sx={{ fontWeight: 700 }} />
         </Box>
@@ -151,11 +151,11 @@ const STEPS: StepDef[] = [
           }}
         >
           {[
-            { key: "G+Q", label: "SQL Lab" },
-            { key: "G+B", label: "Dashboards" },
-            { key: "G+D", label: "Datasets" },
-            { key: "G+C", label: "Charts" },
-            { key: "G+H", label: "Home" },
+            { key: "G+Q", label: "SQL 实验室" },
+            { key: "G+B", label: "仪表板" },
+            { key: "G+D", label: "数据集" },
+            { key: "G+C", label: "图表" },
+            { key: "G+H", label: "首页" },
           ].map((s) => (
             <Chip
               key={s.key}
@@ -183,9 +183,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <KeyboardIcon sx={{ fontSize: 48 }} />,
-    title: "Keyboard Shortcuts",
+    title: "快捷键",
     description:
-      "Shift+? opens the full shortcut reference. Common combos to speed up your workflow.",
+      "Shift+? 打开完整快捷键参考。常用组合键加速工作流。",
     graphic: (
       <Box
         sx={{
@@ -197,10 +197,10 @@ const STEPS: StepDef[] = [
         }}
       >
         {[
-          { keys: "Ctrl+Enter", label: "Run query" },
-          { keys: "Ctrl+S", label: "Save" },
-          { keys: "Ctrl+Z", label: "Undo" },
-          { keys: "Shift+?", label: "Shortcuts" },
+          { keys: "Ctrl+Enter", label: "运行查询" },
+          { keys: "Ctrl+S", label: "保存" },
+          { keys: "Ctrl+Z", label: "撤销" },
+          { keys: "Shift+?", label: "快捷键" },
         ].map((s) => (
           <Box
             key={s.keys}
@@ -239,9 +239,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <AccountTreeIcon sx={{ fontSize: 48 }} />,
-    title: "Architecture Overview",
+    title: "架构概览",
     description:
-      "Starfly organizes your data into four layers. Each builds on the previous one — from source to insight.",
+      "Starfly 将您的数据组织为四层。从数据源到洞察，层层递进。",
     graphic: (
       <Box
         sx={{
@@ -328,9 +328,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <StorageIcon sx={{ fontSize: 48 }} />,
-    title: "1. Connect a Database",
+    title: "1. 连接数据库",
     description:
-      "Start here. Connect PostgreSQL, MySQL, BigQuery, or any supported database. This is the foundation all data flows from.",
+      "从这里开始。连接 PostgreSQL、MySQL、BigQuery 等支持的数据库。这是所有数据的源头。",
     graphic: (
       <Box
         sx={{
@@ -363,9 +363,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <TableChartIcon sx={{ fontSize: 48 }} />,
-    title: "2. Create a Dataset",
+    title: "2. 创建数据集",
     description:
-      "A dataset maps a database table inside Starfly. Pick a table and define which columns are dimensions (categories) and metrics (numbers).",
+      "数据集将数据库表映射到 Starfly。选择表并定义哪些列是维度（类别）和度量（数值）。",
     graphic: (
       <Box
         sx={{
@@ -436,9 +436,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <BarChartIcon sx={{ fontSize: 48 }} />,
-    title: "3. Build Charts",
+    title: "3. 构建图表",
     description:
-      "In Explore, pick a dataset, choose a chart type, and drag in dimensions and metrics. Preview updates live as you configure.",
+      "在探索中，选择数据集、选择图表类型，拖入维度和度量。配置时预览实时更新。",
     graphic: (
       <Box
         sx={{
@@ -450,11 +450,11 @@ const STEPS: StepDef[] = [
         }}
       >
         {[
-          { label: "Bar", icon: "▇", color: "#e65100" },
-          { label: "Line", icon: "━", color: "#1565c0" },
-          { label: "Pie", icon: "●", color: "#2e7d32" },
-          { label: "Table", icon: "⊞", color: "#6a1b9a" },
-          { label: "Big #", icon: "123", color: "#c62828" },
+          { label: "柱状", icon: "▇", color: "#e65100" },
+          { label: "折线", icon: "━", color: "#1565c0" },
+          { label: "饼图", icon: "●", color: "#2e7d32" },
+          { label: "表格", icon: "⊞", color: "#6a1b9a" },
+          { label: "大数字", icon: "123", color: "#c62828" },
         ].map((t) => (
           <Box
             key={t.label}
@@ -491,9 +491,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <DashboardIcon sx={{ fontSize: 48 }} />,
-    title: "4. Assemble Dashboards",
+    title: "4. 组装仪表板",
     description:
-      "Combine multiple charts on a drag-and-drop grid. Add cross-filtering, compare dimensions, and share with your team.",
+      "在拖拽网格上组合多个图表。添加交叉筛选、对比维度，并与团队分享。",
     graphic: (
       <Box
         sx={{
@@ -543,9 +543,9 @@ const STEPS: StepDef[] = [
   },
   {
     icon: <CodeIcon sx={{ fontSize: 48 }} />,
-    title: "Bonus: SQL Lab",
+    title: "Bonus: SQL 实验室",
     description:
-      "Skip the pipeline and write raw SQL. Explore, join, and visualize results directly. Save queries or turn them into datasets.",
+      "跳过管线，直接编写 SQL。直接探索、关联和可视化结果。保存查询或转为数据集。",
     graphic: (
       <Box
         sx={{
@@ -689,7 +689,7 @@ export default function TourGuide() {
               onClick={handlePrev}
               sx={{ color: "text.secondary", minWidth: 64 }}
             >
-              Back
+              返回
             </Button>
           ) : (
             <Button
@@ -697,7 +697,7 @@ export default function TourGuide() {
               onClick={handleClose}
               sx={{ color: "text.secondary", minWidth: 64 }}
             >
-              Skip
+              跳过
             </Button>
           )}
         </Box>
@@ -707,7 +707,7 @@ export default function TourGuide() {
           onClick={handleNext}
           sx={{ minWidth: 80, borderRadius: 2 }}
         >
-          {isLast ? "Done" : "Next"}
+          {isLast ? "完成" : "下一步"}
         </Button>
       </DialogActions>
     </Dialog>

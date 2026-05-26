@@ -60,9 +60,9 @@ export default function Dashboard() {
   const [compareChartId, setCompareChartId] = useState<number | null>(null);
   const [addChartDialogOpen, setAddChartDialogOpen] = useState(false);
   const [periodModalOpen, setPeriodModalOpen] = useState(false);
-  const [periodModalChartId, setPeriodModalChartId] = useState<
-    number | null
-  >(null);
+  const [periodModalChartId, setPeriodModalChartId] = useState<number | null>(
+    null,
+  );
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
@@ -351,9 +351,7 @@ export default function Dashboard() {
 
         const dsIds = new Set<number>();
         for (const chart of Object.values(metaMap)) {
-          const dsId =
-            chart.datasource_id ||
-            (chart.datasource_id ?? 0);
+          const dsId = chart.datasource_id || (chart.datasource_id ?? 0);
           if (dsId) dsIds.add(dsId);
         }
         if (dsIds.size > 0) {
@@ -390,17 +388,36 @@ export default function Dashboard() {
                 let extra: Record<string, unknown> | null = null;
                 try {
                   extra = col.extra ? JSON.parse(col.extra) : null;
-                } catch { /* ignore */ }
+                } catch {
+                  /* ignore */
+                }
                 const dashFilter = extra?.dashboard_filter === true;
                 if (!dashFilter) continue;
                 if (col.is_dttm)
-                  timeCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "time" });
+                  timeCols.push({
+                    datasetId: dsId,
+                    column: col.column_name,
+                    name: col.column_name,
+                    columnType: "time",
+                  });
                 else if (stringTypes.test(col.type))
-                  stringCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "string" });
+                  stringCols.push({
+                    datasetId: dsId,
+                    column: col.column_name,
+                    name: col.column_name,
+                    columnType: "string",
+                  });
                 else
-                  stringCols.push({ datasetId: dsId, column: col.column_name, name: col.column_name, columnType: "string" });
+                  stringCols.push({
+                    datasetId: dsId,
+                    column: col.column_name,
+                    name: col.column_name,
+                    columnType: "string",
+                  });
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }
           setDashboardDimensions([...timeCols, ...stringCols]);
         }
@@ -414,7 +431,7 @@ export default function Dashboard() {
         setTotalRows(totalRowMap);
       }
     } catch (err: unknown) {
-      setError(parseErrorMessage(err, "Failed to load dashboard"));
+      setError(parseErrorMessage(err, "加载仪表板失败"));
     } finally {
       setLoading(false);
     }
@@ -605,15 +622,8 @@ export default function Dashboard() {
         );
         if (data) {
           setChartData((prev) => ({ ...prev, [chartId]: data }));
-          if (
-            compareConfig?.enabled &&
-            compareConfig.chartId === chartId
-          ) {
-            fetchMirrorData(
-              chartId,
-              compareConfig.dimensions,
-              data,
-            );
+          if (compareConfig?.enabled && compareConfig.chartId === chartId) {
+            fetchMirrorData(chartId, compareConfig.dimensions, data);
           }
         }
       } finally {
@@ -657,12 +667,7 @@ export default function Dashboard() {
         });
       }
     },
-    [
-      chartMeta,
-      compareConfig,
-      fetchMirrorData,
-      getChartDataWithFilters,
-    ],
+    [chartMeta, compareConfig, fetchMirrorData, getChartDataWithFilters],
   );
   const refreshChartsRef = useRef(refreshCharts);
   refreshChartsRef.current = refreshCharts;
@@ -878,23 +883,26 @@ export default function Dashboard() {
     setFilterDrawerOpen(true);
   }, []);
 
-  const handleOpenInsight = useCallback((chartId: number) => {
-    setInsightChartId(chartId);
-    setInsightOpen(true);
-    // Collect active filter IDs and values
-    const activeFilters: Record<string, unknown> = {};
-    for (const f of filters) {
-      const state = filterState[f.id];
-      if (state?.value != null) {
-        activeFilters[f.id] = {
-          value: state.value,
-          column: f.column,
-          filterType: f.filterType,
-        };
+  const handleOpenInsight = useCallback(
+    (chartId: number) => {
+      setInsightChartId(chartId);
+      setInsightOpen(true);
+      // Collect active filter IDs and values
+      const activeFilters: Record<string, unknown> = {};
+      for (const f of filters) {
+        const state = filterState[f.id];
+        if (state?.value != null) {
+          activeFilters[f.id] = {
+            value: state.value,
+            column: f.column,
+            filterType: f.filterType,
+          };
+        }
       }
-    }
-    setFilterValues(activeFilters);
-  }, [filters, filterState]);
+      setFilterValues(activeFilters);
+    },
+    [filters, filterState],
+  );
 
   const handleToggleCompare = useCallback(
     (chartId: number) => {
@@ -1106,7 +1114,7 @@ export default function Dashboard() {
       </Box>
     );
   }
-  if (!dashboard) return <EmptyState title="Dashboard not found" />;
+  if (!dashboard) return <EmptyState title="未找到仪表板" />;
 
   return (
     <>
@@ -1191,6 +1199,7 @@ export default function Dashboard() {
               initialData={
                 editingSliceId ? chartMeta[Number(editingSliceId)] : null
               }
+              buildDashboardAdhocFilters={buildAdhocFilters}
             />
           )}
         </Box>
@@ -1212,7 +1221,9 @@ export default function Dashboard() {
         open={periodModalOpen}
         chartId={periodModalChartId}
         chartData={periodModalChartData}
-        chartMeta={periodModalChartId != null ? chartMeta[periodModalChartId] : undefined}
+        chartMeta={
+          periodModalChartId != null ? chartMeta[periodModalChartId] : undefined
+        }
         onClose={() => {
           setPeriodModalOpen(false);
           setPeriodModalChartId(null);
@@ -1228,8 +1239,12 @@ export default function Dashboard() {
       <InsightDrawer
         open={insightOpen}
         chartId={insightChartId}
-        chartData={insightChartId != null ? chartData[insightChartId] : undefined}
-        chartMeta={insightChartId != null ? chartMeta[insightChartId] : undefined}
+        chartData={
+          insightChartId != null ? chartData[insightChartId] : undefined
+        }
+        chartMeta={
+          insightChartId != null ? chartMeta[insightChartId] : undefined
+        }
         filters={filterValues}
         onClose={() => {
           setInsightOpen(false);

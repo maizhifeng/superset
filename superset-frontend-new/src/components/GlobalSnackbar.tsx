@@ -36,7 +36,15 @@ export default function GlobalSnackbar() {
             </Button>
           ) : undefined
         }
-        sx={{ minWidth: 280, maxWidth: 480, borderRadius: 2, boxShadow: 4 }}
+        sx={{
+          minWidth: 280,
+          maxWidth: 480,
+          borderRadius: 2,
+          boxShadow: "0 4px 12px rgba(44,36,22,0.1), 0 8px 24px rgba(44,36,22,0.08)",
+          "& .MuiAlert-icon": {
+            color: n.severity === "success" ? "#5a8f6a" : undefined,
+          },
+        }}
       >
         {n.message}
       </Alert>

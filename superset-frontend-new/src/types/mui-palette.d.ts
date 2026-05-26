@@ -1,8 +1,6 @@
 import type {
   PaletteColor,
   TypeBackground,
-  TypeText,
-  TypeAction,
 } from "@mui/material/styles";
 
 declare module "@mui/material/styles" {

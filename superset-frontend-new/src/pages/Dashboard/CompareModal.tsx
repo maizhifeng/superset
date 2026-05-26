@@ -202,7 +202,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
         setGames(list.filter((g) => g.上线时间));
       })
       .catch((err) => {
-        if (!cancelled) setError(parseErrorMessage(err, "Failed to load games"));
+        if (!cancelled) setError(parseErrorMessage(err, "加载游戏失败"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -427,7 +427,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } };
       const serverMsg = axiosErr?.response?.data?.message;
-      setError(serverMsg || parseErrorMessage(err, "Query failed"));
+      setError(serverMsg || parseErrorMessage(err, "查询失败"));
     } finally {
       setLoading(false);
     }
@@ -470,7 +470,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       >
         <FlipIcon sx={{ fontSize: 22, color: "primary.main" }} />
         <Typography variant="body1" sx={{ fontWeight: 600, flex: 1, fontSize: "1.1rem" }}>
-          Period Comparison
+          周期对比
         </Typography>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           {PERIODS.map((p) => (
@@ -505,12 +505,12 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           disabled={selectedGames.length === 0 || loading || !chartFormData}
           sx={{ ml: 1 }}
         >
-          {loading ? "..." : "Query"}
+          {loading ? "..." : "查询"}
         </Button>
-        <IconButton size="small" onClick={() => scrollByStep(-1)} title="Scroll left">
+        <IconButton size="small" onClick={() => scrollByStep(-1)} title="向左滚动">
           <ChevronLeft />
         </IconButton>
-        <IconButton size="small" onClick={() => scrollByStep(1)} title="Scroll right">
+        <IconButton size="small" onClick={() => scrollByStep(1)} title="向右滚动">
           <ChevronRight />
         </IconButton>
         <IconButton size="small" onClick={onClose}>
@@ -553,7 +553,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           disableCloseOnSelect
           openOnFocus
           autoHighlight
-          noOptionsText="No matches"
+          noOptionsText="无匹配"
           sx={{
             minWidth: 250,
             maxWidth: 400,
@@ -582,8 +582,8 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           renderInput={(params) => (
             <TextField
               {...params}
-              label="Select games to compare"
-              placeholder={selectedGames.length > 0 ? "" : "Search by game name or ID"}
+              label="选择要对比的游戏"
+              placeholder={selectedGames.length > 0 ? "" : "按游戏名称或 ID 搜索"}
               size="small"
             />
           )}
@@ -600,7 +600,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           disableCloseOnSelect
           size="small"
           sx={{ minWidth: 200, maxWidth: 300 }}
-          noOptionsText="No options"
+          noOptionsText="无选项"
           renderInput={(params) => (
             <TextField {...params} label="cch_name" placeholder="Select cch_name" />
           )}
@@ -616,9 +616,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           disableCloseOnSelect
           size="small"
           sx={{ minWidth: 200, maxWidth: 300 }}
-          noOptionsText="No options"
+          noOptionsText="无选项"
           renderInput={(params) => (
-            <TextField {...params} label="channel" placeholder="Select channel" />
+            <TextField {...params} label="channel" placeholder="选择渠道" />
           )}
         />
         </Box>
@@ -676,7 +676,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           if (primaryGroups.size === 0 && secondaryGroups.size === 0) {
             return (
               <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", py: 2, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
-                <Typography variant="body2" color="text.secondary">No data found for the selected period</Typography>
+                <Typography variant="body2" color="text.secondary">选定周期未找到数据</Typography>
               </Box>
             );
           }
@@ -804,7 +804,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
 
         {queryResult && queryResult.data.length === 0 && (
           <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", py: 2, border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
-            <Typography variant="body2" color="text.secondary">No data found for the selected period</Typography>
+            <Typography variant="body2" color="text.secondary">选定周期未找到数据</Typography>
           </Box>
         )}
 
@@ -818,7 +818,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              Select games and click "Query" to see comparison data
+              选择游戏并点击"查询"查看对比数据
             </Typography>
           </Box>
         )}

@@ -39,5 +39,3 @@ test("setModelConfig overwrites previous value", () => {
   setModelConfig({ provider: "new", model: "new-model" });
   expect(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")).toEqual({ provider: "new", model: "new-model" });
 });
-
-

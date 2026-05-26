@@ -92,13 +92,13 @@ export default function ChartEditorForm({
                   fontSize: compact ? "0.6rem" : undefined,
                 }}
               >
-                Name
+                名称
               </Typography>
             }
           />
           <CardContent sx={{ p: c(0.75, 0.75) }}>
             <TextField
-              placeholder="Chart name..."
+              placeholder="图表名称..."
               value={sliceName}
               onChange={(e) => onSliceNameChange(e.target.value)}
               variant="standard"
@@ -141,13 +141,13 @@ export default function ChartEditorForm({
                   fontSize: compact ? "0.6rem" : undefined,
                 }}
               >
-                Dataset
+                数据集
               </Typography>
             }
           />
           <CardContent sx={{ p: c(0.75, 0.75) }}>
             <PickerField
-              label="Dataset"
+              label="数据集"
               options={datasets.map((d) => ({
                 value: String(d.id),
                 label: d.table_name,
@@ -157,7 +157,7 @@ export default function ChartEditorForm({
                 onDatasourceChange(vals[0] || "");
               }}
               loading={loadingDatasets}
-              placeholder="Select dataset..."
+              placeholder="选择数据集..."
               singleSelect
               hideGroups
               hideHeader
@@ -197,7 +197,7 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  Group By
+                  分组
                 </Typography>
               }
             />
@@ -206,11 +206,12 @@ export default function ChartEditorForm({
                 <CircularProgress size={16} />
               ) : (
                 <PickerField
-                  label="Group By"
+                   label="分组"
+
                   options={dimensionOptions}
                   selected={groupby}
                   onChange={onGroupbyChange}
-                  placeholder="Add dimensions..."
+                  placeholder="添加维度..."
                   compact
                   hideHeader
                   hideGroups
@@ -248,7 +249,7 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  Metrics
+                  指标
                 </Typography>
               }
             />
@@ -257,11 +258,12 @@ export default function ChartEditorForm({
                 <CircularProgress size={16} />
               ) : (
                 <PickerField
-                  label="Metrics"
+                   label="指标"
+
                   options={metricsOptions}
                   selected={metrics}
                   onChange={onMetricsChange}
-                  placeholder="Add metrics..."
+                  placeholder="添加指标..."
                   hideHeader
                   hideGroups
                   compact

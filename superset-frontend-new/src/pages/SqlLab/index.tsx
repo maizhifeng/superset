@@ -116,7 +116,7 @@ export default function SqlLab() {
         setDatabases(res.data.result);
       })
       .catch(() => {
-        setError("Failed to load databases");
+        setError("加载数据库失败");
       });
   }, []);
 
@@ -246,7 +246,7 @@ export default function SqlLab() {
       setResult(res.data);
     } catch (err: unknown) {
       setError(
-        parseErrorMessage(err, "An error occurred while executing the query"),
+        parseErrorMessage(err, "执行查询时发生错误"),
       );
     } finally {
       setLoading(false);
@@ -266,8 +266,8 @@ export default function SqlLab() {
   const handleOpenSaveDialog = () => {
     setDatasetName(
       result?.query?.sql
-        ? result.query.sql.split(" ").slice(0, 3).join("_") || "untitled"
-        : "untitled",
+        ? result.query.sql.split(" ").slice(0, 3).join("_") || "未命名"
+        : "未命名",
     );
     setSaveError(null);
     setSaveSuccess(false);
@@ -289,7 +289,7 @@ export default function SqlLab() {
       setSaveSuccess(true);
       setTimeout(() => setSaveDialogOpen(false), 1000);
     } catch (err: unknown) {
-      setSaveError(parseErrorMessage(err, "Failed to save dataset"));
+      setSaveError(parseErrorMessage(err, "保存数据集失败"));
     } finally {
       setSaving(false);
     }
@@ -453,17 +453,17 @@ export default function SqlLab() {
               }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                Database Explorer
+                数据库浏览器
               </Typography>
               <IconButton size="small" onClick={() => setSidebarOpen(false)}>
                 <ChevronLeftIcon fontSize="small" />
               </IconButton>
             </Box>
             <FormControl size="small" fullWidth>
-              <InputLabel id="db-label">Database</InputLabel>
+              <InputLabel id="db-label">数据库</InputLabel>
               <Select
                 labelId="db-label"
-                label="Database"
+                label="数据库"
                 value={databaseId}
                 onChange={(e) => setDatabaseId(e.target.value as number)}
               >
@@ -476,10 +476,10 @@ export default function SqlLab() {
             </FormControl>
             {databaseId !== "" && (
               <FormControl size="small" fullWidth>
-                <InputLabel id="schema-label">Schema</InputLabel>
+                <InputLabel id="schema-label">模式</InputLabel>
                 <Select
                   labelId="schema-label"
-                  label="Schema"
+                  label="模式"
                   value={schema}
                   onChange={(e) => setSchema(e.target.value)}
                   disabled={schemasLoading}
@@ -500,7 +500,7 @@ export default function SqlLab() {
                   color="text.secondary"
                   sx={{ fontWeight: 600, px: 0.5 }}
                 >
-                  Tables
+表
                 </Typography>
                 {tableList.length === 0 ? (
                   <Typography
@@ -508,7 +508,7 @@ export default function SqlLab() {
                     color="text.disabled"
                     sx={{ px: 0.5 }}
                   >
-                    No tables
+                    暂无表
                   </Typography>
                 ) : (
                   <SimpleTreeView
@@ -612,7 +612,7 @@ export default function SqlLab() {
               mr: 2,
             }}
           >
-            <Tooltip title="Show explorer" placement="right">
+            <Tooltip title="显示浏览器" placement="right">
               <IconButton size="small" onClick={() => setSidebarOpen(true)}>
                 <ChevronRightIcon fontSize="small" />
               </IconButton>
@@ -670,7 +670,7 @@ export default function SqlLab() {
               }}
             >
               <ShortcutTooltip
-                label="Run Query"
+                label="运行查询"
                 shortcut={["Ctrl+Enter", "Ctrl+R"]}
               >
                 <Button
@@ -678,10 +678,10 @@ export default function SqlLab() {
                   onClick={handleRun}
                   disabled={loading || databaseId === "" || !sql.trim()}
                 >
-                  {loading ? <CircularProgress size={20} /> : "Run"}
+                  {loading ? <CircularProgress size={20} /> : "运行"}
                 </Button>
               </ShortcutTooltip>
-              <ShortcutTooltip label="Stop Query" shortcut="Ctrl+E">
+              <ShortcutTooltip label="停止查询" shortcut="Ctrl+E">
                 <Button
                   variant="outlined"
                   color="error"
@@ -690,10 +690,10 @@ export default function SqlLab() {
                   onClick={() => setLoading(false)}
                   disabled={!loading}
                 >
-                  Stop
+                  停止
                 </Button>
               </ShortcutTooltip>
-              <ShortcutTooltip label="Format SQL" shortcut="Ctrl+Shift+F">
+              <ShortcutTooltip label="格式化 SQL" shortcut="Ctrl+Shift+F">
                 <Button
                   variant="outlined"
                   size="small"
@@ -701,17 +701,17 @@ export default function SqlLab() {
                   onClick={handleFormatSql}
                   disabled={!sql.trim()}
                 >
-                  Format
+                  格式化
                 </Button>
               </ShortcutTooltip>
-              <ShortcutTooltip label="New Query Tab" shortcut="Ctrl+T">
+              <ShortcutTooltip label="新建查询标签页" shortcut="Ctrl+T">
                 <Button
                   variant="outlined"
                   size="small"
                   startIcon={<AddIcon />}
                   onClick={() => setSql("")}
                 >
-                  New Tab
+                  新建标签页
                 </Button>
               </ShortcutTooltip>
               {result && result.data && (
@@ -721,7 +721,7 @@ export default function SqlLab() {
                   startIcon={<SaveIcon />}
                   onClick={handleOpenSaveDialog}
                 >
-                  Save as Dataset
+                  保存为数据集
                 </Button>
               )}
             </Box>
@@ -760,8 +760,7 @@ export default function SqlLab() {
                   }}
                 >
                   <Typography variant="body2" color="text.secondary">
-                    {result.data.length} row
-                    {result.data.length !== 1 ? "s" : ""}
+                    {result.data.length} 行
                     {result.query_id ? ` · query #${result.query_id}` : ""}
                     {result.query?.queryId
                       ? ` · server query #${result.query.queryId}`
@@ -797,7 +796,7 @@ export default function SqlLab() {
                               color: "text.secondary",
                             }}
                           >
-                            No rows
+                            无数据
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -851,12 +850,11 @@ export default function SqlLab() {
               >
                 <CodeIcon sx={{ fontSize: 48, opacity: 0.3 }} />
                 <Typography variant="h6" sx={{ fontWeight: 500, opacity: 0.7 }}>
-                  SQL Lab
+                  SQL 实验室
                 </Typography>
                 <Box sx={{ textAlign: "center", maxWidth: 320 }}>
                   <Typography variant="body2" sx={{ mb: 2 }}>
-                    Select a database and schema from the left panel, write your
-                    SQL, then click Run.
+                    从左面板选择数据库和模式，编写 SQL，然后点击运行。
                   </Typography>
                   <Box
                     sx={{
@@ -871,15 +869,15 @@ export default function SqlLab() {
                       color="text.disabled"
                       sx={{ fontWeight: 600, mb: 0.5 }}
                     >
-                      Keyboard Shortcuts
+                      快捷键
                     </Typography>
                     <Typography variant="caption">
-                      Ctrl+Enter / Ctrl+R — Run query
+                      Ctrl+Enter / Ctrl+R — 运行查询
                     </Typography>
                     <Typography variant="caption">
-                      Ctrl+Shift+F — Format SQL
+                      Ctrl+Shift+F — 格式化 SQL
                     </Typography>
-                    <Typography variant="caption">Ctrl+T — New tab</Typography>
+                    <Typography variant="caption">Ctrl+T — 新建标签页</Typography>
                   </Box>
                 </Box>
               </Paper>
@@ -902,7 +900,7 @@ export default function SqlLab() {
               handleCtxClose();
             }}
           >
-            Insert column: {ctxMenu.table}.{ctxMenu.column}
+            插入列：{ctxMenu.table}.{ctxMenu.column}
           </MenuItem>
         ) : ctxMenu?.table ? (
           <MenuItem
@@ -911,7 +909,7 @@ export default function SqlLab() {
               handleCtxClose();
             }}
           >
-            Insert table: FROM {ctxMenu.table}
+            插入表：FROM {ctxMenu.table}
           </MenuItem>
         ) : null}
       </ContextMenu>
@@ -921,34 +919,34 @@ export default function SqlLab() {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Save as Dataset</DialogTitle>
+        <DialogTitle>保存为数据集</DialogTitle>
         <DialogContent>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
             {saveSuccess && (
-              <Alert severity="success">Dataset saved successfully</Alert>
+              <Alert severity="success">数据集保存成功</Alert>
             )}
             {saveError && <Alert severity="error">{saveError}</Alert>}
             <TextField
-              label="Dataset Name"
+              label="数据集名称"
               value={datasetName}
               onChange={(e) => setDatasetName(e.target.value)}
               fullWidth
               autoFocus
               disabled={saving}
-              helperText="This will create a virtual dataset from the current SQL"
+              helperText="这将从当前 SQL 创建虚拟数据集"
             />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSaveDialogOpen(false)} disabled={saving}>
-            Cancel
+            取消
           </Button>
           <Button
             variant="contained"
             onClick={handleSaveDataset}
             disabled={saving || !datasetName.trim()}
           >
-            {saving ? <CircularProgress size={20} /> : "Save"}
+            {saving ? <CircularProgress size={20} /> : "保存"}
           </Button>
         </DialogActions>
       </Dialog>

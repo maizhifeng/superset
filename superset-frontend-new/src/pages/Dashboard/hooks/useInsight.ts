@@ -1,7 +1,11 @@
 import { useState, useRef, useCallback } from "react";
 import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
-import { getModelConfig, setModelConfig } from "@/api/aiModelConfig";
-import type { ModelConfig } from "@/api/aiModelConfig";
+import { useAiConfigStore } from "@/config/aiConfig";
+
+interface ModelConfig {
+  provider: string;
+  model: string;
+}
 
 export function useInsight() {
   const [insightText, setInsightText] = useState("");
@@ -12,15 +16,28 @@ export function useInsight() {
   const [currentToolCalls, setCurrentToolCalls] = useState<
     { tool: string; status: "calling" | "done" }[]
   >([]);
-  const [modelConfig, setModelConfigState] = useState<ModelConfig>(getModelConfig);
-  const modelConfigRef = useRef(modelConfig);
-  modelConfigRef.current = modelConfig;
+  const activePreset = useAiConfigStore((s) => s.activePreset);
+  const modelConfigRef = useRef<ModelConfig>({
+    provider: activePreset.provider,
+    model: activePreset.model,
+  });
+  modelConfigRef.current = {
+    provider: activePreset.provider,
+    model: activePreset.model,
+  };
   const abortRef = useRef<AbortController | null>(null);
 
+  const modelConfig: ModelConfig = {
+    provider: activePreset.provider,
+    model: activePreset.model,
+  };
+
   const updateModelConfig = useCallback((cfg: ModelConfig) => {
-    setModelConfig(cfg);
-    setModelConfigState(cfg);
-  }, []);
+    useAiConfigStore.getState().update(activePreset.id, {
+      provider: cfg.provider,
+      model: cfg.model,
+    });
+  }, [activePreset.id]);
 
   const generate = useCallback(
     async (chartId: number, filters: Record<string, unknown> = {}) => {
