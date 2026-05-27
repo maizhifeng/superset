@@ -32,9 +32,34 @@ function PresetForm({
   const [label, setLabel] = useState(initial?.label ?? "");
   const [provider, setProvider] = useState(initial?.provider ?? "");
   const [model, setModel] = useState(initial?.model ?? "");
-  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "/llm/api/v1");
-  const [agentFramework, setAgentFramework] = useState(initial?.agentFramework ?? "Opencode SDK");
-  const [llmFramework, setLlmFramework] = useState(initial?.llmFramework ?? "");
+  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
+  const [models, setModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState("");
+
+  const handleLoadModels = async () => {
+    if (!baseUrl.trim()) return;
+    setLoadingModels(true);
+    setModelsError("");
+    try {
+      // Use proxy path for frontend fetch (avoid CORS)
+      const proxyPath = baseUrl.replace(/^https?:\/\/[^\/]+/, "/llm");
+      const res = await fetch(`${proxyPath}/models`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const list = (data.data || [])
+        .map((m: { id: string }) => m.id)
+        .filter(Boolean);
+      setModels(list);
+      if (list.length === 0) setModelsError("未找到可用模型");
+    } catch (e) {
+      setModelsError(
+        `加载失败: ${e instanceof Error ? e.message : "未知错误"}`,
+      );
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
   return (
     <Box
@@ -71,36 +96,61 @@ function PresetForm({
           label="Model ID"
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          placeholder="gpt-4"
+          placeholder="选择或输入模型"
           sx={{ flex: 1 }}
         />
       </Box>
-      <TextField
-        size="small"
-        label="API 地址"
-        value={baseUrl}
-        onChange={(e) => setBaseUrl(e.target.value)}
-        placeholder="/llm/api/v1"
-        fullWidth
-        helperText="例如 /llm/api/v1（代理）或 http://host:port（直连）"
-      />
-      <Box sx={{ display: "flex", gap: 1.5 }}>
+      {models.length > 0 && (
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+          {models.map((m) => (
+            <Box
+              key={m}
+              onClick={() => setModel(m)}
+              sx={{
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                cursor: "pointer",
+                fontSize: "0.75rem",
+                bgcolor: model === m ? "primary.main" : "background.paper",
+                color: model === m ? "primary.contrastText" : "text.secondary",
+                border: "1px solid",
+                borderColor: model === m ? "primary.main" : "divider",
+                "&:hover": { borderColor: "primary.light" },
+              }}
+            >
+              {m}
+            </Box>
+          ))}
+        </Box>
+      )}
+      {modelsError && (
+        <Typography variant="caption" color="error" sx={{ fontSize: "0.7rem" }}>
+          {modelsError}
+        </Typography>
+      )}
+      <Box sx={{ display: "flex", gap: 1, alignItems: "flex-start" }}>
         <TextField
           size="small"
-          label="Agent 框架"
-          value={agentFramework}
-          onChange={(e) => setAgentFramework(e.target.value)}
-          placeholder="Opencode SDK"
+          label="API 端点"
+          value={baseUrl}
+          onChange={(e) => {
+            setBaseUrl(e.target.value);
+            setModels([]);
+          }}
+          placeholder="http://host:port/v1"
           sx={{ flex: 1 }}
+          helperText="供应商 API 地址，如 http://localhost:1234/v1"
         />
-        <TextField
+        <Button
           size="small"
-          label="LLM 框架"
-          value={llmFramework}
-          onChange={(e) => setLlmFramework(e.target.value)}
-          placeholder="LM Studio"
-          sx={{ flex: 1 }}
-        />
+          variant="outlined"
+          onClick={handleLoadModels}
+          disabled={loadingModels || !baseUrl.trim()}
+          sx={{ mt: 0.5, minWidth: 80, whiteSpace: "nowrap" }}
+        >
+          {loadingModels ? "加载中…" : "加载模型"}
+        </Button>
       </Box>
       <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
         <Button size="small" onClick={onCancel}>
@@ -109,7 +159,7 @@ function PresetForm({
         <Button
           size="small"
           variant="contained"
-          onClick={() => onSave({ label, provider, model, baseUrl, agentFramework, llmFramework })}
+          onClick={() => onSave({ label, provider, model, baseUrl })}
           disabled={!label.trim() || !provider.trim() || !model.trim()}
         >
           {initial ? "保存" : "添加"}
@@ -209,7 +259,9 @@ export default function AiConfigDialog({ open, onClose }: AiConfigDialogProps) {
               const active = presets.find((p) => p.id === activePresetId);
               if (!active) return null;
               return (
-                <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+                <Box
+                  sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}
+                >
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {active.label}
                   </Typography>
@@ -218,29 +270,17 @@ export default function AiConfigDialog({ open, onClose }: AiConfigDialogProps) {
                     color="text.secondary"
                     sx={{ fontSize: "0.75rem" }}
                   >
-                    Provider: {active.provider}
+                    {active.provider} / {active.model}
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
-                  >
-                    Model: {active.model}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
-                  >
-                    API: {active.baseUrl}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
-                  >
-                    Agent: {active.agentFramework ?? "-"} / LLM: {active.llmFramework ?? "-"}
-                  </Typography>
+                  {active.baseUrl && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.75rem" }}
+                    >
+                      {active.baseUrl}
+                    </Typography>
+                  )}
                 </Box>
               );
             })()}
@@ -248,10 +288,7 @@ export default function AiConfigDialog({ open, onClose }: AiConfigDialogProps) {
         )}
 
         {adding && (
-          <PresetForm
-            onSave={handleAdd}
-            onCancel={() => setAdding(false)}
-          />
+          <PresetForm onSave={handleAdd} onCancel={() => setAdding(false)} />
         )}
 
         {presets.length > 0 && (
@@ -298,8 +335,12 @@ export default function AiConfigDialog({ open, onClose }: AiConfigDialogProps) {
                   px: 1,
                   borderRadius: 2,
                   border: "1px solid",
-                  borderColor: activePresetId === preset.id ? "primary.light" : "divider",
-                  bgcolor: activePresetId === preset.id ? "action.selected" : "transparent",
+                  borderColor:
+                    activePresetId === preset.id ? "primary.light" : "divider",
+                  bgcolor:
+                    activePresetId === preset.id
+                      ? "action.selected"
+                      : "transparent",
                   transition: "background 0.15s, border-color 0.15s",
                   "&:hover": {
                     bgcolor: "action.hover",
@@ -331,13 +372,6 @@ export default function AiConfigDialog({ open, onClose }: AiConfigDialogProps) {
                     sx={{ fontSize: "0.75rem" }}
                   >
                     {preset.provider} / {preset.model}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.disabled"
-                    sx={{ fontSize: "0.6875rem" }}
-                  >
-                    Agent: {preset.agentFramework ?? "-"} / LLM: {preset.llmFramework ?? "-"}
                   </Typography>
                 </Box>
                 <IconButton

@@ -18,6 +18,13 @@ vi.mock("@opencode-ai/sdk", () => ({
   })),
 }));
 
+vi.mock("@/config/aiConfig", () => ({
+  getActivePreset: vi.fn(() => ({
+    id: "opencode", label: "Opencode", provider: "opencode", model: "test", baseUrl: "/opencode",
+  })),
+  useAiConfigStore: vi.fn(),
+}));
+
 /* ---------- imports after mocks ---------- */
 
 import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";

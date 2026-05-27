@@ -9,11 +9,25 @@ vi.mock("@/api/aiInsight", () => ({
   abortSession: vi.fn(),
 }));
 
-const mockGetModelConfig = vi.fn();
-const mockSetModelConfig = vi.fn();
-vi.mock("@/api/aiModelConfig", () => ({
-  getModelConfig: (...args: unknown[]) => mockGetModelConfig(...args),
-  setModelConfig: (...args: unknown[]) => mockSetModelConfig(...args),
+const { mockUpdate, mockUseAiConfigStore, mockGetActivePreset } = vi.hoisted(() => {
+  const update = vi.fn();
+  const activePreset = { id: "lmstudio", label: "LM Studio", provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm/api/v1" };
+  const state = {
+    presets: [activePreset],
+    activePresetId: "lmstudio",
+    activePreset,
+    update,
+  };
+  const store = Object.assign(
+    vi.fn((selector?: unknown) => typeof selector === "function" ? selector(state) : state),
+    { getState: vi.fn(() => state) },
+  );
+  const getActivePreset = vi.fn(() => activePreset);
+  return { mockUpdate: update, mockUseAiConfigStore: store, mockGetActivePreset: getActivePreset };
+});
+vi.mock("@/config/aiConfig", () => ({
+  useAiConfigStore: mockUseAiConfigStore,
+  getActivePreset: mockGetActivePreset,
 }));
 
 /* ---------- imports ---------- */
@@ -23,7 +37,6 @@ import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetModelConfig.mockReturnValue({ provider: "lmstudio", model: "gemma-4-e4b-it" });
 });
 
 afterEach(() => {
@@ -45,13 +58,12 @@ test("returns default state on mount", () => {
 
 /* ========== modelConfig ========== */
 
-test("updateModelConfig persists to localStorage and updates state", () => {
+test("updateModelConfig calls store update with preset id and config", () => {
   const { result } = renderHook(() => useInsight());
   act(() => {
     result.current.updateModelConfig({ provider: "custom", model: "my-model" });
   });
-  expect(mockSetModelConfig).toHaveBeenCalledWith({ provider: "custom", model: "my-model" });
-  expect(result.current.modelConfig).toEqual({ provider: "custom", model: "my-model" });
+  expect(mockUpdate).toHaveBeenCalledWith("lmstudio", { provider: "custom", model: "my-model" });
 });
 
 /* ========== generate ========== */

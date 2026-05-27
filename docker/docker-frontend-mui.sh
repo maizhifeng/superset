@@ -66,6 +66,13 @@ if [ -n "$LLM_BASE_URL" ]; then
             "output": 32768
           }
         },
+        "qwopus3.5-4b-v3": {
+          "name": "qwopus3.5-4b-v3 (local)",
+          "limit": {
+            "context": 32000,
+            "output": 16384
+          }
+        },
         "qwopus3.5-9b-v3": {
           "name": "QwOPus 3.5 9B v3 (local)",
           "limit": {

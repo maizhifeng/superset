@@ -88,6 +88,8 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
     time_range: "Last 7 days" as const,
   };
 
+  const orderDesc = [["SUM(ad_real_cost)", false]];
+
   const [q1, q2, q3, qTrend] = await Promise.all([
     api.post("/chart/data", {
       ...baseQuery,
@@ -95,7 +97,8 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
         metrics: BASE_METRICS,
         columns: ["papp_name", "report_date_calc"],
         ...dayFilter,
-        row_limit: 200,
+        orderby: orderDesc,
+        row_limit: 100,
       }],
     }),
     api.post("/chart/data", {
@@ -104,7 +107,8 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
         metrics: BASE_METRICS,
         columns: ["papp_name", "cch_name", "report_date_calc"],
         ...dayFilter,
-        row_limit: 300,
+        orderby: orderDesc,
+        row_limit: 500,
       }],
     }),
     api.post("/chart/data", {
@@ -113,7 +117,8 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1"] as unknown[],
         columns: ["channel_name", "report_date_calc"],
         ...dayFilter,
-        row_limit: 200,
+        orderby: orderDesc,
+        row_limit: 100,
       }],
     }),
     api.post("/chart/data", {
@@ -122,6 +127,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
         metrics: [COST_METRIC],
         columns: ["report_date_calc"],
         ...trendFilter,
+        orderby: orderDesc,
         row_limit: 10,
       }],
     }),
@@ -151,32 +157,64 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       (a, b) => (Number(b["SUM(ad_real_cost)"]) || 0) - (Number(a["SUM(ad_real_cost)"]) || 0),
     );
 
-  const sections: string[] = [`报告日期: ${yesLabel} | 对比: ${prevLabel}`, ""];
+  function truncNote(label: string, count: number, limit: number): string | null {
+    if (count > limit) return `⚠️ ${label}: 共 ${count} 行，仅展示消耗最高的 ${limit} 行，缺失 ${count - limit} 行`;
+    if (count >= limit) return `⚠️ ${label}: 达到查询上限 ${limit} 行，可能存在截断`;
+    return null;
+  }
+
+  const notes: string[] = [];
 
   // Section 1
-  sections.push("#### 1. 项目维度汇总", "");
-  sections.push(toMarkdownTable(cols1, sortCost(r1.rows), 60));
-  sections.push("");
+  const s1Rows = sortCost(r1.rows);
+  const n1 = truncNote("项目维度", s1Rows.length, 60);
+  if (n1) notes.push(n1);
 
-  // Section 2: yesterday's channel data only
-  const yesDate2 = yesLabel; // "5/25" etc.
-  const yesRows2 = r2.rows.filter((r) => String(r.report_date_calc) === yesDate2);
-  sections.push("#### 2. 项目+渠道明细（昨日）", "");
-  sections.push(toMarkdownTable(cols2, sortCost(yesRows2), 200));
-  sections.push("");
+  // Section 2
+  const yesDate2 = yesLabel;
+  const allYesRows2 = sortCost(r2.rows.filter((r) => String(r.report_date_calc) === yesDate2));
+  const n2 = truncNote("项目+渠道（昨日）", allYesRows2.length, 200);
+  if (n2) notes.push(n2);
 
   // Section 3
+  const rawTotal3 = r3.rows.length;
   const dates3 = [...new Set(r3.rows.map((r) => String(r.report_date_calc)).filter(Boolean))]
     .sort((a, b) => b.localeCompare(a));
+  let mediaTruncated = false;
+  for (const d of dates3) {
+    const dayRows = sortCost(r3.rows.filter((r) => String(r.report_date_calc) === d));
+    if (dayRows.length > 40) mediaTruncated = true;
+  }
+  if (rawTotal3 >= 100) notes.push(`⚠️ 媒体维度: 查询返回 ${rawTotal3} 行（达到上限 100），可能存在截断`);
+  if (mediaTruncated) notes.push("⚠️ 媒体维度: 部分日期仅展示消耗最高的 40 行");
+
+  // Section 4
+  // No truncation needed for 7-day trend
+
+  const truncHeader = notes.length
+    ? ["### ⚠️ 数据截断说明", ...notes, ""].join("\n")
+    : "";
+
+  const sections: string[] = [`报告日期: ${yesLabel} | 对比: ${prevLabel}`, ""];
+
+  if (truncHeader) sections.push(truncHeader);
+
+  sections.push("#### 1. 项目维度汇总", "");
+  sections.push(toMarkdownTable(cols1, s1Rows, 60));
+  sections.push("");
+
+  sections.push("#### 2. 项目+渠道明细（昨日）", "");
+  sections.push(toMarkdownTable(cols2, allYesRows2, 200));
+  sections.push("");
+
   sections.push("#### 3. 媒体维度分析", "");
   for (const d of dates3) {
-    const dayRows = r3.rows.filter((r) => String(r.report_date_calc) === d);
+    const dayRows = sortCost(r3.rows.filter((r) => String(r.report_date_calc) === d));
     sections.push(`【${d}】`);
-    sections.push(toMarkdownTable(cols3, sortCost(dayRows), 40));
+    sections.push(toMarkdownTable(cols3, dayRows, 40));
     sections.push("");
   }
 
-  // Section 4: trend
   const trendRows = [...rTrend.rows]
     .filter((r) => (Number(r["SUM(ad_real_cost)"]) || 0) > 0)
     .sort((a, b) => (Number(a.report_date_calc) || 0) - (Number(b.report_date_calc) || 0));

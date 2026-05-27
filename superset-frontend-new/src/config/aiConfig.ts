@@ -6,8 +6,6 @@ export interface AiPreset {
   provider: string;
   model: string;
   baseUrl: string;
-  agentFramework?: string;
-  llmFramework?: string;
 }
 
 const STORAGE_KEY = "superset_ai_presets";
@@ -18,19 +16,8 @@ const DEFAULT_PRESETS: AiPreset[] = [
     id: "lmstudio",
     label: "LM Studio (local)",
     provider: "lmstudio",
-    model: "gemma-4-e4b-it",
-    baseUrl: "/llm/api/v1",
-    agentFramework: "Opencode",
-    llmFramework: "LM Studio",
-  },
-  {
-    id: "opencode-zen",
-    label: "Opencode Zen",
-    provider: "opencode",
-    model: "deepseek-v4-flash-free",
-    baseUrl: "/opencode",
-    agentFramework: "Opencode",
-    llmFramework: "Opencode Zen",
+    model: "",
+    baseUrl: "http://172.25.128.1:1234/v1",
   },
 ];
 
@@ -49,7 +36,25 @@ function loadFromStorage<T>(key: string, fallback: T): T {
 
 function loadPresets(): AiPreset[] {
   const parsed = loadFromStorage<AiPreset[]>(STORAGE_KEY, DEFAULT_PRESETS);
-  return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PRESETS;
+  const presets =
+    Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_PRESETS;
+  // Migrate: remove old Opencode Zen preset and strip legacy fields
+  const cleaned = presets
+    .filter((p) => p.id !== "opencode-zen")
+    .map((p) => ({
+      id: p.id,
+      label: p.label,
+      provider: p.provider,
+      model: p.model,
+      baseUrl: p.baseUrl,
+    }));
+  const changed =
+    cleaned.length !== presets.length ||
+    presets.some((p) => "agentFramework" in p || "llmFramework" in p);
+  if (changed) {
+    savePresets(cleaned);
+  }
+  return cleaned;
 }
 
 function savePresets(presets: AiPreset[]) {

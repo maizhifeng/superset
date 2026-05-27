@@ -21,15 +21,15 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import MenuIcon from "@mui/icons-material/Menu";
 
-
 import { useAuthStore } from "@/store/authStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
+import { useDrawerStore } from "@/store/drawerState";
 import { useToolbar } from "@/contexts/ToolbarContext";
 import { useMenuSettings } from "@/store/menuSettings";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import GlobalSnackbar from "@/components/GlobalSnackbar";
 import ChatInput from "@/components/ChatInput";
-import AiAssistantDrawer from "@/components/AiAssistantDrawer";
+import AiDrawer from "@/components/AiDrawer";
 import TourGuide from "@/components/TourGuide";
 import ContextTip from "@/components/ContextTip";
 import SearchExamples from "@/components/SearchExamples";
@@ -74,7 +74,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     null,
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
+  const aiAssistantOpen = useDrawerStore((s) => s.aiAssistantOpen);
+  const setAiAssistantOpen = useDrawerStore((s) => s.setAiAssistantOpen);
+  const insightOpen = useDrawerStore((s) => s.insightOpen);
+  const insightChartId = useDrawerStore((s) => s.insightChartId);
+  const insightChartMeta = useDrawerStore((s) => s.insightChartMeta);
+  const insightFilters = useDrawerStore((s) => s.insightFilters);
+  const closeInsight = useDrawerStore((s) => s.closeInsight);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const pageTip = usePageTip();
@@ -476,8 +482,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               ))}
             </Menu>
           </Box>
-          </Toolbar>
-        </AppBar>
+        </Toolbar>
+      </AppBar>
 
       <Box
         component="main"
@@ -488,6 +494,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           display: "flex",
           flexDirection: "column",
           position: "relative",
+          mr: aiAssistantOpen ? "40vw" : 0,
+          transition: (theme) =>
+            theme.transitions.create("margin", {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.leavingScreen,
+            }),
         }}
       >
         {pageTip && <ContextTip tip={pageTip} />}
@@ -495,9 +507,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </Box>
       <TourGuide />
       <GlobalSnackbar />
-      <AiAssistantDrawer
+      <AiDrawer
         open={aiAssistantOpen}
         onClose={() => setAiAssistantOpen(false)}
+      />
+      <AiDrawer
+        variant="insight"
+        open={insightOpen}
+        chartId={insightChartId}
+        chartMeta={insightChartMeta}
+        filters={insightFilters}
+        onClose={closeInsight}
       />
       <MobileDrawer
         open={drawerOpen}
