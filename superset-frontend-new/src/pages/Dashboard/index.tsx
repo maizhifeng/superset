@@ -28,7 +28,7 @@ import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
 import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
 import CompareModal from "@/pages/Dashboard/CompareModal";
 import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
-import InsightDrawer from "@/pages/Dashboard/InsightDrawer";
+import { useDrawerStore } from "@/store/drawerState";
 import type {
   CompareConfig,
   CompareDimension,
@@ -66,9 +66,8 @@ export default function Dashboard() {
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
-  const [insightOpen, setInsightOpen] = useState(false);
-  const [insightChartId, setInsightChartId] = useState<number | null>(null);
-  const [filterValues, setFilterValues] = useState<Record<string, unknown>>({});
+  const insightOpen = useDrawerStore((s) => s.insightOpen);
+  const aiAssistantOpen = useDrawerStore((s) => s.aiAssistantOpen);
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
@@ -236,6 +235,14 @@ export default function Dashboard() {
   const [containerWidth, setContainerWidth] = useState(window.innerWidth);
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const vw = window.innerWidth;
+    const drawerPx = Math.round(vw * 0.4);
+    const mainPush = aiAssistantOpen ? drawerPx : 0;
+    const dashPush = insightOpen ? drawerPx : 0;
+    const padding = vw < 600 ? 8 : 32;
+    setContainerWidth(Math.max(200, vw - mainPush - dashPush - padding));
+  }, [aiAssistantOpen, insightOpen]);
+  useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const updateWidth = () => {
       clearTimeout(timer);
@@ -243,7 +250,7 @@ export default function Dashboard() {
         if (containerRef.current) {
           setContainerWidth(containerRef.current.offsetWidth);
         }
-      }, 100);
+      }, 250);
     };
     window.addEventListener("resize", updateWidth);
     const observer = new ResizeObserver(updateWidth);
@@ -885,9 +892,7 @@ export default function Dashboard() {
 
   const handleOpenInsight = useCallback(
     (chartId: number) => {
-      setInsightChartId(chartId);
-      setInsightOpen(true);
-      // Collect active filter IDs and values
+      const openInsight = useDrawerStore.getState().openInsight;
       const activeFilters: Record<string, unknown> = {};
       for (const f of filters) {
         const state = filterState[f.id];
@@ -899,9 +904,9 @@ export default function Dashboard() {
           };
         }
       }
-      setFilterValues(activeFilters);
+      openInsight(chartId, chartMeta[chartId], activeFilters);
     },
-    [filters, filterState],
+    [filters, filterState, chartMeta],
   );
 
   const handleToggleCompare = useCallback(
@@ -1136,6 +1141,7 @@ export default function Dashboard() {
           overflow: "auto",
           maxWidth: "100%",
           px: { xs: spacing.xs, md: spacing.md },
+          mr: insightOpen ? "40vw" : 0,
         }}
       >
         <DashboardGrid
@@ -1235,21 +1241,6 @@ export default function Dashboard() {
         excludeIds={dashboardChartIds}
         onSelect={handleAddChartSelect}
         onClose={() => setAddChartDialogOpen(false)}
-      />
-      <InsightDrawer
-        open={insightOpen}
-        chartId={insightChartId}
-        chartData={
-          insightChartId != null ? chartData[insightChartId] : undefined
-        }
-        chartMeta={
-          insightChartId != null ? chartMeta[insightChartId] : undefined
-        }
-        filters={filterValues}
-        onClose={() => {
-          setInsightOpen(false);
-          setInsightChartId(null);
-        }}
       />
       <UndoRedoKeyListeners
         onUndo={() => {}}

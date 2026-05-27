@@ -158,12 +158,17 @@ export default function DataPreviewTable({
         ...(sx as object),
       }}
     >
-      <Box sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+      <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, minWidth: 0 }}>
         <Table
           stickyHeader
           size="small"
           sx={{
-            "& .MuiTableCell-root": { py: 0.5, px: 1, fontSize: "0.75rem", whiteSpace: "nowrap" },
+            "& .MuiTableCell-root": {
+              py: 0.5,
+              px: 1,
+              fontSize: "0.75rem",
+              whiteSpace: "nowrap",
+            },
           }}
         >
           <TableHead

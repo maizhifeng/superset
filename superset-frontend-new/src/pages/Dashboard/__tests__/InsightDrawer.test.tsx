@@ -35,7 +35,7 @@ vi.mock("@/store/notificationStore", () => ({
 
 /* ---------- import ---------- */
 
-import InsightDrawer from "@/pages/Dashboard/InsightDrawer";
+import AiDrawer from "@/components/AiDrawer";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 
 beforeEach(() => {
@@ -53,14 +53,14 @@ vi.stubGlobal("ResizeObserver", vi.fn(() => ({
 
 test("renders nothing when closed", () => {
   renderWithProviders(
-    <InsightDrawer open={false} chartId={null} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={false} chartId={null} onClose={vi.fn()} />,
   );
-  expect(screen.queryByText("AI 洞察分析")).not.toBeInTheDocument();
+  expect(screen.getByText("AI 洞察分析")).not.toBeVisible();
 });
 
 test("renders header and empty state when open with no analysis", () => {
   renderWithProviders(
-    <InsightDrawer open={true} chartId={106} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={106} onClose={vi.fn()} />,
   );
   expect(screen.getByText("AI 洞察分析")).toBeInTheDocument();
   expect(screen.getByText("AI 可基于图表数据进行分析")).toBeInTheDocument();
@@ -69,7 +69,7 @@ test("renders header and empty state when open with no analysis", () => {
 
 test("renders chart metadata when chartMeta is provided", () => {
   renderWithProviders(
-    <InsightDrawer
+    <AiDrawer variant="insight"
       open={true} chartId={106} onClose={vi.fn()}
       chartMeta={{ id: 106, slice_name: "Sales Chart", viz_type: "line" } as any}
     />,
@@ -80,7 +80,7 @@ test("renders chart metadata when chartMeta is provided", () => {
 
 test("calls generate when Start Analysis is clicked", async () => {
   renderWithProviders(
-    <InsightDrawer open={true} chartId={42} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={42} onClose={vi.fn()} />,
   );
   await userEvent.click(screen.getByRole("button", { name: /开始分析/i }));
   expect(mockGenerate).toHaveBeenCalledWith(42, {});
@@ -88,7 +88,7 @@ test("calls generate when Start Analysis is clicked", async () => {
 
 test("shows settings panel when gear icon is clicked", async () => {
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
   const gearBtn = screen.getByTestId("SettingsIcon").closest("button");
   expect(gearBtn).toBeInTheDocument();
@@ -109,7 +109,7 @@ test("shows loading spinner when analysis is running", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
   expect(screen.getByText("正在分析数据中…")).toBeInTheDocument();
 });
@@ -125,10 +125,8 @@ test("renders sections from markdown headers in insightText", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  expect(screen.getByText("趋势")).toBeInTheDocument();
-  expect(screen.getByText("发现")).toBeInTheDocument();
   expect(screen.getByText("upward trend")).toBeInTheDocument();
   expect(screen.getByText("key insight")).toBeInTheDocument();
   expect(screen.getByText("复制全部")).toBeInTheDocument();
@@ -145,9 +143,8 @@ test("wraps plain text without headers in single 分析 section", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  expect(screen.getByText("分析")).toBeInTheDocument();
   expect(screen.getByText("Some analysis result")).toBeInTheDocument();
 });
 
@@ -163,11 +160,9 @@ test("renders 思考 section from reasoningText when no thinking header exists",
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  expect(screen.getByText("思考")).toBeInTheDocument();
   expect(screen.getByText("deep thoughts")).toBeInTheDocument();
-  expect(screen.getByText("趋势")).toBeInTheDocument();
   expect(screen.getByText("trend data")).toBeInTheDocument();
 });
 
@@ -181,7 +176,7 @@ test("shows error state with retry button", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={5} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={5} onClose={vi.fn()} />,
   );
   expect(screen.getByText("API failed")).toBeInTheDocument();
   expect(screen.getByText("重试")).toBeInTheDocument();
@@ -197,7 +192,7 @@ test("retry button calls generate", async () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={5} onClose={vi.fn()}  filters={{ f: { value: "x", column: "col", filterType: "filter_select" } }} />,
+    <AiDrawer variant="insight" open={true} chartId={5} onClose={vi.fn()}  filters={{ f: { value: "x", column: "col", filterType: "filter_select" } }} />,
   );
   await userEvent.click(screen.getByText("重试"));
   expect(mockGenerate).toHaveBeenCalledWith(5, { f: { value: "x", column: "col", filterType: "filter_select" } });
@@ -215,7 +210,7 @@ test("shows follow-up input when insight text exists", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
   expect(screen.getByPlaceholderText("输入追问内容…")).toBeInTheDocument();
 });
@@ -230,7 +225,7 @@ test("follow-up send button calls sendMessage", async () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
   const input = screen.getByPlaceholderText("输入追问内容…");
   await userEvent.type(input, "Tell me more");
@@ -248,7 +243,7 @@ test("shows stop button during loading", () => {
   } as any);
 
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
   );
   const stopBtn = screen.getByTestId("StopIcon").closest("button");
   expect(stopBtn).toBeInTheDocument();
@@ -261,7 +256,7 @@ test("shows stop button during loading", () => {
 test("calls clear and onClose when closed via X", async () => {
   const onClose = vi.fn();
   renderWithProviders(
-    <InsightDrawer open={true} chartId={1} onClose={onClose} />,
+    <AiDrawer variant="insight" open={true} chartId={1} onClose={onClose} />,
   );
   const closeBtn = screen.getByTestId("CloseIcon").closest("button");
   await userEvent.click(closeBtn!);

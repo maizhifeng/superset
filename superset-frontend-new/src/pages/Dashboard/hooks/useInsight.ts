@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
-import { useAiConfigStore } from "@/config/aiConfig";
+import { useAiConfigStore, getActivePreset } from "@/config/aiConfig";
 
 interface ModelConfig {
   provider: string;
@@ -17,14 +17,6 @@ export function useInsight() {
     { tool: string; status: "calling" | "done" }[]
   >([]);
   const activePreset = useAiConfigStore((s) => s.activePreset);
-  const modelConfigRef = useRef<ModelConfig>({
-    provider: activePreset.provider,
-    model: activePreset.model,
-  });
-  modelConfigRef.current = {
-    provider: activePreset.provider,
-    model: activePreset.model,
-  };
   const abortRef = useRef<AbortController | null>(null);
 
   const modelConfig: ModelConfig = {
@@ -32,12 +24,15 @@ export function useInsight() {
     model: activePreset.model,
   };
 
-  const updateModelConfig = useCallback((cfg: ModelConfig) => {
-    useAiConfigStore.getState().update(activePreset.id, {
-      provider: cfg.provider,
-      model: cfg.model,
-    });
-  }, [activePreset.id]);
+  const updateModelConfig = useCallback(
+    (cfg: ModelConfig) => {
+      useAiConfigStore.getState().update(activePreset.id, {
+        provider: cfg.provider,
+        model: cfg.model,
+      });
+    },
+    [activePreset.id],
+  );
 
   const generate = useCallback(
     async (chartId: number, filters: Record<string, unknown> = {}) => {
@@ -52,32 +47,47 @@ export function useInsight() {
       setCurrentToolCalls([]);
 
       try {
+        const preset = getActivePreset();
         const sid = await streamChartInsight(
           chartId,
           filters,
           {
             onSession: (sid) => setSessionId(sid),
             onToolCall: (tool) =>
-              setCurrentToolCalls((prev) => [...prev, { tool, status: "calling" }]),
+              setCurrentToolCalls((prev) => [
+                ...prev,
+                { tool, status: "calling" },
+              ]),
             onToolResult: (tool) =>
               setCurrentToolCalls((prev) =>
-                prev.map((t) => (t.tool === tool ? { ...t, status: "done" } : t)),
+                prev.map((t) =>
+                  t.tool === tool ? { ...t, status: "done" } : t,
+                ),
               ),
             onText: (token) => setInsightText((prev) => prev + token),
             onReasoning: (token) => setReasoningText((prev) => prev + token),
             onStatus: (status) => {
               if (status.startsWith("retry")) {
-                setCurrentToolCalls((prev) => [...prev, { tool: `⏳ ${status}`, status: "calling" }]);
+                setCurrentToolCalls((prev) => [
+                  ...prev,
+                  { tool: `⏳ ${status}`, status: "calling" },
+                ]);
               }
             },
           },
           abort.signal,
-          modelConfigRef.current,
+          {
+            provider: preset.provider,
+            model: preset.model,
+            baseUrl: preset.baseUrl,
+          },
         );
         setSessionId(sid);
       } catch (e: unknown) {
         if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "分析失败，请重试");
+        setError(
+          e instanceof Error && e.message ? e.message : "分析失败，请重试",
+        );
       } finally {
         setLoading(false);
         setCurrentToolCalls([]);
@@ -99,19 +109,35 @@ export function useInsight() {
       setInsightText((prev) => prev + "\n\n---\n\n");
 
       try {
-        await streamChat(sessionId, message, {
-          onToolCall: (tool) =>
-            setCurrentToolCalls((prev) => [...prev, { tool, status: "calling" }]),
-          onToolResult: (tool) =>
-            setCurrentToolCalls((prev) =>
-              prev.map((t) => (t.tool === tool ? { ...t, status: "done" } : t)),
-            ),
-          onText: (token) => setInsightText((prev) => prev + token),
-          onReasoning: (token) => setReasoningText((prev) => prev + token),
-        }, abort.signal, modelConfigRef.current);
+        const preset = getActivePreset();
+        await streamChat(
+          sessionId,
+          message,
+          {
+            onToolCall: (tool) =>
+              setCurrentToolCalls((prev) => [
+                ...prev,
+                { tool, status: "calling" },
+              ]),
+            onToolResult: (tool) =>
+              setCurrentToolCalls((prev) =>
+                prev.map((t) =>
+                  t.tool === tool ? { ...t, status: "done" } : t,
+                ),
+              ),
+            onText: (token) => setInsightText((prev) => prev + token),
+            onReasoning: (token) => setReasoningText((prev) => prev + token),
+          },
+          abort.signal,
+          {
+            provider: preset.provider,
+            model: preset.model,
+            baseUrl: preset.baseUrl,
+          },
+        );
       } catch (e: unknown) {
         if ((e as Error).name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "消息发送失败");
+        setError(e instanceof Error && e.message ? e.message : "消息发送失败");
       } finally {
         setLoading(false);
         setCurrentToolCalls([]);
@@ -139,8 +165,17 @@ export function useInsight() {
   }, [sessionId]);
 
   return {
-    insightText, reasoningText, loading, error, sessionId,
-    currentToolCalls, generate, sendMessage, clear, stop,
-    modelConfig, updateModelConfig,
+    insightText,
+    reasoningText,
+    loading,
+    error,
+    sessionId,
+    currentToolCalls,
+    generate,
+    sendMessage,
+    clear,
+    stop,
+    modelConfig,
+    updateModelConfig,
   };
 }
