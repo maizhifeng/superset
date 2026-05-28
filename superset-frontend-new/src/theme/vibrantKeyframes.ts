@@ -6,8 +6,8 @@ export const slideInRight = keyframes`
 `;
 
 export const pulseGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0); }
-  50% { box-shadow: 0 0 16px 4px rgba(108, 92, 231, 0.1); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(66, 133, 244, 0); }
+  50% { box-shadow: 0 0 16px 4px rgba(66, 133, 244, 0.12); }
 `;
 
 export const gradientShift = keyframes`

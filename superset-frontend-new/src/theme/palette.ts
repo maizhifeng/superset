@@ -43,8 +43,8 @@ export const supersetPalette = {
     contrastText: "#ffffff",
   },
   background: {
-    default: "#f7f3ec",
-    paper: "#fcfaf5",
+    default: "#faf7f2",
+    paper: "#ffffff",
   },
   surface: {
     main: "#fefdfa",
@@ -65,7 +65,7 @@ export const supersetPalette = {
     disabledBackground: "rgba(44, 36, 22, 0.08)",
   },
   bg: {
-    page: "#f7f3ec",
+    page: "#faf7f2",
     sidebar: "#f5efe6",
     card: "#fefdfa",
     header: "#f2ece2",

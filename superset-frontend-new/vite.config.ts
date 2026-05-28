@@ -116,25 +116,6 @@ export default defineConfig({
           });
         },
       },
-      "/llm": {
-        target: "http://172.25.128.1:1234",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/llm/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq, _req, _res) => {
-            proxyReq.setHeader("Connection", "keep-alive");
-          });
-          proxy.on("proxyRes", (proxyRes, _req, res) => {
-            const ct = proxyRes.headers["content-type"];
-            if (typeof ct === "string" && ct.includes("text/event-stream")) {
-              res.setHeader("cache-control", "no-cache");
-              res.setHeader("x-accel-buffering", "no");
-              res.setHeader("connection", "keep-alive");
-              res.flushHeaders();
-            }
-          });
-        },
-      },
     },
   },
   test: {

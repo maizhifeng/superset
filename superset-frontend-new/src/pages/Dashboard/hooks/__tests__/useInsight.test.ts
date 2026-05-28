@@ -94,7 +94,7 @@ test("generate calls streamChartInsight with chartId, filters, and modelConfig",
       onStatus: expect.any(Function),
     }),
     expect.any(AbortSignal),
-    { provider: "lmstudio", model: "gemma-4-e4b-it" },
+    { provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm/api/v1" },
   );
   expect(result.current.sessionId).toBe("ses_new");
 });
@@ -195,7 +195,7 @@ test("sendMessage calls streamChat with sessionId and message", async () => {
     "Follow up",
     expect.any(Object),
     expect.any(AbortSignal),
-    expect.objectContaining({ provider: "lmstudio" }),
+    expect.objectContaining({ provider: "lmstudio", baseUrl: "/llm/api/v1" }),
   );
 });
 

@@ -104,7 +104,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     setStoredRefreshToken(null);
     localStorage.removeItem("superset_user");
     cancelTokenRefresh();
-    set({ token: null, user: null, isAuthenticated: false });
+    set({ token: null, user: null, isAuthenticated: false, loading: false });
   },
 
   setToken: (token: string | null) => {

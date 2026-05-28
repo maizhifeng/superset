@@ -139,6 +139,10 @@ export default function ChartEditor({
     string,
     unknown
   > | null>(null);
+  const [sortEntry, setSortEntry] = useState<{
+    column: string;
+    direction: "asc" | "desc";
+  } | null>(null);
 
   const fieldOptions = useMemo(() => {
     const items: FieldOption[] = [];
@@ -282,6 +286,15 @@ export default function ChartEditor({
     } else if (typeof m === "string") {
       setMetrics([m]);
     }
+    const ob = parsed.orderby;
+    if (Array.isArray(ob) && ob.length > 0) {
+      const entry = ob[0];
+      const col =
+        typeof entry[0] === "string"
+          ? entry[0]
+          : entry[0]?.column?.column_name;
+      if (col) setSortEntry({ column: col, direction: entry[1] ? "asc" : "desc" });
+    }
     setSavedFormData(parsed);
   }
 
@@ -422,7 +435,8 @@ export default function ChartEditor({
     const timer = setTimeout(() => {
       if (abortRef.current) abortRef.current.abort();
 
-      setChartData(null);
+      const isRequery = chartData !== null;
+      if (!isRequery) setChartData(null);
       const controller = new AbortController();
       abortRef.current = controller;
       setLoadingData(true);
@@ -441,6 +455,9 @@ export default function ChartEditor({
           queryFormData.row_limit = savedFormData.row_limit;
         if (savedFormData.granularity_sqla)
           queryFormData.granularity_sqla = savedFormData.granularity_sqla;
+      }
+      if (sortEntry) {
+        queryFormData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
       }
       const query = buildQueryObject(queryFormData, previewParams.viz_type);
       const dashboardFilters = buildDashboardAdhocFilters?.(
@@ -492,6 +509,7 @@ export default function ChartEditor({
     loadingColumns,
     metricNames,
     savedFormData,
+    sortEntry,
     buildDashboardAdhocFilters,
   ]);
 
@@ -586,12 +604,15 @@ export default function ChartEditor({
         (d) => d.id === Number(datasourceId),
       );
       const effectiveType = resolvedType === "auto" ? "line" : resolvedType;
-      const formData = {
+      const formData: Record<string, unknown> = {
         viz_type: effectiveType,
         datasource: `${datasourceId}__table`,
         metrics: buildMetricsPayload(metrics),
         groupby,
       };
+      if (sortEntry) {
+        formData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
+      }
       const queryContext = buildQueryObject(formData, effectiveType);
       const body = {
         slice_name: sliceName || selectedDataset?.table_name || "未命名",
@@ -673,6 +694,9 @@ export default function ChartEditor({
       if (savedFormData.granularity_sqla)
         queryFormData.granularity_sqla = savedFormData.granularity_sqla;
     }
+    if (sortEntry) {
+      queryFormData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
+    }
     const query = buildQueryObject(
       queryFormData,
       resolvedType === "auto" ? "line" : resolvedType,
@@ -705,6 +729,7 @@ export default function ChartEditor({
     groupby,
     metricNames,
     savedFormData,
+    sortEntry,
     buildDashboardAdhocFilters,
   ]);
 
@@ -796,6 +821,11 @@ export default function ChartEditor({
             chartLibReady={chartLibReady}
             option={option}
             bigNumberValue={bigNumberValue}
+            onSortChange={(sorts) => {
+              const s = sorts[0];
+              if (s) setSortEntry({ column: s.column, direction: s.direction });
+              else setSortEntry(null);
+            }}
           />
         )}
       </Box>
