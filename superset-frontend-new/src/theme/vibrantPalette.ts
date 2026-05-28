@@ -1,11 +1,10 @@
-// Safe, professional palette inspired by AppsFlyer's design system.
-// Primary: AppsFlyer purple + dark/light variants.
-// Supporting colors: Tailwind's professionally designed, WCAG-compliant scale.
-// Neutrals: Tailwind slate scale.
+// Google-inspired vibrant palette with iconic four-color scheme.
+// Blue, Red, Yellow, Green — the classic Google color identity.
+// Each color is distinct and recognizable, creating a truly vibrant feel.
 
-const primary = "#6C5CE7";
-const primaryLight = "#A29BFE";
-const primaryDark = "#4A38D6";
+const primary = "#4285F4";
+const primaryLight = "#669DF6";
+const primaryDark = "#1A73E8";
 
 export const vibrantPalette = {
   mode: "light" as const,
@@ -13,100 +12,100 @@ export const vibrantPalette = {
     main: primary,
     light: primaryLight,
     dark: primaryDark,
-    container: "#EDE9FE",
-    onContainer: "#3B27B0",
+    container: "#E8F0FE",
+    onContainer: "#174EA6",
     contrastText: "#ffffff",
   },
   secondary: {
-    main: "#0D9488",
-    light: "#14B8A6",
-    dark: "#0F766E",
-    container: "#F0FDFA",
-    onContainer: "#134E4A",
+    main: "#EA4335",
+    light: "#F28B82",
+    dark: "#C5221F",
+    container: "#FCE8E6",
+    onContainer: "#A50E0E",
     contrastText: "#ffffff",
   },
   error: {
-    main: "#DC2626",
-    light: "#FEF2F2",
-    container: "#FEF2F2",
-    onContainer: "#7F1D1D",
+    main: "#EA4335",
+    light: "#FCE8E6",
+    container: "#FCE8E6",
+    onContainer: "#A50E0E",
     contrastText: "#ffffff",
   },
   warning: {
-    main: "#D97706",
-    contrastText: "#ffffff",
+    main: "#FBBC05",
+    contrastText: "#202124",
   },
   success: {
-    main: "#059669",
-    light: "#ECFDF5",
-    container: "#ECFDF5",
-    onContainer: "#064E3B",
+    main: "#34A853",
+    light: "#E6F4EA",
+    container: "#E6F4EA",
+    onContainer: "#137333",
     contrastText: "#ffffff",
   },
   info: {
-    main: "#2563EB",
+    main: "#4285F4",
     contrastText: "#ffffff",
   },
   background: {
-    default: "#F8FAFC",
+    default: "#F8F9FA",
     paper: "#ffffff",
   },
   surface: {
     main: "#ffffff",
-    variant: "#F1F5F9",
+    variant: "#F1F3F4",
   },
   text: {
-    primary: "#1E293B",
-    secondary: "#64748B",
-    disabled: "#94A3B8",
+    primary: "#202124",
+    secondary: "#5F6368",
+    disabled: "#9AA0A6",
   },
-  divider: "#E2E8F0",
-  outline: "#CBD5E1",
+  divider: "#DADCE0",
+  outline: "#BDC1C6",
   action: {
-    hover: "rgba(108, 92, 231, 0.08)",
-    selected: "rgba(108, 92, 231, 0.12)",
-    focus: "rgba(108, 92, 231, 0.14)",
-    disabled: "rgba(30, 41, 59, 0.26)",
-    disabledBackground: "rgba(30, 41, 59, 0.08)",
+    hover: "rgba(66, 133, 244, 0.04)",
+    selected: "rgba(66, 133, 244, 0.08)",
+    focus: "rgba(66, 133, 244, 0.12)",
+    disabled: "rgba(32, 33, 36, 0.38)",
+    disabledBackground: "rgba(32, 33, 36, 0.12)",
   },
   bg: {
-    page: "#F8FAFC",
-    sidebar: "#F1F5F9",
+    page: "#F8F9FA",
+    sidebar: "#F1F3F4",
     card: "#ffffff",
-    header: "#F1F5F9",
-    hover: "rgba(108, 92, 231, 0.08)",
-    selected: "rgba(108, 92, 231, 0.12)",
-    muted: "rgba(30, 41, 59, 0.04)",
+    header: "#F1F3F4",
+    hover: "rgba(66, 133, 244, 0.04)",
+    selected: "rgba(66, 133, 244, 0.08)",
+    muted: "rgba(32, 33, 36, 0.04)",
   },
   border: {
-    light: "rgba(30, 41, 59, 0.06)",
-    medium: "rgba(30, 41, 59, 0.12)",
-    strong: "rgba(30, 41, 59, 0.18)",
+    light: "rgba(32, 33, 36, 0.06)",
+    medium: "rgba(32, 33, 36, 0.12)",
+    strong: "rgba(32, 33, 36, 0.18)",
   },
   shadow: {
-    sm: "0 1px 2px rgba(30,41,59,0.03), 0 1px 3px rgba(30,41,59,0.04)",
-    md: "0 2px 4px rgba(30,41,59,0.03), 0 6px 16px rgba(30,41,59,0.06)",
-    lg: "0 4px 8px rgba(30,41,59,0.03), 0 12px 32px rgba(30,41,59,0.07)",
-    card: "0 1px 2px rgba(108,92,231,0.02), 0 2px 6px rgba(108,92,231,0.04), 0 4px 12px rgba(30,41,59,0.03)",
-    cardHover: "0 2px 4px rgba(108,92,231,0.04), 0 8px 20px rgba(108,92,231,0.07), 0 12px 32px rgba(30,41,59,0.05)",
-    focus: "0 0 0 3px rgba(108, 92, 231, 0.25)",
-    glow: "0 0 0 2px rgba(108, 92, 231, 0.15), 0 0 16px rgba(108, 92, 231, 0.08)",
+    sm: "0 1px 2px rgba(32,33,36,0.04), 0 1px 3px rgba(32,33,36,0.08)",
+    md: "0 2px 4px rgba(32,33,36,0.04), 0 6px 16px rgba(32,33,36,0.08)",
+    lg: "0 4px 8px rgba(32,33,36,0.04), 0 12px 32px rgba(32,33,36,0.08)",
+    card: "0 1px 2px rgba(32,33,36,0.02), 0 2px 6px rgba(32,33,36,0.06)",
+    cardHover: "0 2px 4px rgba(32,33,36,0.04), 0 8px 24px rgba(32,33,36,0.08)",
+    focus: "0 0 0 3px rgba(66, 133, 244, 0.25)",
+    glow: "0 0 0 2px rgba(66, 133, 244, 0.15), 0 0 16px rgba(66, 133, 244, 0.08)",
   },
   status: {
-    success: "#059669",
-    successBg: "rgba(5, 150, 105, 0.1)",
-    warning: "#D97706",
-    warningBg: "rgba(217, 119, 6, 0.1)",
-    error: "#DC2626",
-    errorBg: "rgba(220, 38, 38, 0.1)",
+    success: "#34A853",
+    successBg: "rgba(52, 168, 83, 0.1)",
+    warning: "#FBBC05",
+    warningBg: "rgba(251, 188, 5, 0.1)",
+    error: "#EA4335",
+    errorBg: "rgba(234, 67, 53, 0.1)",
   },
 };
 
-// Subtle accent colors for card variety — still safe, muted, accessible
+// Google's iconic four-color palette for card accents
 export const cardAccents = [
-  "#6C5CE7",
-  "#0D9488",
-  "#2563EB",
-  "#7C3AED",
-  "#0891B2",
+  "#4285F4", // Google Blue
+  "#EA4335", // Google Red
+  "#FBBC05", // Google Yellow
+  "#34A853", // Google Green
+  "#5F6368", // Google Gray
 ] as const;

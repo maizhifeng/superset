@@ -56,7 +56,6 @@ function GlobalShortcuts() {
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [helpOpen, setHelpOpen] = useState(false);
-  if (!isAuthenticated) return null;
 
   useShortcutWithHelp("shift+/", () => setHelpOpen((prev) => !prev), {
     label: "打开快捷键帮助",
@@ -95,6 +94,8 @@ function GlobalShortcuts() {
   });
 
   const handleCloseHelp = useCallback(() => setHelpOpen(false), []);
+
+  if (!isAuthenticated) return null;
 
   return (
     <KeyboardShortcutHelpModal open={helpOpen} onClose={handleCloseHelp} />

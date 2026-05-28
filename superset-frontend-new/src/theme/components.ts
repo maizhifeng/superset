@@ -146,7 +146,7 @@ export default {
     styleOverrides: {
       root: {
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-        backgroundColor: "var(--mui-palette-background-paper, #fcfaf5)",
+        backgroundColor: "var(--mui-palette-background-paper, #ffffff)",
         borderBottom: "1px solid var(--mui-palette-divider, #ece5d8)",
         color: "var(--mui-palette-text-primary, #2c2416)",
       },

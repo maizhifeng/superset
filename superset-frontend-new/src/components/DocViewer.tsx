@@ -89,7 +89,7 @@ const docs: Record<string, { title: string; content: string }> = {
 
 ## AI 架构
 
-- 使用 generateInsightStream（LM Studio 直连）或 streamDirectChat（Opencode SDK 会话）
+- 所有 AI 请求均通过 OpenCode SDK 会话（streamChartInsight / streamDirectChat）
 - 支持流式文本输出和中断
 - 可切换 AI 后端 Provider
 

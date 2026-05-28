@@ -47,6 +47,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const logout = useAuthStore((s) => s.logout);
   const location = useLocation();
   const navigate = useNavigate();
+  const handleLogout = useCallback(() => {
+    logout();
+    navigate("/login");
+  }, [logout, navigate]);
   const [crumbAnchorEl, setCrumbAnchorEl] = useState<HTMLElement | null>(null);
   const [crumbOptions, setCrumbOptions] = useState<
     { label: string; path: string }[]
@@ -462,7 +466,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               anchorEl={userMenuAnchor}
               onOpen={(e) => setUserMenuAnchor(e.currentTarget)}
               onClose={() => setUserMenuAnchor(null)}
-              onLogout={logout}
+              onLogout={handleLogout}
             />
             <Menu
               anchorEl={crumbAnchorEl}

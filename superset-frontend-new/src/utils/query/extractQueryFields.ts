@@ -84,6 +84,8 @@ export function buildQueryObject(
 
   if (orderby.length > 0) {
     query.orderby = orderby;
+  } else if (groupby.length > 0) {
+    query.orderby = [[groupby[0], true]];
   } else if (metrics.length > 0) {
     const ascending = !order_desc;
     query.orderby = [[metrics[0], ascending]];

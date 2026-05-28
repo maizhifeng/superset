@@ -249,12 +249,14 @@ export async function streamChartInsight(
 
   callbacks.onStatus?.("正在查询数据…");
   try {
+    const ROW_LIMIT = 500;
     const payload: Record<string, unknown> = {
       datasource: { id: info.dsId, type: info.dsType },
       queries: [
         {
           metrics: info.metrics.slice(0, 10),
           columns: info.groupby.slice(0, 5),
+          row_limit: ROW_LIMIT,
         },
       ],
       result_format: "json",
@@ -270,6 +272,7 @@ export async function streamChartInsight(
         : dataResp.data?.result) || {};
     const data: Record<string, unknown>[] = first.data || [];
     const colnames: string[] = first.colnames || [];
+    const totalCount = first.rowcount ?? data.length;
 
     callbacks.onStatus?.("数据获取完成");
 
@@ -283,7 +286,7 @@ export async function streamChartInsight(
       const vb =
         Number(Object.values(b).find((v) => typeof v === "number")) || 0;
       return vb - va;
-    });
+    }).slice(0, ROW_LIMIT);
     const tableStr = [
       shortNames.join("\t"),
       ...sorted.map((r) =>
@@ -302,14 +305,22 @@ export async function streamChartInsight(
       ),
     ].join("\n");
 
+    const truncNote =
+      totalCount > ROW_LIMIT
+        ? `⚠️ 共 ${totalCount} 行，仅展示消耗最高的 ${ROW_LIMIT} 行，缺失 ${totalCount - ROW_LIMIT} 行`
+        : totalCount >= ROW_LIMIT
+          ? `⚠️ 达到查询上限 ${ROW_LIMIT} 行，可能存在截断`
+          : null;
+
     const contextLines = [
       `图表: ${info.name}`,
       `类型: ${info.vizType}`,
-      `数据行: ${data.length}`,
+      `数据行: ${sorted.length}`,
       `数据列: ${shortNames.join(", ")}`,
     ];
+    if (truncNote) contextLines.push(truncNote);
     if (fi.text) contextLines.push(`\n${fi.text}`);
-    const dataBlock = data.length ? `\n数据:\n${tableStr}` : "";
+    const dataBlock = sorted.length ? `\n数据:\n${tableStr}` : "";
 
     // Route via Opencode SDK for all providers
     callbacks.onStatus?.("正在分析…");

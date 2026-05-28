@@ -22,6 +22,7 @@ interface ChartPreviewProps {
   chartLibReady: boolean;
   option: EChartsOption | null;
   bigNumberValue: string | null;
+  onSortChange?: (sorts: { column: string; direction: "asc" | "desc" }[]) => void;
 }
 
 export default function ChartPreview({
@@ -38,6 +39,7 @@ export default function ChartPreview({
   chartLibReady,
   option,
   bigNumberValue,
+  onSortChange,
 }: ChartPreviewProps) {
   return (
     <Box
@@ -94,6 +96,7 @@ export default function ChartPreview({
           <DataPreviewTable
             data={chartData}
             maxRows={500}
+            onSortChange={onSortChange}
             formatCell={(key, val) => {
               if (val === null || val === undefined) return "";
               if (typeof val === "number" && /year|date|time/i.test(key)) {

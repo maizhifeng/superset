@@ -27,6 +27,7 @@ interface DataPreviewTableProps {
   maxRows?: number;
   formatCell?: CellFormatter;
   sx?: SxProps<Theme>;
+  onSortChange?: (sorts: { column: string; direction: "asc" | "desc" }[]) => void;
 }
 
 function defaultFormat(_key: string, value: unknown): string {
@@ -57,6 +58,7 @@ export default function DataPreviewTable({
   maxRows = 100,
   formatCell: formatter,
   sx,
+  onSortChange,
 }: DataPreviewTableProps) {
   const [sorts, setSorts] = useState<SortEntry[]>([]);
   const [page, setPage] = useState(0);
@@ -96,29 +98,33 @@ export default function DataPreviewTable({
     return [...sorted, ...summaryRows];
   }, [rows, sorts]);
 
-  const handleHeaderClick = (key: string) => {
-    setSorts((prev) => {
-      const idx = prev.findIndex((s) => s.column === key);
-      if (idx >= 0) {
-        if (prev[idx].direction === "desc") {
-          const next = [...prev];
-          next[idx] = { ...next[idx], direction: "asc" };
-          return next;
-        }
-        return prev.filter((s) => s.column !== key);
-      }
-      const lastLocked = prev.reduce((last, s, i) => (s.locked ? i : last), -1);
-      if (lastLocked >= 0) {
+  function computeNextSorts(prev: SortEntry[], key: string): SortEntry[] {
+    const idx = prev.findIndex((s) => s.column === key);
+    if (idx >= 0) {
+      if (prev[idx].direction === "desc") {
         const next = [...prev];
-        next.splice(lastLocked + 1, 0, {
-          column: key,
-          direction: "desc",
-          locked: false,
-        });
+        next[idx] = { ...next[idx], direction: "asc" };
         return next;
       }
-      return [{ column: key, direction: "desc", locked: false }];
-    });
+      return prev.filter((s) => s.column !== key);
+    }
+    const lastLocked = prev.reduce((last, s, i) => (s.locked ? i : last), -1);
+    if (lastLocked >= 0) {
+      const next = [...prev];
+      next.splice(lastLocked + 1, 0, {
+        column: key,
+        direction: "desc",
+        locked: false,
+      });
+      return next;
+    }
+    return [{ column: key, direction: "desc", locked: false }];
+  }
+
+  const handleHeaderClick = (key: string) => {
+    const next = computeNextSorts(sorts, key);
+    setSorts(next);
+    onSortChange?.(next.map((s) => ({ column: s.column, direction: s.direction })));
   };
 
   const handleLockToggle = (e: React.MouseEvent, key: string) => {
