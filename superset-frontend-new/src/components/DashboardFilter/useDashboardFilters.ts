@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useLayoutEffect } from "react";
 import type {
   FilterConfig,
   FilterState,
@@ -103,19 +103,39 @@ export default function useDashboardFilters(
     ] as [string, string];
   }, [now]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFilterState((prev) => {
       let updated = false;
       const next = { ...prev };
       for (const filter of filters) {
         if (filter.filterType !== "time_range") continue;
         if (next[filter.id]?.value) continue;
-        next[filter.id] = { value: currentMonthRange };
+        const defaultValue = filter.defaultDataMask?.filterState?.value;
+        if (defaultValue !== undefined && defaultValue !== null) {
+          next[filter.id] = { value: defaultValue };
+        } else {
+          next[filter.id] = { value: currentMonthRange };
+        }
         updated = true;
       }
       return updated ? next : prev;
     });
   }, [filters, currentMonthRange]);
+
+  useLayoutEffect(() => {
+    setFilterState((prev) => {
+      let updated = false;
+      const next = { ...prev };
+      for (const filter of filters) {
+        const defaultValue = filter.defaultDataMask?.filterState?.value;
+        if (defaultValue === undefined || defaultValue === null) continue;
+        if (next[filter.id]?.value) continue;
+        next[filter.id] = { value: defaultValue };
+        updated = true;
+      }
+      return updated ? next : prev;
+    });
+  }, [filters]);
 
   const setFilter = useCallback(
     (id: string, value: unknown, extraFormData?: Record<string, unknown>) => {
@@ -131,8 +151,20 @@ export default function useDashboardFilters(
   );
 
   const clearAll = useCallback(() => {
-    setFilterState({});
-  }, []);
+    const defaults: FilterState = {};
+    for (const filter of filters) {
+      const defaultValue = filter.defaultDataMask?.filterState?.value;
+      if (defaultValue !== undefined && defaultValue !== null) {
+        defaults[filter.id] = { value: defaultValue };
+      }
+    }
+    for (const filter of filters) {
+      if (filter.filterType !== "time_range") continue;
+      if (defaults[filter.id]?.value) continue;
+      defaults[filter.id] = { value: currentMonthRange };
+    }
+    setFilterState(defaults);
+  }, [filters, currentMonthRange]);
 
   const activeCount = useMemo(() => {
     let count = 0;

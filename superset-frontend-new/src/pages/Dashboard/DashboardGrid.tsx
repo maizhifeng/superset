@@ -135,7 +135,7 @@ export default function DashboardGrid({
         </Box>
       )}
       <GridLayout
-        key={`layout-${containerWidth}`}
+        key={`layout-${containerWidth < 600 ? "mobile" : "desktop"}`}
         width={containerWidth}
         layout={gridLayout}
         gridConfig={{

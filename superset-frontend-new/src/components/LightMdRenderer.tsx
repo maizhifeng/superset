@@ -341,15 +341,16 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
         const dataRows = tableLines.slice(2);
 
         elements.push(
-          <Box
-            key={key++}
-            sx={{
-              overflowX: "auto",
-              my: 1,
-              border: "1px solid",
-              borderColor: "divider",
-              borderRadius: 1,
-            }}
+            <Box
+              key={key++}
+              sx={{
+                overflowX: "auto",
+                my: 1,
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+                transition: "opacity 0.15s ease",
+              }}
           >
             <Table size="small" sx={{ borderCollapse: "collapse" }}>
               <TableHead>

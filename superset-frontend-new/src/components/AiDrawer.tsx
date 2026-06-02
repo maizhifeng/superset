@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Drawer from "@mui/material/Drawer";
 import Collapse from "@mui/material/Collapse";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -23,12 +24,15 @@ import MenuBookIcon from "@mui/icons-material/MenuBook";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import StorageIcon from "@mui/icons-material/Storage";
 import ArticleIcon from "@mui/icons-material/Article";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import AiConfigDialog from "@/components/AiConfigDialog";
 import LightMdRenderer from "@/components/LightMdRenderer";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
+import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
 import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
+import { useDrawerStore } from "@/store/drawerState";
 import { useNotificationStore } from "@/store/notificationStore";
 import { blink } from "@/theme/keyframes";
 import { transitions } from "@/theme/motion";
@@ -36,6 +40,11 @@ import { transitions } from "@/theme/motion";
 interface Message {
   role: "user" | "assistant";
   content: string;
+}
+
+interface DrillDownSuggestion {
+  label: string;
+  prompt: string;
 }
 
 interface KnowledgeCard {
@@ -51,7 +60,6 @@ interface AiDrawerProps {
   onClose: () => void;
   variant?: "assistant" | "insight";
   chartId?: number | null;
-  chartData?: Record<string, unknown>;
   chartMeta?: ChartData;
   filters?: Record<string, unknown>;
 }
@@ -61,9 +69,15 @@ import type { ChartData } from "@/types/api";
 const knowledgeCards: KnowledgeCard[] = [
   {
     title: "生成日报",
-    description: "一键生成昨日数据日报，含项目、渠道、媒体多维分析",
+    description: "生成昨日数据日报，含项目、渠道、媒体多维分析",
     icon: <ArticleIcon sx={{ fontSize: 24 }} />,
     prompt: DAILY_REPORT_PROMPT,
+  },
+  {
+    title: "生成周报",
+    description: "生成周对比分析报告，含项目、媒体、变化趋势",
+    icon: <CalendarMonthIcon sx={{ fontSize: 24 }} />,
+    prompt: WEEKLY_REPORT_PROMPT,
   },
   {
     title: "使用手册",
@@ -86,31 +100,86 @@ const knowledgeCards: KnowledgeCard[] = [
   },
 ];
 
+const DRILL_DOWN_MARKER = "DRILL_DOWN_SUGGESTIONS";
+
+function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
+  const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
+  if (idx === -1) return [];
+  const block = text.slice(idx + DRILL_DOWN_MARKER.length).trim();
+  return block
+    .split("\n")
+    .map((l) => l.replace(/^[-*]\s*/, "").trim())
+    .filter((l) => l.length > 3)
+    .slice(0, 5)
+    .map((l) => {
+      const sep = l.indexOf("|");
+      if (sep !== -1) {
+        return { label: l.slice(0, sep).trim(), prompt: l.slice(sep + 1).trim() };
+      }
+      return { label: l, prompt: l };
+    });
+}
+
+function stripDrillDownSection(text: string): string {
+  const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
+  if (idx === -1) return text;
+  return text.slice(0, idx).trim();
+}
+
 function useAiChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentText, setCurrentText] = useState("");
   const [sessionKey, setSessionKey] = useState(0);
+  const [suggestions, setSuggestions] = useState<DrillDownSuggestion[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const systemPrompt =
     "You are a helpful data analysis assistant embedded inside Starfly. " +
     "Answer general questions about Starfly features, data visualization, " +
-    "SQL, and data analysis. Be concise and practical.";
+    "SQL, and data analysis. Be concise and practical.\n" +
+    "IMPORTANT: Do NOT output any reasoning, planning, or thinking process. " +
+    "Output only the final answer directly.";
 
-  const streamChat = async (text: string, signal?: AbortSignal) => {
+  const streamChat = async (
+    text: string,
+    signal?: AbortSignal,
+    history?: { role: string; content: string }[],
+  ) => {
     const { streamDirectChat } = await import("@/api/aiInsight");
     const { getActivePreset } = await import("@/config/aiConfig");
     const preset = getActivePreset();
     let full = "";
     let errored = false;
+    let rafId = 0;
+    let inTable = false;
+    const lastLine = () => {
+      const nl = full.lastIndexOf("\n");
+      return nl >= 0 ? full.slice(nl + 1) : full;
+    };
+    const tryRender = () => {
+      const ll = lastLine();
+      if (ll.startsWith("|")) {
+        if (!ll.endsWith("|") || ll.length <= 1) return;
+        if (!full.endsWith("|\n")) return;
+        inTable = true;
+      } else if (ll.trim() === "" && inTable) {
+        return;
+      } else if (inTable) {
+        return;
+      } else {
+        inTable = false;
+      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => setCurrentText(full));
+    };
     await streamDirectChat(
       text,
       systemPrompt,
       {
         onText: (token) => {
           full += token;
-          setCurrentText(full);
+          tryRender();
         },
         onError: () => {
           errored = true;
@@ -122,7 +191,10 @@ function useAiChat() {
         model: preset.model,
         baseUrl: preset.baseUrl,
       },
+      history,
     );
+    cancelAnimationFrame(rafId);
+    setCurrentText(full);
     if (errored) throw new Error("AI 响应异常，请重试");
     return full;
   };
@@ -133,12 +205,13 @@ function useAiChat() {
     abortRef.current = abort;
 
     const userMsg: Message = { role: "user", content: text };
+    const history = messages;
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
     setCurrentText("");
 
     try {
-      const fullContent = await streamChat(text, abort.signal);
+      const fullContent = await streamChat(text, abort.signal, history);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: fullContent },
@@ -165,6 +238,7 @@ function useAiChat() {
     setMessages([{ role: "user", content: text }]);
     setLoading(true);
     setCurrentText("");
+    setSuggestions([]);
     setSessionKey((k) => k + 1);
 
     try {
@@ -219,6 +293,110 @@ function useAiChat() {
       const fullContent = await streamChat(fullPrompt, abort.signal);
       setMessages((prev) => [
         ...prev,
+        { role: "assistant", content: stripDrillDownSection(fullContent) },
+      ]);
+      setCurrentText("");
+      setSuggestions(extractDrillDownSuggestions(fullContent));
+    } catch {
+      setCurrentText("");
+      setSuggestions([]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startWeeklyReport = async (
+    reportPrompt: string,
+    promptTemplate: string,
+  ) => {
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    setMessages([{ role: "user", content: "📊 正在从数据集查询两周数据..." }]);
+    setLoading(true);
+    setCurrentText("");
+    setSessionKey((k) => k + 1);
+
+    try {
+      const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
+      const { summaryContext } = await fetchWeeklyReportData();
+
+      const fullPrompt = [
+        promptTemplate,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据生成完整周报。",
+      ].join("\n");
+
+      setMessages([{ role: "user", content: reportPrompt }]);
+
+      const fullContent = await streamChat(fullPrompt, abort.signal);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: stripDrillDownSection(fullContent) },
+      ]);
+      setCurrentText("");
+      setSuggestions(extractDrillDownSuggestions(fullContent));
+    } catch {
+      setCurrentText("");
+      setSuggestions([]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startDrillDown = async (analysisPrompt: string) => {
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: `📊 钻取分析: ${analysisPrompt}` },
+    ]);
+    setLoading(true);
+    setCurrentText("");
+
+    try {
+      const { fetchDrillDownData } = await import("@/api/drillDown");
+      const { summaryContext } = await fetchDrillDownData();
+
+      const fullPrompt = [
+        "你是专业的数据分析师。请基于以下实际数据进行钻取分析。",
+        "",
+        "### 分析指令",
+        analysisPrompt,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据，针对分析指令进行深入钻取分析，给出具体的结论和优化建议。",
+      ].join("\n");
+
+      const fullContent = await streamChat(fullPrompt, abort.signal);
+      setMessages((prev) => [
+        ...prev,
         { role: "assistant", content: fullContent },
       ]);
       setCurrentText("");
@@ -248,6 +426,7 @@ function useAiChat() {
     setMessages([]);
     setCurrentText("");
     setLoading(false);
+    setSuggestions([]);
     setSessionKey((k) => k + 1);
   };
 
@@ -256,9 +435,12 @@ function useAiChat() {
     loading,
     currentText,
     sessionKey,
+    suggestions,
     sendMessage,
     startNewChat,
     startDailyReport,
+    startWeeklyReport,
+    startDrillDown,
     stop,
     clear,
   };
@@ -331,15 +513,20 @@ export default function AiDrawer({
     loading: chatLoading,
     currentText,
     sessionKey,
+    suggestions,
     sendMessage,
     startNewChat,
     startDailyReport,
+    startWeeklyReport,
+    startDrillDown,
     stop: chatStop,
     clear: chatClear,
   } = useAiChat();
   const insight = useInsight();
   const notify = useNotificationStore((s) => s.notify);
   const { activePreset } = useAiConfigStore();
+  const drawerWidth = useDrawerStore((s) => s.drawerWidth);
+  const setDrawerWidth = useDrawerStore((s) => s.setDrawerWidth);
   const [input, setInput] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
@@ -348,6 +535,39 @@ export default function AiDrawer({
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevOpenRef = useRef(open);
   const isAssist = variant === "assistant";
+
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    draggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWidthRef.current = drawerWidth;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+  }, [drawerWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const delta = startXRef.current - e.clientX;
+      const newWidth = Math.min(Math.max(startWidthRef.current + delta, 360), window.innerWidth * 0.8);
+      setDrawerWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -391,6 +611,8 @@ export default function AiDrawer({
     } else if (card.prompt) {
       if (card.title === "生成日报") {
         startDailyReport("请生成昨日数据日报", card.prompt);
+      } else if (card.title === "生成周报") {
+        startWeeklyReport("请生成 W1 vs W2 周对比分析报告", card.prompt);
       } else {
         startNewChat(card.prompt);
       }
@@ -435,7 +657,7 @@ export default function AiDrawer({
       slotProps={{
         paper: {
           sx: {
-            width: { xs: "100vw", md: "40vw" },
+            width: { xs: "100vw", md: drawerWidth },
             top: 45,
             height: "calc(100vh - 45px)",
             zIndex: (theme) => theme.zIndex.drawer + 2,
@@ -447,13 +669,23 @@ export default function AiDrawer({
       }}
     >
       <Box
-        sx={{
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          bgcolor: "background.default",
-        }}
+        sx={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}
       >
+        {/* Drag handle */}
+        <Box
+          onMouseDown={handleDragStart}
+          sx={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 4,
+            cursor: "ew-resize",
+            zIndex: (theme) => theme.zIndex.drawer + 3,
+            "&:hover": { bgcolor: "primary.main", opacity: 0.5 },
+            transition: (t) => t.transitions.create("background-color", { duration: t.transitions.duration.shorter }),
+          }}
+        />
         {/* Header */}
         <Box
           sx={{
@@ -668,6 +900,7 @@ export default function AiDrawer({
                     wordBreak: "break-word",
                     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
                     overflow: "hidden",
+                    transition: "min-height 0.1s ease",
                   }}
                 >
                   <LightMdRenderer content={currentText} />
@@ -947,6 +1180,27 @@ export default function AiDrawer({
               bgcolor: "background.paper",
             }}
           >
+            {suggestions.length > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  mb: 1,
+                }}
+              >
+                {suggestions.map((s, i) => (
+                  <Chip
+                    key={i}
+                    label={s.label}
+                    size="small"
+                    onClick={() => startDrillDown(s.prompt)}
+                    disabled={chatLoading}
+                    sx={{ maxWidth: "100%" }}
+                  />
+                ))}
+              </Box>
+            )}
             <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
               <TextField
                 size="small"
@@ -1033,8 +1287,8 @@ export default function AiDrawer({
             </Box>
           )
         )}
-      </Box>
       <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
+      </Box>
     </Drawer>
   );
 }

@@ -1,6 +1,11 @@
 import { useState, useRef, useCallback } from "react";
-import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
+import { streamChartInsight, streamChat } from "@/api/aiInsight";
 import { useAiConfigStore, getActivePreset } from "@/config/aiConfig";
+
+interface InsightMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
 interface ModelConfig {
   provider: string;
@@ -10,12 +15,9 @@ interface ModelConfig {
 export function useInsight() {
   const [insightText, setInsightText] = useState("");
   const [reasoningText, setReasoningText] = useState("");
+  const [messages, setMessages] = useState<InsightMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [currentToolCalls, setCurrentToolCalls] = useState<
-    { tool: string; status: "calling" | "done" }[]
-  >([]);
   const activePreset = useAiConfigStore((s) => s.activePreset);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -44,35 +46,18 @@ export function useInsight() {
       setError("");
       setInsightText("");
       setReasoningText("");
-      setCurrentToolCalls([]);
+      setMessages([]);
 
       try {
         const preset = getActivePreset();
-        const sid = await streamChartInsight(
+        await streamChartInsight(
           chartId,
           filters,
           {
-            onSession: (sid) => setSessionId(sid),
-            onToolCall: (tool) =>
-              setCurrentToolCalls((prev) => [
-                ...prev,
-                { tool, status: "calling" },
-              ]),
-            onToolResult: (tool) =>
-              setCurrentToolCalls((prev) =>
-                prev.map((t) =>
-                  t.tool === tool ? { ...t, status: "done" } : t,
-                ),
-              ),
             onText: (token) => setInsightText((prev) => prev + token),
             onReasoning: (token) => setReasoningText((prev) => prev + token),
             onStatus: (status) => {
-              if (status.startsWith("retry")) {
-                setCurrentToolCalls((prev) => [
-                  ...prev,
-                  { tool: `⏳ ${status}`, status: "calling" },
-                ]);
-              }
+              /* status updates handled internally */
             },
           },
           abort.signal,
@@ -82,7 +67,6 @@ export function useInsight() {
             baseUrl: preset.baseUrl,
           },
         );
-        setSessionId(sid);
       } catch (e: unknown) {
         if ((e as Error).name === "AbortError") return;
         setError(
@@ -90,7 +74,6 @@ export function useInsight() {
         );
       } finally {
         setLoading(false);
-        setCurrentToolCalls([]);
       }
     },
     [],
@@ -98,33 +81,23 @@ export function useInsight() {
 
   const sendMessage = useCallback(
     async (message: string) => {
-      if (!sessionId) return;
       abortRef.current?.abort();
       const abort = new AbortController();
       abortRef.current = abort;
 
+      const history = messages;
+      const userMsg: InsightMessage = { role: "user", content: message };
+      setMessages((prev) => [...prev, userMsg]);
       setLoading(true);
       setError("");
-      setCurrentToolCalls([]);
       setInsightText((prev) => prev + "\n\n---\n\n");
 
       try {
         const preset = getActivePreset();
         await streamChat(
-          sessionId,
+          "",
           message,
           {
-            onToolCall: (tool) =>
-              setCurrentToolCalls((prev) => [
-                ...prev,
-                { tool, status: "calling" },
-              ]),
-            onToolResult: (tool) =>
-              setCurrentToolCalls((prev) =>
-                prev.map((t) =>
-                  t.tool === tool ? { ...t, status: "done" } : t,
-                ),
-              ),
             onText: (token) => setInsightText((prev) => prev + token),
             onReasoning: (token) => setReasoningText((prev) => prev + token),
           },
@@ -134,43 +107,39 @@ export function useInsight() {
             model: preset.model,
             baseUrl: preset.baseUrl,
           },
+          history,
         );
       } catch (e: unknown) {
         if ((e as Error).name === "AbortError") return;
         setError(e instanceof Error && e.message ? e.message : "消息发送失败");
       } finally {
         setLoading(false);
-        setCurrentToolCalls([]);
       }
     },
-    [sessionId],
+    [messages],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
-    if (sessionId) abortSession(sessionId).catch(() => {});
     setLoading(false);
-    setCurrentToolCalls([]);
-  }, [sessionId]);
+  }, []);
 
   const clear = useCallback(() => {
     abortRef.current?.abort();
-    if (sessionId) abortSession(sessionId).catch(() => {});
     setInsightText("");
     setReasoningText("");
+    setMessages([]);
     setLoading(false);
     setError("");
-    setSessionId(null);
-    setCurrentToolCalls([]);
-  }, [sessionId]);
+  }, []);
 
   return {
     insightText,
     reasoningText,
+    messages,
     loading,
     error,
-    sessionId,
-    currentToolCalls,
+    currentToolCalls: [],
     generate,
     sendMessage,
     clear,

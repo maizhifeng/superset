@@ -1,26 +1,15 @@
-/**
- * AI Insight — REST API data fetching + opencode SDK event stream.
- */
-
 import api from "@/api";
-import { createOpencodeClient } from "@opencode-ai/sdk";
-import { getActivePreset } from "@/config/aiConfig";
+
 interface ModelConfig {
   provider: string;
   model: string;
   baseUrl?: string;
 }
 
-/** SDK client — baseUrl 末尾加 / 确保 Vite proxy 路径正确拼接 */
-const oc = createOpencodeClient({ baseUrl: "http://localhost:9000/opencode/" });
-
 export interface InsightCallbacks {
   onText: (text: string) => void;
   onReasoning?: (text: string) => void;
-  onToolCall?: (tool: string) => void;
-  onToolResult?: (tool: string) => void;
   onStatus?: (status: string) => void;
-  onSession?: (sessionId: string) => void;
   onDone?: () => void;
   onError?: (error: string) => void;
 }
@@ -76,156 +65,89 @@ function buildFilterInfo(filters: Record<string, unknown>) {
   };
 }
 
-// --- OpenCode SDK event streaming ---
+// --- Direct LLM streaming (OpenAI-compatible SSE) ---
 
 function _yieldToReact(): Promise<void> {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-async function _streamSession(
-  sessionId: string,
-  events: Awaited<ReturnType<typeof oc.event.subscribe>>,
+async function _streamLlmDirect(
+  system: string,
+  prompt: string,
   callbacks: InsightCallbacks,
   signal?: AbortSignal,
+  modelCfg?: ModelConfig,
+  history?: { role: string; content: string }[],
 ) {
-  let hadTextDelta = false;
-  for await (const event of events.stream) {
-    if (signal?.aborted) break;
+  callbacks.onStatus?.("正在获取回答…");
 
-    const type = event.type as string;
-    const props = (event.properties || {}) as Record<string, unknown>;
-    if (props.sessionID !== sessionId) continue;
+  const rawBaseUrl = modelCfg?.baseUrl || "";
+  const baseUrl = /172\.\d+\.\d+\.\d+|host\.docker\.internal/.test(rawBaseUrl)
+    ? "/llm"
+    : rawBaseUrl || "/llm";
+  const model = modelCfg?.model || "gemma-4-e2b-it";
 
-    if (
-      type !== "message.part.delta" &&
-      type !== "message.part.updated" &&
-      type !== "session.status"
-    ) {
-      console.log("[event]", type, Object.keys(props).join(","));
-    }
-    if (type === "message.part.updated" || type === "message.part.delta") {
-      const part = (props.part || {}) as Record<string, unknown>;
-      const fld = props.field as string;
-      const delta = props.delta as string;
-      console.log(
-        `[${type}]`,
-        `part.type=${part.type || "-"}`,
-        `field=${fld || "-"}`,
-        `delta=${delta ? delta.length + "chars" : "-"}`,
-        `part.text=${part.text ? (part.text as string).length + "chars" : "-"}`,
-      );
-    }
+  const messages: { role: string; content: string }[] = [];
+  if (system) messages.push({ role: "system", content: system });
+  if (history) messages.push(...history);
+  messages.push({ role: "user", content: prompt });
 
-    switch (type) {
-      case "tool_call":
-        callbacks.onToolCall?.(
-          ((props.tool as Record<string, unknown>)?.name as string) || "",
-        );
-        break;
-      case "tool_result":
-        callbacks.onToolResult?.(
-          ((props.tool as Record<string, unknown>)?.name as string) || "",
-        );
-        break;
-      case "message.part.updated": {
-        const part = (props.part || {}) as Record<string, unknown>;
-        if (part.type === "reasoning") {
-          if ((props.delta as string) && callbacks.onReasoning) {
-            console.log(
-              "[reasoning] delta via updated:",
-              (props.delta as string).length,
-              "chars",
-            );
-            callbacks.onReasoning(props.delta as string);
-            await _yieldToReact();
-          } else if (part.text) {
-            console.log(
-              "[reasoning] full text via updated:",
-              (part.text as string).length,
-              "chars",
-            );
-            callbacks.onReasoning?.(part.text as string);
-          }
-        } else if (part.type === "text" && part.text && !hadTextDelta) {
-          callbacks.onText(part.text as string);
-          await _yieldToReact();
-        }
-        break;
-      }
-      case "message.part.delta": {
-        if (
-          (props.field as string) === "reasoning" &&
-          (props.delta as string)
-        ) {
-          console.log(
-            "[reasoning] delta:",
-            (props.delta as string).length,
-            "chars:",
-            JSON.stringify((props.delta as string).slice(0, 50)),
-          );
-          callbacks.onReasoning?.(props.delta as string);
-          await _yieldToReact();
-        } else if ((props.field as string) === "text" && props.delta) {
-          hadTextDelta = true;
-          callbacks.onText(props.delta as string);
-          await _yieldToReact();
-        }
-        break;
-      }
-      case "session.status": {
-        const st = ((props.status || {}) as Record<string, unknown>)
-          .type as string;
-        if (st === "idle") {
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+      temperature: 0.1,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`LLM API error: ${res.status} ${text}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("Response body is not readable");
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") {
           callbacks.onDone?.();
           return;
         }
-        if (st === "error") {
-          callbacks.onError?.(
-            ((props.status as Record<string, unknown>)?.message as string) ||
-              "Unknown error",
-          );
-          return;
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content || "";
+          if (content) {
+            callbacks.onText(content);
+            await _yieldToReact();
+          }
+        } catch {
+          /* skip malformed JSON */
         }
-        break;
       }
-      case "session.error":
-        callbacks.onError?.((props.error as string) || "Session error");
-        return;
     }
+  } finally {
+    reader.releaseLock();
   }
-}
-
-/** Send prompt via raw fetch (SDK can't resolve /opencode proxy path) */
-async function _sendPrompt(
-  sessionId: string,
-  body: Record<string, unknown>,
-  modelCfg?: ModelConfig,
-) {
-  const payload = { ...body } as Record<string, unknown>;
-  if (modelCfg) {
-    payload.model = {
-      providerID: modelCfg.provider,
-      modelID: modelCfg.model,
-      baseURL: modelCfg.baseUrl,
-    };
-  }
-  const res = await fetch(`/opencode/session/${sessionId}/prompt_async`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error(`Send prompt failed: ${res.status}`);
-}
-
-/** Create session via raw fetch */
-async function _createSession(title: string): Promise<string> {
-  const res = await fetch("/opencode/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
-  if (!res.ok) throw new Error(`Create session failed: ${res.status}`);
-  return (await res.json()).id;
+  callbacks.onDone?.();
 }
 
 // --- Public API ---
@@ -248,163 +170,100 @@ export async function streamChartInsight(
   const fi = buildFilterInfo(filters);
 
   callbacks.onStatus?.("正在查询数据…");
-  try {
-    const ROW_LIMIT = 500;
-    const payload: Record<string, unknown> = {
-      datasource: { id: info.dsId, type: info.dsType },
-      queries: [
-        {
-          metrics: info.metrics.slice(0, 10),
-          columns: info.groupby.slice(0, 5),
-          row_limit: ROW_LIMIT,
-        },
-      ],
-      result_format: "json",
-      result_type: "full",
-    };
-    if (fi.query.length)
-      (payload.queries as Record<string, unknown>[])[0].filters = fi.query;
+  const ROW_LIMIT = 500;
+  const payload: Record<string, unknown> = {
+    datasource: { id: info.dsId, type: info.dsType },
+    queries: [
+      {
+        metrics: info.metrics.slice(0, 10),
+        columns: info.groupby.slice(0, 5),
+        row_limit: ROW_LIMIT,
+      },
+    ],
+    result_format: "json",
+    result_type: "full",
+  };
+  if (fi.query.length)
+    (payload.queries as Record<string, unknown>[])[0].filters = fi.query;
 
-    const dataResp = await api.post("/chart/data", payload, { signal });
-    const first =
-      (Array.isArray(dataResp.data?.result)
-        ? dataResp.data.result[0]
-        : dataResp.data?.result) || {};
-    const data: Record<string, unknown>[] = first.data || [];
-    const colnames: string[] = first.colnames || [];
-    const totalCount = first.rowcount ?? data.length;
+  const dataResp = await api.post("/chart/data", payload, { signal });
+  const first =
+    (Array.isArray(dataResp.data?.result)
+      ? dataResp.data.result[0]
+      : dataResp.data?.result) || {};
+  const data: Record<string, unknown>[] = first.data || [];
+  const colnames: string[] = first.colnames || [];
+  const totalCount = first.rowcount ?? data.length;
 
-    callbacks.onStatus?.("数据获取完成");
+  callbacks.onStatus?.("数据获取完成");
 
-    /* Format as a readable table (chart SQL is already aggregated) */
-    const shortNames = colnames.map((c: string) =>
-      c.replace(/^SUM\(/, "").replace(/\)$/, ""),
-    );
-    const sorted = [...data].sort((a, b) => {
-      const va =
-        Number(Object.values(a).find((v) => typeof v === "number")) || 0;
-      const vb =
-        Number(Object.values(b).find((v) => typeof v === "number")) || 0;
-      return vb - va;
-    }).slice(0, ROW_LIMIT);
-    const tableStr = [
-      shortNames.join("\t"),
-      ...sorted.map((r) =>
-        shortNames
-          .map((_, i) => {
-            const v = r[colnames[i]];
-            return v == null
-              ? "-"
-              : typeof v === "number"
-                ? Number.isInteger(v)
-                  ? String(v)
-                  : v.toFixed(2)
-                : String(v);
-          })
-          .join("\t"),
-      ),
-    ].join("\n");
-
-    const truncNote =
-      totalCount > ROW_LIMIT
-        ? `⚠️ 共 ${totalCount} 行，仅展示消耗最高的 ${ROW_LIMIT} 行，缺失 ${totalCount - ROW_LIMIT} 行`
-        : totalCount >= ROW_LIMIT
-          ? `⚠️ 达到查询上限 ${ROW_LIMIT} 行，可能存在截断`
-          : null;
-
-    const contextLines = [
-      `图表: ${info.name}`,
-      `类型: ${info.vizType}`,
-      `数据行: ${sorted.length}`,
-      `数据列: ${shortNames.join(", ")}`,
-    ];
-    if (truncNote) contextLines.push(truncNote);
-    if (fi.text) contextLines.push(`\n${fi.text}`);
-    const dataBlock = sorted.length ? `\n数据:\n${tableStr}` : "";
-
-    // Route via Opencode SDK for all providers
-    callbacks.onStatus?.("正在分析…");
-    const systemLine =
-      "[System Instructions]\n你是一个专业的数据分析师。请直接分析下面给出的图表数据，输出结构化的分析结果（趋势、异常、建议等），使用中文和 markdown 格式。不要生成或执行任何代码。\n\n";
-    const instruction = `${systemLine}分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}`;
-
-    const sessionId = await _createSession(`Chart #${chartId} Insight`);
-    callbacks.onSession?.(sessionId);
-
-    const events = await oc.event.subscribe();
-    await _sendPrompt(
-      sessionId,
-      { parts: [{ type: "text", text: instruction }] },
-      modelCfg,
-    );
-    await _streamSession(sessionId, events, callbacks, signal);
-    return sessionId;
-  } catch (e: unknown) {
-    if ((e as Error).name === "AbortError") throw e;
-    // MCP fallback only works with opencode — propagate error for other providers
-    try {
-      const preset = getActivePreset();
-      if (preset.provider === "opencode") {
-        callbacks.onStatus?.("REST API 失败，尝试 MCP 回退…");
-        return await _fallbackViaMCP(chartId, fi, callbacks, signal, modelCfg);
-      }
-    } catch {
-      /* ignore — throw original error */
-    }
-    throw e;
-  }
-}
-
-async function _fallbackViaMCP(
-  chartId: number,
-  fi: ReturnType<typeof buildFilterInfo>,
-  callbacks: InsightCallbacks,
-  signal?: AbortSignal,
-  modelCfg?: ModelConfig,
-): Promise<string> {
-  const sessionId = await _createSession(`Chart #${chartId} Insight`);
-  callbacks.onSession?.(sessionId);
-  const events = await oc.event.subscribe();
-  const extraFormJSON = fi.query.length
-    ? JSON.stringify({ filters: fi.query })
-    : "";
-  const msg =
-    `分析图表 #${chartId}。先 get_chart_info(request={"identifier": ${chartId}})，` +
-    `再 get_chart_sql(request={"identifier": ${chartId}})，` +
-    `最后 get_chart_data(request={"identifier": ${chartId}, "limit": 30` +
-    (extraFormJSON ? `, "extra_form_data": ${extraFormJSON}` : "") +
-    `})。`;
-  await _sendPrompt(
-    sessionId,
-    { parts: [{ type: "text", text: msg }] },
-    modelCfg,
+  const shortNames = colnames.map((c: string) =>
+    c.replace(/^SUM\(/, "").replace(/\)$/, ""),
   );
-  await _streamSession(sessionId, events, callbacks, signal);
-  return sessionId;
+  const sorted = [...data].sort((a, b) => {
+    const va =
+      Number(Object.values(a).find((v) => typeof v === "number")) || 0;
+    const vb =
+      Number(Object.values(b).find((v) => typeof v === "number")) || 0;
+    return vb - va;
+  }).slice(0, ROW_LIMIT);
+  const tableStr = [
+    shortNames.join("\t"),
+    ...sorted.map((r) =>
+      shortNames
+        .map((_, i) => {
+          const v = r[colnames[i]];
+          return v == null
+            ? "-"
+            : typeof v === "number"
+              ? Number.isInteger(v)
+                ? String(v)
+                : v.toFixed(2)
+              : String(v);
+        })
+        .join("\t"),
+    ),
+  ].join("\n");
+
+  const truncNote =
+    totalCount > ROW_LIMIT
+      ? `⚠️ 共 ${totalCount} 行，仅展示消耗最高的 ${ROW_LIMIT} 行，缺失 ${totalCount - ROW_LIMIT} 行`
+      : totalCount >= ROW_LIMIT
+        ? `⚠️ 达到查询上限 ${ROW_LIMIT} 行，可能存在截断`
+        : null;
+
+  const contextLines = [
+    `图表: ${info.name}`,
+    `类型: ${info.vizType}`,
+    `数据行: ${sorted.length}`,
+    `数据列: ${shortNames.join(", ")}`,
+  ];
+  if (truncNote) contextLines.push(truncNote);
+  if (fi.text) contextLines.push(`\n${fi.text}`);
+  const dataBlock = sorted.length ? `\n数据:\n${tableStr}` : "";
+
+  callbacks.onStatus?.("正在分析…");
+  const system =
+    "你是一个专业的数据分析师。请直接分析下面给出的图表数据，输出结构化的分析结果（趋势、异常、建议等），使用中文和 markdown 格式。不要生成或执行任何代码。";
+  const text = `分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}`;
+
+  await _streamLlmDirect(system, text, callbacks, signal, modelCfg);
+  return "";
 }
 
 export async function streamChat(
-  sessionId: string,
+  _sessionId: string,
   message: string,
   callbacks: InsightCallbacks,
   signal?: AbortSignal,
   modelCfg?: ModelConfig,
+  history?: { role: string; content: string }[],
 ) {
-  const events = await oc.event.subscribe();
-  await _sendPrompt(
-    sessionId,
-    { parts: [{ type: "text", text: message }] },
-    modelCfg,
-  );
-  await _streamSession(sessionId, events, callbacks, signal);
+  await _streamLlmDirect("", message, callbacks, signal, modelCfg, history);
 }
 
-export async function abortSession(sessionId: string) {
-  try {
-    await fetch(`/opencode/session/${sessionId}/abort`, { method: "POST" });
-  } catch {
-    /* */
-  }
+export async function abortSession(_sessionId: string) {
+  /* no-op with direct LLM mode */
 }
 
 export async function streamDirectChat(
@@ -413,24 +272,8 @@ export async function streamDirectChat(
   callbacks: InsightCallbacks,
   signal?: AbortSignal,
   modelCfg?: ModelConfig,
+  history?: { role: string; content: string }[],
 ): Promise<string> {
-  callbacks.onStatus?.("正在创建会话…");
-  const sessionId = await _createSession("AI Chat");
-  callbacks.onSession?.(sessionId);
-  const events = await oc.event.subscribe();
-  const payload: Record<string, unknown> = {
-    parts: [
-      {
-        type: "text",
-        text: `[System Instructions]\n${systemPrompt}\n\n${prompt}`,
-      },
-    ],
-  };
-  if (modelCfg) {
-    payload.model = { providerID: modelCfg.provider, modelID: modelCfg.model };
-  }
-  callbacks.onStatus?.("正在获取回答…");
-  await _sendPrompt(sessionId, payload, modelCfg);
-  await _streamSession(sessionId, events, callbacks, signal);
-  return sessionId;
+  await _streamLlmDirect(systemPrompt, prompt, callbacks, signal, modelCfg, history);
+  return "";
 }

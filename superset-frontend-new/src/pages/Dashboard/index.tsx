@@ -66,8 +66,7 @@ export default function Dashboard() {
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
-  const insightOpen = useDrawerStore((s) => s.insightOpen);
-  const aiAssistantOpen = useDrawerStore((s) => s.aiAssistantOpen);
+  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
@@ -234,14 +233,13 @@ export default function Dashboard() {
 
   const [containerWidth, setContainerWidth] = useState(window.innerWidth);
   const containerRef = useRef<HTMLDivElement>(null);
+  const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   useEffect(() => {
     const vw = window.innerWidth;
-    const drawerPx = Math.round(vw * 0.4);
-    const mainPush = aiAssistantOpen ? drawerPx : 0;
-    const dashPush = insightOpen ? drawerPx : 0;
+    const push = aiDrawerOpen ? drawerWidth : 0;
     const padding = vw < 600 ? 8 : 32;
-    setContainerWidth(Math.max(200, vw - mainPush - dashPush - padding));
-  }, [aiAssistantOpen, insightOpen]);
+    setContainerWidth(Math.max(200, vw - push - padding));
+  }, [aiDrawerOpen, drawerWidth]);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const updateWidth = () => {
@@ -430,9 +428,12 @@ export default function Dashboard() {
         }
         setChartMeta(metaMap);
 
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
         const { dataMap, totalRowMap } = await getChartDataWithFilters(
           chartIds,
           metaMap,
+          buildAdhocFiltersRef.current,
         );
         setChartData(dataMap);
         setTotalRows(totalRowMap);
@@ -892,7 +893,7 @@ export default function Dashboard() {
 
   const handleOpenInsight = useCallback(
     (chartId: number) => {
-      const openInsight = useDrawerStore.getState().openInsight;
+      const openAiDrawer = useDrawerStore.getState().openAiDrawer;
       const activeFilters: Record<string, unknown> = {};
       for (const f of filters) {
         const state = filterState[f.id];
@@ -904,7 +905,11 @@ export default function Dashboard() {
           };
         }
       }
-      openInsight(chartId, chartMeta[chartId], activeFilters);
+      openAiDrawer("insight", {
+        chartId,
+        chartMeta: chartMeta[chartId],
+        filters: activeFilters,
+      });
     },
     [filters, filterState, chartMeta],
   );
@@ -1141,10 +1146,9 @@ export default function Dashboard() {
           overflow: "auto",
           maxWidth: "100%",
           px: { xs: spacing.xs, md: spacing.md },
-          mr: insightOpen ? "40vw" : 0,
         }}
       >
-        <DashboardGrid
+          <DashboardGrid
           containerWidth={containerWidth}
           gridLayout={gridLayout}
           layoutItems={layoutItems}

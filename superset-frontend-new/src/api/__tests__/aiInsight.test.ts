@@ -1,6 +1,6 @@
 import { test, expect, vi, beforeEach, afterEach } from "vitest";
 
-/* ---------- module-level mocks (hoisted) ---------- */
+/* ---------- module-level mock ---------- */
 
 vi.mock("@/api", () => ({
   default: {
@@ -9,34 +9,17 @@ vi.mock("@/api", () => ({
   },
 }));
 
-const { mockSubscribe } = vi.hoisted(() => ({
-  mockSubscribe: vi.fn(),
-}));
-vi.mock("@opencode-ai/sdk", () => ({
-  createOpencodeClient: vi.fn(() => ({
-    event: { subscribe: mockSubscribe },
-  })),
-}));
-
 vi.mock("@/config/aiConfig", () => ({
   getActivePreset: vi.fn(() => ({
-    id: "opencode", label: "Opencode", provider: "opencode", model: "test", baseUrl: "/opencode",
+    id: "lmstudio", label: "LM Studio", provider: "lmstudio", model: "gemma-4-e2b-it", baseUrl: "/llm",
   })),
   useAiConfigStore: vi.fn(),
 }));
 
-/* ---------- imports after mocks ---------- */
+/* ---------- imports ---------- */
 
 import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
 import api from "@/api";
-
-/* ---------- helpers ---------- */
-
-function mockFetch(
-  handler: (url: string, init?: RequestInit) => Promise<Partial<Response>>,
-) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(handler as any);
-}
 
 function chartMeta(overrides?: Record<string, unknown>) {
   return {
@@ -57,18 +40,36 @@ function chartData(rows: Record<string, unknown>[]) {
   };
 }
 
-function sessionJson(id: string) {
-  return Promise.resolve({ ok: true, json: () => Promise.resolve({ id }) });
+/** Return a ReadableStream that emits SSE chunks */
+function sseStream(...chunks: string[]): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(encoder.encode(c));
+      controller.close();
+    },
+  });
 }
 
-/* Create an async generator from an array */
-async function* arrayToAsyncIterable<T>(arr: T[]): AsyncIterable<T> {
-  for (const item of arr) yield item;
+function mockLlmFetch(bodyMatcher?: (body: string) => void) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (typeof url === "string" && url.includes("/chat/completions")) {
+      if (bodyMatcher) bodyMatcher(init?.body as string);
+      return {
+        ok: true,
+        body: sseStream(
+          'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+          'data: {"choices":[{"delta":{"content":" World"}}]}\n',
+          "data: [DONE]\n",
+        ),
+      } as unknown as Response;
+    }
+    return { ok: true, json: () => Promise.resolve({}) } as Response;
+  });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockSubscribe.mockReset();
 });
 
 afterEach(() => {
@@ -77,99 +78,45 @@ afterEach(() => {
 
 /* ========== abortSession ========== */
 
-test("abortSession sends POST to /opencode/session/{id}/abort", async () => {
-  mockFetch(() => Promise.resolve({ ok: true } as Response));
-  await abortSession("ses_123");
-  expect(globalThis.fetch).toHaveBeenCalledWith(
-    "/opencode/session/ses_123/abort",
-    expect.objectContaining({ method: "POST" }),
-  );
-});
-
-test("abortSession does not throw on network error", async () => {
-  mockFetch(() => Promise.reject(new Error("fail")));
-  await expect(abortSession("ses_abc")).resolves.toBeUndefined();
+test("abortSession is a no-op", async () => {
+  await expect(abortSession("ses_123")).resolves.toBeUndefined();
 });
 
 /* ========== streamChat ========== */
 
-test("streamChat subscribes to events, sends prompt, streams results", async () => {
-  const events = arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "message.part.delta", properties: { sessionID: "ses_chat", field: "text", delta: "Hello" } },
-    { type: "session.status", properties: { sessionID: "ses_chat", status: { type: "idle" } } },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-
-  mockFetch((url) => {
-    if (url.includes("/prompt_async")) return Promise.resolve({ ok: true } as Response);
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  });
+test("streamChat calls LLM directly with messages", async () => {
+  let capturedBody: string | undefined;
+  mockLlmFetch((body) => { capturedBody = body; });
 
   const onText = vi.fn();
   const onDone = vi.fn();
+  await streamChat("ses_ignored", "Hi there", { onText, onDone });
 
-  await streamChat("ses_chat", "Hi there", { onText, onDone });
-
-  expect(mockSubscribe).toHaveBeenCalled();
+  expect(capturedBody).toBeDefined();
+  const parsed = JSON.parse(capturedBody!);
+  expect(parsed.messages).toEqual([{ role: "user", content: "Hi there" }]);
+  expect(parsed.stream).toBe(true);
   expect(onText).toHaveBeenCalledWith("Hello");
+  expect(onText).toHaveBeenCalledWith(" World");
   expect(onDone).toHaveBeenCalled();
-});
-
-test("streamChat filters events by sessionID", async () => {
-  const events = arrayToAsyncIterable([
-    { type: "message.part.delta", properties: { sessionID: "other", field: "text", delta: "IGNORED" } },
-    { type: "message.part.delta", properties: { sessionID: "ses_chat", field: "text", delta: "KEPT" } },
-    { type: "session.status", properties: { sessionID: "ses_chat", status: { type: "idle" } } },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-  mockFetch(() => Promise.resolve({ ok: true } as Response));
-
-  const onText = vi.fn();
-  await streamChat("ses_chat", "msg", { onText });
-  expect(onText).toHaveBeenCalledTimes(1);
-  expect(onText).toHaveBeenCalledWith("KEPT");
-});
-
-test("streamChat handles onReasoning callback", async () => {
-  const events = arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "message.part.updated", properties: { sessionID: "ses_r", part: { type: "reasoning", text: "thinking..." } } },
-    { type: "session.status", properties: { sessionID: "ses_r", status: { type: "idle" } } },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-  mockFetch(() => Promise.resolve({ ok: true } as Response));
-
-  const onReasoning = vi.fn();
-  await streamChat("ses_r", "msg", { onReasoning, onText: vi.fn() });
-  expect(onReasoning).toHaveBeenCalledWith("thinking...");
-});
-
-test("streamChat stops on session.error", async () => {
-  const events = arrayToAsyncIterable([
-    { type: "session.error", properties: { sessionID: "ses_e", error: "Something broke" } },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-  mockFetch(() => Promise.resolve({ ok: true } as Response));
-
-  const onError = vi.fn();
-  await streamChat("ses_e", "msg", { onError, onText: vi.fn() });
-  expect(onError).toHaveBeenCalledWith("Something broke");
 });
 
 test("streamChat aborts on signal", async () => {
   const abortController = new AbortController();
-  const events = arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-  mockFetch(() => Promise.resolve({ ok: true } as Response));
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (_url, init) => new Promise<Response>((_resolve, reject) => {
+      const signal = (init as RequestInit)?.signal;
+      if (signal) {
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      }
+    }),
+  );
 
-  const onText = vi.fn();
-  const promise = streamChat("ses_a", "msg", { onText }, abortController.signal);
+  const promise = streamChat("", "msg", { onText: vi.fn() }, abortController.signal);
   abortController.abort();
-  await promise;
-  expect(onText).not.toHaveBeenCalled();
+  await expect(promise).rejects.toThrow();
 });
 
 /* ========== streamChartInsight ========== */
@@ -188,52 +135,32 @@ test("streamChartInsight throws when datasource_id is missing", async () => {
   ).rejects.toThrow("图表数据源 ID 为空");
 });
 
-test("streamChartInsight fetches chart data, creates session, streams result", async () => {
+test("streamChartInsight fetches chart data and streams LLM result", async () => {
   vi.mocked(api.get).mockResolvedValueOnce(chartMeta());
   vi.mocked(api.post).mockResolvedValueOnce(chartData([
     { category: "A", count: 10 },
     { category: "B", count: 20 },
   ]));
 
-  const events = arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "tool_call", properties: { sessionID: "ses_ci", tool: { name: "get_chart_data" } } },
-    { type: "tool_result", properties: { sessionID: "ses_ci", tool: { name: "get_chart_data" } } },
-    { type: "message.part.delta", properties: { sessionID: "ses_ci", field: "text", delta: "Analysis result" } },
-    { type: "session.status", properties: { sessionID: "ses_ci", status: { type: "idle" } } },
-  ]);
-  mockSubscribe.mockResolvedValue({ stream: events });
-
-  /* PATCH /config + POST /session + POST /prompt_async */
-  let sessionCreated = false;
-  let promptSent = false;
-  mockFetch((url, init) => {
-    if (url === "/opencode/config") return Promise.resolve({ ok: true } as Response);
-    if (url === "/opencode/session") {
-      sessionCreated = true;
-      return sessionJson("ses_ci");
-    }
-    if (url.includes("/prompt_async")) {
-      promptSent = true;
-      return Promise.resolve({ ok: true } as Response);
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  });
+  let promptBody: string | undefined;
+  mockLlmFetch((body) => { promptBody = body; });
 
   const onText = vi.fn();
-  const onToolCall = vi.fn();
-  const onToolResult = vi.fn();
   const onDone = vi.fn();
   const onStatus = vi.fn();
 
-  const sid = await streamChartInsight(1, {}, { onText, onToolCall, onToolResult, onDone, onStatus });
+  const sid = await streamChartInsight(1, {}, { onText, onDone, onStatus });
 
-  expect(sid).toBe("ses_ci");
-  expect(sessionCreated).toBe(true);
-  expect(promptSent).toBe(true);
-  expect(onText).toHaveBeenCalledWith("Analysis result");
-  expect(onToolCall).toHaveBeenCalledWith("get_chart_data");
-  expect(onToolResult).toHaveBeenCalledWith("get_chart_data");
+  expect(sid).toBe("");
+  expect(promptBody).toBeDefined();
+  const parsed = JSON.parse(promptBody!);
+  expect(parsed.messages[0].role).toBe("system");
+  expect(parsed.messages[0].content).toContain("数据分析师");
+  expect(parsed.messages[1].role).toBe("user");
+  expect(parsed.messages[1].content).toContain("Test Chart");
+  expect(parsed.messages[1].content).toContain("category");
+  expect(parsed.stream).toBe(true);
+  expect(onText).toHaveBeenCalledWith("Hello");
   expect(onDone).toHaveBeenCalled();
 });
 
@@ -241,16 +168,7 @@ test("streamChartInsight passes filters to chart data query", async () => {
   vi.mocked(api.get).mockResolvedValueOnce(chartMeta());
   vi.mocked(api.post).mockResolvedValueOnce(chartData([]));
 
-  mockSubscribe.mockResolvedValue({ stream: arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "session.status", properties: { sessionID: "ses_f", status: { type: "idle" } } },
-  ]) });
-  mockFetch((url) => {
-    if (url === "/opencode/config") return Promise.resolve({ ok: true } as Response);
-    if (url === "/opencode/session") return sessionJson("ses_f");
-    if (url.includes("/prompt_async")) return Promise.resolve({ ok: true } as Response);
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  });
+  mockLlmFetch();
 
   const filters = {
     time_filter: { column: "date", value: ["2024-01-01", "2024-12-31"], filterType: "time_range" },
@@ -272,58 +190,29 @@ test("streamChartInsight passes filters to chart data query", async () => {
   );
 });
 
-test("streamChartInsight passes modelCfg to prompt body", async () => {
+test("streamChartInsight passes modelCfg to LLM", async () => {
   vi.mocked(api.get).mockResolvedValueOnce(chartMeta());
   vi.mocked(api.post).mockResolvedValueOnce(chartData([{ a: 1 }]));
 
-  mockSubscribe.mockResolvedValue({ stream: arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "session.status", properties: { sessionID: "ses_m", status: { type: "idle" } } },
-  ]) });
-
   let promptBody: string | undefined;
-  mockFetch((url, init) => {
-    if (url === "/opencode/session") return sessionJson("ses_m");
-    if (url.includes("/prompt_async")) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (typeof url === "string" && url.includes("/chat/completions")) {
       promptBody = init?.body as string;
-      return Promise.resolve({ ok: true } as Response);
+      return {
+        ok: true,
+        body: sseStream("data: [DONE]\n"),
+      } as unknown as Response;
     }
-    return Promise.resolve({ ok: true } as Response);
+    return { ok: true, json: () => Promise.resolve({}) } as Response;
   });
 
   await streamChartInsight(1, {}, { onText: vi.fn() }, undefined, {
-    provider: "custom",
+    provider: "lmstudio",
     model: "my-model",
+    baseUrl: "/llm",
   });
 
   expect(promptBody).toBeDefined();
   const parsed = JSON.parse(promptBody!);
-  expect(parsed.model).toEqual({ providerID: "custom", modelID: "my-model" });
-});
-
-test("streamChartInsight falls back to MCP on REST API failure", async () => {
-  vi.mocked(api.get).mockResolvedValueOnce(chartMeta());
-  /* Make data fetch fail */
-  vi.mocked(api.post).mockRejectedValueOnce(new Error("data error"));
-
-  mockSubscribe.mockResolvedValue({ stream: arrayToAsyncIterable([
-    { type: "server.connected", properties: {} },
-    { type: "session.status", properties: { sessionID: "ses_mcp", status: { type: "idle" } } },
-  ]) });
-
-  let mcpPromptSent = false;
-  mockFetch((url, init) => {
-    if (url === "/opencode/session") return sessionJson("ses_mcp");
-    if (url.includes("/prompt_async")) {
-      const body = JSON.parse(init?.body as string);
-      if (body.parts?.[0]?.text?.includes("get_chart_data")) {
-        mcpPromptSent = true;
-      }
-      return Promise.resolve({ ok: true } as Response);
-    }
-    return Promise.resolve({ ok: true } as Response);
-  });
-
-  await streamChartInsight(1, {}, { onText: vi.fn() });
-  expect(mcpPromptSent).toBe(true);
+  expect(parsed.model).toBe("my-model");
 });

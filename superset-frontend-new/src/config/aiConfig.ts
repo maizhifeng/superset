@@ -17,7 +17,7 @@ const DEFAULT_PRESETS: AiPreset[] = [
     label: "LM Studio (local)",
     provider: "lmstudio",
     model: "",
-    baseUrl: "http://172.25.128.1:1234/v1",
+    baseUrl: "http://172.24.64.1:1234/v1",
   },
 ];
 
