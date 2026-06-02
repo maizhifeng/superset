@@ -97,25 +97,12 @@ export default defineConfig({
           "X-Forwarded-Proto": "http",
         },
       },
-      "/opencode": {
-        target: "http://127.0.0.1:5099",
+      "/llm": {
+        target: "http://host.docker.internal:1234/v1",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/opencode/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq, _req, _res) => {
-            proxyReq.setHeader("Connection", "keep-alive");
-          });
-          proxy.on("proxyRes", (proxyRes, _req, res) => {
-            const ct = proxyRes.headers["content-type"];
-            if (typeof ct === "string" && ct.includes("text/event-stream")) {
-              res.setHeader("cache-control", "no-cache");
-              res.setHeader("x-accel-buffering", "no");
-              res.setHeader("connection", "keep-alive");
-              res.flushHeaders();
-            }
-          });
-        },
+        rewrite: (path) => path.replace(/^\/llm/, ""),
       },
+
     },
   },
   test: {

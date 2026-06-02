@@ -1,41 +1,51 @@
 import { create } from "zustand";
 import type { ChartData } from "@/types/api";
 
+export type AiDrawerMode = "assistant" | "insight";
+
+interface OpenInsightOpts {
+  chartId: number;
+  chartMeta?: ChartData;
+  filters?: Record<string, unknown>;
+}
+
 interface DrawerState {
-  aiAssistantOpen: boolean;
-  setAiAssistantOpen: (open: boolean) => void;
-  insightOpen: boolean;
+  aiDrawerOpen: boolean;
+  aiDrawerMode: AiDrawerMode;
+  drawerWidth: number;
   insightChartId: number | null;
   insightChartMeta: ChartData | undefined;
   insightFilters: Record<string, unknown>;
-  openInsight: (
-    chartId: number,
-    chartMeta?: ChartData,
-    filters?: Record<string, unknown>,
-  ) => void;
-  closeInsight: () => void;
+  openAiDrawer: (mode: AiDrawerMode, insightOpts?: OpenInsightOpts) => void;
+  closeAiDrawer: () => void;
+  setDrawerWidth: (width: number) => void;
 }
 
 export const useDrawerStore = create<DrawerState>()((set) => ({
-  aiAssistantOpen: false,
-  setAiAssistantOpen: (open) => set({ aiAssistantOpen: open }),
+  aiDrawerOpen: false,
+  aiDrawerMode: "assistant",
+  drawerWidth: Math.round(typeof window !== "undefined" ? window.innerWidth * 0.4 : 640),
 
-  insightOpen: false,
   insightChartId: null,
   insightChartMeta: undefined,
   insightFilters: {},
-  openInsight: (chartId, chartMeta, filters) =>
+
+  openAiDrawer: (mode, insightOpts) =>
     set({
-      insightOpen: true,
-      insightChartId: chartId,
-      insightChartMeta: chartMeta,
-      insightFilters: filters ?? {},
+      aiDrawerOpen: true,
+      aiDrawerMode: mode,
+      insightChartId: insightOpts?.chartId ?? null,
+      insightChartMeta: insightOpts?.chartMeta ?? undefined,
+      insightFilters: insightOpts?.filters ?? {},
     }),
-  closeInsight: () =>
+
+  closeAiDrawer: () =>
     set({
-      insightOpen: false,
+      aiDrawerOpen: false,
       insightChartId: null,
       insightChartMeta: undefined,
       insightFilters: {},
     }),
+
+  setDrawerWidth: (width) => set({ drawerWidth: width }),
 }));

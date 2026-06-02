@@ -42,8 +42,7 @@ function PresetForm({
     setLoadingModels(true);
     setModelsError("");
     try {
-      // Use proxy path for frontend fetch (avoid CORS)
-      const proxyPath = baseUrl.replace(/^https?:\/\/[^\/]+/, "/llm");
+      const proxyPath = baseUrl.replace(/^https?:\/\/[^\/]+\/v1\/?$/, "/llm");
       const res = await fetch(`${proxyPath}/models`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

@@ -77,6 +77,8 @@ export function useDashboardData() {
         totalQuery.groupby = [];
         totalQuery.columns = [];
         delete totalQuery.row_limit;
+        delete totalQuery.orderby;
+        delete totalQuery.timeseries_limit_metric;
         if (adhocFilters.length > 0) {
           totalQuery.filters = adhocFilters.map((f) => ({
             col: f.subject,
@@ -215,6 +217,8 @@ export function useDashboardData() {
         query.groupby = [];
         query.columns = [];
         delete (query as Record<string, unknown>).row_limit;
+        delete (query as Record<string, unknown>).orderby;
+        delete (query as Record<string, unknown>).timeseries_limit_metric;
 
         const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
         const adhocFilters = buildFn(dsId);

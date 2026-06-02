@@ -78,13 +78,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     null,
   );
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const aiAssistantOpen = useDrawerStore((s) => s.aiAssistantOpen);
-  const setAiAssistantOpen = useDrawerStore((s) => s.setAiAssistantOpen);
-  const insightOpen = useDrawerStore((s) => s.insightOpen);
+  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
+  const drawerWidth = useDrawerStore((s) => s.drawerWidth);
+  const aiDrawerMode = useDrawerStore((s) => s.aiDrawerMode);
   const insightChartId = useDrawerStore((s) => s.insightChartId);
   const insightChartMeta = useDrawerStore((s) => s.insightChartMeta);
   const insightFilters = useDrawerStore((s) => s.insightFilters);
-  const closeInsight = useDrawerStore((s) => s.closeInsight);
+  const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
+  const closeAiDrawer = useDrawerStore((s) => s.closeAiDrawer);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const pageTip = usePageTip();
@@ -358,7 +359,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </Dialog>
             <IconButton
               size="small"
-              onClick={() => setAiAssistantOpen(true)}
+              onClick={() => openAiDrawer("assistant")}
               sx={{ color: "primary.main", mr: 0.5 }}
             >
               <AutoAwesomeIcon sx={{ fontSize: 20 }} />
@@ -498,7 +499,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           display: "flex",
           flexDirection: "column",
           position: "relative",
-          mr: aiAssistantOpen ? "40vw" : 0,
+          mr: aiDrawerOpen ? `${drawerWidth}px` : 0,
           transition: (theme) =>
             theme.transitions.create("margin", {
               easing: theme.transitions.easing.sharp,
@@ -512,16 +513,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <TourGuide />
       <GlobalSnackbar />
       <AiDrawer
-        open={aiAssistantOpen}
-        onClose={() => setAiAssistantOpen(false)}
-      />
-      <AiDrawer
-        variant="insight"
-        open={insightOpen}
+        variant={aiDrawerMode}
+        open={aiDrawerOpen}
         chartId={insightChartId}
         chartMeta={insightChartMeta}
         filters={insightFilters}
-        onClose={closeInsight}
+        onClose={closeAiDrawer}
       />
       <MobileDrawer
         open={drawerOpen}

@@ -6,12 +6,11 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 vi.mock("@/api/aiInsight", () => ({
   streamChartInsight: vi.fn(),
   streamChat: vi.fn(),
-  abortSession: vi.fn(),
 }));
 
 const { mockUpdate, mockUseAiConfigStore, mockGetActivePreset } = vi.hoisted(() => {
   const update = vi.fn();
-  const activePreset = { id: "lmstudio", label: "LM Studio", provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm/api/v1" };
+  const activePreset = { id: "lmstudio", label: "LM Studio", provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm" };
   const state = {
     presets: [activePreset],
     activePresetId: "lmstudio",
@@ -33,7 +32,7 @@ vi.mock("@/config/aiConfig", () => ({
 /* ---------- imports ---------- */
 
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
-import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
+import { streamChartInsight, streamChat } from "@/api/aiInsight";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,7 +50,6 @@ test("returns default state on mount", () => {
   expect(result.current.reasoningText).toBe("");
   expect(result.current.loading).toBe(false);
   expect(result.current.error).toBe("");
-  expect(result.current.sessionId).toBeNull();
   expect(result.current.currentToolCalls).toEqual([]);
   expect(result.current.modelConfig).toEqual({ provider: "lmstudio", model: "gemma-4-e4b-it" });
 });
@@ -69,7 +67,7 @@ test("updateModelConfig calls store update with preset id and config", () => {
 /* ========== generate ========== */
 
 test("generate calls streamChartInsight with chartId, filters, and modelConfig", async () => {
-  vi.mocked(streamChartInsight).mockResolvedValueOnce("ses_new");
+  vi.mocked(streamChartInsight).mockResolvedValueOnce("");
 
   const { result } = renderHook(() => useInsight());
 
@@ -86,24 +84,20 @@ test("generate calls streamChartInsight with chartId, filters, and modelConfig",
     42,
     { filter: { column: "x", value: "y", filterType: "filter_select" } },
     expect.objectContaining({
-      onSession: expect.any(Function),
-      onToolCall: expect.any(Function),
-      onToolResult: expect.any(Function),
       onText: expect.any(Function),
       onReasoning: expect.any(Function),
       onStatus: expect.any(Function),
     }),
     expect.any(AbortSignal),
-    { provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm/api/v1" },
+    { provider: "lmstudio", model: "gemma-4-e4b-it", baseUrl: "/llm" },
   );
-  expect(result.current.sessionId).toBe("ses_new");
 });
 
 test("generate populates insightText via onText callback", async () => {
   vi.mocked(streamChartInsight).mockImplementation(async (_chartId, _filters, callbacks) => {
     callbacks.onText?.("Hello ");
     callbacks.onText?.("World");
-    return "ses_t";
+    return "";
   });
 
   const { result } = renderHook(() => useInsight());
@@ -115,24 +109,12 @@ test("generate populates reasoningText via onReasoning callback", async () => {
   vi.mocked(streamChartInsight).mockImplementation(async (_chartId, _filters, callbacks) => {
     callbacks.onReasoning?.("Step 1...");
     callbacks.onReasoning?.("Step 2...");
-    return "ses_r";
+    return "";
   });
 
   const { result } = renderHook(() => useInsight());
   act(() => { result.current.generate(1); });
   await waitFor(() => expect(result.current.reasoningText).toBe("Step 1...Step 2..."));
-});
-
-test("generate populates currentToolCalls via onToolCall / onToolResult", async () => {
-  vi.mocked(streamChartInsight).mockImplementation(async (_chartId, _filters, callbacks) => {
-    callbacks.onToolCall?.("get_data");
-    callbacks.onToolResult?.("get_data");
-    return "ses_tc";
-  });
-
-  const { result } = renderHook(() => useInsight());
-  act(() => { result.current.generate(1); });
-  await waitFor(() => expect(result.current.currentToolCalls).toEqual([])); // cleared on finally
 });
 
 test("generate sets error on failure", async () => {
@@ -160,49 +142,38 @@ test("generate aborts previous request on second call", async () => {
   vi.mocked(streamChartInsight).mockImplementation(
     (_c, _f, _cb, signal) => {
       signal?.addEventListener("abort", abortSpy);
-      /* Never resolve — second call will abort this */
       return new Promise<string>(() => {});
     },
   );
 
   const { result } = renderHook(() => useInsight());
   act(() => { result.current.generate(1); });
-  /* Second call should abort the first */
   act(() => { result.current.generate(2); });
-  /* The first AbortController's signal should have been aborted */
   await vi.waitFor(() => expect(abortSpy).toHaveBeenCalled());
 });
 
 /* ========== sendMessage ========== */
 
-test("sendMessage does nothing without sessionId", () => {
-  const { result } = renderHook(() => useInsight());
-  act(() => { result.current.sendMessage("hello"); });
-  expect(streamChat).not.toHaveBeenCalled();
-});
-
-test("sendMessage calls streamChat with sessionId and message", async () => {
-  vi.mocked(streamChartInsight).mockResolvedValueOnce("ses_sm");
+test("sendMessage calls streamChat with message, modelConfig, and history", async () => {
   vi.mocked(streamChat).mockResolvedValueOnce(undefined);
 
   const { result } = renderHook(() => useInsight());
-  act(() => { result.current.generate(1); });
-  await waitFor(() => expect(result.current.sessionId).toBe("ses_sm"));
 
   act(() => { result.current.sendMessage("Follow up"); });
   expect(streamChat).toHaveBeenCalledWith(
-    "ses_sm",
+    "",
     "Follow up",
     expect.any(Object),
     expect.any(AbortSignal),
-    expect.objectContaining({ provider: "lmstudio", baseUrl: "/llm/api/v1" }),
+    expect.objectContaining({ provider: "lmstudio", baseUrl: "/llm" }),
+    [],
   );
 });
 
 test("sendMessage appends follow-up with separator to insightText", async () => {
   vi.mocked(streamChartInsight).mockImplementation(async (_c, _f, cb) => {
     cb.onText?.("First analysis");
-    return "ses_fu";
+    return "";
   });
   vi.mocked(streamChat).mockImplementation(async (_id, _msg, cb) => {
     cb.onText?.("Follow-up response");
@@ -221,9 +192,8 @@ test("sendMessage appends follow-up with separator to insightText", async () => 
 
 /* ========== stop ========== */
 
-test("stop aborts session and resets loading", async () => {
-  vi.mocked(streamChartInsight).mockImplementation(() => new Promise(() => {})); // never resolves
-  vi.mocked(abortSession).mockResolvedValue(undefined);
+test("stop aborts and resets loading", async () => {
+  vi.mocked(streamChartInsight).mockImplementation(() => new Promise(() => {}));
 
   const { result } = renderHook(() => useInsight());
   act(() => { result.current.generate(1); });
@@ -231,18 +201,15 @@ test("stop aborts session and resets loading", async () => {
 
   act(() => { result.current.stop(); });
   expect(result.current.loading).toBe(false);
-  expect(result.current.currentToolCalls).toEqual([]);
-  /* insightText is preserved */
 });
 
 /* ========== clear ========== */
 
-test("clear resets all state and aborts session", async () => {
+test("clear resets all state and aborts", async () => {
   vi.mocked(streamChartInsight).mockImplementation(async (_c, _f, cb) => {
     cb.onText?.("some text");
-    return "ses_clr";
+    return "";
   });
-  vi.mocked(abortSession).mockResolvedValue(undefined);
 
   const { result } = renderHook(() => useInsight());
   act(() => { result.current.generate(1); });
@@ -253,6 +220,4 @@ test("clear resets all state and aborts session", async () => {
   expect(result.current.reasoningText).toBe("");
   expect(result.current.loading).toBe(false);
   expect(result.current.error).toBe("");
-  expect(result.current.sessionId).toBeNull();
-  expect(result.current.currentToolCalls).toEqual([]);
 });
