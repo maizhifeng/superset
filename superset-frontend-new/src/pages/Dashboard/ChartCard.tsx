@@ -116,22 +116,17 @@ interface ChartCardProps {
     chartId: number,
     chartData?: Record<string, unknown>,
   ) => void;
-  otherRow?: Record<string, unknown> | null;
-  onFetchOtherRow?: (
-    chartId: number,
-    excludeColumn: string,
-    excludeValues: string[],
-  ) => void;
   totalRow?: Record<string, unknown> | null;
 }
 
-function pct95SplitIndex(
+function pctSplitIndex(
   sorted: Record<string, unknown>[],
   col: string,
+  pct: number,
 ): number {
   const total = sorted.reduce((s, r) => s + Number(r[col]), 0);
   if (total === 0) return sorted.length;
-  const threshold = total * 0.95;
+  const threshold = total * pct;
   let cum = 0;
   for (let i = 0; i < sorted.length; i++) {
     cum += Number(sorted[i][col]);
@@ -157,11 +152,18 @@ function ChartCard({
   mirrorData,
   onToggleCompare,
   onOpenCompareBigScreen,
-  otherRow,
-  onFetchOtherRow,
   totalRow,
 }: ChartCardProps) {
-  const [pct95Active, setPct95Active] = useState(true);
+  const storageKey = `pct95_threshold_${chartId}`;
+  const [pct95Threshold, setPct95Threshold] = useState(() => {
+    const saved = localStorage.getItem(storageKey);
+    const val = saved !== null ? Number(saved) : 0.95;
+    return val === 0 || val === 0.95 || val === 0.99 ? val : 0.95;
+  });
+  const pct95Active = pct95Threshold > 0;
+  useEffect(() => {
+    localStorage.setItem(storageKey, String(pct95Threshold));
+  }, [pct95Threshold, storageKey]);
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const chartRef = useRef<any>(null);
@@ -269,29 +271,23 @@ function ChartCard({
     };
   }, [data]);
 
-  const { sortMetricCol, dimCol } = useMemo(() => {
-    if (!data) return { sortMetricCol: "", dimCol: "" };
+  const { sortMetricCol, dimCols } = useMemo(() => {
+    if (!data) return { sortMetricCol: "", dimCols: [] as string[] };
     const colnames = (data as Record<string, unknown>).colnames as
       | string[]
       | undefined;
     const coltypes = (data as Record<string, unknown>).coltypes as
       | number[]
       | undefined;
-    if (!colnames || !coltypes) return { sortMetricCol: "", dimCol: "" };
+    if (!colnames || !coltypes)
+      return { sortMetricCol: "", dimCols: [] as string[] };
     const smCol =
-      colnames.find(
-        (_, i) =>
-          i > 0 && coltypes[i] !== 0 && coltypes[i] !== 2 && coltypes[i] !== 3,
-      ) ||
+      colnames.find((_, i) => i > 0 && coltypes[i] === 0) ||
       colnames[1] ||
       "";
-    const dCol =
-      colnames.find((c) => /report_date_calc|report_week_calc/i.test(c)) ||
-      colnames.find((c) => /^papp_id$/i.test(c)) ||
-      colnames.find((_, i) => coltypes[i] !== 0 && coltypes[i] !== 3) ||
-      colnames[0] ||
-      "";
-    return { sortMetricCol: smCol, dimCol: dCol };
+    const smIdx = colnames.indexOf(smCol);
+    const dCols = smIdx > 0 ? colnames.slice(0, smIdx) : [];
+    return { sortMetricCol: smCol, dimCols: dCols };
   }, [data]);
 
   const rows = Array.isArray(
@@ -313,73 +309,10 @@ function ChartCard({
   const splitIdx = useMemo(
     () =>
       pct95Active && sortMetricCol
-        ? pct95SplitIndex(sorted, sortMetricCol)
+        ? pctSplitIndex(sorted, sortMetricCol, pct95Threshold)
         : rows.length,
-    [sorted, pct95Active, sortMetricCol],
+    [sorted, pct95Active, sortMetricCol, pct95Threshold],
   );
-
-  const hasRemaining =
-    pct95Active && !!sortMetricCol && !!dimCol && splitIdx < rows.length;
-
-  const prevDataRef = useRef(data);
-  const prevExcludeRef = useRef<string[] | null>(null);
-
-  useEffect(() => {
-    if (data !== prevDataRef.current) {
-      prevDataRef.current = data;
-    }
-  }, [data]);
-
-  useEffect(() => {
-    if (!hasRemaining || !sortMetricCol) return;
-    const colnames_ = (data as Record<string, unknown> | undefined)
-      ?.colnames as string[] | undefined;
-    const coltypes = (data as Record<string, unknown> | undefined)?.coltypes as
-      | number[]
-      | undefined;
-    const dimIdx = colnames_?.indexOf(dimCol) ?? -1;
-    const isDateDim = dimIdx >= 0 && coltypes?.[dimIdx] === 2;
-    const excludeVals = [
-      ...new Set(
-        sorted.slice(0, splitIdx).map((r) => {
-          const raw = r[dimCol];
-          if (isDateDim && typeof raw === "number") {
-            const d = new Date(raw);
-            if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-          }
-          return String(raw);
-        }),
-      ),
-    ];
-    const allDimVals = new Set(
-      sorted.map((r) => {
-        const raw = r[dimCol];
-        if (isDateDim && typeof raw === "number") {
-          const d = new Date(raw);
-          if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-        }
-        return String(raw);
-      }),
-    );
-    if (
-      excludeVals.length > 0 &&
-      excludeVals.length < allDimVals.size &&
-      JSON.stringify(excludeVals) !== JSON.stringify(prevExcludeRef.current) &&
-      onFetchOtherRow
-    ) {
-      prevExcludeRef.current = excludeVals;
-      onFetchOtherRow(chartId, dimCol, excludeVals);
-    }
-  }, [
-    hasRemaining,
-    sortMetricCol,
-    sorted,
-    splitIdx,
-    dimCol,
-    data,
-    chartId,
-    onFetchOtherRow,
-  ]);
 
   const processedData = useMemo(() => {
     if (!data) return data;
@@ -388,38 +321,23 @@ function ChartCard({
     let hasMods = false;
 
     if (pct95Active && sortMetricCol && splitIdx < rows.length) {
-      const topRows = sorted.slice(0, splitIdx);
-      if (otherRow) {
-        resultRows = [...topRows, otherRow];
-      } else {
-        resultRows = topRows;
-      }
+      resultRows = sorted.slice(0, splitIdx);
       hasMods = true;
     } else {
       resultRows = [...rows];
     }
 
-    if (totalRow && dimCol && vizType === "table") {
+    if (totalRow && dimCols.length > 0 && vizType === "table") {
       resultRows = [
         ...resultRows,
-        { ...totalRow, [dimCol]: "合计", __isSummary: true },
+        { ...totalRow, [dimCols[0]]: "合计", __isSummary: true },
       ];
       hasMods = true;
     }
 
     if (!hasMods) return data;
     return { ...data, data: resultRows } as Record<string, unknown>;
-  }, [
-    data,
-    rows,
-    sorted,
-    pct95Active,
-    sortMetricCol,
-    splitIdx,
-    otherRow,
-    totalRow,
-    dimCol,
-  ]);
+  }, [data, rows, sorted, pct95Active, sortMetricCol, splitIdx, totalRow, dimCols]);
 
   const option = processedData
     ? buildEChartsOption(vizType, processedData)
@@ -538,12 +456,14 @@ function ChartCard({
           >
             {meta?.slice_name || sliceName || `Chart #${chartId}`}
           </Typography>
-          <Tooltip title={pct95Active ? "显示所有行" : "精简模式"}>
+          <Tooltip title={pct95Threshold === 0.95 ? "前95%" : pct95Threshold === 0.99 ? "前99%" : "精简模式"}>
             <IconButton
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                setPct95Active((prev) => !prev);
+                setPct95Threshold((prev) =>
+                  prev === 0 ? 0.95 : prev === 0.95 ? 0.99 : 0,
+                );
               }}
               sx={{
                 p: 0.5,
@@ -554,6 +474,14 @@ function ChartCard({
               <LeaderboardOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
             </IconButton>
           </Tooltip>
+          {pct95Active && (
+            <Typography
+              variant="caption"
+              sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
+            >
+              {Math.round(pct95Threshold * 100)}%
+            </Typography>
+          )}
           {vizType === "table" && (
             <Tooltip title={isCompareActive ? "停止对比" : "对比"}>
               <IconButton
@@ -816,7 +744,6 @@ export default memo(ChartCard, (prev, next) => {
     prev.mirrorData === next.mirrorData &&
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&
-    prev.otherRow === next.otherRow &&
     prev.totalRow === next.totalRow
   );
 });

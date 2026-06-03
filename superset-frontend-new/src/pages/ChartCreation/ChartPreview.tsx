@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -22,7 +23,9 @@ interface ChartPreviewProps {
   chartLibReady: boolean;
   option: EChartsOption | null;
   bigNumberValue: string | null;
-  onSortChange?: (sorts: { column: string; direction: "asc" | "desc" }[]) => void;
+  onSortChange?: (
+    sorts: { column: string; direction: "asc" | "desc" }[],
+  ) => void;
 }
 
 export default function ChartPreview({
@@ -41,6 +44,44 @@ export default function ChartPreview({
   bigNumberValue,
   onSortChange,
 }: ChartPreviewProps) {
+  const tableData = useMemo(() => {
+    if (!chartData || resolvedType !== "table") return chartData;
+    const colnames = (chartData as Record<string, unknown>).colnames as
+      | string[]
+      | undefined;
+    const coltypes = (chartData as Record<string, unknown>).coltypes as
+      | number[]
+      | undefined;
+    const rows = Array.isArray((chartData as Record<string, unknown>).data)
+      ? ((chartData as Record<string, unknown>).data as Record<
+          string,
+          unknown
+        >[])
+      : [];
+    if (!colnames || !coltypes || rows.length === 0) return chartData;
+    const smIdx = colnames.findIndex(
+      (_, i) => i > 0 && coltypes[i] === 0,
+    );
+    const dimCols = smIdx > 0 ? colnames.slice(0, smIdx) : [];
+    if (dimCols.length === 0) return chartData;
+    const totalRow: Record<string, unknown> = {};
+    dimCols.forEach((col, i) => {
+      totalRow[col] = i === 0 ? "合计" : "—";
+    });
+    for (const col of colnames) {
+      if (dimCols.includes(col)) continue;
+      const sum = rows.reduce(
+        (s, r) => s + (typeof r[col] === "number" ? (r[col] as number) : 0),
+        0,
+      );
+      totalRow[col] = sum;
+    }
+    return {
+      ...chartData,
+      data: [...rows, { ...totalRow, __isSummary: true }],
+    } as Record<string, unknown>;
+  }, [chartData, resolvedType]);
+
   return (
     <Box
       sx={{
@@ -94,7 +135,7 @@ export default function ChartPreview({
           <CircularProgress size={24} />
         ) : resolvedType === "table" ? (
           <DataPreviewTable
-            data={chartData}
+            data={tableData}
             maxRows={500}
             onSortChange={onSortChange}
             formatCell={(key, val) => {
