@@ -78,15 +78,12 @@ export default function Dashboard() {
     chartMeta,
     chartData,
     totalRows,
-    otherRows,
     setChartMeta,
     setChartData,
     setTotalRows,
-    setOtherRows,
     buildAdhocFiltersRef,
     getChartDataWithFilters,
     refreshChart: refreshChartData,
-    fetchOtherRow: fetchOtherRowData,
   } = useDashboardData();
 
   const [chartLoading, setChartLoading] = useState<Record<number, boolean>>({});
@@ -680,29 +677,6 @@ export default function Dashboard() {
   const refreshChartsRef = useRef(refreshCharts);
   refreshChartsRef.current = refreshCharts;
 
-  const fetchOtherRow = useCallback(
-    async (chartId: number, excludeColumn: string, excludeValues: string[]) => {
-      setOtherRows((prev) => ({ ...prev, [chartId]: null }));
-      const result = await fetchOtherRowData(
-        chartId,
-        excludeColumn,
-        excludeValues,
-        chartMetaRef.current,
-        buildAdhocFiltersRef.current,
-      );
-      if (result) {
-        setOtherRows((prev) => ({ ...prev, [chartId]: result }));
-      } else {
-        setOtherRows((prev) => {
-          const next = { ...prev };
-          delete next[chartId];
-          return next;
-        });
-      }
-    },
-    [fetchOtherRowData],
-  );
-
   const pageKey = `dashboard_${id}`;
   useDashboardToolbar({
     dashboard,
@@ -1019,10 +993,12 @@ export default function Dashboard() {
       await saveLayout();
       if (chartMetaData) {
         try {
-          const newData = await getChartDataWithFilters([chart.id], {
-            [chart.id]: chartMetaData,
-          });
-          setChartData((prev) => ({ ...prev, ...newData }));
+          const { dataMap, totalRowMap } = await getChartDataWithFilters(
+            [chart.id],
+            { [chart.id]: chartMetaData },
+          );
+          setChartData((prev) => ({ ...prev, ...dataMap }));
+          setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
         } catch {
           /* ignore */
         }
@@ -1148,7 +1124,7 @@ export default function Dashboard() {
           px: { xs: spacing.xs, md: spacing.md },
         }}
       >
-          <DashboardGrid
+        <DashboardGrid
           containerWidth={containerWidth}
           gridLayout={gridLayout}
           layoutItems={layoutItems}
@@ -1164,9 +1140,10 @@ export default function Dashboard() {
           onResizeStart={() => setIsDragging(true)}
           onResizeStop={() => setIsDragging(false)}
           onRefresh={refreshChart}
-          onEdit={(chartId: number) =>
-            setSearchParams({ slice_id: String(chartId) })
-          }
+          onEdit={(chartId: number) => {
+            useDrawerStore.getState().closeAiDrawer();
+            setSearchParams({ slice_id: String(chartId) });
+          }}
           onDelete={handleDeleteChart}
           onInsight={handleOpenInsight}
           onAddChart={() => setAddChartDialogOpen(true)}
@@ -1178,8 +1155,6 @@ export default function Dashboard() {
             setPeriodModalChartData(chartData);
             setPeriodModalOpen(true);
           }}
-          otherRows={otherRows}
-          onFetchOtherRow={fetchOtherRow}
           totalRows={totalRows}
         />
       </Box>

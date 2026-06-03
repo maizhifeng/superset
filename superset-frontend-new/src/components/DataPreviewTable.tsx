@@ -188,7 +188,7 @@ export default function DataPreviewTable({
               },
             }}
           >
-            <TableRow sx={{ bgcolor: "background.paper" }}>
+            <TableRow sx={{ bgcolor: "background.paper", "&:hover": { bgcolor: "background.paper" } }}>
               {empty ? (
                 <TableCell align="center" colSpan={keys.length || 1}>
                   <Typography

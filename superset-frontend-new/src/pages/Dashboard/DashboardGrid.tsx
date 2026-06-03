@@ -38,12 +38,9 @@ interface DashboardGridProps {
   compareConfig?: CompareConfig | null;
   mirrorData?: Record<string, unknown>;
   onToggleCompare: (chartId: number) => void;
-  onOpenCompareBigScreen?: (chartId: number, chartData?: Record<string, unknown>) => void;
-  otherRows?: Record<number, Record<string, unknown> | null>;
-  onFetchOtherRow?: (
+  onOpenCompareBigScreen?: (
     chartId: number,
-    excludeColumn: string,
-    excludeValues: string[],
+    chartData?: Record<string, unknown>,
   ) => void;
   totalRows?: Record<number, Record<string, unknown> | null>;
 }
@@ -72,8 +69,6 @@ export default function DashboardGrid({
   mirrorData,
   onToggleCompare,
   onOpenCompareBigScreen,
-  otherRows,
-  onFetchOtherRow,
   totalRows,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
@@ -174,8 +169,6 @@ export default function DashboardGrid({
               mirrorData={mirrorData}
               onToggleCompare={onToggleCompare}
               onOpenCompareBigScreen={onOpenCompareBigScreen}
-              otherRow={otherRows?.[item.chartId]}
-              onFetchOtherRow={onFetchOtherRow}
               totalRow={totalRows?.[item.chartId]}
             />
           </div>

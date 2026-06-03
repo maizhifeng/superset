@@ -397,7 +397,15 @@ export default function DatasetEdit() {
                             b as typeof b & { expression?: string | null }
                           ).expression;
                           if (aExpr !== bExpr) return aExpr ? -1 : 1;
-                          return (a.id || 0) - (b.id || 0);
+                          const aName =
+                            a._kind === "metric"
+                              ? (a as typeof a & { metric_name: string }).metric_name
+                              : (a as typeof a & { column_name: string }).column_name;
+                          const bName =
+                            b._kind === "metric"
+                              ? (b as typeof b & { metric_name: string }).metric_name
+                              : (b as typeof b & { column_name: string }).column_name;
+                          return (aName || "").localeCompare(bName || "");
                         })
                         .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
                         .map((row) => (

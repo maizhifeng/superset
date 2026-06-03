@@ -191,72 +191,6 @@ export function useDashboardData() {
     [],
   );
 
-  const fetchOtherRow = useCallback(
-    async (
-      chartId: number,
-      excludeColumn: string,
-      excludeValues: string[],
-      metaMap: Record<number, ChartData>,
-      buildAdhocFilters?: (
-        dsId: number,
-      ) => { subject: string; operator: string; comparator: unknown }[],
-    ): Promise<Record<string, unknown> | null> => {
-      const chart = metaMap[chartId];
-      if (!chart || excludeValues.length === 0) return null;
-
-      try {
-        const fd = parseChartConfig(chart);
-        const dsId =
-          chart.datasource_id ||
-          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-        if (!dsId) return null;
-
-        const query = buildQueryObject(fd, chart.viz_type);
-        if (!query.metrics || query.metrics.length === 0) return null;
-
-        query.groupby = [];
-        query.columns = [];
-        delete (query as Record<string, unknown>).row_limit;
-        delete (query as Record<string, unknown>).orderby;
-        delete (query as Record<string, unknown>).timeseries_limit_metric;
-
-        const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
-        query.filters = [
-          ...adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator as string | string[],
-          })),
-          { col: excludeColumn, op: "NOT IN" as const, val: excludeValues },
-        ];
-
-        const payload = {
-          datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries: [query],
-          form_data: fd,
-          result_format: "json",
-          result_type: "full" as const,
-        };
-
-        const postRes = await api.post("/chart/data", payload);
-        const postResult = postRes.data?.result;
-        const first = Array.isArray(postResult) ? postResult[0] : postResult;
-
-        if (first?.data && Array.isArray(first.data) && first.data.length > 0) {
-          return {
-            ...first.data[0],
-            [excludeColumn]: "其他",
-          } as Record<string, unknown>;
-        }
-        return null;
-      } catch {
-        return null;
-      }
-    },
-    [],
-  );
-
   return {
     chartMeta,
     chartData,
@@ -270,6 +204,5 @@ export function useDashboardData() {
     getChartDataWithFilters,
     fetchChartWithTotal,
     refreshChart,
-    fetchOtherRow,
   };
 }
