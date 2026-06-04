@@ -48,6 +48,7 @@ export function useDashboardData() {
       buildAdhocFilters?: (
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
+      force?: boolean,
     ): Promise<FetchResult> => {
       const chart = metaMap[cid];
       if (!chart) return { id: cid, data: {}, totalRow: null };
@@ -88,13 +89,14 @@ export function useDashboardData() {
         }
         queries.push(totalQuery);
 
-        const postRes = await api.post("/chart/data", {
+        const body: Record<string, unknown> = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
           queries,
           result_format: "json",
           result_type: "full" as const,
-          force: adhocFilters.length > 0,
-        });
+        };
+        if (force) body.force = true;
+        const postRes = await api.post("/chart/data", body);
         const results = (
           Array.isArray(postRes.data?.result) ? postRes.data.result : []
         ) as Record<string, unknown>[];
@@ -121,6 +123,7 @@ export function useDashboardData() {
       buildAdhocFilters?: (
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
+      force?: boolean,
     ) => {
       const dataMap: Record<number, Record<string, unknown>> = {};
       const totalRowMap: Record<number, Record<string, unknown> | null> = {};
@@ -129,7 +132,7 @@ export function useDashboardData() {
         const batch = chartIds.slice(i, i + CONCURRENCY);
         const results = await Promise.all(
           batch.map((cid) =>
-            fetchChartWithTotal(cid, metaMap, buildAdhocFilters),
+            fetchChartWithTotal(cid, metaMap, buildAdhocFilters, force),
           ),
         );
         results.forEach((r) => {

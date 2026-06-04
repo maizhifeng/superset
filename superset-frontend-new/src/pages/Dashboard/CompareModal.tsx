@@ -113,6 +113,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       setChartDsType("table");
       setQueryResult(null);
       setError(null);
+      setSelectedGames([]);
       setSelectedCchNames([]);
       setSelectedChannels([]);
       setCchNameValues([]);
@@ -129,7 +130,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
     const fetchColumnValues = (id: number) => {
       api
         .get<{ result: (string | null)[] }>(
-          `/datasource/table/${id}/column/cch_name/values/`,
+          `/datasource/table/${id}/column/cch_name_id/values/`,
         )
         .then((res) => {
           if (cancelled) return;
@@ -249,18 +250,18 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
     setError(null);
     try {
       const { groupby } = extractQueryFields(chartFormData, chartVizType);
-      let compareDimensions = [...(groupby.length > 0 ? groupby : ["papp_id", "papp_name"])];
+      const rawDims = groupby.length > 0 ? groupby : ["papp_id", "papp_name"];
 
-      // Ensure order: papp_name, cch_name, channel_name, time_col, ...
       const timeCol =
         (chartFormData.granularity_sqla as string) ||
-        (compareDimensions as string[]).find((c: string) => c.endsWith("_date") || c === "report_date_calc") ||
+        (rawDims as string[]).find((c: string) => c.endsWith("_date") || c === "report_date_calc") ||
         "report_date_calc";
-      // Remove timeCol from current position, then re-add after filter dimensions
-      compareDimensions = compareDimensions.filter((c: string) => c !== timeCol && c !== "cch_name" && c !== "channel_name");
-      if (selectedCchNames.length > 0) compareDimensions.push("cch_name");
+
+      // Only show comparison-relevant dimensions: game name, optional filters, time period
+      const compareDimensions = ["papp_name"];
+      if (selectedCchNames.length > 0) compareDimensions.push("cch_name_id");
       if (selectedChannels.length > 0) compareDimensions.push("channel_name");
-      if (!compareDimensions.includes(timeCol)) compareDimensions.push(timeCol);
+      compareDimensions.push(timeCol);
 
       const timeGrainSql = timeGrain === "P1D" ? undefined : timeGrain;
       const BATCH = 3;
@@ -276,6 +277,8 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             const q = buildQueryObject(chartFormData, chartVizType);
             q.groupby = compareDimensions;
             q.columns = [];
+            q.orderby = [[timeCol, true]];
+            delete (q as Record<string, unknown>).order_desc;
             q.time_range = "No filter";
             q.adhoc_filters = undefined;
             if (timeGrainSql) {
@@ -283,17 +286,19 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               (q as Record<string, unknown>).extras = { time_grain_sqla: timeGrainSql };
             }
             const filters: SimpleFilter[] = [{ col: "papp_id", op: "IN", val: [game.papp_id] }];
-            if (selectedCchNames.length > 0) filters.push({ col: "cch_name", op: "IN", val: selectedCchNames });
+            if (selectedCchNames.length > 0) filters.push({ col: "cch_name_id", op: "IN", val: selectedCchNames });
             if (selectedChannels.length > 0) filters.push({ col: "channel_name", op: "IN", val: selectedChannels });
             if (timeCol) {
               filters.push({ col: timeCol, op: ">=", val: game.dateRange.start });
               filters.push({ col: timeCol, op: "<=", val: game.dateRange.end });
             }
             q.filters = filters;
+            const detailFormData = { ...chartFormData };
+            delete detailFormData.order_desc;
             const payload = {
               datasource: { id: chartDsId, type: chartDsType },
               queries: [q],
-              form_data: chartFormData,
+              form_data: detailFormData,
               result_format: "json",
               result_type: "full" as const,
               force: true,
@@ -348,32 +353,28 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
         }
       }
 
-      // Fetch aggregate per game (each with its own time range)
-      const aggGroupby = ["papp_name"];
-      if (selectedCchNames.length > 0) aggGroupby.push("cch_name");
-      if (selectedChannels.length > 0) aggGroupby.push("channel_name");
+      // Fetch aggregate per game — bare query, no form_data to avoid granularity leak
       let aggRows: Record<string, unknown>[] = [];
       for (let i = 0; i < selectedGames.length; i += BATCH) {
         const batch = selectedGames.slice(i, i + BATCH);
         const batchAggs = await Promise.all(
           batch.map(async (game) => {
-            const q = buildQueryObject(chartFormData, chartVizType);
-            q.groupby = aggGroupby;
-            q.columns = [];
-            q.time_range = "No filter";
-            q.adhoc_filters = undefined;
             const filters: SimpleFilter[] = [{ col: "papp_id", op: "IN", val: [game.papp_id] }];
-            if (selectedCchNames.length > 0) filters.push({ col: "cch_name", op: "IN", val: selectedCchNames });
+            if (selectedCchNames.length > 0) filters.push({ col: "cch_name_id", op: "IN", val: selectedCchNames });
             if (selectedChannels.length > 0) filters.push({ col: "channel_name", op: "IN", val: selectedChannels });
             if (timeCol) {
               filters.push({ col: timeCol, op: ">=", val: game.dateRange.start });
               filters.push({ col: timeCol, op: "<=", val: game.dateRange.end });
             }
-            q.filters = filters;
             const payload = {
               datasource: { id: chartDsId, type: chartDsType },
-              queries: [q],
-              form_data: chartFormData,
+              queries: [{
+                metrics: chartFormData.metrics,
+                groupby: ["papp_name"],
+                columns: [],
+                filters,
+              }],
+              form_data: {},
               result_format: "json",
               result_type: "full" as const,
               force: true,
@@ -408,7 +409,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       // Add child rows from detail data
       for (const detRow of detailRows) {
         const pname = String(detRow.papp_name ?? "");
-        const cch = String(detRow.cch_name ?? "");
+        const cch = String(detRow.cch_name_id ?? "");
         const tval = String(detRow[timeCol] ?? "");
         treeRows.push({ ...detRow, id: `c_${rowId++}`, treePath: [pname, cch || tval, cch ? tval : undefined].filter(Boolean) });
       }
@@ -436,7 +437,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={(_event, reason) => {
+        if (reason !== "backdropClick") onClose();
+      }}
       maxWidth="xl"
       fullWidth
       slotProps={{
@@ -699,7 +702,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           const colWidths = columns.map((col) => {
             const n = col.name;
             if (n === "papp_name") return 180;
-            if (n === "cch_name") return 130;
+            if (n === "cch_name_id") return 130;
             if (n === "report_date_calc" || (col as any).displayName === "月" || (col as any).displayName === "周" || (col as any).displayName === "日期") return 110;
             if (n === "ad_real_cost" || n === "n_unum") return 80;
             if (n.startsWith("ltv_") || n.startsWith("roi_")) return 70;
@@ -707,7 +710,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           });
 
           const isDimCol = (n: string, displayName: string) =>
-            n === "papp_name" || n === "cch_name" || n === "report_date_calc" || displayName === "月" || displayName === "周" || displayName === "日期";
+            n === "papp_name" || n === "cch_name_id" || n === "report_date_calc" || displayName === "月" || displayName === "周" || displayName === "日期";
 
           // Compute sticky left offsets for dimension columns
           const colStickyLeft = columns.map((col, i) => {
@@ -736,11 +739,17 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
                   onMouseEnter={() => setHoveredCell({ table: tableName, row: rowCounter++ })}
                   onMouseLeave={() => setHoveredCell(null)}
                 >
-                  {columns.map((col, ci) => (
-                    <TableCell key={col.name} sx={{ ...groupSx(ci), fontWeight: col.name === "papp_name" ? 700 : 700 }}>
-                      {col.name === "papp_name" ? groupKey : fmtValue(col.name, parent?.[col.name] ?? "")}
-                    </TableCell>
-                  ))}
+                  {columns.map((col, ci) => {
+                    const dn = (col as { displayName?: string }).displayName ?? col.name;
+                    const isTimeCol = dn === "日期" || dn === "周" || dn === "月";
+                    if (isTimeCol) return null;
+                    const isPappName = col.name === "papp_name";
+                    return (
+                      <TableCell key={col.name} colSpan={isPappName ? 2 : 1} sx={{ ...groupSx(ci), fontWeight: 700 }}>
+                        {isPappName ? "合计" : fmtValue(col.name, parent?.[col.name] ?? "")}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
                 {/* Detail rows */}
                 {children.map((row, ri) => {

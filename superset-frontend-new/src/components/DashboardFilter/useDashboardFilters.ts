@@ -248,7 +248,7 @@ export default function useDashboardFilters(
             expressionType: "SIMPLE",
             subject: filter.column,
             operator: "IN",
-            comparator: v.join(","),
+            comparator: v,
           });
         } else {
           result.push({

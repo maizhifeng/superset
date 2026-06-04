@@ -325,21 +325,26 @@ export const buildV1ChartDataPayload = async ({
     : undefined;
   const buildQuery =
     (registryResult ? await registryResult : undefined) ?? defaultBuildQuery;
-  return buildQuery(
-    {
-      ...formData,
-      force,
-      result_format: resultFormat,
-      result_type: resultType,
-    } as QueryFormData,
-    {
-      ownState,
-      hooks: {
-        setDataMask: setDataMask ?? (() => {}),
-        setCachedChanges: () => {},
-      },
+  const { force: _, ...formDataWithoutForce } = formData as Record<
+    string,
+    unknown
+  > & { force?: boolean };
+  const queryFormData: Record<string, unknown> = {
+    ...formDataWithoutForce,
+    result_format: resultFormat,
+    result_type: resultType,
+  };
+  if (force) {
+    queryFormData.force = true;
+  }
+  console.log('CACHE_DEBUG buildV1ChartDataPayload:', { force, queryFormData });
+  return buildQuery(queryFormData as QueryFormData, {
+    ownState,
+    hooks: {
+      setDataMask: setDataMask ?? (() => {}),
+      setCachedChanges: () => {},
     },
-  );
+  });
 };
 
 export const getLegacyEndpointType = ({

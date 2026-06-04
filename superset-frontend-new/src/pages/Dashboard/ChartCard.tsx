@@ -25,6 +25,11 @@ const barBounce = keyframes`
   50% { transform: scaleY(1); }
 `;
 
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
 const loadingBarColors = [
   "var(--mui-palette-primary-main, #20a7c9)",
   "var(--mui-palette-warning-main, #ff7f44)",
@@ -96,6 +101,9 @@ export interface CompareConfig {
   dimensions: CompareDimension[];
 }
 
+export const PRESET_INTERVALS = [600, 300, 60, 0];
+const LONG_PRESS_MS = 500;
+
 interface ChartCardProps {
   chartId: number;
   sliceName?: string;
@@ -117,6 +125,8 @@ interface ChartCardProps {
     chartData?: Record<string, unknown>,
   ) => void;
   totalRow?: Record<string, unknown> | null;
+  intervalSeconds?: number;
+  onCycleInterval?: () => void;
 }
 
 function pctSplitIndex(
@@ -153,6 +163,8 @@ function ChartCard({
   onToggleCompare,
   onOpenCompareBigScreen,
   totalRow,
+  intervalSeconds,
+  onCycleInterval,
 }: ChartCardProps) {
   const storageKey = `pct95_threshold_${chartId}`;
   const [pct95Threshold, setPct95Threshold] = useState(() => {
@@ -166,7 +178,33 @@ function ChartCard({
   }, [pct95Threshold, storageKey]);
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
   const chartRef = useRef<any>(null);
+
+  const [localCountdown, setLocalCountdown] = useState<number | undefined>(undefined);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  useEffect(() => {
+    if (!intervalSeconds || intervalSeconds <= 0) {
+      setLocalCountdown(undefined);
+      return;
+    }
+    const shiftSec = (chartId * 7) % Math.min(30, intervalSeconds);
+    const staggerReset = (chartId * 7) % 10;
+    setLocalCountdown(intervalSeconds - shiftSec);
+    const tickMs = 1000 + ((chartId * 13) % 100);
+    const id = setInterval(() => {
+      setLocalCountdown((prev) => {
+        if (prev === undefined || prev <= 1) {
+          onRefreshRef.current(chartId);
+          return intervalSeconds + staggerReset;
+        }
+        return prev - 1;
+      });
+    }, tickMs);
+    return () => clearInterval(id);
+  }, [intervalSeconds, chartId]);
   const cardRef = useRef<HTMLDivElement>(null);
   const notify = useNotificationStore((s) => s.notify);
   const fullscreen = useFullscreenStore();
@@ -504,16 +542,43 @@ function ChartCard({
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title="刷新">
+          <Tooltip title={localCountdown !== undefined && localCountdown > 0 ? `自动刷新 ${Math.floor(localCountdown / 60)}:${String(localCountdown % 60).padStart(2, "0")} · 单击切换 · 长按刷新` : intervalSeconds && intervalSeconds > 0 ? `${intervalSeconds}s` : "单击开启自动刷新"}>
             <IconButton
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                onRefresh(chartId);
+              }}
+              onMouseDown={() => {
+                refreshTimer.current = setTimeout(() => {
+                  refreshTimer.current = undefined;
+                  onRefresh(chartId);
+                }, LONG_PRESS_MS);
+              }}
+              onMouseUp={() => {
+                if (refreshTimer.current) {
+                  clearTimeout(refreshTimer.current);
+                  refreshTimer.current = undefined;
+                  onCycleInterval?.();
+                }
+              }}
+              onMouseLeave={() => {
+                if (refreshTimer.current) {
+                  clearTimeout(refreshTimer.current);
+                  refreshTimer.current = undefined;
+                }
               }}
               sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
             >
-              <RefreshIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+              <RefreshIcon
+                sx={{
+                  fontSize: isMobile ? 22 : 18,
+                  color: localCountdown !== undefined && localCountdown > 0 ? "primary.main" : "action.disabled",
+                  animation:
+                    localCountdown !== undefined && localCountdown > 0
+                      ? `${spin} 4s linear infinite`
+                      : undefined,
+                }}
+              />
             </IconButton>
           </Tooltip>
           <Tooltip title={vizType === "table" ? "复制为文本" : "复制为图片"}>
@@ -744,6 +809,7 @@ export default memo(ChartCard, (prev, next) => {
     prev.mirrorData === next.mirrorData &&
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&
-    prev.totalRow === next.totalRow
+    prev.totalRow === next.totalRow &&
+    prev.intervalSeconds === next.intervalSeconds
   );
 });

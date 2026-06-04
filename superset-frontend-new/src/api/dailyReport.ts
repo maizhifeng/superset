@@ -90,7 +90,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   const orderDesc = [["SUM(ad_real_cost)", false]];
 
-  const [q1, q2, q3, qTrend] = await Promise.all([
+  const [q1, q2, q3, qTrend, qTeam] = await Promise.all([
     api.post("/chart/data", {
       ...baseQuery,
       queries: [{
@@ -131,12 +131,23 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
         row_limit: 10,
       }],
     }),
+    api.post("/chart/data", {
+      ...baseQuery,
+      queries: [{
+        metrics: BASE_METRICS,
+        columns: ["ptid", "cch_name", "report_date_calc"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 100,
+      }],
+    }),
   ]);
 
   const r1 = parseResult(q1);
   const r2 = parseResult(q2);
   const r3 = parseResult(q3);
   const rTrend = parseResult(qTrend);
+  const rTeam = parseResult(qTeam);
 
   // Extract date labels BEFORE normalization (timestamps still intact)
   const rawDates1 = uniqueDates(r1.rows);
@@ -147,10 +158,12 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
   normalizeDates(r1.rows);
   normalizeDates(r2.rows);
   normalizeDates(r3.rows);
+  normalizeDates(rTeam.rows);
 
   const cols1 = r1.cols;
   const cols2 = r2.cols;
   const cols3 = r3.cols;
+  const colsTeam = rTeam.cols;
 
   const sortCost = (rows: Row[]) =>
     [...rows].sort(
@@ -188,6 +201,12 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
   if (rawTotal3 >= 100) notes.push(`⚠️ 媒体维度: 查询返回 ${rawTotal3} 行（达到上限 100），可能存在截断`);
   if (mediaTruncated) notes.push("⚠️ 媒体维度: 部分日期仅展示消耗最高的 40 行");
 
+  // Team section
+  const yesDateTeam = yesLabel;
+  const allYesTeamRows = sortCost(rTeam.rows.filter((r) => String(r.report_date_calc) === yesDateTeam));
+  const nTeam = truncNote("团队维度（昨日）", allYesTeamRows.length, 60);
+  if (nTeam) notes.push(nTeam);
+
   // Section 4
   // No truncation needed for 7-day trend
 
@@ -215,6 +234,10 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
     sections.push("");
   }
 
+  sections.push("#### 4. 分团队分析（昨日）", "");
+  sections.push(toMarkdownTable(colsTeam, allYesTeamRows, 60));
+  sections.push("");
+
   const trendRows = [...rTrend.rows]
     .filter((r) => (Number(r["SUM(ad_real_cost)"]) || 0) > 0)
     .sort((a, b) => (Number(a.report_date_calc) || 0) - (Number(b.report_date_calc) || 0));
@@ -222,7 +245,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
     const dl = extractDate(Number(r.report_date_calc));
     return `  ${dl}: ¥${fmt(r["SUM(ad_real_cost)"] ?? 0, 0)}`;
   });
-  sections.push("#### 4. 近7天消耗趋势", "");
+  sections.push("#### 5. 近7天消耗趋势", "");
   sections.push(trendLines.length ? trendLines.join("\n") : "（暂无趋势数据）");
 
   return { summaryContext: sections.join("\n") };

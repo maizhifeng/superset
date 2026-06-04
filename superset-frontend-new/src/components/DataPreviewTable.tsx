@@ -166,7 +166,6 @@ export default function DataPreviewTable({
     >
       <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, minWidth: 0 }}>
         <Table
-          stickyHeader
           size="small"
           sx={{
             "& .MuiTableCell-root": {
@@ -179,13 +178,10 @@ export default function DataPreviewTable({
         >
           <TableHead
             sx={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
               bgcolor: "background.paper",
-              "& .MuiTableRow-root": {
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                bgcolor: "background.paper",
-              },
             }}
           >
             <TableRow sx={{ bgcolor: "background.paper", "&:hover": { bgcolor: "background.paper" } }}>

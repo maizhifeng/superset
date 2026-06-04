@@ -38,6 +38,63 @@ function formatTimeLabel(v: unknown): string {
 }
 
 const valuesCache = new Map<string, { label: string; value: string }[]>();
+const pendingFetches = new Map<string, Promise<void>>();
+
+let refreshVersion = 0;
+const refreshSubs = new Set<() => void>();
+
+const LS_PREFIX = "superset_fv_";
+const LS_TTL = 5 * 60 * 1000;
+
+function lsKey(datasetId: number, column: string): string {
+  return `${LS_PREFIX}${datasetId}:${column}`;
+}
+
+function lsLoad(datasetId: number, column: string): { label: string; value: string }[] | null {
+  try {
+    const raw = localStorage.getItem(lsKey(datasetId, column));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as { ts: number; data: { label: string; value: string }[] };
+    if (Date.now() - entry.ts > LS_TTL) {
+      localStorage.removeItem(lsKey(datasetId, column));
+      return null;
+    }
+    return entry.data;
+  } catch {
+    return null;
+  }
+}
+
+function lsSave(datasetId: number, column: string, data: { label: string; value: string }[]): void {
+  try {
+    localStorage.setItem(lsKey(datasetId, column), JSON.stringify({ ts: Date.now(), data }));
+  } catch {
+    /* storage full */
+  }
+}
+
+export function clearFilterValuesCache(clearStorage = true): void {
+  valuesCache.clear();
+  if (!clearStorage) return;
+  const prefix = LS_PREFIX;
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) localStorage.removeItem(key);
+  }
+}
+
+export function refreshFilterValues(): void {
+  clearFilterValuesCache();
+  refreshVersion++;
+  for (const fn of refreshSubs) fn();
+}
+
+function useRefreshNotify(onRefresh: () => void): void {
+  useEffect(() => {
+    refreshSubs.add(onRefresh);
+    return () => { refreshSubs.delete(onRefresh); };
+  }, [onRefresh]);
+}
 
 function FilterSelect({
   filter,
@@ -53,7 +110,10 @@ function FilterSelect({
   );
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [fetchKey, setFetchKey] = useState(0);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useRefreshNotify(useCallback(() => setFetchKey((k) => k + 1), []));
 
   const fetchValues = useCallback(
     async (search: string) => {
@@ -81,33 +141,60 @@ function FilterSelect({
         setOptions(cached);
         return;
       }
-      setLoading(true);
-      try {
-        const q: Record<string, unknown> = { page_size: 100, page: 0 };
-        const res = await api.get(
-          `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
-        );
-        const raw: unknown[] = res.data?.result || [];
-        const vals: { label: string; value: string }[] = raw
-          .filter((v): v is string => v != null)
-          .map((v) => ({
-            value: String(v),
-            label: filter.columnType === "time" ? formatTimeLabel(v) : String(v),
-          }));
-        valuesCache.set(cacheKey, vals);
-        setOptions(vals);
-      } catch {
-        setOptions([]);
-      } finally {
-        setLoading(false);
+
+      const stored = lsLoad(filter.datasetId, filter.column);
+      if (stored) {
+        valuesCache.set(cacheKey, stored);
+        setOptions(stored);
+        return;
       }
+
+      const pending = pendingFetches.get(cacheKey);
+      if (pending) {
+        setLoading(true);
+        try {
+          await pending;
+          const cachedAgain = valuesCache.get(cacheKey);
+          if (cachedAgain) setOptions(cachedAgain);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      const fetchPromise = (async () => {
+        try {
+          const q: Record<string, unknown> = { page_size: 100, page: 0 };
+          const res = await api.get(
+            `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
+          );
+          const raw: unknown[] = res.data?.result || [];
+          const vals: { label: string; value: string }[] = raw
+            .filter((v): v is string => v != null)
+            .map((v) => ({
+              value: String(v),
+              label: filter.columnType === "time" ? formatTimeLabel(v) : String(v),
+            }));
+          valuesCache.set(cacheKey, vals);
+          lsSave(filter.datasetId, filter.column, vals);
+          setOptions(vals);
+        } catch {
+          setOptions([]);
+        } finally {
+          setLoading(false);
+          pendingFetches.delete(cacheKey);
+        }
+      })();
+      pendingFetches.set(cacheKey, fetchPromise);
+      await fetchPromise;
     },
     [filter.datasetId, filter.column, filter.columnType],
   );
 
   useEffect(() => {
     fetchValues("");
-  }, [fetchValues]);
+  }, [fetchValues, fetchKey]);
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);

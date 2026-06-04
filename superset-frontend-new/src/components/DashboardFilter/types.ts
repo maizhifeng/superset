@@ -65,7 +65,7 @@ export interface AdhocFilter {
     | "LIKE"
     | "IS NULL"
     | "IS NOT NULL";
-  comparator: string;
+  comparator: string | string[];
 }
 
 export interface FilterState {

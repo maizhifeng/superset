@@ -15,6 +15,18 @@ function fmt(v: unknown, decimals = 2): string {
   return String(v);
 }
 
+function extractDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function normalizeDates(rows: Row[]): void {
+  for (const r of rows) {
+    const ts = Number(r.report_date_calc);
+    if (ts) r.report_date_calc = extractDate(ts);
+  }
+}
+
 function toMarkdownTable(cols: string[], rows: Row[], maxRows = 50): string {
   const header = cols.join(" | ");
   const sep = cols.map(() => "---").join(" | ");
@@ -64,7 +76,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
 
   const orderDesc = [["SUM(ad_real_cost)", false]];
 
-  const [q1, q2, q3] = await Promise.all([
+  const [q1, q2, q3, qTeam] = await Promise.all([
     api.post("/chart/data", {
       datasource: DATASOURCE,
       queries: [{
@@ -101,13 +113,30 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
       result_format: "json",
       result_type: "full",
     }),
+    api.post("/chart/data", {
+      datasource: DATASOURCE,
+      queries: [{
+        metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
+        columns: ["ptid", "cch_name", "report_date_calc"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 200,
+      }],
+      result_format: "json",
+      result_type: "full",
+    }),
   ]);
 
   const r1 = parseResult(q1);
   const r2 = parseResult(q2);
   const r3 = parseResult(q3);
+  const rTeam = parseResult(qTeam);
 
-  const sections: string[] = [];
+  normalizeDates(rTeam.rows);
+
+  const sections: string[] = [
+    "数据范围: 近7天 | 数据中的 report_date_calc 列即为日期", "",
+  ];
 
   sections.push("#### 1. 项目+渠道维度明细", "");
   sections.push(toMarkdownTable(r1.cols, r1.rows, 500));
@@ -119,6 +148,10 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
 
   sections.push("#### 3. 平台维度明细", "");
   sections.push(toMarkdownTable(r3.cols, r3.rows, 200));
+  sections.push("");
+
+  sections.push("#### 4. 团队+渠道维度明细", "");
+  sections.push(toMarkdownTable(rTeam.cols, rTeam.rows, 500));
 
   return { summaryContext: sections.join("\n") };
 }
