@@ -97,7 +97,7 @@ interface ChartEditorProps {
     expressionType: "SIMPLE" | "SQL";
     subject: string;
     operator: string;
-    comparator: string;
+    comparator: string | string[];
   }[];
 }
 

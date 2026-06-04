@@ -43,6 +43,8 @@ interface DashboardGridProps {
     chartData?: Record<string, unknown>,
   ) => void;
   totalRows?: Record<number, Record<string, unknown> | null>;
+  intervalSeconds?: number;
+  onCycleInterval?: () => void;
 }
 
 export default function DashboardGrid({
@@ -70,6 +72,8 @@ export default function DashboardGrid({
   onToggleCompare,
   onOpenCompareBigScreen,
   totalRows,
+  intervalSeconds,
+  onCycleInterval,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
@@ -170,6 +174,8 @@ export default function DashboardGrid({
               onToggleCompare={onToggleCompare}
               onOpenCompareBigScreen={onOpenCompareBigScreen}
               totalRow={totalRows?.[item.chartId]}
+              intervalSeconds={intervalSeconds}
+              onCycleInterval={onCycleInterval}
             />
           </div>
         ))}

@@ -20,6 +20,7 @@ import {
 import type { SimpleFilter } from "@/utils/query/types";
 import {
   DashboardFilterDrawer,
+  refreshFilterValues,
   useDashboardFilters,
 } from "@/components/DashboardFilter";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
@@ -34,6 +35,8 @@ import type {
   CompareDimension,
 } from "@/pages/Dashboard/ChartCard";
 import type { ColumnOption } from "@/pages/Dashboard/CompareConfigModal";
+import { PRESET_INTERVALS } from "@/pages/Dashboard/ChartCard";
+import { useNotificationStore } from "@/store/notificationStore";
 import TableSkeleton from "@/components/TableSkeleton";
 import { EmptyState } from "@/superset-ui-mui/components";
 import {
@@ -616,6 +619,22 @@ export default function Dashboard() {
     [chartMeta, filterDataLocal],
   );
 
+  const refreshChartsRef = useRef<(...args: unknown[]) => void>(() => {});
+  const [intervalSeconds, setIntervalSeconds] = useState(600);
+  const notify = useNotificationStore((s) => s.notify);
+
+  const cycleInterval = useCallback(() => {
+    if (intervalSeconds === 0) {
+      setIntervalSeconds(PRESET_INTERVALS[0]);
+      notify({ severity: "success", message: `自动刷新已切换至 ${PRESET_INTERVALS[0] >= 60 ? `${PRESET_INTERVALS[0] / 60}分钟` : `${PRESET_INTERVALS[0]}秒`}` });
+      return;
+    }
+    const idx = PRESET_INTERVALS.indexOf(intervalSeconds);
+    const next = idx === -1 || idx === PRESET_INTERVALS.length - 1 ? PRESET_INTERVALS[0] : PRESET_INTERVALS[idx + 1];
+    setIntervalSeconds(next);
+    notify({ severity: "success", message: next > 0 ? `自动刷新已切换至 ${next >= 60 ? `${next / 60}分钟` : `${next}秒`}` : "已关闭自动刷新" });
+  }, [intervalSeconds, notify]);
+
   const refreshChart = useCallback(
     async (chartId: number) => {
       setChartLoading((prev) => ({ ...prev, [chartId]: true }));
@@ -640,6 +659,7 @@ export default function Dashboard() {
 
   const refreshCharts = useCallback(
     async (chartIds?: Set<number>) => {
+      refreshFilterValues();
       const ids = chartIds
         ? Array.from(chartIds)
         : Object.keys(chartMeta).map(Number);
@@ -653,6 +673,8 @@ export default function Dashboard() {
         const { dataMap, totalRowMap } = await getChartDataWithFilters(
           ids,
           chartMeta,
+          undefined,
+          true,
         );
         setChartData((prev) => ({ ...prev, ...dataMap }));
         setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
@@ -674,7 +696,6 @@ export default function Dashboard() {
     },
     [chartMeta, compareConfig, fetchMirrorData, getChartDataWithFilters],
   );
-  const refreshChartsRef = useRef(refreshCharts);
   refreshChartsRef.current = refreshCharts;
 
   const pageKey = `dashboard_${id}`;
@@ -1156,6 +1177,8 @@ export default function Dashboard() {
             setPeriodModalOpen(true);
           }}
           totalRows={totalRows}
+          intervalSeconds={intervalSeconds}
+          onCycleInterval={cycleInterval}
         />
       </Box>
       <Drawer

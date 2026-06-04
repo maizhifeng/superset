@@ -29,6 +29,7 @@ import AiConfigDialog from "@/components/AiConfigDialog";
 import LightMdRenderer from "@/components/LightMdRenderer";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
+import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
 import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
@@ -382,7 +383,7 @@ function useAiChat() {
       const { summaryContext } = await fetchDrillDownData();
 
       const fullPrompt = [
-        "你是专业的数据分析师。请基于以下实际数据进行钻取分析。",
+        DRILL_DOWN_PROMPT,
         "",
         "### 分析指令",
         analysisPrompt,
