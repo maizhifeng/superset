@@ -24,6 +24,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Checkbox from "@mui/material/Checkbox";
 import Collapse from "@mui/material/Collapse";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -125,14 +126,16 @@ export default function DatasetEdit() {
           column_name: col.column_name,
           type: col.type,
           is_dttm: col.is_dttm,
+          extra: col.extra,
         }));
       } else {
         const modKeys = Object.keys(modifiedColumns);
         if (modKeys.length > 0 && dataset) {
           payload.columns = dataset.columns.map((col) => ({
-            ...modifiedColumns[col.id],
+            ...(modifiedColumns[col.id] ?? {}),
             id: col.id,
             column_name: col.column_name,
+            extra: modifiedColumns[col.id]?.extra ?? col.extra,
           }));
         }
       }
@@ -475,7 +478,13 @@ export default function DatasetEdit() {
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {row.expression ?? ""}
+                              <Tooltip
+                                title={<Typography sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{row.expression ?? ""}</Typography>}
+                                placement="bottom-start"
+                                slotProps={{ popper: { sx: { '& .MuiTooltip-tooltip': { maxWidth: 600 } } } }}
+                              >
+                                <span>{row.expression ?? ""}</span>
+                              </Tooltip>
                             </TableCell>
                             <TableCell
                               sx={{
@@ -551,11 +560,10 @@ export default function DatasetEdit() {
                                       size="small"
                                       checked={checked}
                                       onChange={(_, chk) => {
-                                        const newExtra = chk
-                                          ? JSON.stringify({
-                                              dashboard_filter: true,
-                                            })
-                                          : null;
+                                        const newExtra = JSON.stringify({
+                                          ...parsed,
+                                          dashboard_filter: chk,
+                                        });
                                         setModifiedColumns((prev) => ({
                                           ...prev,
                                           [colId]: {

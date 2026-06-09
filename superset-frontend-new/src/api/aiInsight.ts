@@ -82,7 +82,7 @@ async function _streamLlmDirect(
   callbacks.onStatus?.("正在获取回答…");
 
   const rawBaseUrl = modelCfg?.baseUrl || "";
-  const baseUrl = /172\.\d+\.\d+\.\d+|host\.docker\.internal/.test(rawBaseUrl)
+  const baseUrl = /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|host\.docker\.internal)/.test(rawBaseUrl)
     ? "/llm"
     : rawBaseUrl || "/llm";
   const model = modelCfg?.model || "gemma-4-e2b-it";
