@@ -22,8 +22,8 @@ function extractDate(ts: number): string {
 
 function normalizeDates(rows: Row[]): void {
   for (const r of rows) {
-    const ts = Number(r.report_date_calc);
-    if (ts) r.report_date_calc = extractDate(ts);
+    const ts = Number(r.日期);
+    if (ts) r.日期 = extractDate(ts);
   }
 }
 
@@ -46,14 +46,14 @@ function parseResult(resp: unknown) {
 
 const COST_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "ad_real_cost" },
+  column: { column_name: "返点后消耗" },
   aggregate: "SUM" as const,
   label: "SUM(ad_real_cost)",
 };
 
 const USER_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "n_unum" },
+  column: { column_name: "新增进入" },
   aggregate: "SUM" as const,
   label: "SUM(n_unum)",
 };
@@ -70,7 +70,7 @@ export interface DrillDownData {
 
 export async function fetchDrillDownData(): Promise<DrillDownData> {
   const dayFilter = {
-    granularity: "report_date_calc" as const,
+    granularity: "日期" as const,
     time_range: "Last 7 days" as const,
   };
 
@@ -81,7 +81,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
       datasource: DATASOURCE,
       queries: [{
         metrics: BASE_METRICS,
-        columns: ["papp_name", "cch_name", "report_date_calc"],
+        columns: ["主游戏", "渠道商", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 500,
@@ -93,7 +93,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
       datasource: DATASOURCE,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["channel_name", "report_date_calc"],
+        columns: ["媒体", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 200,
@@ -105,7 +105,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
       datasource: DATASOURCE,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["platform", "report_date_calc"],
+        columns: ["平台", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 200,
@@ -117,7 +117,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
       datasource: DATASOURCE,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["ptid", "cch_name", "report_date_calc"],
+        columns: ["团队", "渠道商", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 200,
@@ -135,7 +135,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
   normalizeDates(rTeam.rows);
 
   const sections: string[] = [
-    "数据范围: 近7天 | 数据中的 report_date_calc 列即为日期", "",
+    "数据范围: 近7天 | 数据中的 日期 列即为日期", "",
   ];
 
   sections.push("#### 1. 项目+渠道维度明细", "");

@@ -12,7 +12,7 @@ import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
 import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
 import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
-import api, { getDataset } from "@/api";
+import api, { getDataset, getMetricFormatMap } from "@/api";
 import {
   buildQueryObject,
   extractQueryFields,
@@ -90,6 +90,7 @@ export default function Dashboard() {
   } = useDashboardData();
 
   const [chartLoading, setChartLoading] = useState<Record<number, boolean>>({});
+  const [metricFormatMaps, setMetricFormatMaps] = useState<Record<number, Record<string, string>>>({});
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get("slice_id");
   const isDrawerOpen = Boolean(editingSliceId);
@@ -427,6 +428,16 @@ export default function Dashboard() {
           setDashboardDimensions([...timeCols, ...stringCols]);
         }
         setChartMeta(metaMap);
+
+        const fmtMaps: Record<number, Record<string, string>> = {};
+        for (const dsId of dsIds) {
+          try {
+            fmtMaps[dsId] = await getMetricFormatMap(dsId);
+          } catch {
+            /* ignore */
+          }
+        }
+        setMetricFormatMaps(fmtMaps);
 
         await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -1179,6 +1190,7 @@ export default function Dashboard() {
           totalRows={totalRows}
           intervalSeconds={intervalSeconds}
           onCycleInterval={cycleInterval}
+          metricFormatMaps={metricFormatMaps}
         />
       </Box>
       <Drawer

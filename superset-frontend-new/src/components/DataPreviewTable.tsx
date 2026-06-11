@@ -13,7 +13,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
-import { formatNumber } from "@/utils/formatNumber";
+import { formatMetricValue } from "@/utils/formatNumber";
 
 export type CellFormatter = (key: string, value: unknown) => string;
 
@@ -30,10 +30,8 @@ interface DataPreviewTableProps {
   onSortChange?: (sorts: { column: string; direction: "asc" | "desc" }[]) => void;
 }
 
-function defaultFormat(_key: string, value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return formatNumber(value);
-  return String(value);
+function defaultFormat(key: string, value: unknown): string {
+  return formatMetricValue(key, value);
 }
 
 function formatCell(

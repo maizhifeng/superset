@@ -45,6 +45,7 @@ interface DashboardGridProps {
   totalRows?: Record<number, Record<string, unknown> | null>;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
+  metricFormatMaps?: Record<number, Record<string, string>>;
 }
 
 export default function DashboardGrid({
@@ -74,6 +75,7 @@ export default function DashboardGrid({
   totalRows,
   intervalSeconds,
   onCycleInterval,
+  metricFormatMaps,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
@@ -154,15 +156,19 @@ export default function DashboardGrid({
         resizeConfig={{ enabled: containerWidth >= 600, handles: ["se"] }}
         autoSize
       >
-        {layoutItems.map((item) => (
+        {layoutItems.map((item) => {
+          const meta = chartMeta[item.chartId];
+          const dsId = meta?.datasource_id ?? 0;
+          const metricFormatMap = metricFormatMaps?.[dsId];
+          return (
           <div key={item.i} data-chart-index={item.chartId}>
             <ChartCard
               chartId={item.chartId}
               sliceName={item.sliceName}
-              vizType={chartMeta[item.chartId]?.viz_type || "bar"}
+              vizType={meta?.viz_type || "bar"}
               data={chartData[item.chartId]}
               loading={!!chartLoading[item.chartId]}
-              meta={chartMeta[item.chartId]}
+              meta={meta}
               isDragging={isDragging}
               containerWidth={containerWidth}
               onRefresh={onRefresh}
@@ -176,9 +182,11 @@ export default function DashboardGrid({
               totalRow={totalRows?.[item.chartId]}
               intervalSeconds={intervalSeconds}
               onCycleInterval={onCycleInterval}
+              metricFormatMap={metricFormatMap}
             />
           </div>
-        ))}
+          );
+        })}
       </GridLayout>
     </Box>
   );
