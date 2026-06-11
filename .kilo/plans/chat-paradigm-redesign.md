@@ -141,7 +141,7 @@ interface NavStore {
   sidePanelLoading: boolean;
   // Overlay
   activeOverlay: { type: string; id?: number | string } | null;
-  
+
   // Actions
   toggleCategory: (cat: NavCategory) => Promise<void>;
   closeSidePanel: () => void;
@@ -185,7 +185,7 @@ GET /{category}/?q=(page_size:200,page:0)
 
 #### 1. `src/components/AppLayout.tsx` (大改)
 - 移除 `<AppNavBar>` (顶部 Tabs 导航)
-- 移除 `<AppBreadcrumbs>` 
+- 移除 `<AppBreadcrumbs>`
 - 移除 crumbs 相关 state/logic (`crumbAnchorEl`, `crumbOptions`, `itemLabels`, `handleCrumbClick`)
 - 简化 AppBar: 只保留 Logo + Search + AI button + UserMenu
 - AppBar 左侧添加 hamburger(移动端) 替代为 ActivityBar 自身的 toggle
