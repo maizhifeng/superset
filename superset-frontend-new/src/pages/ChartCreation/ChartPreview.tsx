@@ -6,23 +6,21 @@ import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsOption } from "echarts";
 import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
-import ChartTypeSelector from "./ChartTypeSelector";
-import { formatNumber, formatPercentage } from "@/utils/formatNumber";
+import { formatMetricValue, type MetricFormatMap } from "@/utils/formatNumber";
+
+const TEMPORAL_TYPE = 2;
 
 interface ChartPreviewProps {
   datasourceId: string;
-  vizType: string;
   resolvedType: string;
   hasValidType: boolean;
   metrics: string[];
   chartData: Record<string, unknown> | null;
   loadingData: boolean;
-  suggestedVizType?: string;
-  disabledReasons: Record<string, string>;
-  onChartTypeChange: (val: string) => void;
   chartLibReady: boolean;
   option: EChartsOption | null;
   bigNumberValue: string | null;
+  metricFormatMap?: MetricFormatMap;
   onSortChange?: (
     sorts: { column: string; direction: "asc" | "desc" }[],
   ) => void;
@@ -30,28 +28,35 @@ interface ChartPreviewProps {
 
 export default function ChartPreview({
   datasourceId,
-  vizType,
   resolvedType,
   hasValidType,
   metrics,
   chartData,
   loadingData,
-  suggestedVizType,
-  disabledReasons,
-  onChartTypeChange,
   chartLibReady,
   option,
   bigNumberValue,
+  metricFormatMap,
   onSortChange,
 }: ChartPreviewProps) {
+  const colnames = (chartData as Record<string, unknown> | null)?.colnames as
+    | string[]
+    | undefined;
+  const coltypes = (chartData as Record<string, unknown> | null)?.coltypes as
+    | number[]
+    | undefined;
+
+  const temporalCols = useMemo(() => {
+    if (!colnames || !coltypes) return new Set<string>();
+    const set = new Set<string>();
+    for (let i = 0; i < colnames.length; i++) {
+      if (coltypes[i] === TEMPORAL_TYPE) set.add(colnames[i]);
+    }
+    return set;
+  }, [colnames, coltypes]);
+
   const tableData = useMemo(() => {
     if (!chartData || resolvedType !== "table") return chartData;
-    const colnames = (chartData as Record<string, unknown>).colnames as
-      | string[]
-      | undefined;
-    const coltypes = (chartData as Record<string, unknown>).coltypes as
-      | number[]
-      | undefined;
     const rows = Array.isArray((chartData as Record<string, unknown>).data)
       ? ((chartData as Record<string, unknown>).data as Record<
           string,
@@ -80,7 +85,19 @@ export default function ChartPreview({
       ...chartData,
       data: [...rows, { ...totalRow, __isSummary: true }],
     } as Record<string, unknown>;
-  }, [chartData, resolvedType]);
+  }, [chartData, resolvedType, colnames, coltypes]);
+
+  function formatDateCell(val: unknown): string {
+    if (typeof val === "number") {
+      const d = new Date(val);
+      const y = d.getFullYear();
+      if (y > 1900 && y < 2100) return d.toLocaleDateString();
+    }
+    if (typeof val === "string" && /^\d{2,4}[/-]\d{1,2}[/-]\d{1,4}$/.test(val)) {
+      return val;
+    }
+    return String(val ?? "");
+  }
 
   return (
     <Box
@@ -92,19 +109,6 @@ export default function ChartPreview({
         gap: 0.5,
       }}
     >
-      <Box
-        sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}
-      >
-        {datasourceId && (
-          <ChartTypeSelector
-            value={vizType}
-            suggested={suggestedVizType}
-            disabledReasons={disabledReasons}
-            onChange={onChartTypeChange}
-          />
-        )}
-      </Box>
-
       <Box
         sx={{
           flex: 1,
@@ -140,16 +144,8 @@ export default function ChartPreview({
             onSortChange={onSortChange}
             formatCell={(key, val) => {
               if (val === null || val === undefined) return "";
-              if (typeof val === "number" && /year|date|time/i.test(key)) {
-                const d = new Date(val);
-                const y = d.getFullYear();
-                if (y > 1900 && y < 2100) return d.toLocaleDateString();
-              }
-              if (typeof val === "number") {
-                if (/^roi_/i.test(key)) return formatPercentage(val);
-                return formatNumber(val);
-              }
-              return String(val);
+              if (temporalCols.has(key)) return formatDateCell(val);
+              return formatMetricValue(key, val, metricFormatMap);
             }}
           />
         ) : bigNumberValue && resolvedType === "big_number" ? (

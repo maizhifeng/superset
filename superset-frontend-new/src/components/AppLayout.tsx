@@ -359,8 +359,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </Dialog>
             <IconButton
               size="small"
-              onClick={() => openAiDrawer("assistant")}
-              sx={{ color: "primary.main", mr: 0.5 }}
+              onClick={() => {
+                if (aiDrawerOpen && aiDrawerMode === "assistant") {
+                  closeAiDrawer();
+                } else {
+                  openAiDrawer("assistant");
+                }
+              }}
+              sx={{
+                color: "primary.main",
+                mr: 0.5,
+                transition: "opacity 200ms",
+                opacity: aiDrawerOpen && aiDrawerMode === "assistant" ? 0.6 : 1,
+              }}
             >
               <AutoAwesomeIcon sx={{ fontSize: 20 }} />
             </IconButton>

@@ -528,6 +528,7 @@ export default function AiDrawer({
   const { activePreset } = useAiConfigStore();
   const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   const setDrawerWidth = useDrawerStore((s) => s.setDrawerWidth);
+  const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
   const [input, setInput] = useState("");
   const [configOpen, setConfigOpen] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
@@ -712,7 +713,7 @@ export default function AiDrawer({
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
           ) : !isAssist ? (
-            <IconButton size="small" onClick={insight.clear} sx={{ mr: 0.5 }}>
+            <IconButton size="small" onClick={() => openAiDrawer("assistant")} sx={{ mr: 0.5 }}>
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
           ) : null}

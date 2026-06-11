@@ -8,14 +8,14 @@ interface Row {
 
 const COST_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "ad_real_cost" },
+  column: { column_name: "返点后消耗" },
   aggregate: "SUM" as const,
   label: "SUM(ad_real_cost)",
 };
 
 const USER_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "n_unum" },
+  column: { column_name: "新增进入" },
   aggregate: "SUM" as const,
   label: "SUM(n_unum)",
 };
@@ -99,7 +99,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   const { w1Start, w2Start } = bounds;
 
   const twoWeekFilter = {
-    granularity: "report_date_calc" as const,
+    granularity: "日期" as const,
     time_range: bounds.rangeStr,
   };
 
@@ -110,7 +110,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
       ...baseQuery,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"] as unknown[],
-        columns: ["channel_name", "report_date_calc"],
+        columns: ["媒体", "日期"],
         ...twoWeekFilter,
         orderby: orderDesc,
         row_limit: 500,
@@ -120,7 +120,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
       ...baseQuery,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"] as unknown[],
-        columns: ["cch_name", "report_date_calc"],
+        columns: ["渠道商", "日期"],
         ...twoWeekFilter,
         orderby: orderDesc,
         row_limit: 500,
@@ -130,7 +130,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
       ...baseQuery,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"] as unknown[],
-        columns: ["platform", "report_date_calc"],
+        columns: ["平台", "日期"],
         ...twoWeekFilter,
         orderby: orderDesc,
         row_limit: 500,
@@ -144,7 +144,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
           "cpa", "roi_1",
           "ltv_1", "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7",
         ] as unknown[],
-        columns: ["papp_name", "cch_name", "report_date_calc"],
+        columns: ["主游戏", "渠道商", "日期"],
         ...twoWeekFilter,
         orderby: orderDesc,
         row_limit: 1000,
@@ -165,7 +165,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   // --- Top project list and combined project+channel data ---
   const projCostMap = new Map<string, number>();
   for (const r of rLtvTrend.rows) {
-    const name = String(r.papp_name ?? "");
+    const name = String(r.主游戏 ?? "");
     if (!name) continue;
     projCostMap.set(name, (projCostMap.get(name) ?? 0) + (Number(r["SUM(ad_real_cost)"]) || 0));
   }
@@ -216,15 +216,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   const mediaW2 = new Map<string, ProjAccum>();
 
   for (const r of rMedia.rows) {
-    const wl = weekLabel(Number(r.report_date_calc), w1Start, w2Start);
-    const name = String(r.channel_name ?? "");
+    const wl = weekLabel(Number(r.日期), w1Start, w2Start);
+    const name = String(r.媒体 ?? "");
     if (!name) continue;
     const map = wl === "W2" ? mediaW2 : mediaW1;
     const prev = map.get(name) ?? { cost: 0, users: 0, cpa: 0, roi1: 0, ltv1: 0 };
     prev.cost += Number(r["SUM(ad_real_cost)"]) || 0;
     prev.users += Number(r["SUM(n_unum)"]) || 0;
     if (Number(r.cpa) > 0) prev.cpa = Number(r.cpa);
-    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1);
+    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1) * 100;
     if (Number(r.ltv_1) > 0) prev.ltv1 = Number(r.ltv_1);
     map.set(name, prev);
   }
@@ -236,15 +236,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   const channelW2 = new Map<string, ProjAccum>();
 
   for (const r of rChannel.rows) {
-    const wl = weekLabel(Number(r.report_date_calc), w1Start, w2Start);
-    const name = String(r.cch_name ?? "");
+    const wl = weekLabel(Number(r.日期), w1Start, w2Start);
+    const name = String(r.渠道商 ?? "");
     if (!name) continue;
     const map = wl === "W2" ? channelW2 : channelW1;
     const prev = map.get(name) ?? { cost: 0, users: 0, cpa: 0, roi1: 0, ltv1: 0 };
     prev.cost += Number(r["SUM(ad_real_cost)"]) || 0;
     prev.users += Number(r["SUM(n_unum)"]) || 0;
     if (Number(r.cpa) > 0) prev.cpa = Number(r.cpa);
-    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1);
+    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1) * 100;
     if (Number(r.ltv_1) > 0) prev.ltv1 = Number(r.ltv_1);
     map.set(name, prev);
   }
@@ -256,15 +256,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   const platformW2 = new Map<string, ProjAccum>();
 
   for (const r of rPlatform.rows) {
-    const wl = weekLabel(Number(r.report_date_calc), w1Start, w2Start);
-    const name = String(r.platform ?? "");
+    const wl = weekLabel(Number(r.日期), w1Start, w2Start);
+    const name = String(r.平台 ?? "");
     if (!name) continue;
     const map = wl === "W2" ? platformW2 : platformW1;
     const prev = map.get(name) ?? { cost: 0, users: 0, cpa: 0, roi1: 0, ltv1: 0 };
     prev.cost += Number(r["SUM(ad_real_cost)"]) || 0;
     prev.users += Number(r["SUM(n_unum)"]) || 0;
     if (Number(r.cpa) > 0) prev.cpa = Number(r.cpa);
-    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1);
+    if (Number(r.roi_1) > 0) prev.roi1 = Number(r.roi_1) * 100;
     if (Number(r.ltv_1) > 0) prev.ltv1 = Number(r.ltv_1);
     map.set(name, prev);
   }
@@ -342,11 +342,11 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   const pcDays = new Map<string, PcDay[]>();
 
   for (const r of rLtvTrend.rows) {
-    const proj = String(r.papp_name ?? "");
-    const ch = String(r.cch_name ?? "");
+    const proj = String(r.主游戏 ?? "");
+    const ch = String(r.渠道商 ?? "");
     if (!proj || !ch || !projSet.has(proj)) continue;
     const key = `${proj}::${ch}`;
-    const ts = Number(r.report_date_calc);
+    const ts = Number(r.日期);
     if (!ts || Number.isNaN(ts)) continue;
     const wl = weekLabel(ts, w1Start, w2Start);
     if (!wl) continue;
@@ -357,7 +357,7 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
       wl, cost: Number(r["SUM(ad_real_cost)"]) || 0,
       users: Number(r["SUM(n_unum)"]) || 0,
       cpa: Number(r.cpa) || 0,
-      roi1: Number(r.roi_1) || 0,
+      roi1: (Number(r.roi_1) || 0) * 100,
       ltvVals,
     });
   }

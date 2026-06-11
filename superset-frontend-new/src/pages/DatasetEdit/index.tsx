@@ -3,10 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
+import Drawer from "@mui/material/Drawer";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Chip from "@mui/material/Chip";
@@ -15,6 +12,8 @@ import CardHeader from "@mui/material/CardHeader";
 import CardContent from "@mui/material/CardContent";
 import SaveIcon from "@mui/icons-material/Save";
 import AddIcon from "@mui/icons-material/Add";
+import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
 import type { DatasetMetric } from "@/types/api";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -27,6 +26,8 @@ import Collapse from "@mui/material/Collapse";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
@@ -65,6 +66,9 @@ export default function DatasetEdit() {
     Record<number, Partial<DatasetColumn>>
   >({});
   const [addMetricOpen, setAddMetricOpen] = useState(false);
+  const [editMetricOpen, setEditMetricOpen] = useState(false);
+  const [editMetric, setEditMetric] = useState<DatasetMetric | null>(null);
+  const [tabValue, setTabValue] = useState(0);
   const [sqlExpanded, setSqlExpanded] = useState(false);
   const [newMetric, setNewMetric] = useState({
     metric_name: "",
@@ -100,10 +104,6 @@ export default function DatasetEdit() {
   const columnsRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
   const rowsPerPage = 50;
-
-  const totalRows = dataset
-    ? dataset.metrics.length + dataset.columns.length
-    : 0;
 
   const handleSave = useCallback(async () => {
     if (!id) return;
@@ -167,6 +167,38 @@ export default function DatasetEdit() {
       d3format: "",
     });
     setAddMetricOpen(true);
+  }, []);
+
+  const handleEditMetric = useCallback((metric: DatasetMetric) => {
+    setEditMetric(metric);
+    setEditMetricOpen(true);
+  }, []);
+
+  const handleEditMetricSubmit = useCallback(() => {
+    if (!editMetric || !editMetric.metric_name.trim() || !editMetric.expression.trim()) return;
+    setDataset((prev) =>
+      prev
+        ? {
+            ...prev,
+            metrics: prev.metrics.map((m) =>
+              m.id === editMetric.id ? editMetric : m,
+            ),
+          }
+        : prev,
+    );
+    setEditMetricOpen(false);
+    setEditMetric(null);
+  }, [editMetric]);
+
+  const handleDeleteMetric = useCallback((target: DatasetMetric) => {
+    setDataset((prev) =>
+      prev
+        ? {
+            ...prev,
+            metrics: prev.metrics.filter((m) => m.id !== target.id),
+          }
+        : prev,
+    );
   }, []);
 
   const handleAddMetricSubmit = useCallback(() => {
@@ -337,214 +369,148 @@ export default function DatasetEdit() {
         {dataset &&
           (dataset.metrics.length > 0 || dataset.columns.length > 0) && (
             <Card sx={{ mt: 1.5 }}>
-              <CardHeader title={`字段 (${totalRows})`} sx={cardHeaderSx} />
-              <CardContent sx={{ pt: 0 }}>
-                <TableContainer
-                  ref={columnsRef}
-                  sx={{
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 1,
-                    maxHeight: "calc(100vh - 370px)",
-                    overflow: "auto",
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderBottom: 1,
+                  borderColor: "divider",
+                  px: 2,
+                  minHeight: 48,
+                }}
+              >
+                <Tabs
+                  value={tabValue}
+                  onChange={(_, v) => {
+                    setTabValue(v);
+                    setPage(0);
                   }}
                 >
-                  <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
-                    <TableHead>
-                      <TableRow>
-                        {[
-                          ["ID", "6%"],
-                          ["名称", "12%"],
-                          ["类型", "6%"],
-                          ["数据类型", "8%"],
-                          ["显示名称", "10%"],
-                          ["表达式", "22%"],
-                          ["描述", "18%"],
-                          ["is_dttm", "6%"],
-                          ["仪表板筛选", "6%"],
-                        ].map(([h, w]) => (
-                          <TableCell
-                            key={h}
-                            sx={{
-                              fontWeight: 700,
-                              bgcolor: "grey.50",
-                              fontSize: "0.75rem",
-                              width: w,
-                              py: 1,
-                            }}
-                          >
-                            {h}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {[
-                        ...dataset.metrics.map((m) => ({
-                          ...m,
-                          _kind: "metric" as const,
-                        })),
-                        ...dataset.columns.map((c) => ({
-                          ...c,
-                          _kind: "column" as const,
-                          _type: c.type || "—",
-                        })),
-                      ]
-                        .sort((a, b) => {
-                          if (a._kind !== b._kind)
-                            return a._kind === "metric" ? -1 : 1;
-                          const aExpr = !!(
-                            a as typeof a & { expression?: string | null }
-                          ).expression;
-                          const bExpr = !!(
-                            b as typeof b & { expression?: string | null }
-                          ).expression;
-                          if (aExpr !== bExpr) return aExpr ? -1 : 1;
-                          const aName =
-                            a._kind === "metric"
-                              ? (a as typeof a & { metric_name: string }).metric_name
-                              : (a as typeof a & { column_name: string }).column_name;
-                          const bName =
-                            b._kind === "metric"
-                              ? (b as typeof b & { metric_name: string }).metric_name
-                              : (b as typeof b & { column_name: string }).column_name;
-                          return (aName || "").localeCompare(bName || "");
-                        })
-                        .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
-                        .map((row) => (
-                          <TableRow
-                            key={`${row._kind}-${row.id}`}
-                            hover
-                            sx={{ "&:last-child td": { border: 0 } }}
-                          >
+                  <Tab
+                    label={`数据列 (${dataset.columns.length})`}
+                    sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+                  />
+                  <Tab
+                    label={`指标 (${dataset.metrics.length})`}
+                    sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+                  />
+                </Tabs>
+                {tabValue === 1 && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    onClick={handleAddMetric}
+                  >
+                    添加指标
+                  </Button>
+                )}
+              </Box>
+              <CardContent sx={{ pt: 2 }}>
+                {tabValue === 0 && (
+                  <TableContainer
+                    ref={columnsRef}
+                    sx={{
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 1,
+                      maxHeight: "calc(100vh - 370px)",
+                      overflow: "auto",
+                    }}
+                  >
+                    <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
+                      <TableHead>
+                        <TableRow>
+                          {[
+                            ["名称", "22%"],
+                            ["数据类型", "14%"],
+                            ["描述", "30%"],
+                            ["is_dttm", "17%", "center"],
+                            ["仪表板筛选", "17%", "center"],
+                          ].map(([h, w, align]) => (
                             <TableCell
+                              key={h}
                               sx={{
+                                fontWeight: 700,
+                                bgcolor: "grey.50",
                                 fontSize: "0.75rem",
-                                color: "text.secondary",
+                                width: w,
+                                py: 1,
+                                textAlign: align,
                               }}
                             >
-                              {row.id ?? "—"}
+                              {h}
                             </TableCell>
-                            <TableCell
-                              sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dataset.columns
+                          .sort((a, b) =>
+                            (a.column_name || "").localeCompare(b.column_name || "")
+                          )
+                          .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+                          .map((col) => (
+                            <TableRow
+                              key={col.id}
+                              hover
+                              sx={{ "&:last-child td": { border: 0 } }}
                             >
-                              {row._kind === "metric"
-                                ? (row as typeof row & { metric_name: string })
-                                    .metric_name
-                                : (row as typeof row & { column_name: string })
-                                    .column_name}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: "0.75rem" }}>
-                              <Chip
-                                label={row._kind}
-                                size="small"
-                                color={
-                                  row._kind === "metric" ? "primary" : "default"
-                                }
-                                variant="outlined"
-                                sx={{ height: 20, fontSize: "0.75rem" }}
-                              />
-                            </TableCell>
-                            <TableCell sx={{ fontSize: "0.75rem" }}>
-                              {row._kind === "column" ? (
+                              <TableCell
+                                sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                              >
+                                {col.column_name}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
                                 <Chip
-                                  label={
-                                    (row as typeof row & { _type: string })
-                                      ._type
-                                  }
+                                  label={col.type || "—"}
                                   size="small"
                                   variant="outlined"
                                   sx={{
                                     height: 20,
                                     fontSize: "0.75rem",
-                                    maxWidth: 100,
+                                    maxWidth: 120,
                                   }}
                                 />
-                              ) : (
-                                ((row as typeof row & { d3format?: string })
-                                  .d3format ?? "")
-                              )}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: "0.75rem" }}>
-                              {row.verbose_name ?? ""}
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                fontSize: "0.75rem",
-                                fontFamily: "monospace",
-                                maxWidth: 250,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              <Tooltip
-                                title={<Typography sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{row.expression ?? ""}</Typography>}
-                                placement="bottom-start"
-                                slotProps={{ popper: { sx: { '& .MuiTooltip-tooltip': { maxWidth: 600 } } } }}
-                              >
-                                <span>{row.expression ?? ""}</span>
-                              </Tooltip>
-                            </TableCell>
-                            <TableCell
-                              sx={{
-                                fontSize: "0.75rem",
-                                maxWidth: 200,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {row.description ?? ""}
-                            </TableCell>
-                            <TableCell sx={{ fontSize: "0.75rem", textAlign: "center" }}>
-                              {row._kind === "column" && (() => {
-                                const colId = (
-                                  row as typeof row & { id: number }
-                                ).id;
-                                const modified = modifiedColumns[colId];
-                                const checked =
-                                  modified?.is_dttm ??
-                                  !!(row as typeof row & { is_dttm: boolean }).is_dttm;
-                                return (
-                                  <Checkbox
-                                    size="small"
-                                    checked={checked}
-                                    onChange={(_, chk) => {
-                                      setModifiedColumns((prev) => ({
-                                        ...prev,
-                                        [colId]: {
-                                          ...prev[colId],
-                                          is_dttm: chk,
-                                        },
-                                      }));
-                                    }}
-                                    sx={{ p: 0.25 }}
-                                  />
-                                );
-                              })()}
-                            </TableCell>
-                            <TableCell
-                              sx={{ fontSize: "0.75rem", maxWidth: 200 }}
-                            >
-                              {row._kind === "column" &&
-                                (() => {
-                                  const colId = (
-                                    row as typeof row & { id: number }
-                                  ).id;
-                                  const hasMod =
-                                    Object.prototype.hasOwnProperty.call(
-                                      modifiedColumns,
-                                      colId,
-                                    );
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {col.description ?? ""}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem", textAlign: "center" }}>
+                                {(() => {
+                                  const colId = col.id;
+                                  const modified = modifiedColumns[colId];
+                                  const checked =
+                                    modified?.is_dttm ?? !!col.is_dttm;
+                                  return (
+                                    <Checkbox
+                                      size="small"
+                                      checked={checked}
+                                      onChange={(_, chk) => {
+                                        setModifiedColumns((prev) => ({
+                                          ...prev,
+                                          [colId]: {
+                                            ...prev[colId],
+                                            is_dttm: chk,
+                                          },
+                                        }));
+                                      }}
+                                      sx={{ p: 0.25 }}
+                                    />
+                                  );
+                                })()}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem", textAlign: "center" }}>
+                                {(() => {
+                                  const colId = col.id;
+                                  const hasMod = Object.prototype.hasOwnProperty.call(
+                                    modifiedColumns, colId,
+                                  );
                                   const modified = modifiedColumns[colId];
                                   const currentExtra = hasMod
                                     ? modified?.extra ?? null
-                                    : (
-                                        row as typeof row & {
-                                          extra?: string | null;
-                                        }
-                                      ).extra;
+                                    : col.extra;
                                   let parsed: Record<string, unknown> = {};
                                   try {
                                     parsed = currentExtra
@@ -576,123 +542,409 @@ export default function DatasetEdit() {
                                     />
                                   );
                                 })()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+                {tabValue === 1 && (
+                  <TableContainer
+                    sx={{
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 1,
+                      maxHeight: "calc(100vh - 370px)",
+                      overflow: "auto",
+                    }}
+                  >
+                    <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
+                      <TableHead>
+                        <TableRow>
+                          {[
+                            ["名称", "12%"],
+                            ["表达式", "36%"],
+                            ["显示名称", "10%"],
+                            ["描述", "20%"],
+                            ["D3 格式", "8%"],
+                            ["操作", "14%", "center"],
+                          ].map(([h, w, align]) => (
+                            <TableCell
+                              key={h}
+                              sx={{
+                                fontWeight: 700,
+                                bgcolor: "grey.50",
+                                fontSize: "0.75rem",
+                                width: w,
+                                py: 1,
+                                textAlign: align,
+                              }}
+                            >
+                              {h}
                             </TableCell>
-                          </TableRow>
-                        ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    py: 0.75,
-                    px: 2,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
-                    bgcolor: "grey.50",
-                  }}
-                >
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
+                          ))}
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dataset.metrics
+                          .sort((a, b) =>
+                            (a.metric_name || "").localeCompare(b.metric_name || "")
+                          )
+                          .slice(page * rowsPerPage, (page + 1) * rowsPerPage)
+                          .map((m) => (
+                            <TableRow
+                              key={m.id}
+                              hover
+                              sx={{ "&:last-child td": { border: 0 } }}
+                            >
+                              <TableCell
+                                sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                              >
+                                {m.metric_name}
+                              </TableCell>
+                              <TableCell
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontFamily: "monospace",
+                                  maxWidth: 350,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                <Tooltip
+                                  title={<Typography sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{m.expression}</Typography>}
+                                  placement="bottom-start"
+                                  slotProps={{ popper: { sx: { '& .MuiTooltip-tooltip': { maxWidth: 600 } } } }}
+                                >
+                                  <span>{m.expression}</span>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {m.verbose_name ?? ""}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {m.description ?? ""}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {m.d3format ?? ""}
+                              </TableCell>
+                              <TableCell
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  whiteSpace: "nowrap",
+                                  textAlign: "center",
+                                  px: 0.5,
+                                }}
+                              >
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleEditMetric(m)}
+                                  sx={{ p: 0.25 }}
+                                >
+                                  <EditIcon fontSize="inherit" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleDeleteMetric(m)}
+                                  sx={{ p: 0.25, color: "error.main" }}
+                                >
+                                  <DeleteIcon fontSize="inherit" />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+                {tabValue === 0
+                  ? dataset.columns.length > rowsPerPage
+                  : dataset.metrics.length > rowsPerPage && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      py: 0.75,
+                      px: 2,
+                      borderTop: "1px solid",
+                      borderColor: "divider",
+                      bgcolor: "grey.50",
+                    }}
                   >
-                    {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, totalRows)} of {totalRows}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    disabled={page === 0}
-                    onClick={() => setPage(page - 1)}
-                    sx={{ ml: 1 }}
-                  >
-                    <ChevronLeftIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    disabled={(page + 1) * rowsPerPage >= totalRows}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    <ChevronRightIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.75rem" }}
+                    >
+                      {page * rowsPerPage + 1}–
+                      {Math.min(
+                        (page + 1) * rowsPerPage,
+                        tabValue === 0
+                          ? dataset.columns.length
+                          : dataset.metrics.length,
+                      )}{" "}
+                      of{" "}
+                      {tabValue === 0
+                        ? dataset.columns.length
+                        : dataset.metrics.length}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      disabled={page === 0}
+                      onClick={() => setPage(page - 1)}
+                      sx={{ ml: 1 }}
+                    >
+                      <ChevronLeftIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      disabled={
+                        (page + 1) * rowsPerPage >=
+                        (tabValue === 0
+                          ? dataset.columns.length
+                          : dataset.metrics.length)
+                      }
+                      onClick={() => setPage(page + 1)}
+                    >
+                      <ChevronRightIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           )}
       </Box>
       <PageSpeedDial pageKeys="dataset_edit" />
-      <Dialog
+      <Drawer
         open={addMetricOpen}
         onClose={() => setAddMetricOpen(false)}
-        maxWidth="sm"
-        fullWidth
+        variant="temporary"
+        anchor="right"
+        slotProps={{
+          paper: {
+            sx: {
+              width: { xs: "100vw", sm: 480 },
+              height: "100vh",
+              borderRight: "none",
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+            },
+          },
+        }}
       >
-        <DialogTitle>添加指标</DialogTitle>
-        <DialogContent sx={{ "& > *": { mt: 1.5 } }}>
-          <TextField
-            size="small"
-            label="指标名称"
-            fullWidth
-            value={newMetric.metric_name}
-            onChange={(e) =>
-              setNewMetric((f) => ({ ...f, metric_name: e.target.value }))
-            }
-          />
-          <TextField
-            size="small"
-            label="表达式"
-            fullWidth
-            value={newMetric.expression}
-            onChange={(e) =>
-              setNewMetric((f) => ({ ...f, expression: e.target.value }))
-            }
-            sx={{ mt: 1.5 }}
-          />
-          <TextField
-            size="small"
-            label="显示名称"
-            fullWidth
-            value={newMetric.verbose_name}
-            onChange={(e) =>
-              setNewMetric((f) => ({ ...f, verbose_name: e.target.value }))
-            }
-            sx={{ mt: 1.5 }}
-          />
-          <TextField
-            size="small"
-            label="描述"
-            fullWidth
-            value={newMetric.description}
-            onChange={(e) =>
-              setNewMetric((f) => ({ ...f, description: e.target.value }))
-            }
-            sx={{ mt: 1.5 }}
-          />
-          <TextField
-            size="small"
-            label="D3 格式"
-            fullWidth
-            value={newMetric.d3format}
-            onChange={(e) =>
-              setNewMetric((f) => ({ ...f, d3format: e.target.value }))
-            }
-            sx={{ mt: 1.5 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddMetricOpen(false)}>取消</Button>
-          <Button
-            variant="contained"
-            onClick={handleAddMetricSubmit}
-            disabled={
-              !newMetric.metric_name.trim() || !newMetric.expression.trim()
-            }
+        <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <Box sx={{ px: 2.5, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="h6">添加指标</Typography>
+          </Box>
+          <Box sx={{ flex: 1, overflow: "auto", p: 2.5 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                <CardHeader title="基本信息" sx={cardHeaderSx} />
+                <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <TextField
+                    size="small"
+                    label="指标名称"
+                    fullWidth
+                    autoFocus
+                    value={newMetric.metric_name}
+                    onChange={(e) =>
+                      setNewMetric((f) => ({ ...f, metric_name: e.target.value }))
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="表达式"
+                    fullWidth
+                    multiline
+                    rows={4}
+                    value={newMetric.expression}
+                    onChange={(e) =>
+                      setNewMetric((f) => ({ ...f, expression: e.target.value }))
+                    }
+                  />
+                </CardContent>
+              </Card>
+              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                <CardHeader title="可选配置" sx={cardHeaderSx} />
+                <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <TextField
+                    size="small"
+                    label="显示名称"
+                    fullWidth
+                    value={newMetric.verbose_name}
+                    onChange={(e) =>
+                      setNewMetric((f) => ({ ...f, verbose_name: e.target.value }))
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="描述"
+                    fullWidth
+                    value={newMetric.description}
+                    onChange={(e) =>
+                      setNewMetric((f) => ({ ...f, description: e.target.value }))
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="D3 格式"
+                    fullWidth
+                    placeholder="例如 .1%"
+                    value={newMetric.d3format}
+                    onChange={(e) =>
+                      setNewMetric((f) => ({ ...f, d3format: e.target.value }))
+                    }
+                  />
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              borderTop: 1,
+              borderColor: "divider",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 1,
+            }}
           >
-            添加
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <Button onClick={() => setAddMetricOpen(false)}>取消</Button>
+            <Button
+              variant="contained"
+              onClick={handleAddMetricSubmit}
+              disabled={
+                !newMetric.metric_name.trim() || !newMetric.expression.trim()
+              }
+            >
+              添加
+            </Button>
+          </Box>
+        </Box>
+      </Drawer>
+      <Drawer
+        open={editMetricOpen}
+        onClose={() => setEditMetricOpen(false)}
+        variant="temporary"
+        anchor="right"
+        slotProps={{
+          paper: {
+            sx: {
+              width: { xs: "100vw", sm: 480 },
+              height: "100vh",
+              borderRight: "none",
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+            },
+          },
+        }}
+      >
+        <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <Box sx={{ px: 2.5, py: 1.5, borderBottom: 1, borderColor: "divider" }}>
+            <Typography variant="h6">编辑指标</Typography>
+          </Box>
+          <Box sx={{ flex: 1, overflow: "auto", p: 2.5 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                <CardHeader title="基本信息" sx={cardHeaderSx} />
+                <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <TextField
+                    size="small"
+                    label="指标名称"
+                    fullWidth
+                    autoFocus
+                    value={editMetric?.metric_name ?? ""}
+                    onChange={(e) =>
+                      setEditMetric((prev) =>
+                        prev ? { ...prev, metric_name: e.target.value } : prev,
+                      )
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="表达式"
+                    fullWidth
+                    multiline
+                    rows={4}
+                    value={editMetric?.expression ?? ""}
+                    onChange={(e) =>
+                      setEditMetric((prev) =>
+                        prev ? { ...prev, expression: e.target.value } : prev,
+                      )
+                    }
+                  />
+                </CardContent>
+              </Card>
+              <Card elevation={0} sx={{ borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                <CardHeader title="可选配置" sx={cardHeaderSx} />
+                <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <TextField
+                    size="small"
+                    label="显示名称"
+                    fullWidth
+                    value={editMetric?.verbose_name ?? ""}
+                    onChange={(e) =>
+                      setEditMetric((prev) =>
+                        prev ? { ...prev, verbose_name: e.target.value } : prev,
+                      )
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="描述"
+                    fullWidth
+                    value={editMetric?.description ?? ""}
+                    onChange={(e) =>
+                      setEditMetric((prev) =>
+                        prev ? { ...prev, description: e.target.value } : prev,
+                      )
+                    }
+                  />
+                  <TextField
+                    size="small"
+                    label="D3 格式"
+                    fullWidth
+                    placeholder="例如 .1%"
+                    value={editMetric?.d3format ?? ""}
+                    onChange={(e) =>
+                      setEditMetric((prev) =>
+                        prev ? { ...prev, d3format: e.target.value } : prev,
+                      )
+                    }
+                  />
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+          <Box
+            sx={{
+              px: 2.5,
+              py: 1.5,
+              borderTop: 1,
+              borderColor: "divider",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 1,
+            }}
+          >
+            <Button onClick={() => setEditMetricOpen(false)}>取消</Button>
+            <Button
+              variant="contained"
+              onClick={handleEditMetricSubmit}
+              disabled={
+                !editMetric?.metric_name.trim() ||
+                !editMetric?.expression.trim()
+              }
+            >
+              保存
+            </Button>
+          </Box>
+        </Box>
+      </Drawer>
     </Box>
   );
 }

@@ -1,4 +1,9 @@
-import { formatNumber } from "./formatNumber";
+import { formatNumber, formatPctValue, isRatioMetric, type MetricFormatMap } from "./formatNumber";
+
+function formatEChartsValue(key: string, value: number, formatMap?: MetricFormatMap): string {
+  if (isRatioMetric(key, formatMap)) return formatPctValue(value);
+  return formatNumber(value);
+}
 
 type EChartsModule = typeof import("echarts/core");
 
@@ -47,6 +52,7 @@ export const chartTypeToECharts: Record<string, string> = {
 export function buildEChartsOption(
   vizType: string,
   data: Record<string, unknown>,
+  formatMap?: MetricFormatMap,
 ) {
   const echartsType = chartTypeToECharts[vizType] || "bar";
 
@@ -152,7 +158,7 @@ export function buildEChartsOption(
         if (!Array.isArray(params) || params.length === 0) return "";
         const axisName = params[0].name;
         const lines = params.map(
-          (p) => `${p.seriesName}: ${formatNumber(p.value)}`
+          (p) => `${p.seriesName}: ${formatEChartsValue(p.seriesName, p.value, formatMap)}`
         );
         return `${axisName}<br/>${lines.join("<br/>")}`;
       },

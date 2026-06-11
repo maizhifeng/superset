@@ -79,6 +79,17 @@ export function getDataset<T = unknown>(id: number | string): Promise<T> {
   return promise;
 }
 
+export async function getMetricFormatMap(dsId: number): Promise<Record<string, string>> {
+  const dataset = await getDataset<{
+    metrics: { metric_name: string; d3format: string | null }[];
+  }>(dsId);
+  const map: Record<string, string> = {};
+  for (const m of dataset.metrics ?? []) {
+    if (m.d3format) map[m.metric_name] = m.d3format;
+  }
+  return map;
+}
+
 api.interceptors.request.use(async (config) => {
   const token = getStoredToken();
   if (token) {

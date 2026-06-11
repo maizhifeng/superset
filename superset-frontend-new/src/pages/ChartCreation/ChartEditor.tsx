@@ -8,7 +8,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import type { EChartsOption } from "echarts";
 import { buildEChartsOption, loadECharts } from "@/utils/echarts";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import api, { getDataset } from "@/api";
+import api, { getDataset, getMetricFormatMap } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { useToolbarStore } from "@/contexts/ToolbarContext";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -18,7 +18,7 @@ import ChartEditorForm from "./ChartEditorForm";
 import ExploreViewContainer from "@/explore/components/ExploreViewContainer";
 import ExploreWelcome from "./ExploreWelcome";
 import type { Dataset } from "@/types/api";
-import { formatBigInt } from "@/utils/formatNumber";
+import { formatNumber } from "@/utils/formatNumber";
 
 interface FieldOption {
   value: string;
@@ -135,6 +135,9 @@ export default function ChartEditor({
     groupby: string[];
   } | null>(null);
   const [userChangedType, setUserChangedType] = useState(false);
+  const [metricFormatMap, setMetricFormatMap] = useState<
+    Record<string, string>
+  >({});
   const [savedFormData, setSavedFormData] = useState<Record<
     string,
     unknown
@@ -189,11 +192,19 @@ export default function ChartEditor({
 
   const dimensionOptions = useMemo(() => {
     if (!columnsList.length) return [];
-    return columnsList.map((c) => ({
-      value: c.column_name,
-      label: c.column_name,
-      group: "维度",
-    }));
+    const numericTypes = /int|float|double|decimal|number|bigint|numeric|real/i;
+    const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
+    return columnsList
+      .filter((c) => {
+        if (!c.type) return true;
+        if (timeTypes.test(c.type) || timeTypes.test(c.column_name)) return true;
+        return !numericTypes.test(c.type);
+      })
+      .map((c) => ({
+        value: c.column_name,
+        label: c.column_name,
+        group: "维度",
+      }));
   }, [columnsList]);
 
   const [chartData, setChartData] = useState<Record<string, unknown> | null>(
@@ -378,6 +389,9 @@ export default function ChartEditor({
         setMetricsList([]);
       })
       .finally(() => setLoadingColumns(false));
+    getMetricFormatMap(Number(datasourceId))
+      .then((fmtMap) => setMetricFormatMap(fmtMap))
+      .catch(() => setMetricFormatMap({}));
   }, [datasourceId]);
 
   useEffect(() => {
@@ -528,9 +542,9 @@ export default function ChartEditor({
     const keys = Object.keys(rows[0]);
     for (const key of keys) {
       const val = rows[0][key];
-      if (typeof val === "number") return formatBigInt(val);
+      if (typeof val === "number") return formatNumber(val);
       const num = Number(val);
-      if (!isNaN(num)) return formatBigInt(num);
+      if (!isNaN(num)) return formatNumber(num);
     }
     return null;
   }, [chartData]);
@@ -793,6 +807,10 @@ export default function ChartEditor({
         }}
         onMetricsChange={handleMetricsChange}
         onGroupbyChange={setGroupby}
+        vizType={vizType}
+        suggestedVizType={suggested?.vizType}
+        disabledReasons={disabledReasons}
+        onChartTypeChange={handleChartTypeChange}
       />
 
       <Box
@@ -809,18 +827,15 @@ export default function ChartEditor({
         ) : (
           <ChartPreview
             datasourceId={datasourceId}
-            vizType={vizType}
             resolvedType={resolvedType}
             hasValidType={hasValidType}
             metrics={metrics}
             chartData={chartData}
             loadingData={loadingData}
-            suggestedVizType={suggested?.vizType}
-            disabledReasons={disabledReasons}
-            onChartTypeChange={handleChartTypeChange}
             chartLibReady={chartLibReady}
             option={option}
             bigNumberValue={bigNumberValue}
+            metricFormatMap={metricFormatMap}
             onSortChange={(sorts) => {
               const s = sorts[0];
               if (s) setSortEntry({ column: s.column, direction: s.direction });

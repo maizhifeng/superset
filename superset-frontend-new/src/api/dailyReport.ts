@@ -8,14 +8,14 @@ interface Row {
 
 const COST_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "ad_real_cost" },
+  column: { column_name: "返点后消耗" },
   aggregate: "SUM" as const,
   label: "SUM(ad_real_cost)",
 };
 
 const USER_METRIC = {
   expressionType: "SIMPLE" as const,
-  column: { column_name: "n_unum" },
+  column: { column_name: "新增进入" },
   aggregate: "SUM" as const,
   label: "SUM(n_unum)",
 };
@@ -53,16 +53,16 @@ function extractDate(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** Convert report_date_calc timestamps to "M/D" strings in-place */
+/** Convert 日期 timestamps to "M/D" strings in-place */
 function normalizeDates(rows: Row[]): void {
   for (const r of rows) {
-    const ts = Number(r.report_date_calc);
-    if (ts) r.report_date_calc = extractDate(ts);
+    const ts = Number(r.日期);
+    if (ts) r.日期 = extractDate(ts);
   }
 }
 
 /** Get unique dates sorted descending */
-function uniqueDates(rows: Row[], field = "report_date_calc"): number[] {
+function uniqueDates(rows: Row[], field = "日期"): number[] {
   return [...new Set(rows.map((r) => Number(r[field])).filter(Boolean))]
     .sort((a, b) => b - a);
 }
@@ -79,12 +79,12 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
   };
 
   const dayFilter = {
-    granularity: "report_date_calc" as const,
+    granularity: "日期" as const,
     time_range: "Last 2 days" as const,
   };
 
   const trendFilter = {
-    granularity: "report_date_calc" as const,
+    granularity: "日期" as const,
     time_range: "Last 7 days" as const,
   };
 
@@ -95,7 +95,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       ...baseQuery,
       queries: [{
         metrics: BASE_METRICS,
-        columns: ["papp_name", "report_date_calc"],
+        columns: ["主游戏", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 100,
@@ -105,7 +105,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       ...baseQuery,
       queries: [{
         metrics: BASE_METRICS,
-        columns: ["papp_name", "cch_name", "report_date_calc"],
+        columns: ["主游戏", "渠道商", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 500,
@@ -115,7 +115,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       ...baseQuery,
       queries: [{
         metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1"] as unknown[],
-        columns: ["channel_name", "report_date_calc"],
+        columns: ["媒体", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 100,
@@ -125,7 +125,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       ...baseQuery,
       queries: [{
         metrics: [COST_METRIC],
-        columns: ["report_date_calc"],
+        columns: ["日期"],
         ...trendFilter,
         orderby: orderDesc,
         row_limit: 10,
@@ -135,7 +135,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
       ...baseQuery,
       queries: [{
         metrics: BASE_METRICS,
-        columns: ["ptid", "cch_name", "report_date_calc"],
+        columns: ["团队", "渠道商", "日期"],
         ...dayFilter,
         orderby: orderDesc,
         row_limit: 100,
@@ -185,17 +185,17 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   // Section 2
   const yesDate2 = yesLabel;
-  const allYesRows2 = sortCost(r2.rows.filter((r) => String(r.report_date_calc) === yesDate2));
+  const allYesRows2 = sortCost(r2.rows.filter((r) => String(r.日期) === yesDate2));
   const n2 = truncNote("项目+渠道（昨日）", allYesRows2.length, 200);
   if (n2) notes.push(n2);
 
   // Section 3
   const rawTotal3 = r3.rows.length;
-  const dates3 = [...new Set(r3.rows.map((r) => String(r.report_date_calc)).filter(Boolean))]
+  const dates3 = [...new Set(r3.rows.map((r) => String(r.日期)).filter(Boolean))]
     .sort((a, b) => b.localeCompare(a));
   let mediaTruncated = false;
   for (const d of dates3) {
-    const dayRows = sortCost(r3.rows.filter((r) => String(r.report_date_calc) === d));
+    const dayRows = sortCost(r3.rows.filter((r) => String(r.日期) === d));
     if (dayRows.length > 40) mediaTruncated = true;
   }
   if (rawTotal3 >= 100) notes.push(`⚠️ 媒体维度: 查询返回 ${rawTotal3} 行（达到上限 100），可能存在截断`);
@@ -203,7 +203,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   // Team section
   const yesDateTeam = yesLabel;
-  const allYesTeamRows = sortCost(rTeam.rows.filter((r) => String(r.report_date_calc) === yesDateTeam));
+  const allYesTeamRows = sortCost(rTeam.rows.filter((r) => String(r.日期) === yesDateTeam));
   const nTeam = truncNote("团队维度（昨日）", allYesTeamRows.length, 60);
   if (nTeam) notes.push(nTeam);
 
@@ -228,7 +228,7 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   sections.push("#### 3. 媒体维度分析", "");
   for (const d of dates3) {
-    const dayRows = sortCost(r3.rows.filter((r) => String(r.report_date_calc) === d));
+    const dayRows = sortCost(r3.rows.filter((r) => String(r.日期) === d));
     sections.push(`【${d}】`);
     sections.push(toMarkdownTable(cols3, dayRows, 40));
     sections.push("");
@@ -240,9 +240,9 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   const trendRows = [...rTrend.rows]
     .filter((r) => (Number(r["SUM(ad_real_cost)"]) || 0) > 0)
-    .sort((a, b) => (Number(a.report_date_calc) || 0) - (Number(b.report_date_calc) || 0));
+    .sort((a, b) => (Number(a.日期) || 0) - (Number(b.日期) || 0));
   const trendLines = trendRows.map((r) => {
-    const dl = extractDate(Number(r.report_date_calc));
+    const dl = extractDate(Number(r.日期));
     return `  ${dl}: ¥${fmt(r["SUM(ad_real_cost)"] ?? 0, 0)}`;
   });
   sections.push("#### 5. 近7天消耗趋势", "");

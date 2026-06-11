@@ -86,7 +86,7 @@ import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import { useEChartsType } from "@/hooks/useEChartsType";
 import MirrorTable from "@/pages/Dashboard/MirrorTable";
-import { formatNumber, formatPercentage } from "@/utils/formatNumber";
+import { formatMetricValue, formatPercentage, type MetricFormatMap } from "@/utils/formatNumber";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
 
@@ -127,6 +127,7 @@ interface ChartCardProps {
   totalRow?: Record<string, unknown> | null;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
+  metricFormatMap?: MetricFormatMap;
 }
 
 function pctSplitIndex(
@@ -165,6 +166,7 @@ function ChartCard({
   totalRow,
   intervalSeconds,
   onCycleInterval,
+  metricFormatMap,
 }: ChartCardProps) {
   const storageKey = `pct95_threshold_${chartId}`;
   const [pct95Threshold, setPct95Threshold] = useState(() => {
@@ -300,14 +302,9 @@ function ChartCard({
         const formatted = formatDateValue(value);
         if (formatted !== null) return formatted;
       }
-      if (typeof value === "number") {
-        if (/^(roi_|pay_rate_|retention_)/i.test(key))
-          return formatPercentage(value);
-        return formatNumber(value);
-      }
-      return String(value);
+      return formatMetricValue(key, value, metricFormatMap);
     };
-  }, [data]);
+  }, [data, metricFormatMap]);
 
   const { sortMetricCol, dimCols } = useMemo(() => {
     if (!data) return { sortMetricCol: "", dimCols: [] as string[] };
@@ -378,7 +375,7 @@ function ChartCard({
   }, [data, rows, sorted, pct95Active, sortMetricCol, splitIdx, totalRow, dimCols]);
 
   const option = processedData
-    ? buildEChartsOption(vizType, processedData)
+    ? buildEChartsOption(vizType, processedData, metricFormatMap)
     : null;
 
   const toggleFullScreen = async () => {
@@ -517,7 +514,7 @@ function ChartCard({
               variant="caption"
               sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
             >
-              {Math.round(pct95Threshold * 100)}%
+              {formatPercentage(Math.round(pct95Threshold * 100), 0)}
             </Typography>
           )}
           {vizType === "table" && (

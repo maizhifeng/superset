@@ -22,7 +22,7 @@ import dayjs from "dayjs";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { extractQueryFields, buildQueryObject } from "@/utils/query/extractQueryFields";
-import { formatNumber } from "@/utils/formatNumber";
+import { formatMetricValue } from "@/utils/formatNumber";
 import type { SimpleFilter } from "@/utils/query/types";
 import type { QueryResult, ChartData } from "@/types/api";
 
@@ -46,12 +46,7 @@ const PERIODS = [
 ];
 
 function fmtValue(key: string, value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") {
-    if (key.startsWith("roi_")) return `${value.toFixed(1)}%`;
-    return formatNumber(value);
-  }
-  return String(value);
+  return formatMetricValue(key, value);
 }
 
 interface CompareModalProps {
