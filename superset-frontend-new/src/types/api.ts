@@ -124,7 +124,7 @@ export interface DatasetDetail {
 
 export interface QueryResult {
   status: string;
-  columns: { name: string; type?: string }[];
+  columns: { name: string; type?: string; displayName?: string }[];
   data: Record<string, unknown>[];
   query_id?: number;
   query?: {

@@ -34,6 +34,7 @@ export interface QueryObject {
     comparator: string;
   }[];
   filters?: SimpleFilter[];
+  extras?: Record<string, unknown>;
   granularity?: string;
   time_range?: string;
   row_limit?: number;
