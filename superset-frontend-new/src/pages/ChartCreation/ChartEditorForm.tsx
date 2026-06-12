@@ -72,7 +72,14 @@ export default function ChartEditorForm({
         flexShrink: 0,
       }}
     >
-      <Box sx={{ display: "flex", flexWrap: "nowrap", gap: c(1, 0.75), alignItems: "center" }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "nowrap",
+          gap: c(1, 0.75),
+          alignItems: "center",
+        }}
+      >
         <TextField
           placeholder="图表名称..."
           value={sliceName}
@@ -86,9 +93,16 @@ export default function ChartEditorForm({
               fontWeight: 700,
               py: 0.5,
             },
-            "& .MuiInputBase-root::before": { borderBottomColor: "divider", borderBottomWidth: 1 },
-            "& .MuiInputBase-root:hover::before": { borderBottomColor: "primary.light" },
-            "& .MuiInputBase-root::after": { borderBottomColor: "primary.main" },
+            "& .MuiInputBase-root::before": {
+              borderBottomColor: "divider",
+              borderBottomWidth: 1,
+            },
+            "& .MuiInputBase-root:hover::before": {
+              borderBottomColor: "primary.light",
+            },
+            "& .MuiInputBase-root::after": {
+              borderBottomColor: "primary.main",
+            },
           }}
         />
 
@@ -104,102 +118,17 @@ export default function ChartEditorForm({
         )}
       </Box>
 
-      {datasourceId && (
+      {!compact && (
         <Box sx={{ display: "flex", gap: c(1, 0.75) }}>
           <Card
             elevation={0}
-            sx={{ flex: "2 1 0", borderRadius: 2, border: "1px solid", borderColor: "divider", overflow: "hidden" }}
-          >
-            <CardHeader
-              sx={{
-                px: c(0.75, 0.75),
-                py: c(0.25, 0.25),
-                bgcolor: "grey.50",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-              title={
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontSize: compact ? "0.6rem" : undefined,
-                  }}
-                >
-                  分组
-                </Typography>
-              }
-            />
-            <CardContent sx={{ p: c(0.75, 0.75) }}>
-              {loadingColumns ? (
-                <CircularProgress size={16} />
-              ) : (
-                <PickerField
-                   label="分组"
-
-                  options={dimensionOptions}
-                  selected={groupby}
-                  onChange={onGroupbyChange}
-                  placeholder="添加维度..."
-                  compact
-                  hideHeader
-                  hideGroups
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card
-            elevation={0}
-            sx={{ flex: "2 1 0", borderRadius: 2, border: "1px solid", borderColor: "divider", overflow: "hidden" }}
-          >
-            <CardHeader
-              sx={{
-                px: c(0.75, 0.75),
-                py: c(0.25, 0.25),
-                bgcolor: "grey.50",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-              title={
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontSize: compact ? "0.6rem" : undefined,
-                  }}
-                >
-                  指标
-                </Typography>
-              }
-            />
-            <CardContent sx={{ p: c(0.75, 0.75) }}>
-              {loadingColumns ? (
-                <CircularProgress size={16} />
-              ) : (
-                <PickerField
-                   label="指标"
-
-                  options={metricsOptions}
-                  selected={metrics}
-                  onChange={onMetricsChange}
-                  placeholder="添加指标..."
-                  hideHeader
-                  hideGroups
-                  compact
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {!compact && (
-          <Card
-            elevation={0}
-            sx={{ flex: "1 1 0", borderRadius: 2, border: "1px solid", borderColor: "divider", overflow: "hidden" }}
+            sx={{
+              flex: 1,
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+              overflow: "hidden",
+            }}
           >
             <CardHeader
               sx={{
@@ -242,7 +171,106 @@ export default function ChartEditorForm({
               />
             </CardContent>
           </Card>
-          )}
+
+          <Card
+            elevation={0}
+            sx={{
+              flex: 1,
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+              overflow: "hidden",
+            }}
+          >
+            <CardHeader
+              sx={{
+                px: c(0.75, 0.75),
+                py: c(0.25, 0.25),
+                bgcolor: "grey.50",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+              }}
+              title={
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontSize: compact ? "0.6rem" : undefined,
+                  }}
+                >
+                  分组
+                </Typography>
+              }
+            />
+            <CardContent sx={{ p: c(0.75, 0.75) }}>
+              {loadingColumns ? (
+                <CircularProgress size={16} />
+              ) : (
+                <PickerField
+                  label="分组"
+                  options={datasourceId ? dimensionOptions : []}
+                  selected={groupby}
+                  onChange={onGroupbyChange}
+                  placeholder="添加维度..."
+                  compact
+                  hideHeader
+                  hideGroups
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card
+            elevation={0}
+            sx={{
+              flex: 1,
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+              overflow: "hidden",
+            }}
+          >
+            <CardHeader
+              sx={{
+                px: c(0.75, 0.75),
+                py: c(0.25, 0.25),
+                bgcolor: "grey.50",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+              }}
+              title={
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontSize: compact ? "0.6rem" : undefined,
+                  }}
+                >
+                  指标
+                </Typography>
+              }
+            />
+            <CardContent sx={{ p: c(0.75, 0.75) }}>
+              {loadingColumns ? (
+                <CircularProgress size={16} />
+              ) : (
+                <PickerField
+                  label="指标"
+                  options={datasourceId ? metricsOptions : []}
+                  selected={metrics}
+                  onChange={onMetricsChange}
+                  placeholder="添加指标..."
+                  hideHeader
+                  hideGroups
+                  compact
+                />
+              )}
+            </CardContent>
+          </Card>
         </Box>
       )}
     </Box>

@@ -197,7 +197,8 @@ export default function ChartEditor({
     return columnsList
       .filter((c) => {
         if (!c.type) return true;
-        if (timeTypes.test(c.type) || timeTypes.test(c.column_name)) return true;
+        if (timeTypes.test(c.type) || timeTypes.test(c.column_name))
+          return true;
         return !numericTypes.test(c.type);
       })
       .map((c) => ({
@@ -211,6 +212,9 @@ export default function ChartEditor({
     null,
   );
   const [loadingData, setLoadingData] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 50;
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [loadingChart, setLoadingChart] = useState(false);
   const [, setCreating] = useState(false);
@@ -301,10 +305,9 @@ export default function ChartEditor({
     if (Array.isArray(ob) && ob.length > 0) {
       const entry = ob[0];
       const col =
-        typeof entry[0] === "string"
-          ? entry[0]
-          : entry[0]?.column?.column_name;
-      if (col) setSortEntry({ column: col, direction: entry[1] ? "asc" : "desc" });
+        typeof entry[0] === "string" ? entry[0] : entry[0]?.column?.column_name;
+      if (col)
+        setSortEntry({ column: col, direction: entry[1] ? "asc" : "desc" });
     }
     setSavedFormData(parsed);
   }
@@ -434,6 +437,14 @@ export default function ChartEditor({
     };
   }, [datasourceId, resolvedType, metrics, groupby]);
 
+  const prevParamsRef = useRef(previewParams);
+  useEffect(() => {
+    if (prevParamsRef.current !== previewParams) {
+      setPage(0);
+      prevParamsRef.current = previewParams;
+    }
+  }, [previewParams]);
+
   useEffect(() => {
     if (
       !previewParams ||
@@ -471,8 +482,12 @@ export default function ChartEditor({
           queryFormData.granularity_sqla = savedFormData.granularity_sqla;
       }
       if (sortEntry) {
-        queryFormData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
+        queryFormData.orderby = [
+          [sortEntry.column, sortEntry.direction === "asc"],
+        ];
       }
+      queryFormData.row_limit = pageSize + 1;
+      queryFormData.row_offset = page * pageSize;
       const query = buildQueryObject(queryFormData, previewParams.viz_type);
       const dashboardFilters = buildDashboardAdhocFilters?.(
         previewParams.datasource_id,
@@ -504,6 +519,13 @@ export default function ChartEditor({
           const rowData = Array.isArray(result)
             ? result[0] || {}
             : result || {};
+          if (rowData && Array.isArray(rowData.data)) {
+            const hasNext = rowData.data.length > pageSize;
+            setHasMore(hasNext);
+            if (hasNext) {
+              rowData.data = rowData.data.slice(0, pageSize);
+            }
+          }
           setChartData(rowData);
         })
         .catch(() => {
@@ -525,6 +547,7 @@ export default function ChartEditor({
     savedFormData,
     sortEntry,
     buildDashboardAdhocFilters,
+    page,
   ]);
 
   const option = useMemo(() => {
@@ -586,8 +609,7 @@ export default function ChartEditor({
     if (pieDisabled) {
       const parts: string[] = [];
       if (groupby.length >= 2) parts.push("已选择多个维度");
-      if (pieDisabled && !parts.length)
-        parts.push("维度超过 6 个唯一值");
+      if (pieDisabled && !parts.length) parts.push("维度超过 6 个唯一值");
       reasons["pie"] = `饼图不可用：${parts.join(", ")}`;
     }
     if (hasGroupBy || metrics.length !== 1) {
@@ -606,8 +628,7 @@ export default function ChartEditor({
     if (!datasourceId || !hasValidType) {
       notify({
         severity: "warning",
-        message:
-          "请选择数据集并确保图表类型可用后再保存",
+        message: "请选择数据集并确保图表类型可用后再保存",
       });
       return;
     }
@@ -692,24 +713,27 @@ export default function ChartEditor({
   }, [registerTools, unregisterTools, handleSubmit, isEditing]);
 
   const handleRunQuery = useCallback(() => {
+    setPage(0);
     setLoadingData(true);
     const queryFormData: Record<string, unknown> = {
       metrics: buildMetricsPayload(metrics),
       groupby,
       viz_type: resolvedType === "auto" ? "line" : resolvedType,
+      row_limit: pageSize + 1,
+      row_offset: 0,
     };
     if (savedFormData) {
       if (savedFormData.time_range)
         queryFormData.time_range = savedFormData.time_range;
       if (savedFormData.adhoc_filters)
         queryFormData.adhoc_filters = savedFormData.adhoc_filters;
-      if (savedFormData.row_limit)
-        queryFormData.row_limit = savedFormData.row_limit;
       if (savedFormData.granularity_sqla)
         queryFormData.granularity_sqla = savedFormData.granularity_sqla;
     }
     if (sortEntry) {
-      queryFormData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
+      queryFormData.orderby = [
+        [sortEntry.column, sortEntry.direction === "asc"],
+      ];
     }
     const query = buildQueryObject(
       queryFormData,
@@ -732,6 +756,13 @@ export default function ChartEditor({
       .then((res) => {
         const result = res.data?.result;
         const rowData = Array.isArray(result) ? result[0] || {} : result || {};
+        if (rowData && Array.isArray(rowData.data)) {
+          const hasNext = rowData.data.length > pageSize;
+          setHasMore(hasNext);
+          if (hasNext) {
+            rowData.data = rowData.data.slice(0, pageSize);
+          }
+        }
         setChartData(rowData);
       })
       .catch(() => setChartData({}))
@@ -836,10 +867,17 @@ export default function ChartEditor({
             option={option}
             bigNumberValue={bigNumberValue}
             metricFormatMap={metricFormatMap}
+            page={page}
+            hasMore={hasMore}
+            onPageChange={(p) => setPage(p)}
             onSortChange={(sorts) => {
               const s = sorts[0];
-              if (s) setSortEntry({ column: s.column, direction: s.direction });
-              else setSortEntry(null);
+              if (s) {
+                setPage(0);
+                setSortEntry({ column: s.column, direction: s.direction });
+              } else {
+                setSortEntry(null);
+              }
             }}
           />
         )}

@@ -49,7 +49,8 @@ export function useDashboardData() {
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
       force?: boolean,
-    ): Promise<FetchResult> => {
+      page?: number,
+    ): Promise<FetchResult & { hasMore?: boolean }> => {
       const chart = metaMap[cid];
       if (!chart) return { id: cid, data: {}, totalRow: null };
       try {
@@ -62,6 +63,12 @@ export function useDashboardData() {
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || (query.metrics as unknown[]).length === 0)
           return { id: cid, data: {}, totalRow: null };
+
+        const pageSize = 50;
+        if (page != null) {
+          query.row_limit = pageSize + 1;
+          query.row_offset = page * pageSize;
+        }
 
         const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
         const adhocFilters = buildFn(dsId);
@@ -108,7 +115,16 @@ export function useDashboardData() {
           totalRaw.data.length > 0
             ? (totalRaw.data[0] as Record<string, unknown>)
             : null;
-        return { id: cid, data: first, totalRow };
+
+        let hasMore: boolean | undefined;
+        if (page != null && first && Array.isArray(first.data)) {
+          hasMore = first.data.length > pageSize;
+          if (hasMore) {
+            first.data = first.data.slice(0, pageSize);
+          }
+        }
+
+        return { id: cid, data: first, totalRow, hasMore };
       } catch {
         return { id: cid, data: {}, totalRow: null };
       }
@@ -124,23 +140,28 @@ export function useDashboardData() {
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
       force?: boolean,
+      page?: number,
     ) => {
       const dataMap: Record<number, Record<string, unknown>> = {};
       const totalRowMap: Record<number, Record<string, unknown> | null> = {};
+      const hasMoreMap: Record<number, boolean> = {};
       const CONCURRENCY = 3;
       for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
         const batch = chartIds.slice(i, i + CONCURRENCY);
         const results = await Promise.all(
           batch.map((cid) =>
-            fetchChartWithTotal(cid, metaMap, buildAdhocFilters, force),
+            fetchChartWithTotal(cid, metaMap, buildAdhocFilters, force, page),
           ),
         );
         results.forEach((r) => {
           dataMap[r.id] = r.data;
           totalRowMap[r.id] = r.totalRow;
+          if (r.hasMore !== undefined) {
+            hasMoreMap[r.id] = r.hasMore;
+          }
         });
       }
-      return { dataMap, totalRowMap };
+      return { dataMap, totalRowMap, hasMoreMap };
     },
     [fetchChartWithTotal],
   );
@@ -152,7 +173,8 @@ export function useDashboardData() {
       buildAdhocFilters?: (
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
-    ) => {
+      page?: number,
+    ): Promise<{ data: Record<string, unknown>; hasMore?: boolean } | null> => {
       const chart = metaMap[chartId];
       if (!chart) return null;
       try {
@@ -163,6 +185,12 @@ export function useDashboardData() {
         if (!dsId) return null;
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || query.metrics.length === 0) return null;
+
+        const pageSize = 50;
+        if (page != null) {
+          query.row_limit = pageSize + 1;
+          query.row_offset = page * pageSize;
+        }
 
         const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
         const adhocFilters = buildFn(dsId);
@@ -184,9 +212,18 @@ export function useDashboardData() {
         };
         const postRes = await api.post("/chart/data", payload);
         const postResult = postRes.data?.result;
-        return Array.isArray(postResult)
+        const data = Array.isArray(postResult)
           ? postResult[0] || {}
           : postResult || {};
+
+        let hasMore: boolean | undefined;
+        if (page != null && data && Array.isArray(data.data)) {
+          hasMore = data.data.length > pageSize;
+          if (hasMore) {
+            data.data = data.data.slice(0, pageSize);
+          }
+        }
+        return { data, hasMore };
       } catch {
         return null;
       }

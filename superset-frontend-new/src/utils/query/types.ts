@@ -38,6 +38,7 @@ export interface QueryObject {
   granularity?: string;
   time_range?: string;
   row_limit?: number;
+  row_offset?: number;
   orderby?: QueryOrderBy[];
   order_desc?: boolean;
   timeseries_limit_metric?: string | AdhocMetric;
