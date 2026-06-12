@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -21,6 +21,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const login = useAuthStore((s) => s.login);
   const location = useLocation();
+  const navigate = useNavigate();
   const themeMode = useThemeStore((s) => s.theme);
   const isVibrant = themeMode === "vibrant";
 
@@ -32,7 +33,7 @@ export default function Login() {
     setSubmitting(true);
     try {
       await login(username, password);
-      window.location.href = from;
+      navigate(from, { replace: true });
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "登录失败"));
     } finally {

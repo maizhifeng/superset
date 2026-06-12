@@ -22,6 +22,7 @@ import logging
 import os
 import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, cast
 
 from flask import (
@@ -29,6 +30,7 @@ from flask import (
     current_app as app,
     g,
     redirect,
+    request,
     Response,
     session,
     url_for,
@@ -224,19 +226,19 @@ class BaseSupersetView(BaseView):
         **template_kwargs: Any,
     ) -> FlaskResponse:
         """
-        Render spa.html template with standardized context including spinner logic.
+        Render the SPA entry point.
 
-        This centralizes all spa.html rendering to ensure consistent spinner behavior
-        and reduce code duplication across view methods.
-
-        Args:
-            extra_bootstrap_data: Additional data for frontend bootstrap payload
-            entry: Entry point name (spa, explore, embedded)
-            **template_kwargs: Additional template variables
-
-        Returns:
-            Flask response from render_template
+        In production, serves the MUI frontend's built index.html directly
+        (no server-side bootstrap data needed). Falls back to the Jinja
+        spa.html template for development or when MUI is not built.
         """
+        mui_index = Path("/app/mui-static/index.html")
+        if mui_index.exists():
+            html = mui_index.read_text(encoding="utf-8")
+            from flask import make_response
+            resp = make_response(html)
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            return resp
         context = get_spa_template_context(
             entry, extra_bootstrap_data, **template_kwargs
         )

@@ -16,7 +16,7 @@
 #
 
 ######################################################################
-# Node stage to deal with static asset construction
+# Node stage for MUI frontend (Vite) asset construction
 ######################################################################
 ARG PY_VER=3.11.14-slim-trixie
 
@@ -27,77 +27,32 @@ ARG BUILDPLATFORM=${BUILDPLATFORM:-amd64}
 ARG BUILD_TRANSLATIONS="false"
 
 ######################################################################
-# superset-node-ci used as a base for building frontend assets and CI
+# superset-node-mui used for building MUI frontend assets (Vite)
 ######################################################################
-FROM --platform=${BUILDPLATFORM} node:22-trixie-slim AS superset-node-ci
+FROM --platform=${BUILDPLATFORM} node:22-trixie-slim AS superset-node-mui
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
     sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    : # fallback: also update traditional sources.list if it exists
-ARG BUILD_TRANSLATIONS
-ENV BUILD_TRANSLATIONS=${BUILD_TRANSLATIONS}
-ARG DEV_MODE="false"           # Skip frontend build in dev mode
-ENV DEV_MODE=${DEV_MODE}
+    :
 
 COPY docker/ /app/docker/
-# Arguments for build configuration
-ARG NPM_BUILD_CMD="build"
 
-# Install system dependencies required for node-gyp
+# Install system dependencies required for native modules
 RUN /app/docker/apt-install.sh build-essential python3 zstd
 
-# Define environment variables for frontend build
-ENV BUILD_CMD=${NPM_BUILD_CMD} \
-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+WORKDIR /app/superset-frontend-new
 
-# Run the frontend memory monitoring script
-RUN /app/docker/frontend-mem-nag.sh
-
-WORKDIR /app/superset-frontend
-
-# Create necessary folders to avoid errors in subsequent steps
-RUN mkdir -p /app/superset/static/assets \
-             /app/superset/translations
-
-# Mount package files and install dependencies if not in dev mode
-# NOTE: we mount packages and plugins as they are referenced in package.json as workspaces
-# ideally we'd COPY only their package.json. Here npm ci will be cached as long
-# as the full content of these folders don't change, yielding a decent cache reuse rate.
-# Note that it's not possible to selectively COPY or mount using blobs.
-RUN --mount=type=bind,source=./superset-frontend/package.json,target=./package.json \
-    --mount=type=bind,source=./superset-frontend/package-lock.json,target=./package-lock.json \
+# Install dependencies
+RUN --mount=type=bind,source=./superset-frontend-new/package.json,target=./package.json \
+    --mount=type=bind,source=./superset-frontend-new/package-lock.json,target=./package-lock.json \
     --mount=type=cache,target=/root/.cache \
     --mount=type=cache,target=/root/.npm \
-    if [ "${DEV_MODE}" = "false" ]; then \
-        npm ci; \
-    else \
-        echo "Skipping 'npm ci' in dev mode"; \
-    fi
+    npm ci
 
-# Runs the webpack build process
-COPY superset-frontend /app/superset-frontend
-
-######################################################################
-# superset-node is used for compiling frontend assets
-######################################################################
-FROM superset-node-ci AS superset-node
-
-# Build the frontend if not in dev mode
+# Copy full source and build (node_modules from npm ci preserved by .dockerignore)
+COPY superset-frontend-new /app/superset-frontend-new
 RUN --mount=type=cache,target=/root/.npm \
-    if [ "${DEV_MODE}" = "false" ]; then \
-        echo "Running 'npm run ${BUILD_CMD}'"; \
-        npm run ${BUILD_CMD}; \
-    else \
-        echo "Skipping 'npm run ${BUILD_CMD}' in dev mode"; \
-    fi;
-
-# Copy translation files
-COPY superset/translations /app/superset/translations
-
-# Build translations if enabled, then cleanup localization files
-RUN if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
-        npm run build-translation; \
-    fi; \
-    rm -rf /app/superset/translations/*/*/*.[po,mo];
+    npx tsc --noEmit --tsBuildInfoFile /tmp/tsbuildinfo && \
+    npx vite build
 
 
 ######################################################################
@@ -170,9 +125,7 @@ RUN mkdir -p \
       ${PYTHONPATH} \
       superset/static \
       requirements \
-      superset-frontend \
       apache_superset.egg-info \
-      requirements \
     && touch superset/static/version_info.json
 
 # Install Playwright and optionally setup headless browsers
@@ -211,16 +164,15 @@ RUN /app/docker/apt-install.sh \
 # The database file will be created at runtime when examples are loaded from Parquet files
 RUN mkdir -p /app/data && chown -R superset:superset /app/data
 
-# Copy compiled things from previous stages
-COPY --from=superset-node /app/superset/static/assets superset/static/assets
+# Copy MUI frontend build output
+COPY --from=superset-node-mui /app/superset-frontend-new/dist /app/mui-static
 
 # TODO, when the next version comes out, use --exclude superset/translations
 COPY superset superset
 # TODO in the meantime, remove the .po files
 RUN rm superset/translations/*/*/*.po
 
-# Merging translations from backend and frontend stages
-COPY --from=superset-node /app/superset/translations superset/translations
+# Merging translations (backend only)
 COPY --from=python-translation-compiler /app/translations_mo superset/translations
 
 HEALTHCHECK CMD /app/docker/docker-healthcheck.sh
@@ -243,6 +195,8 @@ RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
 # Install the superset package
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
     uv pip install -e .
+RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
+    uv pip install .[postgres]
 RUN python -m compileall /app/superset
 
 USER superset

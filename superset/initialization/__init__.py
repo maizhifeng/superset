@@ -25,7 +25,7 @@ from typing import Any, Callable, TYPE_CHECKING
 import wtforms_json
 from colorama import Fore, Style
 from deprecation import deprecated
-from flask import abort, current_app, Flask, redirect, request, session, url_for
+from flask import abort, current_app, Flask, make_response, redirect, request, session, url_for
 from flask_appbuilder import expose, IndexView
 from flask_appbuilder.api import safe
 from flask_appbuilder.utils.base import get_safe_redirect
@@ -758,6 +758,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         self.setup_event_logger()
         self.setup_bundle_manifest()
         self.register_blueprints()
+        self.setup_mui_static_routes()
         self.configure_wtf()
         self.configure_middlewares()
         self.configure_cache()
@@ -985,6 +986,56 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.project.papp.api import papp_blueprint
 
         self.superset_app.register_blueprint(papp_blueprint)
+
+    def setup_mui_static_routes(self) -> None:
+        """Serve MUI frontend static assets from /app/mui-static/assets/
+
+        Called only when the MUI build output directory exists (production).
+        """
+        import os
+
+        from flask import send_from_directory
+
+        mui_dir = "/app/mui-static"
+        if not os.path.isdir(mui_dir):
+            return
+
+        from flask import Blueprint
+
+        mui_bp = Blueprint("mui", __name__)
+
+        @mui_bp.route("/assets/<path:filename>")
+        def mui_assets(filename: str) -> FlaskResponse:
+            return send_from_directory(os.path.join(mui_dir, "assets"), filename)
+
+        @mui_bp.route("/registerSW.js")
+        def mui_register_sw() -> FlaskResponse:
+            sw_script = (
+                "self.addEventListener('install', () => self.skipWaiting());\n"
+                "self.addEventListener('activate', (event) => {\n"
+                "  event.waitUntil(\n"
+                "    caches.keys().then((keys) =>\n"
+                "      Promise.all(keys.map((key) => caches.delete(key)))\n"
+                "    ).then(() => self.clients.matchAll()).then((clients) =>\n"
+                "      clients.forEach((client) => client.navigate(client.url))\n"
+                "    )\n"
+                "  );\n"
+                "  self.registration.unregister();\n"
+                "});\n"
+            )
+            resp = make_response(sw_script)
+            resp.mimetype = "application/javascript"
+            return resp
+
+        # Serve root-level static files (manifest, favicon, etc.)
+        @mui_bp.route("/<path:filename>")
+        def mui_static(filename: str) -> FlaskResponse:
+            file_path = os.path.join(mui_dir, filename)
+            if os.path.isfile(file_path):
+                return send_from_directory(mui_dir, filename)
+            return send_from_directory(mui_dir, "index.html")
+
+        self.superset_app.register_blueprint(mui_bp)
 
     def setup_bundle_manifest(self) -> None:
         manifest_processor.init_app(self.superset_app)
