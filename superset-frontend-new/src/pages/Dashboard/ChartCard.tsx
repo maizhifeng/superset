@@ -86,7 +86,11 @@ import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import { useEChartsType } from "@/hooks/useEChartsType";
 import MirrorTable from "@/pages/Dashboard/MirrorTable";
-import { formatMetricValue, formatPercentage, type MetricFormatMap } from "@/utils/formatNumber";
+import {
+  formatMetricValue,
+  formatPercentage,
+  type MetricFormatMap,
+} from "@/utils/formatNumber";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
 
@@ -128,6 +132,9 @@ interface ChartCardProps {
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMap?: MetricFormatMap;
+  page?: number;
+  hasMore?: boolean;
+  onPageChange?: (page: number) => void;
 }
 
 function pctSplitIndex(
@@ -167,6 +174,9 @@ function ChartCard({
   intervalSeconds,
   onCycleInterval,
   metricFormatMap,
+  page,
+  hasMore,
+  onPageChange,
 }: ChartCardProps) {
   const storageKey = `pct95_threshold_${chartId}`;
   const [pct95Threshold, setPct95Threshold] = useState(() => {
@@ -178,12 +188,21 @@ function ChartCard({
   useEffect(() => {
     localStorage.setItem(storageKey, String(pct95Threshold));
   }, [pct95Threshold, storageKey]);
+  const prevPct95Ref = useRef(false);
+  useEffect(() => {
+    if (pct95Active && !prevPct95Ref.current) {
+      onRefresh(chartId);
+    }
+    prevPct95Ref.current = pct95Active;
+  }, [pct95Active, chartId, onRefresh]);
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
   const chartRef = useRef<any>(null);
 
-  const [localCountdown, setLocalCountdown] = useState<number | undefined>(undefined);
+  const [localCountdown, setLocalCountdown] = useState<number | undefined>(
+    undefined,
+  );
   const onRefreshRef = useRef(onRefresh);
   onRefreshRef.current = onRefresh;
 
@@ -317,9 +336,7 @@ function ChartCard({
     if (!colnames || !coltypes)
       return { sortMetricCol: "", dimCols: [] as string[] };
     const smCol =
-      colnames.find((_, i) => i > 0 && coltypes[i] === 0) ||
-      colnames[1] ||
-      "";
+      colnames.find((_, i) => i > 0 && coltypes[i] === 0) || colnames[1] || "";
     const smIdx = colnames.indexOf(smCol);
     const dCols = smIdx > 0 ? colnames.slice(0, smIdx) : [];
     return { sortMetricCol: smCol, dimCols: dCols };
@@ -372,7 +389,16 @@ function ChartCard({
 
     if (!hasMods) return data;
     return { ...data, data: resultRows } as Record<string, unknown>;
-  }, [data, rows, sorted, pct95Active, sortMetricCol, splitIdx, totalRow, dimCols]);
+  }, [
+    data,
+    rows,
+    sorted,
+    pct95Active,
+    sortMetricCol,
+    splitIdx,
+    totalRow,
+    dimCols,
+  ]);
 
   const option = processedData
     ? buildEChartsOption(vizType, processedData, metricFormatMap)
@@ -491,7 +517,15 @@ function ChartCard({
           >
             {meta?.slice_name || sliceName || `Chart #${chartId}`}
           </Typography>
-          <Tooltip title={pct95Threshold === 0.95 ? "前95%" : pct95Threshold === 0.99 ? "前99%" : "精简模式"}>
+          <Tooltip
+            title={
+              pct95Threshold === 0.95
+                ? "前95%"
+                : pct95Threshold === 0.99
+                  ? "前99%"
+                  : "精简模式"
+            }
+          >
             <IconButton
               size="small"
               onClick={(e) => {
@@ -539,7 +573,15 @@ function ChartCard({
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title={localCountdown !== undefined && localCountdown > 0 ? `自动刷新 ${Math.floor(localCountdown / 60)}:${String(localCountdown % 60).padStart(2, "0")} · 单击切换 · 长按刷新` : intervalSeconds && intervalSeconds > 0 ? `${intervalSeconds}s` : "单击开启自动刷新"}>
+          <Tooltip
+            title={
+              localCountdown !== undefined && localCountdown > 0
+                ? `自动刷新 ${Math.floor(localCountdown / 60)}:${String(localCountdown % 60).padStart(2, "0")} · 单击切换 · 长按刷新`
+                : intervalSeconds && intervalSeconds > 0
+                  ? `${intervalSeconds}s`
+                  : "单击开启自动刷新"
+            }
+          >
             <IconButton
               size="small"
               onClick={(e) => {
@@ -569,7 +611,10 @@ function ChartCard({
               <RefreshIcon
                 sx={{
                   fontSize: isMobile ? 22 : 18,
-                  color: localCountdown !== undefined && localCountdown > 0 ? "primary.main" : "action.disabled",
+                  color:
+                    localCountdown !== undefined && localCountdown > 0
+                      ? "primary.main"
+                      : "action.disabled",
                   animation:
                     localCountdown !== undefined && localCountdown > 0
                       ? `${spin} 4s linear infinite`
@@ -666,6 +711,10 @@ function ChartCard({
                 data={processedData}
                 maxRows={100}
                 formatCell={tableFormatCell}
+                serverPagination={!pct95Active}
+                page={page}
+                hasMore={hasMore}
+                onPageChange={onPageChange}
               />
             )
           ) : option && chartLibReady ? (
@@ -771,6 +820,10 @@ function ChartCard({
                       data={processedData}
                       maxRows={100}
                       formatCell={tableFormatCell}
+                      serverPagination={!pct95Active}
+                      page={page}
+                      hasMore={hasMore}
+                      onPageChange={onPageChange}
                     />
                   ) : option && chartLibReady ? (
                     <ReactEChartsCore
@@ -807,6 +860,9 @@ export default memo(ChartCard, (prev, next) => {
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&
     prev.totalRow === next.totalRow &&
-    prev.intervalSeconds === next.intervalSeconds
+    prev.intervalSeconds === next.intervalSeconds &&
+    prev.page === next.page &&
+    prev.hasMore === next.hasMore &&
+    prev.onPageChange === next.onPageChange
   );
 });

@@ -81,6 +81,8 @@ export function buildQueryObject(
     query.adhoc_filters =
       formData.adhoc_filters as QueryObject["adhoc_filters"];
   if (formData.row_limit) query.row_limit = formData.row_limit as number;
+  if (formData.row_offset != null)
+    query.row_offset = formData.row_offset as number;
 
   if (orderby.length > 0) {
     query.orderby = orderby;

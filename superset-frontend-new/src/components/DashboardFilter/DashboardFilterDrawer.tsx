@@ -38,14 +38,13 @@ export default function DashboardFilterDrawer({
   const touchStartX = useRef(0);
   const barRef = useRef<HTMLDivElement>(null);
   const [showGuide, setShowGuide] = useState(false);
-
-  const guideDismissed = useMemo(() => {
+  const [guideDismissed, setGuideDismissed] = useState(() => {
     try {
       return localStorage.getItem("filter_guide_dismissed") === "1";
     } catch {
       return false;
     }
-  }, []);
+  });
 
   const activeCount = useMemo(() => {
     let count = 0;
@@ -84,7 +83,9 @@ export default function DashboardFilterDrawer({
     }
     if (parts.length === 0) return "筛选";
     const overflow = activeCount - parts.length;
-    return overflow > 0 ? `${parts.join(" | ")} +${overflow}` : parts.join(" | ");
+    return overflow > 0
+      ? `${parts.join(" | ")} +${overflow}`
+      : parts.join(" | ");
   }, [filters, filterState, activeCount]);
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function DashboardFilterDrawer({
 
   const handleSkipGuide = useCallback(() => {
     setShowGuide(false);
+    setGuideDismissed(true);
     try {
       localStorage.setItem("filter_guide_dismissed", "1");
     } catch {
@@ -147,13 +149,14 @@ export default function DashboardFilterDrawer({
           alignItems: "center",
           cursor: "pointer",
           gap: 0.75,
-          py: 0.75,
+          py: 0.15,
           px: 2,
           width: "100%",
           borderBottom: "2px solid",
           borderColor: open ? "primary.light" : "divider",
           bgcolor: open ? "background.paper" : "action.hover",
-          transition: "background-color 200ms, border-color 200ms, border-bottom-width 200ms",
+          transition:
+            "background-color 200ms, border-color 200ms, border-bottom-width 200ms",
           "&:hover": {
             bgcolor: "action.hover",
             "& .handle-pill": {

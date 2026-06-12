@@ -89,8 +89,13 @@ export default function Dashboard() {
     refreshChart: refreshChartData,
   } = useDashboardData();
 
+  const [chartPages, setChartPages] = useState<Record<number, number>>({});
+  const [chartHasMore, setChartHasMore] = useState<Record<number, boolean>>({});
+
   const [chartLoading, setChartLoading] = useState<Record<number, boolean>>({});
-  const [metricFormatMaps, setMetricFormatMaps] = useState<Record<number, Record<string, string>>>({});
+  const [metricFormatMaps, setMetricFormatMaps] = useState<
+    Record<number, Record<string, string>>
+  >({});
   const [searchParams, setSearchParams] = useSearchParams();
   const editingSliceId = searchParams.get("slice_id");
   const isDrawerOpen = Boolean(editingSliceId);
@@ -445,6 +450,7 @@ export default function Dashboard() {
           chartIds,
           metaMap,
           buildAdhocFiltersRef.current,
+          false,
         );
         setChartData(dataMap);
         setTotalRows(totalRowMap);
@@ -637,28 +643,45 @@ export default function Dashboard() {
   const cycleInterval = useCallback(() => {
     if (intervalSeconds === 0) {
       setIntervalSeconds(PRESET_INTERVALS[0]);
-      notify({ severity: "success", message: `自动刷新已切换至 ${PRESET_INTERVALS[0] >= 60 ? `${PRESET_INTERVALS[0] / 60}分钟` : `${PRESET_INTERVALS[0]}秒`}` });
+      notify({
+        severity: "success",
+        message: `自动刷新已切换至 ${PRESET_INTERVALS[0] >= 60 ? `${PRESET_INTERVALS[0] / 60}分钟` : `${PRESET_INTERVALS[0]}秒`}`,
+      });
       return;
     }
     const idx = PRESET_INTERVALS.indexOf(intervalSeconds);
-    const next = idx === -1 || idx === PRESET_INTERVALS.length - 1 ? PRESET_INTERVALS[0] : PRESET_INTERVALS[idx + 1];
+    const next =
+      idx === -1 || idx === PRESET_INTERVALS.length - 1
+        ? PRESET_INTERVALS[0]
+        : PRESET_INTERVALS[idx + 1];
     setIntervalSeconds(next);
-    notify({ severity: "success", message: next > 0 ? `自动刷新已切换至 ${next >= 60 ? `${next / 60}分钟` : `${next}秒`}` : "已关闭自动刷新" });
+    notify({
+      severity: "success",
+      message:
+        next > 0
+          ? `自动刷新已切换至 ${next >= 60 ? `${next / 60}分钟` : `${next}秒`}`
+          : "已关闭自动刷新",
+    });
   }, [intervalSeconds, notify]);
 
   const refreshChart = useCallback(
-    async (chartId: number) => {
+    async (chartId: number, page?: number) => {
       setChartLoading((prev) => ({ ...prev, [chartId]: true }));
       try {
-        const data = await refreshChartData(
+        const result = await refreshChartData(
           chartId,
           chartMeta,
           buildAdhocFiltersRef.current,
+          page,
         );
-        if (data) {
-          setChartData((prev) => ({ ...prev, [chartId]: data }));
+        if (result) {
+          setChartData((prev) => ({ ...prev, [chartId]: result.data }));
+          if (result.hasMore !== undefined) {
+            const hm = result.hasMore;
+            setChartHasMore((prev) => ({ ...prev, [chartId]: hm }));
+          }
           if (compareConfig?.enabled && compareConfig.chartId === chartId) {
-            fetchMirrorData(chartId, compareConfig.dimensions, data);
+            fetchMirrorData(chartId, compareConfig.dimensions, result.data);
           }
         }
       } finally {
@@ -666,6 +689,15 @@ export default function Dashboard() {
       }
     },
     [chartMeta, refreshChartData, compareConfig, fetchMirrorData],
+  );
+
+  const handleChartPageChange = useCallback(
+    (chartId: number, newPage: number) => {
+      setChartPages((prev) => ({ ...prev, [chartId]: newPage }));
+      setChartLoading((prev) => ({ ...prev, [chartId]: true }));
+      refreshChart(chartId, newPage);
+    },
+    [refreshChart],
   );
 
   const refreshCharts = useCallback(
@@ -678,6 +710,16 @@ export default function Dashboard() {
       setChartLoading((prev) => {
         const next = { ...prev };
         for (const id of ids) next[id] = true;
+        return next;
+      });
+      setChartPages((prev) => {
+        const next = { ...prev };
+        for (const id of ids) delete next[id];
+        return next;
+      });
+      setChartHasMore((prev) => {
+        const next = { ...prev };
+        for (const id of ids) delete next[id];
         return next;
       });
       try {
@@ -1191,6 +1233,9 @@ export default function Dashboard() {
           intervalSeconds={intervalSeconds}
           onCycleInterval={cycleInterval}
           metricFormatMaps={metricFormatMaps}
+          chartPages={chartPages}
+          chartHasMore={chartHasMore}
+          onChartPageChange={handleChartPageChange}
         />
       </Box>
       <Drawer

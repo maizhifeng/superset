@@ -46,6 +46,9 @@ interface DashboardGridProps {
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMaps?: Record<number, Record<string, string>>;
+  chartPages?: Record<number, number>;
+  chartHasMore?: Record<number, boolean>;
+  onChartPageChange?: (chartId: number, page: number) => void;
 }
 
 export default function DashboardGrid({
@@ -76,6 +79,9 @@ export default function DashboardGrid({
   intervalSeconds,
   onCycleInterval,
   metricFormatMaps,
+  chartPages,
+  chartHasMore,
+  onChartPageChange,
 }: DashboardGridProps) {
   if (layoutItems.length === 0) {
     return (
@@ -161,30 +167,33 @@ export default function DashboardGrid({
           const dsId = meta?.datasource_id ?? 0;
           const metricFormatMap = metricFormatMaps?.[dsId];
           return (
-          <div key={item.i} data-chart-index={item.chartId}>
-            <ChartCard
-              chartId={item.chartId}
-              sliceName={item.sliceName}
-              vizType={meta?.viz_type || "bar"}
-              data={chartData[item.chartId]}
-              loading={!!chartLoading[item.chartId]}
-              meta={meta}
-              isDragging={isDragging}
-              containerWidth={containerWidth}
-              onRefresh={onRefresh}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onInsight={onInsight}
-              compareConfig={compareConfig}
-              mirrorData={mirrorData}
-              onToggleCompare={onToggleCompare}
-              onOpenCompareBigScreen={onOpenCompareBigScreen}
-              totalRow={totalRows?.[item.chartId]}
-              intervalSeconds={intervalSeconds}
-              onCycleInterval={onCycleInterval}
-              metricFormatMap={metricFormatMap}
-            />
-          </div>
+            <div key={item.i} data-chart-index={item.chartId}>
+              <ChartCard
+                chartId={item.chartId}
+                sliceName={item.sliceName}
+                vizType={meta?.viz_type || "bar"}
+                data={chartData[item.chartId]}
+                loading={!!chartLoading[item.chartId]}
+                meta={meta}
+                isDragging={isDragging}
+                containerWidth={containerWidth}
+                onRefresh={onRefresh}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onInsight={onInsight}
+                compareConfig={compareConfig}
+                mirrorData={mirrorData}
+                onToggleCompare={onToggleCompare}
+                onOpenCompareBigScreen={onOpenCompareBigScreen}
+                totalRow={totalRows?.[item.chartId]}
+                intervalSeconds={intervalSeconds}
+                onCycleInterval={onCycleInterval}
+                metricFormatMap={metricFormatMap}
+                page={chartPages?.[item.chartId] ?? 0}
+                hasMore={chartHasMore?.[item.chartId] ?? false}
+                onPageChange={(p) => onChartPageChange?.(item.chartId, p)}
+              />
+            </div>
           );
         })}
       </GridLayout>

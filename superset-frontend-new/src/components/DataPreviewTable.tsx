@@ -23,11 +23,17 @@ function stripAgg(name: string): string {
 }
 
 interface DataPreviewTableProps {
-  data: { data?: unknown } | undefined | null;
+  data: { data?: unknown; rowcount?: number } | undefined | null;
   maxRows?: number;
   formatCell?: CellFormatter;
   sx?: SxProps<Theme>;
-  onSortChange?: (sorts: { column: string; direction: "asc" | "desc" }[]) => void;
+  onSortChange?: (
+    sorts: { column: string; direction: "asc" | "desc" }[],
+  ) => void;
+  serverPagination?: boolean;
+  page?: number;
+  hasMore?: boolean;
+  onPageChange?: (page: number) => void;
 }
 
 function defaultFormat(key: string, value: unknown): string {
@@ -57,6 +63,10 @@ export default function DataPreviewTable({
   formatCell: formatter,
   sx,
   onSortChange,
+  serverPagination,
+  page: externalPage,
+  hasMore,
+  onPageChange,
 }: DataPreviewTableProps) {
   const [sorts, setSorts] = useState<SortEntry[]>([]);
   const [page, setPage] = useState(0);
@@ -74,6 +84,7 @@ export default function DataPreviewTable({
     if (rows.length === 0) return rows;
     const summaryRows = rows.filter((r) => r.__isSummary);
     const dataRows = rows.filter((r) => !r.__isSummary);
+    if (serverPagination) return [...dataRows, ...summaryRows];
     if (sorts.length === 0) return rows;
     const sorted = [...dataRows];
     sorted.sort((a, b) => {
@@ -94,7 +105,7 @@ export default function DataPreviewTable({
       return 0;
     });
     return [...sorted, ...summaryRows];
-  }, [rows, sorts]);
+  }, [rows, sorts, serverPagination]);
 
   function computeNextSorts(prev: SortEntry[], key: string): SortEntry[] {
     const idx = prev.findIndex((s) => s.column === key);
@@ -122,7 +133,9 @@ export default function DataPreviewTable({
   const handleHeaderClick = (key: string) => {
     const next = computeNextSorts(sorts, key);
     setSorts(next);
-    onSortChange?.(next.map((s) => ({ column: s.column, direction: s.direction })));
+    onSortChange?.(
+      next.map((s) => ({ column: s.column, direction: s.direction })),
+    );
   };
 
   const handleLockToggle = (e: React.MouseEvent, key: string) => {
@@ -141,14 +154,21 @@ export default function DataPreviewTable({
     [sortedRows],
   );
 
+  const effectivePage = serverPagination ? (externalPage ?? 0) : page;
   const totalPages = Math.ceil(Math.min(dataRows.length, maxRows) / pageSize);
-  const pageStart = page * pageSize;
+  const hasMoreData = serverPagination
+    ? (hasMore ?? dataRows.length > pageSize)
+    : effectivePage < totalPages - 1;
+  const pageStart = effectivePage * pageSize;
   const pageEnd = Math.min(pageStart + pageSize, maxRows, dataRows.length);
-
-  const pageRows = useMemo(
-    () => [...dataRows.slice(pageStart, pageEnd), ...summaryRows],
-    [dataRows, summaryRows, pageStart, pageEnd],
-  );
+  const pageRows = useMemo(() => {
+    if (serverPagination) {
+      const rowsToShow =
+        dataRows.length > pageSize ? dataRows.slice(0, pageSize) : dataRows;
+      return [...rowsToShow, ...summaryRows];
+    }
+    return [...dataRows.slice(pageStart, pageEnd), ...summaryRows];
+  }, [dataRows, summaryRows, pageStart, pageEnd, serverPagination, pageSize]);
 
   const empty = rows.length === 0;
 
@@ -182,7 +202,12 @@ export default function DataPreviewTable({
               bgcolor: "background.paper",
             }}
           >
-            <TableRow sx={{ bgcolor: "background.paper", "&:hover": { bgcolor: "background.paper" } }}>
+            <TableRow
+              sx={{
+                bgcolor: "background.paper",
+                "&:hover": { bgcolor: "background.paper" },
+              }}
+            >
               {empty ? (
                 <TableCell align="center" colSpan={keys.length || 1}>
                   <Typography
@@ -316,7 +341,7 @@ export default function DataPreviewTable({
           </TableBody>
         </Table>
       </Box>
-      {!empty && totalPages > 1 && (
+      {!empty && (
         <Box
           sx={{
             display: "flex",
@@ -331,17 +356,25 @@ export default function DataPreviewTable({
           }}
         >
           <Typography variant="caption" color="text.secondary">
-            {pageStart + 1}–{pageEnd} of {Math.min(sortedRows.length, maxRows)}
+            {serverPagination
+              ? `${effectivePage * pageSize + 1}–${effectivePage * pageSize + Math.min(dataRows.length, pageSize)}`
+              : `${pageStart + 1}–${pageEnd} of ${Math.min(
+                  dataRows.length,
+                  maxRows,
+                )}`}
           </Typography>
           <Box
             component="button"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
+            onClick={() => {
+              if (serverPagination) onPageChange?.(effectivePage - 1);
+              else setPage((p) => Math.max(0, p - 1));
+            }}
+            disabled={effectivePage === 0}
             sx={{
               border: "none",
               bgcolor: "transparent",
-              cursor: page === 0 ? "default" : "pointer",
-              color: page === 0 ? "text.disabled" : "primary.main",
+              cursor: effectivePage === 0 ? "default" : "pointer",
+              color: effectivePage === 0 ? "text.disabled" : "primary.main",
               fontSize: "0.75rem",
               px: 1,
               py: 0.25,
@@ -351,13 +384,30 @@ export default function DataPreviewTable({
           </Box>
           <Box
             component="button"
-            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            disabled={page >= totalPages - 1}
+            onClick={() => {
+              if (serverPagination) onPageChange?.(effectivePage + 1);
+              else setPage((p) => Math.min(totalPages - 1, p + 1));
+            }}
+            disabled={
+              serverPagination ? !hasMoreData : effectivePage >= totalPages - 1
+            }
             sx={{
               border: "none",
               bgcolor: "transparent",
-              cursor: page >= totalPages - 1 ? "default" : "pointer",
-              color: page >= totalPages - 1 ? "text.disabled" : "primary.main",
+              cursor: serverPagination
+                ? hasMoreData
+                  ? "pointer"
+                  : "default"
+                : effectivePage >= totalPages - 1
+                  ? "default"
+                  : "pointer",
+              color: serverPagination
+                ? hasMoreData
+                  ? "primary.main"
+                  : "text.disabled"
+                : effectivePage >= totalPages - 1
+                  ? "text.disabled"
+                  : "primary.main",
               fontSize: "0.75rem",
               px: 1,
               py: 0.25,
