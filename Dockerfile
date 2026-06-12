@@ -16,7 +16,7 @@
 #
 
 ######################################################################
-# Node stage to deal with static asset construction
+# Node stage for MUI frontend (Vite) asset construction
 ######################################################################
 ARG PY_VER=3.11-slim-trixie
 
@@ -27,12 +27,42 @@ ARG BUILDPLATFORM=${BUILDPLATFORM:-amd64}
 ARG BUILD_TRANSLATIONS="false"
 
 ######################################################################
+# superset-node-mui used for building MUI frontend assets (Vite)
+######################################################################
+FROM --platform=${BUILDPLATFORM} node:22-trixie-slim AS superset-node-mui
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    :
+
+COPY docker/ /app/docker/
+
+# Install system dependencies required for native modules
+RUN /app/docker/apt-install.sh build-essential python3 zstd
+
+WORKDIR /app/superset-frontend-new
+
+# Install dependencies
+RUN --mount=type=bind,source=./superset-frontend-new/package.json,target=./package.json \
+    --mount=type=bind,source=./superset-frontend-new/package-lock.json,target=./package-lock.json \
+    --mount=type=cache,target=/root/.cache \
+    --mount=type=cache,target=/root/.npm \
+    npm ci
+
+# Copy full source and build (node_modules from npm ci preserved by .dockerignore)
+COPY superset-frontend-new /app/superset-frontend-new
+RUN --mount=type=cache,target=/root/.npm \
+    npx tsc --noEmit --tsBuildInfoFile /tmp/tsbuildinfo && \
+    npx vite build
+
+
+######################################################################
 # superset-node-ci used as a base for building frontend assets and CI
 ######################################################################
-FROM --platform=${BUILDPLATFORM} node:22-trixie-slim AS superset-node-ci
+FROM --platform=${BUILDPLATFORM} node:24-trixie-slim AS superset-node-ci
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
     sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
     : # fallback: also update traditional sources.list if it exists
+
 ARG BUILD_TRANSLATIONS
 ENV BUILD_TRANSLATIONS=${BUILD_TRANSLATIONS}
 ARG DEV_MODE="false"           # Skip frontend build in dev mode
@@ -105,7 +135,6 @@ RUN if [ "${BUILD_TRANSLATIONS}" = "true" ]; then \
         npm run build-translation; \
     fi; \
     rm -rf /app/superset/translations/*/*/*.[po,mo];
-
 
 ######################################################################
 # superset-websocket builds the realtime WebSocket (Node) server that
@@ -201,9 +230,7 @@ RUN mkdir -p \
       ${PYTHONPATH} \
       superset/static \
       requirements \
-      superset-frontend \
       apache_superset.egg-info \
-      requirements \
     && touch superset/static/version_info.json
 
 # Optionally install Playwright and the headless Chromium used for screenshots
@@ -252,6 +279,9 @@ COPY --from=superset-websocket /usr/local/bin/node /usr/local/bin/node
 COPY --from=superset-websocket --chown=superset:superset \
     /app/superset-websocket/dist /app/superset-websocket/dist
 
+# Copy MUI frontend build output
+COPY --from=superset-node-mui /app/superset-frontend-new/dist /app/mui-static
+
 HEALTHCHECK CMD /app/docker/docker-healthcheck.sh
 CMD ["/app/docker/entrypoints/run-server.sh"]
 EXPOSE ${SUPERSET_PORT}
@@ -292,7 +322,7 @@ COPY --from=python-translation-compiler /app/translations_mo superset/translatio
 # were already installed from requirements/base.txt above, so this layer
 # stays fast even though the source copy above changes on every edit.
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
-    uv pip install -e . --no-deps
+    uv pip install -e .[postgres] --no-deps
 RUN python -m compileall /app/superset
 
 USER superset

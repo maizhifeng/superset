@@ -146,3 +146,4 @@ oxc-custom-build/
 .playwright-mcp/
 pgdata
 superset-frontend-new/config.json
+.env-prod

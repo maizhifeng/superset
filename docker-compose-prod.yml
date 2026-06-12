@@ -1,0 +1,129 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: superset-prod
+
+x-superset-volumes:
+  &superset-volumes
+  - ./docker:/app/docker
+  - superset_home:/app/superset_home
+
+x-common-build: &common-build
+  context: .
+  target: lean
+
+x-prod-env: &prod-env
+  env_file:
+    - docker/.env-prod
+
+services:
+  redis:
+    <<: *prod-env
+    image: redis:7
+    container_name: superset_cache
+    restart: unless-stopped
+    command: sh -c 'redis-server --requirepass "$$REDIS_PASSWORD"'
+    volumes:
+      - redis:/data
+
+  db:
+    <<: *prod-env
+    image: postgres:17
+    container_name: superset_db
+    restart: unless-stopped
+    volumes:
+      - ./pgdata_prod:/var/lib/postgresql/data
+      - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+
+  superset:
+    <<: *prod-env
+    environment:
+      SERVER_LIMIT_REQUEST_LINE: 4096
+      SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
+    build:
+      <<: *common-build
+    container_name: superset_app
+    command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
+    restart: unless-stopped
+    ports:
+      - 80:8088
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+
+  superset-init:
+    <<: *prod-env
+    environment:
+      SERVER_LIMIT_REQUEST_LINE: 4096
+      SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
+    build:
+      <<: *common-build
+    container_name: superset_init
+    command: ["/app/docker/docker-init.sh"]
+    depends_on:
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+    volumes: *superset-volumes
+    healthcheck:
+      disable: true
+
+  superset-worker:
+    <<: *prod-env
+    build:
+      <<: *common-build
+    container_name: superset_worker
+    command: ["/app/docker/docker-bootstrap.sh", "worker"]
+    environment:
+      SERVER_LIMIT_REQUEST_LINE: 4096
+      SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME",
+        ]
+
+  superset-worker-beat:
+    <<: *prod-env
+    build:
+      <<: *common-build
+    container_name: superset_worker_beat
+    command: ["/app/docker/docker-bootstrap.sh", "beat"]
+    environment:
+      SERVER_LIMIT_REQUEST_LINE: 4096
+      SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    volumes: *superset-volumes
+    healthcheck:
+      disable: true
+
+volumes:
+  superset_home:
+    external: false
+  redis:
+    external: false
