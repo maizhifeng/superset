@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
-import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -11,10 +10,7 @@ import Collapse from "@mui/material/Collapse";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
-import SendIcon from "@mui/icons-material/Send";
-import StopIcon from "@mui/icons-material/Stop";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
-import FaceIcon from "@mui/icons-material/Face";
 import SettingsIcon from "@mui/icons-material/Settings";
 import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -27,6 +23,8 @@ import ArticleIcon from "@mui/icons-material/Article";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import AiConfigDialog from "@/components/AiConfigDialog";
 import LightMdRenderer from "@/components/LightMdRenderer";
+import SmartInput from "@/components/AiDrawer/SmartInput";
+import MessageBubble from "@/components/AiDrawer/MessageBubble";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
 import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
@@ -34,14 +32,11 @@ import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useDrawerStore } from "@/store/drawerState";
+import { useConversationStore } from "@/stores/conversationStore";
+import { useAiStream } from "@/hooks/useAiStream";
 import { useNotificationStore } from "@/store/notificationStore";
 import { blink } from "@/theme/keyframes";
 import { transitions } from "@/theme/motion";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
 
 interface DrillDownSuggestion {
   label: string;
@@ -127,380 +122,6 @@ function stripDrillDownSection(text: string): string {
   return text.slice(0, idx).trim();
 }
 
-function useAiChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [currentText, setCurrentText] = useState("");
-  const [sessionKey, setSessionKey] = useState(0);
-  const [suggestions, setSuggestions] = useState<DrillDownSuggestion[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const systemPrompt =
-    "You are a helpful data analysis assistant embedded inside Starfly. " +
-    "Answer general questions about Starfly features, data visualization, " +
-    "SQL, and data analysis. Be concise and practical.\n" +
-    "IMPORTANT: Do NOT output any reasoning, planning, or thinking process. " +
-    "Output only the final answer directly.";
-
-  const streamChat = async (
-    text: string,
-    signal?: AbortSignal,
-    history?: { role: string; content: string }[],
-  ) => {
-    const { streamDirectChat } = await import("@/api/aiInsight");
-    const { getActivePreset } = await import("@/config/aiConfig");
-    const preset = getActivePreset();
-    let full = "";
-    let errored = false;
-    let rafId = 0;
-    let inTable = false;
-    const lastLine = () => {
-      const nl = full.lastIndexOf("\n");
-      return nl >= 0 ? full.slice(nl + 1) : full;
-    };
-    const tryRender = () => {
-      const ll = lastLine();
-      if (ll.startsWith("|")) {
-        if (!ll.endsWith("|") || ll.length <= 1) return;
-        if (!full.endsWith("|\n")) return;
-        inTable = true;
-      } else if (ll.trim() === "" && inTable) {
-        return;
-      } else if (inTable) {
-        return;
-      } else {
-        inTable = false;
-      }
-      cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => setCurrentText(full));
-    };
-    await streamDirectChat(
-      text,
-      systemPrompt,
-      {
-        onText: (token) => {
-          full += token;
-          tryRender();
-        },
-        onError: () => {
-          errored = true;
-        },
-      },
-      signal,
-      {
-        provider: preset.provider,
-        model: preset.model,
-        baseUrl: preset.baseUrl,
-      },
-      history,
-    );
-    cancelAnimationFrame(rafId);
-    setCurrentText(full);
-    if (errored) throw new Error("AI 响应异常，请重试");
-    return full;
-  };
-
-  const sendMessage = async (text: string) => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    const userMsg: Message = { role: "user", content: text };
-    const history = messages;
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
-    setCurrentText("");
-
-    try {
-      const fullContent = await streamChat(text, abort.signal, history);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: fullContent },
-      ]);
-      setCurrentText("");
-    } catch (e: unknown) {
-      if ((e as Error).name === "AbortError") return;
-      const errMsg = e instanceof Error ? e.message : "请求失败，请重试";
-      setCurrentText("");
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `错误: ${errMsg}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startNewChat = async (text: string) => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    setMessages([{ role: "user", content: text }]);
-    setLoading(true);
-    setCurrentText("");
-    setSuggestions([]);
-    setSessionKey((k) => k + 1);
-
-    try {
-      const fullContent = await streamChat(text, abort.signal);
-      setMessages([
-        { role: "user", content: text },
-        { role: "assistant", content: fullContent },
-      ]);
-      setCurrentText("");
-    } catch (e: unknown) {
-      if ((e as Error).name === "AbortError") return;
-      const errMsg = e instanceof Error ? e.message : "请求失败，请重试";
-      setCurrentText("");
-      setMessages([
-        { role: "user", content: text },
-        { role: "assistant", content: `错误: ${errMsg}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startDailyReport = async (
-    reportPrompt: string,
-    promptTemplate: string,
-  ) => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    setMessages([{ role: "user", content: "📊 正在从数据集查询昨日数据..." }]);
-    setLoading(true);
-    setCurrentText("");
-    setSessionKey((k) => k + 1);
-
-    try {
-      const { fetchDailyReportData } = await import("@/api/dailyReport");
-      const { summaryContext } = await fetchDailyReportData();
-
-      const fullPrompt = [
-        promptTemplate,
-        "",
-        "### 从 Superset 查询到的实际数据",
-        "",
-        summaryContext,
-        "",
-        "请根据以上实际数据生成完整日报。",
-      ].join("\n");
-
-      setMessages([{ role: "user", content: reportPrompt }]);
-
-      const fullContent = await streamChat(fullPrompt, abort.signal);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: stripDrillDownSection(fullContent) },
-      ]);
-      setCurrentText("");
-      setSuggestions(extractDrillDownSuggestions(fullContent));
-    } catch {
-      setCurrentText("");
-      setSuggestions([]);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startWeeklyReport = async (
-    reportPrompt: string,
-    promptTemplate: string,
-  ) => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    setMessages([{ role: "user", content: "📊 正在从数据集查询两周数据..." }]);
-    setLoading(true);
-    setCurrentText("");
-    setSessionKey((k) => k + 1);
-
-    try {
-      const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
-      const { summaryContext } = await fetchWeeklyReportData();
-
-      const fullPrompt = [
-        promptTemplate,
-        "",
-        "### 从 Superset 查询到的实际数据",
-        "",
-        summaryContext,
-        "",
-        "请根据以上实际数据生成完整周报。",
-      ].join("\n");
-
-      setMessages([{ role: "user", content: reportPrompt }]);
-
-      const fullContent = await streamChat(fullPrompt, abort.signal);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: stripDrillDownSection(fullContent) },
-      ]);
-      setCurrentText("");
-      setSuggestions(extractDrillDownSuggestions(fullContent));
-    } catch {
-      setCurrentText("");
-      setSuggestions([]);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startDrillDown = async (analysisPrompt: string) => {
-    abortRef.current?.abort();
-    const abort = new AbortController();
-    abortRef.current = abort;
-
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: `📊 钻取分析: ${analysisPrompt}` },
-    ]);
-    setLoading(true);
-    setCurrentText("");
-
-    try {
-      const { fetchDrillDownData } = await import("@/api/drillDown");
-      const { summaryContext } = await fetchDrillDownData();
-
-      const fullPrompt = [
-        DRILL_DOWN_PROMPT,
-        "",
-        "### 分析指令",
-        analysisPrompt,
-        "",
-        "### 从 Superset 查询到的实际数据",
-        "",
-        summaryContext,
-        "",
-        "请根据以上实际数据，针对分析指令进行深入钻取分析，给出具体的结论和优化建议。",
-      ].join("\n");
-
-      const fullContent = await streamChat(fullPrompt, abort.signal);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: fullContent },
-      ]);
-      setCurrentText("");
-    } catch {
-      setCurrentText("");
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "❌ 数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const stop = () => {
-    abortRef.current?.abort();
-    setLoading(false);
-    setCurrentText("");
-  };
-
-  const clear = () => {
-    abortRef.current?.abort();
-    setMessages([]);
-    setCurrentText("");
-    setLoading(false);
-    setSuggestions([]);
-    setSessionKey((k) => k + 1);
-  };
-
-  return {
-    messages,
-    loading,
-    currentText,
-    sessionKey,
-    suggestions,
-    sendMessage,
-    startNewChat,
-    startDailyReport,
-    startWeeklyReport,
-    startDrillDown,
-    stop,
-    clear,
-  };
-}
-
-function ChatBubble({ msg }: { msg: Message }) {
-  const isUser = msg.role === "user";
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        gap: 1,
-        justifyContent: isUser ? "flex-end" : "flex-start",
-      }}
-    >
-      {!isUser && (
-        <SmartToyIcon
-          sx={{
-            fontSize: 20,
-            mt: 0.5,
-            color: "primary.main",
-            flexShrink: 0,
-          }}
-        />
-      )}
-      <Box
-        sx={{
-          maxWidth: "92%",
-          px: 1.5,
-          py: 1,
-          borderRadius: 2,
-          bgcolor: isUser ? "primary.main" : "background.paper",
-          color: isUser ? "primary.contrastText" : "text.primary",
-          border: isUser ? "none" : "1px solid",
-          borderColor: "divider",
-          fontSize: "0.8125rem",
-          lineHeight: 1.6,
-          whiteSpace: isUser ? "pre-wrap" : undefined,
-          wordBreak: "break-word",
-          boxShadow: isUser ? "none" : "0 1px 2px rgba(0,0,0,0.04)",
-          overflow: "hidden",
-        }}
-      >
-        {isUser ? msg.content : <LightMdRenderer content={msg.content} />}
-      </Box>
-      {isUser && (
-        <FaceIcon
-          sx={{
-            fontSize: 20,
-            mt: 0.5,
-            color: "text.secondary",
-            flexShrink: 0,
-          }}
-        />
-      )}
-    </Box>
-  );
-}
-
 export default function AiDrawer({
   open,
   onClose,
@@ -509,34 +130,29 @@ export default function AiDrawer({
   chartMeta,
   filters,
 }: AiDrawerProps) {
-  const {
-    messages,
-    loading: chatLoading,
-    currentText,
-    sessionKey,
-    suggestions,
-    sendMessage,
-    startNewChat,
-    startDailyReport,
-    startWeeklyReport,
-    startDrillDown,
-    stop: chatStop,
-    clear: chatClear,
-  } = useAiChat();
-  const insight = useInsight();
+  const { stream, stop: streamStop, streaming } = useAiStream();
   const notify = useNotificationStore((s) => s.notify);
   const { activePreset } = useAiConfigStore();
   const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   const setDrawerWidth = useDrawerStore((s) => s.setDrawerWidth);
   const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
-  const [input, setInput] = useState("");
+  const insight = useInsight();
+
+  const threads = useConversationStore((s) => s.threads);
+  const activeThreadId = useConversationStore((s) => s.activeThreadId);
+  const createThread = useConversationStore((s) => s.createThread);
+  const addMessage = useConversationStore((s) => s.addMessage);
+  const activeThread = useConversationStore((s) => s.getActiveThread());
+
   const [configOpen, setConfigOpen] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
-  const [followUp, setFollowUp] = useState("");
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true);
+  const [suggestions, setSuggestions] = useState<DrillDownSuggestion[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevOpenRef = useRef(open);
   const isAssist = variant === "assistant";
+
+  const [streamingText, setStreamingText] = useState("");
 
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
@@ -575,12 +191,11 @@ export default function AiDrawer({
     if (open && !prevOpenRef.current) {
       if (!isAssist) {
         insight.clear();
-        setFollowUp("");
         setThinkingCollapsed(true);
       }
     } else if (!open) {
       if (!isAssist) {
-        setFollowUp("");
+        // reset on close
       }
     }
     prevOpenRef.current = open;
@@ -592,20 +207,67 @@ export default function AiDrawer({
     }
   }, [insight.loading, isAssist]);
 
-  const handleSend = () => {
-    const msg = input.trim();
-    if (!msg || chatLoading) return;
-    setInput("");
-    sendMessage(msg);
-  };
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [activeThread?.messages, streamingText]);
 
-  const handleInsightSend = () => {
-    if (insight.loading) return;
-    const msg = followUp.trim();
-    if (!msg) return;
-    setFollowUp("");
-    insight.sendMessage(msg);
-  };
+  const ensureThread = useCallback(() => {
+    if (!activeThreadId) {
+      return createThread();
+    }
+    return activeThreadId;
+  }, [activeThreadId, createThread]);
+
+  const handleSend = useCallback(
+    async (text: string) => {
+      const threadId = ensureThread();
+      addMessage(threadId, "user", { type: "text", body: text });
+      setSuggestions([]);
+      setStreamingText("");
+
+      try {
+        const history = (activeThread?.messages ?? [])
+          .filter((m) => m.content.type === "text")
+          .map((m) => ({
+            role: m.role,
+            content: (m.content as { type: "text"; body: string }).body,
+          }));
+
+        const full = await stream(text, history, (t) => setStreamingText(t));
+        setStreamingText("");
+        addMessage(threadId, "assistant", { type: "text", body: full });
+
+        const drillDowns = extractDrillDownSuggestions(full);
+        if (drillDowns.length > 0) {
+          setSuggestions(drillDowns);
+        }
+      } catch (e: unknown) {
+        if ((e as Error).name === "AbortError") return;
+        setStreamingText("");
+        addMessage(threadId, "assistant", {
+          type: "error",
+          message: "请求失败，请重试",
+          retryable: true,
+        });
+      }
+    },
+    [ensureThread, addMessage, stream, activeThread],
+  );
+
+  const handleRetry = useCallback(() => {
+    const thread = activeThread;
+    if (!thread || thread.messages.length === 0) return;
+    const lastMsg = thread.messages[thread.messages.length - 1];
+    const prevMsg = thread.messages[thread.messages.length - 2];
+    if (lastMsg.role === "assistant") {
+      useConversationStore.getState().addMessage(thread.id, "user", {
+        type: "text",
+        body: prevMsg?.content.type === "text" ? (prevMsg.content as { type: "text"; body: string }).body : "",
+      });
+    }
+  }, [activeThread]);
 
   const handleCardClick = (card: KnowledgeCard) => {
     if (card.docKey) {
@@ -621,10 +283,155 @@ export default function AiDrawer({
     }
   };
 
+  const startNewChat = async (text: string) => {
+    const threadId = createThread();
+    addMessage(threadId, "user", { type: "text", body: text });
+    setSuggestions([]);
+    setStreamingText("");
+
+    try {
+      const full = await stream(text, [], (t) => setStreamingText(t));
+      setStreamingText("");
+      addMessage(threadId, "assistant", { type: "text", body: full });
+
+      const drillDowns = extractDrillDownSuggestions(full);
+      if (drillDowns.length > 0) {
+        setSuggestions(drillDowns);
+      }
+    } catch (e: unknown) {
+      if ((e as Error).name === "AbortError") return;
+      setStreamingText("");
+      addMessage(threadId, "assistant", {
+        type: "error",
+        message: "请求失败，请重试",
+        retryable: true,
+      });
+    }
+  };
+
+  const startDailyReport = async (reportPrompt: string, promptTemplate: string) => {
+    const threadId = createThread();
+    addMessage(threadId, "user", { type: "text", body: "📊 正在从数据集查询昨日数据..." });
+    setStreamingText("");
+
+    try {
+      const { fetchDailyReportData } = await import("@/api/dailyReport");
+      const { summaryContext } = await fetchDailyReportData();
+
+      const fullPrompt = [
+        promptTemplate,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据生成完整日报。",
+      ].join("\n");
+
+      addMessage(threadId, "user", { type: "text", body: reportPrompt });
+
+      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+      setStreamingText("");
+      addMessage(threadId, "assistant", {
+        type: "text",
+        body: stripDrillDownSection(full),
+      });
+
+      setSuggestions(extractDrillDownSuggestions(full));
+    } catch {
+      setStreamingText("");
+      setSuggestions([]);
+      addMessage(threadId, "assistant", {
+        type: "error",
+        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        retryable: true,
+      });
+    }
+  };
+
+  const startWeeklyReport = async (reportPrompt: string, promptTemplate: string) => {
+    const threadId = createThread();
+    addMessage(threadId, "user", { type: "text", body: "📊 正在从数据集查询两周数据..." });
+    setStreamingText("");
+
+    try {
+      const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
+      const { summaryContext } = await fetchWeeklyReportData();
+
+      const fullPrompt = [
+        promptTemplate,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据生成完整周报。",
+      ].join("\n");
+
+      addMessage(threadId, "user", { type: "text", body: reportPrompt });
+
+      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+      setStreamingText("");
+      addMessage(threadId, "assistant", {
+        type: "text",
+        body: stripDrillDownSection(full),
+      });
+
+      setSuggestions(extractDrillDownSuggestions(full));
+    } catch {
+      setStreamingText("");
+      setSuggestions([]);
+      addMessage(threadId, "assistant", {
+        type: "error",
+        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        retryable: true,
+      });
+    }
+  };
+
+  const startDrillDown = async (analysisPrompt: string) => {
+    const threadId = ensureThread();
+    addMessage(threadId, "user", {
+      type: "text",
+      body: `📊 钻取分析: ${analysisPrompt}`,
+    });
+    setStreamingText("");
+
+    try {
+      const { fetchDrillDownData } = await import("@/api/drillDown");
+      const { summaryContext } = await fetchDrillDownData();
+
+      const fullPrompt = [
+        DRILL_DOWN_PROMPT,
+        "",
+        "### 分析指令",
+        analysisPrompt,
+        "",
+        "### 从 Superset 查询到的实际数据",
+        "",
+        summaryContext,
+        "",
+        "请根据以上实际数据，针对分析指令进行深入钻取分析，给出具体的结论和优化建议。",
+      ].join("\n");
+
+      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+      setStreamingText("");
+      addMessage(threadId, "assistant", { type: "text", body: full });
+    } catch {
+      setStreamingText("");
+      addMessage(threadId, "assistant", {
+        type: "error",
+        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        retryable: true,
+      });
+    }
+  };
+
   const handleClose = () => {
     if (isAssist) {
-      chatClear();
       setActiveDoc(null);
+      setSuggestions([]);
+      setStreamingText("");
     } else {
       insight.clear();
     }
@@ -685,7 +492,8 @@ export default function AiDrawer({
             cursor: "ew-resize",
             zIndex: (theme) => theme.zIndex.drawer + 3,
             "&:hover": { bgcolor: "primary.main", opacity: 0.5 },
-            transition: (t) => t.transitions.create("background-color", { duration: t.transitions.duration.shorter }),
+            transition: (t) =>
+              t.transitions.create("background-color", { duration: t.transitions.duration.shorter }),
           }}
         />
         {/* Header */}
@@ -708,12 +516,24 @@ export default function AiDrawer({
             >
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
-          ) : isAssist && messages.length > 0 ? (
-            <IconButton size="small" onClick={chatClear} sx={{ mr: 0.5 }}>
+          ) : isAssist && threads.length > 0 ? (
+            <IconButton
+              size="small"
+              onClick={() => {
+                createThread();
+                setSuggestions([]);
+                setStreamingText("");
+              }}
+              sx={{ mr: 0.5 }}
+            >
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
           ) : !isAssist ? (
-            <IconButton size="small" onClick={() => openAiDrawer("assistant")} sx={{ mr: 0.5 }}>
+            <IconButton
+              size="small"
+              onClick={() => openAiDrawer("assistant")}
+              sx={{ mr: 0.5 }}
+            >
               <ArrowBackIcon sx={{ fontSize: 20 }} />
             </IconButton>
           ) : null}
@@ -772,7 +592,6 @@ export default function AiDrawer({
           <DocViewer docKey={activeDoc} />
         ) : isAssist ? (
           <Box
-            key={sessionKey}
             ref={scrollRef}
             sx={{
               flex: 1,
@@ -783,8 +602,23 @@ export default function AiDrawer({
               gap: 1.5,
             }}
           >
+            {activeThread?.context?.dashboardId && (
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 0.75,
+                  borderRadius: 1,
+                  bgcolor: "action.hover",
+                  fontSize: "0.75rem",
+                  color: "text.secondary",
+                }}
+              >
+                仪表板: #{activeThread.context.dashboardId}
+              </Box>
+            )}
+
             {/* Knowledge base (idle state) */}
-            {messages.length === 0 && !chatLoading && (
+            {(!activeThread || activeThread.messages.length === 0) && !streaming && (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                 <Typography
                   variant="caption"
@@ -867,12 +701,17 @@ export default function AiDrawer({
             )}
 
             {/* Messages */}
-            {messages.map((msg, i) => (
-              <ChatBubble key={i} msg={msg} />
+            {activeThread?.messages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                role={msg.role}
+                content={msg.content}
+                onRetry={msg.content.type === "error" ? handleRetry : undefined}
+              />
             ))}
 
             {/* Streaming response */}
-            {chatLoading && currentText && (
+            {streaming && streamingText && (
               <Box
                 sx={{
                   display: "flex",
@@ -902,10 +741,9 @@ export default function AiDrawer({
                     wordBreak: "break-word",
                     boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
                     overflow: "hidden",
-                    transition: "min-height 0.1s ease",
                   }}
                 >
-                  <LightMdRenderer content={currentText} />
+                  <LightMdRenderer content={streamingText} />
                   <Box
                     component="span"
                     sx={{
@@ -920,8 +758,8 @@ export default function AiDrawer({
               </Box>
             )}
 
-            {/* Loading indicator */}
-            {chatLoading && !currentText && (
+            {/* Loading indicator (no text yet) */}
+            {streaming && !streamingText && (
               <Box
                 sx={{
                   display: "flex",
@@ -949,6 +787,21 @@ export default function AiDrawer({
               gap: 2,
             }}
           >
+            {chartMeta && (
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 0.75,
+                  borderRadius: 1,
+                  bgcolor: "action.hover",
+                  fontSize: "0.75rem",
+                  color: "text.secondary",
+                }}
+              >
+                {chartMeta.slice_name || `图表 #${chartId}`}
+              </Box>
+            )}
+
             {insight.error ? (
               <Box
                 sx={{
@@ -1197,56 +1050,17 @@ export default function AiDrawer({
                     label={s.label}
                     size="small"
                     onClick={() => startDrillDown(s.prompt)}
-                    disabled={chatLoading}
+                    disabled={streaming}
                     sx={{ maxWidth: "100%" }}
                   />
                 ))}
               </Box>
             )}
-            <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
-              <TextField
-                size="small"
-                fullWidth
-                multiline
-                maxRows={4}
-                placeholder="输入你的问题…"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={chatLoading}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: 2,
-                    fontSize: "0.8125rem",
-                    bgcolor: "background.default",
-                  },
-                }}
-              />
-              {chatLoading ? (
-                <IconButton color="error" onClick={chatStop} size="small">
-                  <StopIcon />
-                </IconButton>
-              ) : (
-                <IconButton
-                  color="primary"
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  size="small"
-                  sx={{
-                    transition: transitions.transform,
-                    "&:hover": { transform: "scale(1.08)" },
-                    "&:active": { transform: "scale(0.95)" },
-                  }}
-                >
-                  <SendIcon />
-                </IconButton>
-              )}
-            </Box>
+            <SmartInput
+              onSend={handleSend}
+              onStop={streamStop}
+              streaming={streaming}
+            />
           </Box>
         ) : (
           (insight.insightText || insight.loading) && (
@@ -1259,37 +1073,20 @@ export default function AiDrawer({
                 gap: 1,
               }}
             >
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="输入追问内容…"
-                value={followUp}
-                onChange={(e) => setFollowUp(e.target.value)}
-                disabled={insight.loading}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !insight.loading) {
-                    e.preventDefault();
-                    handleInsightSend();
-                  }
-                }}
-              />
-              {insight.loading ? (
-                <IconButton color="error" onClick={insight.stop}>
-                  <StopIcon />
-                </IconButton>
-              ) : (
-                <IconButton
-                  color="primary"
-                  onClick={handleInsightSend}
-                  disabled={!followUp.trim()}
-                >
-                  <SendIcon />
-                </IconButton>
-              )}
+              <Box sx={{ flex: 1 }}>
+                <SmartInput
+                  onSend={(text) => {
+                    if (insight.loading) return;
+                    insight.sendMessage(text);
+                  }}
+                  onStop={insight.stop}
+                  streaming={insight.loading}
+                />
+              </Box>
             </Box>
           )
         )}
-      <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
+        <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
       </Box>
     </Drawer>
   );

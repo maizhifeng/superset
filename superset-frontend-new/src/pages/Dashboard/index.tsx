@@ -957,9 +957,10 @@ export default function Dashboard() {
         chartId,
         chartMeta: chartMeta[chartId],
         filters: activeFilters,
+        dashboardId: id,
       });
     },
-    [filters, filterState, chartMeta],
+    [filters, filterState, chartMeta, id],
   );
 
   const handleToggleCompare = useCallback(
