@@ -1,10 +1,8 @@
 import { createTheme } from "@mui/material/styles";
 import { supersetPalette } from "./palette";
+import { vibrantPalette } from "./vibrantPalette";
 import typography from "./typography";
 import components from "./components";
-import { vibrantPalette } from "./vibrantPalette";
-import vibrantTypography from "./vibrantTypography";
-import vibrantComponents from "./vibrantComponents";
 import type { ThemeMode } from "@/store/themeStore";
 
 const baseShape = { borderRadius: 8 } as const;
@@ -33,10 +31,10 @@ export function createVibrantTheme() {
         palette: vibrantPalette,
       },
     },
-    typography: vibrantTypography,
+    typography,
     shape: baseShape,
     spacing: baseSpacing,
-    components: vibrantComponents,
+    components,
   });
 }
 

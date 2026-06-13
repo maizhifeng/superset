@@ -26,7 +26,7 @@ import { ConfirmModal, Grid2 } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { cardEnter } from "@/theme/keyframes";
-import { colorSlide } from "@/theme/vibrantKeyframes";
+import { colorSlide } from "@/theme/keyframes";
 import { useThemeStore } from "@/store/themeStore";
 import { cardAccents } from "@/theme/vibrantPalette";
 import api from "@/api";

@@ -5,7 +5,7 @@ import Typography from "@mui/material/Typography";
 import PageHeader from "@/components/PageHeader";
 import Icon from "@/superset-ui-mui/components/Icon";
 import { paperReveal } from "@/theme/keyframes";
-import { colorSlide } from "@/theme/vibrantKeyframes";
+import { colorSlide } from "@/theme/keyframes";
 import { Grid2 } from "@/superset-ui-mui/components";
 import { useThemeStore } from "@/store/themeStore";
 import { cardAccents } from "@/theme/vibrantPalette";
