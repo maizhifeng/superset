@@ -236,6 +236,8 @@ class BaseSupersetView(BaseView):
         if mui_index.exists():
             html = mui_index.read_text(encoding="utf-8")
             from flask import make_response
+            from flask_wtf.csrf import generate_csrf
+            generate_csrf()
             resp = make_response(html)
             resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             return resp

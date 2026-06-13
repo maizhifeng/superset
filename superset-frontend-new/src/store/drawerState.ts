@@ -7,6 +7,7 @@ interface OpenInsightOpts {
   chartId: number;
   chartMeta?: ChartData;
   filters?: Record<string, unknown>;
+  dashboardId?: string;
 }
 
 interface DrawerState {

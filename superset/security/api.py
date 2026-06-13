@@ -108,10 +108,8 @@ class SecurityRestApi(BaseSupersetApi):
 
     @expose("/csrf_token/", methods=("GET",))
     @event_logger.log_this
-    @protect()
     @safe
     @statsd_metrics
-    @permission_name("read")
     def csrf_token(self) -> Response:
         """Get the CSRF token.
         ---
