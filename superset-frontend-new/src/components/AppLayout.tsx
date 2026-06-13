@@ -1,6 +1,5 @@
 import {
   type ReactNode,
-  useEffect,
   useMemo,
   useState,
   useCallback,
@@ -8,37 +7,62 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
-import AppBar from "@mui/material/AppBar";
-import Toolbar from "@mui/material/Toolbar";
-import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import SearchIcon from "@mui/icons-material/Search";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import MenuIcon from "@mui/icons-material/Menu";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import BarChartIcon from "@mui/icons-material/BarChart";
+import TableChartIcon from "@mui/icons-material/TableChart";
+import SaveIcon from "@mui/icons-material/Save";
+import CodeIcon from "@mui/icons-material/Code";
+import StorageIcon from "@mui/icons-material/Storage";
+import NotificationsIcon from "@mui/icons-material/Notifications";
+import HistoryIcon from "@mui/icons-material/History";
+import SettingsIcon from "@mui/icons-material/Settings";
 
 import { useAuthStore } from "@/store/authStore";
 import { useDrawerStore } from "@/store/drawerState";
 import { useNavStore } from "@/store/navStore";
-import { useToolbar } from "@/contexts/ToolbarContext";
 import { useMenuSettings } from "@/store/menuSettings";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import GlobalSnackbar from "@/components/GlobalSnackbar";
 import ChatInput from "@/components/ChatInput";
 import AiDrawer from "@/components/AiDrawer";
 import TourGuide from "@/components/TourGuide";
-import ContextTip from "@/components/ContextTip";
 import SearchExamples from "@/components/SearchExamples";
 import { usePageTip } from "@/hooks/usePageTips";
 import UserMenu from "@/components/AppLayout/UserMenu";
 import MobileDrawer from "@/components/AppLayout/MobileDrawer";
-import ActivityBar, {
-  defaultItems as activityBarItems,
-} from "@/components/ActivityBar/ActivityBar";
+import StatusBar from "@/components/AppLayout/StatusBar";
+import ActivityBar from "@/components/ActivityBar/ActivityBar";
 import SidePanel from "@/components/SidePanel/SidePanel";
 import DetailOverlay from "@/components/DetailOverlay/DetailOverlay";
 import type { NavCategory } from "@/store/navStore";
+
+const menuIconMap: Record<string, React.ReactNode> = {
+  dashboards: <DashboardIcon sx={{ fontSize: 20 }} />,
+  charts: <BarChartIcon sx={{ fontSize: 20 }} />,
+  datasets: <TableChartIcon sx={{ fontSize: 20 }} />,
+  "saved_query/list": <SaveIcon sx={{ fontSize: 20 }} />,
+  sqllab: <CodeIcon sx={{ fontSize: 20 }} />,
+  "database/list": <StorageIcon sx={{ fontSize: 20 }} />,
+  "alert/list": <NotificationsIcon sx={{ fontSize: 20 }} />,
+  query_history: <HistoryIcon sx={{ fontSize: 20 }} />,
+  project_config: <SettingsIcon sx={{ fontSize: 20 }} />,
+};
+
+const defaultIcon = <SettingsIcon sx={{ fontSize: 20 }} />;
+
+const menuIdToCategory: Record<string, NavCategory> = {
+  dashboards: "dashboard",
+  charts: "chart",
+  datasets: "dataset",
+  "saved_query/list": "saved_query",
+  "database/list": "database",
+};
 
 const categoryLabels: Record<NavCategory, string> = {
   dashboard: "仪表板",
@@ -47,6 +71,7 @@ const categoryLabels: Record<NavCategory, string> = {
   saved_query: "已保存查询",
   sqllab: "SQL 实验室",
   settings: "设置",
+  database: "数据库",
 };
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -62,26 +87,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const items = useMenuSettings((s) => s.items);
   const enabled = useMenuSettings((s) => s.enabled);
-  const toolbarTools = useToolbar();
-
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setSidebarOpen(document.body.classList.contains("sidebar-open")),
-    );
-    observer.observe(document.body, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    setSidebarOpen(document.body.classList.contains("sidebar-open"));
-    return () => observer.disconnect();
-  }, []);
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
-  const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   const aiDrawerMode = useDrawerStore((s) => s.aiDrawerMode);
   const insightChartId = useDrawerStore((s) => s.insightChartId);
   const insightChartMeta = useDrawerStore((s) => s.insightChartMeta);
@@ -91,18 +101,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const activeCategory = useNavStore((s) => s.activeCategory);
   const sidePanelOpen = useNavStore((s) => s.sidePanelOpen);
+  const sidePanelPinned = useNavStore((s) => s.sidePanelPinned);
   const sidePanelItems = useNavStore((s) => s.sidePanelItems);
   const sidePanelLoading = useNavStore((s) => s.sidePanelLoading);
   const activeOverlay = useNavStore((s) => s.activeOverlay);
   const toggleCategory = useNavStore((s) => s.toggleCategory);
   const closeSidePanel = useNavStore((s) => s.closeSidePanel);
+  const togglePinSidePanel = useNavStore((s) => s.togglePinSidePanel);
   const openOverlay = useNavStore((s) => s.openOverlay);
   const closeOverlay = useNavStore((s) => s.closeOverlay);
   const selectDashboard = useNavStore((s) => s.selectDashboard);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [hoverCat, setHoverCat] = useState<NavCategory | null>(null);
+  const [hoverCat, setHoverCat] = useState<string | null>(null);
   const openTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const pageTip = usePageTip();
@@ -125,15 +137,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     [items, enabled],
   );
 
-  const handleNavEnter = useCallback((cat: NavCategory) => {
+  const activityBarItems = useMemo(
+    () =>
+      items
+        .filter((item) => item.id !== "home" && enabled[item.id])
+        .map((item) => ({
+          id: item.id,
+          icon: menuIconMap[item.id] ?? defaultIcon,
+          label: item.label,
+        })),
+    [items, enabled],
+  );
+
+  const handleNavEnter = useCallback((cat: string) => {
     clearTimeout(closeTimerRef.current);
     setHoverCat(cat);
+    const mapped = menuIdToCategory[cat];
+    if (!mapped) return;
+    const navStore = useNavStore.getState();
+    if (navStore.sidePanelPinned) {
+      if (navStore.activeCategory !== mapped) {
+        navStore.toggleCategory(mapped);
+      }
+      return;
+    }
     openTimerRef.current = setTimeout(() => {
-      if (cat !== "sqllab" && cat !== "settings") {
-        const navStore = useNavStore.getState();
-        if (!navStore.sidePanelOpen || navStore.activeCategory !== cat) {
-          navStore.toggleCategory(cat);
-        }
+      if (!navStore.sidePanelOpen || navStore.activeCategory !== mapped) {
+        navStore.toggleCategory(mapped);
       }
     }, 150);
   }, []);
@@ -141,26 +171,35 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const handleNavLeave = useCallback(() => {
     clearTimeout(openTimerRef.current);
     setHoverCat(null);
-    closeTimerRef.current = setTimeout(() => {
-      useNavStore.getState().closeSidePanel();
-    }, 800);
+    const { sidePanelPinned } = useNavStore.getState();
+    if (!sidePanelPinned) {
+      closeTimerRef.current = setTimeout(() => {
+        useNavStore.getState().closeSidePanel();
+      }, 800);
+    }
   }, []);
 
   const handleActivitySelect = useCallback(
-    async (cat: NavCategory) => {
-      if (cat === "sqllab") {
+    async (id: string) => {
+      const mapped = menuIdToCategory[id];
+      if (mapped === "sqllab") {
         openOverlay("sqllab");
         closeSidePanel();
         return;
       }
-      if (cat === "settings") {
-        navigate("/settings");
-        closeSidePanel();
+      if (mapped) {
+        const { sidePanelPinned, activeCategory } = useNavStore.getState();
+        if (sidePanelPinned && activeCategory === mapped) return;
+        await toggleCategory(mapped);
         return;
       }
-      await toggleCategory(cat);
+      const item = items.find((i) => i.id === id);
+      if (item) {
+        navigate(item.path);
+        closeSidePanel();
+      }
     },
-    [toggleCategory, openOverlay, closeSidePanel, navigate],
+    [items, toggleCategory, openOverlay, closeSidePanel, navigate],
   );
 
   const handleSidePanelSelect = useCallback(
@@ -168,11 +207,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       if (activeCategory === "dashboard") {
         selectDashboard(Number(id));
         navigate(`/dashboard/${id}`);
-        closeSidePanel();
+      } else if (activeCategory === "chart") {
+        navigate(`/explore?slice_id=${id}`);
+      } else if (activeCategory === "dataset") {
+        navigate(`/dataset/edit/${id}`);
       } else if (activeCategory === "sqllab") {
         openOverlay("sqllab");
       } else if (activeCategory === "settings") {
         navigate("/settings");
+        closeSidePanel();
+      } else if (activeCategory === "database") {
+        navigate("/database/list");
         closeSidePanel();
       } else {
         openOverlay(activeCategory ?? "chart", id);
@@ -210,17 +255,103 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           onItemLeave={() => {
             clearTimeout(openTimerRef.current);
           }}
+          searchButton={
+            <Tooltip title="搜索" placement="right">
+              <IconButton
+                size="small"
+                onClick={() => setSearchOpen(true)}
+                sx={{ color: "text.secondary" }}
+              >
+                <SearchIcon sx={{ fontSize: 20 }} />
+              </IconButton>
+            </Tooltip>
+          }
+          aiButton={
+            <Tooltip title="AI 助手" placement="right">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  if (aiDrawerOpen && aiDrawerMode === "assistant") {
+                    closeAiDrawer();
+                  } else {
+                    openAiDrawer("assistant");
+                  }
+                }}
+                sx={{
+                  color: "primary.main",
+                  transition: "opacity 200ms",
+                  opacity: aiDrawerOpen && aiDrawerMode === "assistant" ? 0.6 : 1,
+                }}
+              >
+                <AutoAwesomeIcon sx={{ fontSize: 20 }} />
+              </IconButton>
+            </Tooltip>
+          }
+          searchDialog={
+            <Dialog
+              open={searchOpen}
+              onClose={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }}
+              fullWidth
+              maxWidth="sm"
+              slotProps={{
+                paper: {
+                  sx: {
+                    position: "fixed",
+                    top: "20vh",
+                    m: 0,
+                    borderRadius: 2,
+                    width: "90%",
+                    maxWidth: 520,
+                  },
+                },
+                backdrop: { sx: { bgcolor: "rgba(0,0,0,0.3)" } },
+              }}
+            >
+              <DialogContent
+                sx={{ p: 2, pt: 2.5 }}
+                onClick={() => setSearchOpen(false)}
+              >
+                <Box onClick={(e) => e.stopPropagation()}>
+                  <ChatInput
+                    autoFocus
+                    placeholder="询问关于数据的问题..."
+                    disableMaxWidth
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                  />
+                  <SearchExamples onSelect={(q) => setSearchQuery(q)} />
+                </Box>
+              </DialogContent>
+            </Dialog>
+          }
+          userMenu={
+            <UserMenu
+              username={user?.username}
+              anchorEl={userMenuAnchor}
+              onOpen={(e) => setUserMenuAnchor(e.currentTarget)}
+              onClose={() => setUserMenuAnchor(null)}
+              onLogout={handleLogout}
+            />
+          }
         />
       </Box>
 
       {/* Side Panel (D2) - overlays on top of main content */}
       <SidePanel
-        open={sidePanelOpen && (activeCategory != null || hoverCat != null)}
-        title={categoryLabels[activeCategory ?? (hoverCat as NavCategory)] || ""}
+        open={sidePanelOpen && (sidePanelPinned || activeCategory != null || hoverCat != null)}
+        title={
+          categoryLabels[activeCategory ?? menuIdToCategory[hoverCat ?? ""]] ??
+          items.find((i) => i.id === (hoverCat ?? activeCategory))?.label ??
+          ""
+        }
         items={sidePanelItems}
         loading={sidePanelLoading}
+        pinned={sidePanelPinned}
         onSelect={handleSidePanelSelect}
-        onClose={closeSidePanel}
+        onTogglePin={togglePinSidePanel}
         onMouseEnter={() => clearTimeout(closeTimerRef.current)}
         onMouseLeave={handleNavLeave}
       />
@@ -233,156 +364,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           flex: 1,
           minWidth: 0,
           overflow: "hidden",
+          ml: sidePanelOpen && sidePanelPinned ? "180px" : 0,
+          transition: (theme) =>
+            theme.transitions.create("margin", {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.leavingScreen,
+            }),
         }}
       >
-        <AppBar
-          position="static"
-          color="inherit"
-          sx={{
-            zIndex: (theme) => theme.zIndex.drawer + 1,
-            visibility: sidebarOpen ? "hidden" : "visible",
-            pointerEvents: sidebarOpen ? "none" : "auto",
-          }}
-        >
-          <Toolbar variant="dense" sx={{ gap: 0, px: 0.5, minHeight: 44 }}>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0,
-                flex: "1 1 0",
-                minWidth: 0,
-                overflow: "hidden",
-              }}
-            >
-              <IconButton
-                size="small"
-                onClick={() => setDrawerOpen(true)}
-                sx={{
-                  display: { xs: "inline-flex", sm: "none" },
-                  mr: 0.25,
-                  flexShrink: 0,
-                }}
-              >
-                <MenuIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-              <Typography
-                variant="h6"
-                onClick={() => navigate("/")}
-                sx={{
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  mr: 0.5,
-                  fontSize: "1rem",
-                  letterSpacing: "-0.01em",
-                  flexShrink: 0,
-                }}
-              >
-                starfly
-              </Typography>
-            </Box>
-
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0.75,
-                minWidth: 0,
-                flex: "1 1 0",
-                justifyContent: "flex-end",
-              }}
-            >
-              <Box sx={{ flex: 1 }} />
-              <Box
-                sx={{
-                  display: { xs: "none", md: "flex" },
-                  justifyContent: "center",
-                  overflow: "hidden",
-                  minWidth: 0,
-                  maxWidth: 300,
-                }}
-              >
-                {toolbarTools
-                  .filter((t) => t.id === "search")
-                  .map((tool) => (
-                    <Box key={tool.id} sx={{ width: "100%" }}>
-                      {tool.render}
-                    </Box>
-                  ))}
-              </Box>
-              <IconButton
-                size="small"
-                onClick={() => setSearchOpen(true)}
-                sx={{ display: { xs: "inline-flex", md: "none" } }}
-              >
-                <SearchIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-              <Dialog
-                open={searchOpen}
-                onClose={() => {
-                  setSearchOpen(false);
-                  setSearchQuery("");
-                }}
-                fullWidth
-                maxWidth="sm"
-                slotProps={{
-                  paper: {
-                    sx: {
-                      position: "fixed",
-                      top: "20vh",
-                      m: 0,
-                      borderRadius: 2,
-                      width: "90%",
-                      maxWidth: 520,
-                    },
-                  },
-                  backdrop: { sx: { bgcolor: "rgba(0,0,0,0.3)" } },
-                }}
-              >
-                <DialogContent
-                  sx={{ p: 2, pt: 2.5 }}
-                  onClick={() => setSearchOpen(false)}
-                >
-                  <Box onClick={(e) => e.stopPropagation()}>
-                    <ChatInput
-                      autoFocus
-                      placeholder="询问关于数据的问题..."
-                      disableMaxWidth
-                      value={searchQuery}
-                      onChange={setSearchQuery}
-                    />
-                    <SearchExamples onSelect={(q) => setSearchQuery(q)} />
-                  </Box>
-                </DialogContent>
-              </Dialog>
-              <IconButton
-                size="small"
-                onClick={() => {
-                  if (aiDrawerOpen && aiDrawerMode === "assistant") {
-                    closeAiDrawer();
-                  } else {
-                    openAiDrawer("assistant");
-                  }
-                }}
-                sx={{
-                  color: "primary.main",
-                  mr: 0.5,
-                  transition: "opacity 200ms",
-                  opacity: aiDrawerOpen && aiDrawerMode === "assistant" ? 0.6 : 1,
-                }}
-              >
-                <AutoAwesomeIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-              <UserMenu
-                username={user?.username}
-                anchorEl={userMenuAnchor}
-                onOpen={(e) => setUserMenuAnchor(e.currentTarget)}
-                onClose={() => setUserMenuAnchor(null)}
-                onLogout={handleLogout}
-              />
-            </Box>
-          </Toolbar>
-        </AppBar>
+        <StatusBar
+          tip={pageTip}
+          showMenuButton
+          onMenuClick={() => setDrawerOpen(true)}
+        />
 
         <Box
           component="main"
@@ -393,15 +387,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             display: "flex",
             flexDirection: "column",
             position: "relative",
-            mr: aiDrawerOpen ? `${drawerWidth}px` : 0,
-            transition: (theme) =>
-              theme.transitions.create("margin", {
-                easing: theme.transitions.easing.sharp,
-                duration: theme.transitions.duration.leavingScreen,
-              }),
           }}
         >
-          {pageTip && <ContextTip tip={pageTip} />}
           {children}
         </Box>
       </Box>

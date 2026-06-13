@@ -13,6 +13,7 @@ const nameFieldMap: Record<NavCategory, string> = {
   saved_query: "label",
   sqllab: "label",
   settings: "label",
+  database: "database_name",
 };
 
 export async function fetchNavItems(category: NavCategory): Promise<NavItem[]> {

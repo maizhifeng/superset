@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
+import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SaveIcon from "@mui/icons-material/Save";
 import type { EChartsOption } from "echarts";
 import { buildEChartsOption, loadECharts } from "@/utils/echarts";
@@ -15,6 +18,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import ChartPreview from "./ChartPreview";
 import ChartEditorForm from "./ChartEditorForm";
+import ChartTypeSelector from "./ChartTypeSelector";
 import ExploreViewContainer from "@/explore/components/ExploreViewContainer";
 import ExploreWelcome from "./ExploreWelcome";
 import type { Dataset } from "@/types/api";
@@ -800,9 +804,64 @@ export default function ChartEditor({
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        minHeight: 0,
+        position: "relative",
       }}
     >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          px: 2,
+          py: 0.75,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "grey.50",
+          flexShrink: 0,
+        }}
+      >
+        {!compact && (
+          <IconButton
+            size="small"
+            onClick={() => navigate(-1)}
+            sx={{ bgcolor: "grey.200", color: "text.primary" }}
+          >
+            <ArrowBackIcon sx={{ fontSize: 20 }} />
+          </IconButton>
+        )}
+        <TextField
+          placeholder="图表名称..."
+          value={sliceName}
+          onChange={(e) => setSliceName(e.target.value)}
+          variant="standard"
+          sx={{
+            minWidth: 120,
+            "& .MuiInputBase-input": {
+              fontSize: "1.125rem",
+              fontWeight: 700,
+              py: 0.5,
+            },
+            "& .MuiInputBase-root::before": {
+              borderBottomColor: "divider",
+              borderBottomWidth: 1,
+            },
+            "& .MuiInputBase-root:hover::before": {
+              borderBottomColor: "primary.light",
+            },
+            "& .MuiInputBase-root::after": {
+              borderBottomColor: "primary.main",
+            },
+          }}
+        />
+        {datasourceId && (
+          <ChartTypeSelector
+            value={vizType}
+            suggested={suggested?.vizType}
+            disabledReasons={disabledReasons}
+            onChange={handleChartTypeChange}
+          />
+        )}
+      </Box>
       <ExploreViewContainer
         onRunQuery={handleRunQuery}
         onSaveChart={handleSubmit}
@@ -818,7 +877,6 @@ export default function ChartEditor({
       )}
 
       <ChartEditorForm
-        sliceName={sliceName}
         datasets={datasets}
         datasourceId={datasourceId}
         metrics={metrics}
@@ -828,7 +886,6 @@ export default function ChartEditor({
         loadingDatasets={loadingDatasets}
         loadingColumns={loadingColumns}
         compact={compact}
-        onSliceNameChange={setSliceName}
         onDatasourceChange={(id) => {
           setDatasourceId(id);
           setMetrics([]);
@@ -838,10 +895,6 @@ export default function ChartEditor({
         }}
         onMetricsChange={handleMetricsChange}
         onGroupbyChange={setGroupby}
-        vizType={vizType}
-        suggestedVizType={suggested?.vizType}
-        disabledReasons={disabledReasons}
-        onChartTypeChange={handleChartTypeChange}
       />
 
       <Box

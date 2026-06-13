@@ -1,25 +1,28 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
-import CloseIcon from "@mui/icons-material/Close";
+import PushPinIcon from "@mui/icons-material/PushPin";
+import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 
 interface SidePanelProps {
   open: boolean;
   title: string;
   items: { id: number | string; label: string }[];
   loading: boolean;
+  pinned?: boolean;
   activeItemId?: number | string | null;
   onSelect: (id: number | string) => void;
-  onClose: () => void;
+  onTogglePin?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
 
-const PANEL_WIDTH = 200;
+const PANEL_WIDTH = 180;
 const TRANSITION =
   "width 350ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 300ms ease";
 
@@ -28,9 +31,10 @@ export default function SidePanel({
   title,
   items,
   loading,
+  pinned = false,
   activeItemId,
   onSelect,
-  onClose,
+  onTogglePin,
   onMouseEnter,
   onMouseLeave,
 }: SidePanelProps) {
@@ -77,9 +81,17 @@ export default function SidePanel({
         >
           {title}
         </Typography>
-        <IconButton size="small" onClick={onClose}>
-          <CloseIcon sx={{ fontSize: 18 }} />
-        </IconButton>
+        {onTogglePin && (
+          <Tooltip title={pinned ? "取消固定" : "固定侧栏"}>
+            <IconButton size="small" onClick={onTogglePin} sx={{ ml: 0.5 }}>
+              {pinned ? (
+                <PushPinIcon sx={{ fontSize: 16 }} />
+              ) : (
+                <PushPinOutlinedIcon sx={{ fontSize: 16 }} />
+              )}
+            </IconButton>
+          </Tooltip>
+        )}
       </Box>
 
       <Box

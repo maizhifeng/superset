@@ -2,12 +2,10 @@ import Card from "@mui/material/Card";
 import CardHeader from "@mui/material/CardHeader";
 import CardContent from "@mui/material/CardContent";
 import Box from "@mui/material/Box";
-import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import type { Dataset } from "@/types/api";
 import PickerField from "./PickerField";
-import ChartTypeSelector from "./ChartTypeSelector";
 
 interface FieldOption {
   value: string;
@@ -16,7 +14,6 @@ interface FieldOption {
 }
 
 interface ChartEditorFormProps {
-  sliceName: string;
   datasets: Dataset[];
   datasourceId: string;
   metrics: string[];
@@ -26,18 +23,12 @@ interface ChartEditorFormProps {
   loadingDatasets: boolean;
   loadingColumns: boolean;
   compact?: boolean;
-  onSliceNameChange: (v: string) => void;
   onDatasourceChange: (id: string) => void;
   onMetricsChange: (v: string[]) => void;
   onGroupbyChange: (v: string[]) => void;
-  vizType: string;
-  suggestedVizType?: string | null;
-  disabledReasons: Record<string, string>;
-  onChartTypeChange: (val: string) => void;
 }
 
 export default function ChartEditorForm({
-  sliceName,
   datasets,
   datasourceId,
   metrics,
@@ -47,14 +38,9 @@ export default function ChartEditorForm({
   loadingDatasets,
   loadingColumns,
   compact,
-  onSliceNameChange,
   onDatasourceChange,
   onMetricsChange,
   onGroupbyChange,
-  vizType,
-  suggestedVizType,
-  disabledReasons,
-  onChartTypeChange,
 }: ChartEditorFormProps) {
   const c = (full: number | string, comp: number | string) =>
     compact ? comp : full;
@@ -72,54 +58,8 @@ export default function ChartEditorForm({
         flexShrink: 0,
       }}
     >
-      <Box
-        sx={{
-          display: "flex",
-          flexWrap: "nowrap",
-          gap: c(1, 0.75),
-          alignItems: "center",
-        }}
-      >
-        <TextField
-          placeholder="图表名称..."
-          value={sliceName}
-          onChange={(e) => onSliceNameChange(e.target.value)}
-          variant="standard"
-          sx={{
-            flex: "0 1 auto",
-            minWidth: 120,
-            "& .MuiInputBase-input": {
-              fontSize: "1.125rem",
-              fontWeight: 700,
-              py: 0.5,
-            },
-            "& .MuiInputBase-root::before": {
-              borderBottomColor: "divider",
-              borderBottomWidth: 1,
-            },
-            "& .MuiInputBase-root:hover::before": {
-              borderBottomColor: "primary.light",
-            },
-            "& .MuiInputBase-root::after": {
-              borderBottomColor: "primary.main",
-            },
-          }}
-        />
-
-        {datasourceId && (
-          <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-            <ChartTypeSelector
-              value={vizType}
-              suggested={suggestedVizType}
-              disabledReasons={disabledReasons}
-              onChange={onChartTypeChange}
-            />
-          </Box>
-        )}
-      </Box>
-
-      {!compact && (
-        <Box sx={{ display: "flex", gap: c(1, 0.75) }}>
+      <Box sx={{ display: "flex", gap: c(1, 0.75) }}>
+          {!compact && (
           <Card
             elevation={0}
             sx={{
@@ -148,30 +88,30 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  数据集
-                </Typography>
-              }
-            />
-            <CardContent sx={{ p: c(0.75, 0.75) }}>
-              <PickerField
-                label="数据集"
-                options={datasets.map((d) => ({
-                  value: String(d.id),
-                  label: d.table_name,
-                }))}
-                selected={datasourceId ? [datasourceId] : []}
-                onChange={(vals) => {
-                  onDatasourceChange(vals[0] || "");
-                }}
-                loading={loadingDatasets}
-                placeholder="选择数据集..."
-                singleSelect
-                hideGroups
-                hideHeader
-              />
-            </CardContent>
-          </Card>
-
+                   数据集
+                 </Typography>
+               }
+             />
+             <CardContent sx={{ p: c(0.75, 0.75) }}>
+               <PickerField
+                 label="数据集"
+                 options={datasets.map((d) => ({
+                   value: String(d.id),
+                   label: d.table_name,
+                 }))}
+                 selected={datasourceId ? [datasourceId] : []}
+                 onChange={(vals) => {
+                   onDatasourceChange(vals[0] || "");
+                 }}
+                 loading={loadingDatasets}
+                 placeholder="选择数据集..."
+                 singleSelect
+                 hideGroups
+                 hideHeader
+               />
+             </CardContent>
+           </Card>
+          )}
           <Card
             elevation={0}
             sx={{
@@ -200,7 +140,7 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  分组
+                   分组
                 </Typography>
               }
             />
@@ -271,8 +211,7 @@ export default function ChartEditorForm({
               )}
             </CardContent>
           </Card>
-        </Box>
-      )}
+      </Box>
     </Box>
   );
 }

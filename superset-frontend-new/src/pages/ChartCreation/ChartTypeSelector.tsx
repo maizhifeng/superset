@@ -60,20 +60,20 @@ export default function ChartTypeSelector({
       size="small"
       sx={{
         flexWrap: "wrap",
-        gap: 0.5,
+        gap: 0.25,
         "& .MuiToggleButton-root": {
           border: "1px solid",
           borderColor: "divider",
-          borderRadius: 1.5,
-          px: 1,
-          py: 0.5,
+          borderRadius: 1,
+          px: 0.5,
+          py: 0.25,
           textTransform: "none",
-          fontSize: "0.75rem",
-          minWidth: 56,
+          fontSize: "0.7rem",
+          minWidth: 44,
           display: "flex",
-          gap: 0.5,
+          gap: 0.25,
           position: "relative",
-          "& .MuiSvgIcon-root": { fontSize: 15 },
+          "& .MuiSvgIcon-root": { fontSize: 13 },
           "&.Mui-selected": {
             bgcolor: "primary.main",
             color: "primary.contrastText",

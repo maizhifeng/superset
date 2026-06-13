@@ -6,7 +6,8 @@ export type NavCategory =
   | "dataset"
   | "saved_query"
   | "sqllab"
-  | "settings";
+  | "settings"
+  | "database";
 
 interface NavItem {
   id: number;
@@ -21,6 +22,7 @@ interface OverlayState {
 interface NavStore {
   activeCategory: NavCategory | null;
   sidePanelOpen: boolean;
+  sidePanelPinned: boolean;
   sidePanelItems: NavItem[];
   sidePanelLoading: boolean;
   activeOverlay: OverlayState | null;
@@ -28,6 +30,7 @@ interface NavStore {
 
   toggleCategory: (cat: NavCategory) => Promise<void>;
   closeSidePanel: () => void;
+  togglePinSidePanel: () => void;
   openOverlay: (type: OverlayState["type"], id?: number | string) => void;
   closeOverlay: () => void;
   selectDashboard: (id: number) => void;
@@ -37,6 +40,7 @@ interface NavStore {
 export const useNavStore = create<NavStore>()((set, get) => ({
   activeCategory: null,
   sidePanelOpen: false,
+  sidePanelPinned: false,
   sidePanelItems: [],
   sidePanelLoading: false,
   activeOverlay: null,
@@ -76,7 +80,23 @@ export const useNavStore = create<NavStore>()((set, get) => ({
   },
 
   closeSidePanel: () => {
-    set({ sidePanelOpen: false, activeCategory: null });
+    set({ sidePanelOpen: false, activeCategory: null, sidePanelPinned: false });
+  },
+
+  togglePinSidePanel: () => {
+    const { sidePanelPinned, sidePanelOpen, activeCategory } = get();
+    if (sidePanelPinned) {
+      set({ sidePanelPinned: false });
+    } else if (sidePanelOpen) {
+      set({ sidePanelPinned: true });
+    } else {
+      const cat = (activeCategory ?? "dashboard") as NavCategory;
+      set({ sidePanelPinned: true, activeCategory: cat, sidePanelOpen: true, sidePanelLoading: true });
+      import("@/utils/fetchNavItems")
+        .then(({ fetchNavItems }) => fetchNavItems(cat))
+        .then((items) => set({ sidePanelItems: items, sidePanelLoading: false }))
+        .catch(() => set({ sidePanelItems: [], sidePanelLoading: false }));
+    }
   },
 
   openOverlay: (type, id) => {
