@@ -5,7 +5,6 @@ import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
-import Drawer from "@mui/material/Drawer";
 import Collapse from "@mui/material/Collapse";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
@@ -457,24 +456,25 @@ export default function AiDrawer({
     : "AI 洞察分析";
 
   return (
-    <Drawer
-      variant="persistent"
-      anchor="right"
-      open={open}
-      onClose={handleClose}
-      sx={{ position: "relative", zIndex: (theme) => theme.zIndex.drawer + 2 }}
-      slotProps={{
-        paper: {
-          sx: {
-            width: { xs: "100vw", md: drawerWidth },
-            top: 45,
-            height: "calc(100vh - 45px)",
-            zIndex: (theme) => theme.zIndex.drawer + 2,
-            borderRight: "none",
-            borderTopLeftRadius: 12,
-            borderBottomLeftRadius: 12,
-          },
-        },
+    <Box
+      sx={{
+        position: "absolute",
+        right: 0,
+        top: 0,
+        height: "100%",
+        width: open ? (typeof drawerWidth === "number" ? drawerWidth : 640) : 0,
+        zIndex: (theme) => theme.zIndex.drawer + 2,
+        bgcolor: "background.paper",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        transition: "width 350ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 300ms ease",
+        pointerEvents: open ? "auto" : "none",
+        boxShadow: open ? "-2px 0 8px rgba(0,0,0,0.08)" : "none",
+        borderLeft: "1px solid",
+        borderColor: "divider",
+        borderTopLeftRadius: 12,
+        borderBottomLeftRadius: 12,
       }}
     >
       <Box
@@ -1088,6 +1088,6 @@ export default function AiDrawer({
         )}
         <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
       </Box>
-    </Drawer>
+    </Box>
   );
 }

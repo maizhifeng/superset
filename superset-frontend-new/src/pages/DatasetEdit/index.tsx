@@ -14,6 +14,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import type { DatasetMetric } from "@/types/api";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -22,14 +23,11 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Checkbox from "@mui/material/Checkbox";
-import Collapse from "@mui/material/Collapse";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
@@ -69,7 +67,6 @@ export default function DatasetEdit() {
   const [editMetricOpen, setEditMetricOpen] = useState(false);
   const [editMetric, setEditMetric] = useState<DatasetMetric | null>(null);
   const [tabValue, setTabValue] = useState(0);
-  const [sqlExpanded, setSqlExpanded] = useState(false);
   const [newMetric, setNewMetric] = useState({
     metric_name: "",
     expression: "",
@@ -251,7 +248,7 @@ export default function DatasetEdit() {
     );
   if (error && !dataset)
     return (
-      <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
         <Alert severity="error" sx={{ borderRadius: 2 }}>
           {error}
         </Alert>
@@ -263,7 +260,56 @@ export default function DatasetEdit() {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ flex: 1, p: 3, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          px: 2,
+          py: 0.75,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "grey.50",
+          flexShrink: 0,
+          mx: -3,
+          mb: 2,
+        }}
+      >
+        <IconButton
+          size="small"
+          onClick={() => navigate(-1)}
+          sx={{ bgcolor: "grey.200", color: "text.primary" }}
+        >
+          <ArrowBackIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+        <TextField
+          placeholder="数据集名称..."
+          value={form.table_name}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, table_name: e.target.value }))
+          }
+          variant="standard"
+          sx={{
+            minWidth: 120,
+            "& .MuiInputBase-input": {
+              fontSize: "1.125rem",
+              fontWeight: 700,
+              py: 0.5,
+            },
+            "& .MuiInputBase-root::before": {
+              borderBottomColor: "divider",
+              borderBottomWidth: 1,
+            },
+            "& .MuiInputBase-root:hover::before": {
+              borderBottomColor: "primary.light",
+            },
+            "& .MuiInputBase-root::after": {
+              borderBottomColor: "primary.main",
+            },
+          }}
+        />
+      </Box>
       {success && (
         <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
           数据集已保存
@@ -293,129 +339,65 @@ export default function DatasetEdit() {
         </Box>
       )}
 
-      <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-        <TextField
-          size="small"
-          label="表名称"
-          value={form.table_name}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, table_name: e.target.value }))
-          }
-          sx={{ flex: 2, minWidth: 180 }}
-        />
-        <TextField
-          size="small"
-          label="描述"
-          value={form.description}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, description: e.target.value }))
-          }
-          sx={{ flex: 2, minWidth: 180 }}
-        />
-        <TextField
-          size="small"
-          label="数据库连接"
-          value={`${dataset?.database.database_name} · ${dataset?.schema ?? "public"}`}
-          slotProps={{ input: { readOnly: true } }}
-          sx={{ flex: 1, minWidth: 180 }}
-        />
-      </Box>
-
-      <Box sx={{ mt: 1.5 }}>
-        {dataset?.kind !== "physical" && (
-          <Card
+      {dataset && (
+        <Card sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <Box
             sx={{
-              mb: 1.5,
-              "& .MuiCardHeader-action": { alignSelf: "center", mr: 1 },
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: 1,
+              borderColor: "divider",
+              px: 2,
+              minHeight: 48,
             }}
           >
-            <CardHeader
-              title="SQL"
-              sx={cardHeaderSx}
-              action={
-                <IconButton
-                  size="small"
-                  onClick={() => setSqlExpanded((p) => !p)}
-                >
-                  {sqlExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </IconButton>
-              }
-            />
-            <Collapse in={sqlExpanded}>
-              <CardContent sx={{ pt: 0 }}>
-                <TextField
-                  size="small"
-                  value={form.sql}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, sql: e.target.value }))
-                  }
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  maxRows={6}
-                  sx={{
-                    "& textarea": {
-                      fontFamily: "monospace",
-                      fontSize: "0.8125rem",
-                      lineHeight: 1.5,
-                    },
-                  }}
+            <Tabs
+              value={tabValue}
+              onChange={(_, v) => {
+                setTabValue(v);
+                setPage(0);
+              }}
+            >
+              <Tab
+                label={`数据列 (${dataset.columns.length})`}
+                sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+              />
+              <Tab
+                label={`指标 (${dataset.metrics.length})`}
+                sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+              />
+              <Tab
+                label="描述"
+                sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+              />
+              {dataset.kind !== "physical" && (
+                <Tab
+                  label="SQL"
+                  sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
                 />
-              </CardContent>
-            </Collapse>
-          </Card>
-        )}
-
-        {dataset &&
-          (dataset.metrics.length > 0 || dataset.columns.length > 0) && (
-            <Card sx={{ mt: 1.5 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  borderBottom: 1,
-                  borderColor: "divider",
-                  px: 2,
-                  minHeight: 48,
-                }}
+              )}
+            </Tabs>
+            {tabValue === 1 && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={handleAddMetric}
               >
-                <Tabs
-                  value={tabValue}
-                  onChange={(_, v) => {
-                    setTabValue(v);
-                    setPage(0);
-                  }}
-                >
-                  <Tab
-                    label={`数据列 (${dataset.columns.length})`}
-                    sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
-                  />
-                  <Tab
-                    label={`指标 (${dataset.metrics.length})`}
-                    sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
-                  />
-                </Tabs>
-                {tabValue === 1 && (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<AddIcon />}
-                    onClick={handleAddMetric}
-                  >
-                    添加指标
-                  </Button>
-                )}
-              </Box>
-              <CardContent sx={{ pt: 2 }}>
-                {tabValue === 0 && (
+                添加指标
+              </Button>
+            )}
+          </Box>
+              <CardContent sx={{ pt: 2, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {tabValue === 0 && (
                   <TableContainer
                     ref={columnsRef}
                     sx={{
                       border: "1px solid",
                       borderColor: "divider",
                       borderRadius: 1,
-                      maxHeight: "calc(100vh - 370px)",
+                      flex: 1,
                       overflow: "auto",
                     }}
                   >
@@ -555,7 +537,7 @@ export default function DatasetEdit() {
                       border: "1px solid",
                       borderColor: "divider",
                       borderRadius: 1,
-                      maxHeight: "calc(100vh - 370px)",
+                      flex: 1,
                       overflow: "auto",
                     }}
                   >
@@ -659,9 +641,10 @@ export default function DatasetEdit() {
                     </Table>
                   </TableContainer>
                 )}
-                {tabValue === 0
-                  ? dataset.columns.length > rowsPerPage
-                  : dataset.metrics.length > rowsPerPage && (
+                {(tabValue === 0 || tabValue === 1) && (
+                  (tabValue === 0
+                    ? dataset.columns.length > rowsPerPage
+                    : dataset.metrics.length > rowsPerPage) && (
                   <Box
                     sx={{
                       display: "flex",
@@ -712,11 +695,55 @@ export default function DatasetEdit() {
                       <ChevronRightIcon fontSize="small" />
                     </IconButton>
                   </Box>
+                ))}
+                {tabValue === 2 && (
+                  <Box sx={{ p: 1.5, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    <TextField
+                      size="small"
+                      label="描述"
+                      value={form.description}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, description: e.target.value }))
+                      }
+                      fullWidth
+                      multiline
+                      variant="outlined"
+                      sx={{
+                        flex: 1,
+                        "& .MuiOutlinedInput-root": { height: "100%", display: "flex", flexDirection: "column" },
+                        "& textarea": { flex: 1, overflow: "auto !important" },
+                      }}
+                    />
+                  </Box>
+                )}
+                {tabValue === 3 && dataset?.kind !== "physical" && (
+                  <Box sx={{ p: 1.5, flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                    <TextField
+                      size="small"
+                      value={form.sql}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, sql: e.target.value }))
+                      }
+                      fullWidth
+                      multiline
+                      variant="outlined"
+                      sx={{
+                        flex: 1,
+                        "& .MuiOutlinedInput-root": { height: "100%", display: "flex", flexDirection: "column" },
+                        "& textarea": {
+                          flex: 1,
+                          overflow: "auto !important",
+                          fontFamily: "monospace",
+                          fontSize: "0.8125rem",
+                          lineHeight: 1.5,
+                        },
+                      }}
+                    />
+                  </Box>
                 )}
               </CardContent>
             </Card>
           )}
-      </Box>
       <PageSpeedDial pageKeys="dataset_edit" />
       <Drawer
         open={addMetricOpen}

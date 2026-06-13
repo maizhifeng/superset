@@ -30,6 +30,7 @@ import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
 import CompareModal from "@/pages/Dashboard/CompareModal";
 import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
 import { useDrawerStore } from "@/store/drawerState";
+import { useNavStore } from "@/store/navStore";
 import type {
   CompareConfig,
   CompareDimension,
@@ -69,7 +70,6 @@ export default function Dashboard() {
   const [periodModalChartData, setPeriodModalChartData] = useState<
     Record<string, unknown> | undefined
   >(undefined);
-  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
   const [datasetCompareColumns, setDatasetCompareColumns] = useState<
     ColumnOption[]
   >([]);
@@ -237,35 +237,18 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const saveLayoutRef = useRef<() => Promise<void>>();
 
-  const [containerWidth, setContainerWidth] = useState(window.innerWidth);
+  const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
-  const drawerWidth = useDrawerStore((s) => s.drawerWidth);
+  const sidePanelPinned = useNavStore((s) => s.sidePanelPinned);
+  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
   useEffect(() => {
-    const vw = window.innerWidth;
-    const push = aiDrawerOpen ? drawerWidth : 0;
-    const padding = vw < 600 ? 8 : 32;
-    setContainerWidth(Math.max(200, vw - push - padding));
-  }, [aiDrawerOpen, drawerWidth]);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    const updateWidth = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (containerRef.current) {
-          setContainerWidth(containerRef.current.offsetWidth);
-        }
-      }, 250);
-    };
-    window.addEventListener("resize", updateWidth);
-    const observer = new ResizeObserver(updateWidth);
-    if (containerRef.current) observer.observe(containerRef.current);
-    updateWidth();
-    return () => {
-      window.removeEventListener("resize", updateWidth);
-      observer.disconnect();
-      clearTimeout(timer);
-    };
-  }, []);
+    const timer = setTimeout(() => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.offsetWidth);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sidePanelPinned, aiDrawerOpen]);
 
   const supportedVizTypes = useMemo(
     () =>
@@ -1194,8 +1177,7 @@ export default function Dashboard() {
           flex: 1,
           minHeight: 0,
           minWidth: 0,
-          overflow: "auto",
-          maxWidth: "100%",
+          overflow: "hidden",
           px: { xs: spacing.xs, md: spacing.md },
         }}
       >

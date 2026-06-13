@@ -1,0 +1,87 @@
+import Box from "@mui/material/Box";
+import IconButton from "@mui/material/IconButton";
+import MenuIcon from "@mui/icons-material/Menu";
+import TipsAndUpdatesIcon from "@mui/icons-material/TipsAndUpdates";
+import { keyframes } from "@mui/system";
+
+interface StatusBarProps {
+  tip?: { title: string; message: string } | null;
+  onMenuClick?: () => void;
+  showMenuButton?: boolean;
+}
+
+const scrollAnimation = keyframes`
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+`;
+
+export default function StatusBar({
+  tip,
+  onMenuClick,
+  showMenuButton = false,
+}: StatusBarProps) {
+  const tipText = tip ? `${tip.title} — ${tip.message}` : "";
+
+  return (
+    <Box
+      sx={{
+        height: 28,
+        display: "flex",
+        alignItems: "center",
+        bgcolor: "grey.100",
+        borderBottom: "1px solid",
+        borderColor: "divider",
+        px: 0.5,
+        gap: 0.5,
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      {showMenuButton && (
+        <IconButton
+          size="small"
+          onClick={onMenuClick}
+          sx={{
+            color: "text.secondary",
+            flexShrink: 0,
+            width: 24,
+            height: 24,
+          }}
+        >
+          <MenuIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      )}
+
+      <TipsAndUpdatesIcon
+        sx={{ fontSize: 14, flexShrink: 0, color: "primary.main", opacity: 0.8 }}
+      />
+
+      <Box
+        sx={{
+          flex: 1,
+          overflow: "hidden",
+          position: "relative",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        {tipText && (
+          <Box
+            sx={{
+              display: "flex",
+              whiteSpace: "nowrap",
+              animation: `${scrollAnimation} ${Math.max(tipText.length * 0.08, 10)}s linear infinite`,
+              fontSize: "0.75rem",
+              color: "text.secondary",
+              gap: 4,
+            }}
+          >
+            <Box component="span">{tipText}</Box>
+            <Box component="span">{tipText}</Box>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
