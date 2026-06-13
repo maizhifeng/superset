@@ -38,3 +38,13 @@ export const staggerSlide = keyframes`
   from { opacity: 0; transform: translateX(-8px); }
   to { opacity: 1; transform: translateX(0); }
 `;
+
+export const colorSlide = keyframes`
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+export const pulseGlow = keyframes`
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+  50% { box-shadow: 0 0 16px 4px rgba(0,0,0,0.08); }
+`;

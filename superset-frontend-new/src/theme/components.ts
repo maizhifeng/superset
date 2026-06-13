@@ -30,19 +30,18 @@ export default {
       contained: {
         boxShadow: "none",
         "&:hover": {
-          boxShadow:
-            "0 2px 4px rgba(184,101,58,0.08), 0 4px 12px rgba(184,101,58,0.12)",
+          boxShadow: "var(--mui-palette-shadow-md)",
         },
       },
       outlined: {
-        borderColor: "var(--mui-palette-divider, #ece5d8)",
+        borderColor: "var(--mui-palette-divider)",
         "&:hover": {
-          backgroundColor: "var(--mui-palette-action-hover, rgba(184,101,58,0.08))",
-          borderColor: "var(--mui-palette-text-secondary, #8c8172)",
+          backgroundColor: "var(--mui-palette-action-hover)",
+          borderColor: "var(--mui-palette-text-secondary)",
         },
       },
       text: {
-        "&:hover": { backgroundColor: "rgba(184, 101, 58, 0.08)" },
+        "&:hover": { backgroundColor: "var(--mui-palette-action-hover)" },
       },
       sizeSmall: { padding: "4px 10px", fontSize: "0.8125rem" },
       sizeMedium: { padding: "6px 16px" },
@@ -52,16 +51,14 @@ export default {
   MuiCard: {
     styleOverrides: {
       root: {
-        border: "1px solid var(--mui-palette-border-light, rgba(44,36,22,0.05))",
+        border: "1px solid var(--mui-palette-border-light)",
         borderRadius: 12,
-        backgroundColor: "var(--mui-palette-surface-main, #fefdfa)",
-        boxShadow:
-          "var(--mui-palette-shadow-card, 0 1px 2px rgba(44,36,22,0.02), 0 1px 4px rgba(44,36,22,0.03), 0 2px 8px rgba(44,36,22,0.02))",
+        backgroundColor: "var(--mui-palette-surface-main)",
+        boxShadow: "var(--mui-palette-shadow-card)",
         transition: `${transitions.boxShadow}, ${t("transform", timing.quick)}`,
         "&:hover": {
           transform: "translateY(-1px)",
-          boxShadow:
-            "var(--mui-palette-shadow-cardHover, 0 2px 4px rgba(44,36,22,0.03), 0 4px 12px rgba(44,36,22,0.05), 0 8px 24px rgba(184,101,58,0.04))",
+          boxShadow: "var(--mui-palette-shadow-cardHover)",
         },
       },
     },
@@ -80,7 +77,7 @@ export default {
       root: {
         transition: transitions.backgroundColor,
         "&:hover": {
-          backgroundColor: "var(--mui-palette-action-hover, rgba(184,101,58,0.04))",
+          backgroundColor: "var(--mui-palette-action-hover)",
         },
       },
     },
@@ -89,15 +86,14 @@ export default {
     styleOverrides: {
       paper: {
         borderRadius: 12,
-        boxShadow:
-          "0 4px 8px rgba(44,36,22,0.03), 0 12px 40px rgba(44,36,22,0.08)",
+        boxShadow: "var(--mui-palette-shadow-lg)",
       },
     },
   },
   MuiBackdrop: {
     styleOverrides: {
       root: {
-        backgroundColor: "rgba(44, 36, 22, 0.35)",
+        backgroundColor: "rgba(0, 0, 0, 0.35)",
         backdropFilter: "blur(3px)",
       },
     },
@@ -116,12 +112,11 @@ export default {
       head: {
         fontWeight: 600,
         fontSize: "0.8125rem",
-        borderBottom: "1px solid var(--mui-palette-divider, #ece5d8)",
+        borderBottom: "1px solid var(--mui-palette-divider)",
       },
       body: {
         fontSize: "0.875rem",
-        borderBottom:
-          "1px solid var(--mui-palette-border-light, rgba(44,36,22,0.05))",
+        borderBottom: "1px solid var(--mui-palette-border-light)",
       },
     },
   },
@@ -129,13 +124,13 @@ export default {
     styleOverrides: {
       root: {
         "& .MuiTableCell-head": {
-          backgroundColor: "var(--mui-palette-surface-variant, #f2ece2)",
+          backgroundColor: "var(--mui-palette-surface-variant)",
         },
       },
     },
   },
   MuiChip: {
-    styleOverrides: { root: { fontWeight: 500 } },
+    styleOverrides: { root: { fontWeight: 500, borderRadius: 6 } },
   },
   MuiTooltip: {
     styleOverrides: {
@@ -145,10 +140,10 @@ export default {
   MuiAppBar: {
     styleOverrides: {
       root: {
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-        backgroundColor: "var(--mui-palette-background-paper, #ffffff)",
-        borderBottom: "1px solid var(--mui-palette-divider, #ece5d8)",
-        color: "var(--mui-palette-text-primary, #2c2416)",
+        boxShadow: "none",
+        backgroundColor: "var(--mui-palette-background-paper)",
+        borderBottom: "1px solid var(--mui-palette-divider)",
+        color: "var(--mui-palette-text-primary)",
       },
     },
   },
@@ -157,7 +152,7 @@ export default {
       root: {
         transition: `${transitions.backgroundColor}, ${t("transform", timing.quick)}`,
         "&:hover": {
-          backgroundColor: "var(--mui-palette-action-hover, rgba(184,101,58,0.08))",
+          backgroundColor: "var(--mui-palette-action-hover)",
           transform: "scale(1.08)",
         },
         "&:active": { transform: "scale(0.95)" },
@@ -167,7 +162,7 @@ export default {
   MuiTabs: {
     styleOverrides: {
       indicator: {
-        backgroundColor: "var(--mui-palette-primary-main, #b8653a)",
+        backgroundColor: "var(--mui-palette-primary-main)",
         height: 2,
         borderRadius: "2px 2px 0 0",
         transition: t("transform", timing.standard),
@@ -182,7 +177,7 @@ export default {
         fontSize: "0.875rem",
         transition: transitions.color,
         "&.Mui-selected": {
-          color: "var(--mui-palette-primary-main, #b8653a)",
+          color: "var(--mui-palette-primary-main)",
         },
       },
     },
@@ -196,7 +191,7 @@ export default {
   },
   MuiDivider: {
     styleOverrides: {
-      root: { borderColor: "var(--mui-palette-divider, #ece5d8)" },
+      root: { borderColor: "var(--mui-palette-divider)" },
     },
   },
   MuiSkeleton: {
@@ -225,14 +220,14 @@ export default {
         transition: `${transitions.borderColor}, ${t("box-shadow", timing.quick)}`,
         "&:hover": {
           "& .MuiOutlinedInput-notchedOutline": {
-            borderColor: "var(--mui-palette-text-secondary, #8c8172)",
+            borderColor: "var(--mui-palette-text-secondary)",
           },
         },
         "&.Mui-focused": {
-          boxShadow: "0 0 0 3px rgba(184, 101, 58, 0.12)",
+          boxShadow: "var(--mui-palette-shadow-focus)",
           "& .MuiOutlinedInput-notchedOutline": {
             borderWidth: 2,
-            borderColor: "var(--mui-palette-primary-main, #b8653a)",
+            borderColor: "var(--mui-palette-primary-main)",
           },
         },
       },
