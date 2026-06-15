@@ -1,16 +1,16 @@
 import { useState, useCallback, useRef } from "react";
-import type { ChartData } from "@/types/api";
+import type { ChartData, ChartDataPayload, ChartDataRow, FormData } from "@/types/api";
 import api from "@/api";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import type { SimpleFilter } from "@/utils/query/types";
+import type { SimpleFilter, ChartDataResponseResult } from "@/utils/query/types";
 
 export { buildQueryObject };
 
-export function parseChartConfig(chart: ChartData): Record<string, unknown> {
+export function parseChartConfig(chart: ChartData): FormData {
   const raw = chart.params || chart.form_data || "{}";
   const fd = typeof raw === "string" ? JSON.parse(raw) : raw;
   return {
-    ...fd,
+    ...(fd as FormData),
     datasource:
       fd.datasource ||
       `${chart.datasource_id}__${chart.datasource_type || "table"}`,
@@ -19,20 +19,17 @@ export function parseChartConfig(chart: ChartData): Record<string, unknown> {
 
 interface FetchResult {
   id: number;
-  data: Record<string, unknown>;
-  totalRow: Record<string, unknown> | null;
+  data: ChartDataPayload;
+  totalRow: ChartDataRow | null;
 }
 
 export function useDashboardData() {
   const [chartMeta, setChartMeta] = useState<Record<number, ChartData>>({});
   const [chartData, setChartData] = useState<
-    Record<number, Record<string, unknown>>
+    Record<number, ChartDataPayload>
   >({});
   const [totalRows, setTotalRows] = useState<
-    Record<number, Record<string, unknown> | null>
-  >({});
-  const [otherRows, setOtherRows] = useState<
-    Record<number, Record<string, unknown> | null>
+    Record<number, ChartDataRow | null>
   >({});
 
   const buildAdhocFiltersRef = useRef<
@@ -96,24 +93,31 @@ export function useDashboardData() {
         }
         queries.push(totalQuery);
 
-        const body: Record<string, unknown> = {
+        const body: {
+          datasource: { id: number; type: string };
+          queries: typeof queries;
+          result_format: string;
+          result_type: string;
+          force?: boolean;
+          form_data?: FormData;
+        } = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
           queries,
           result_format: "json",
-          result_type: "full" as const,
+          result_type: "full",
         };
         if (force) body.force = true;
         const postRes = await api.post("/chart/data", body);
         const results = (
           Array.isArray(postRes.data?.result) ? postRes.data.result : []
-        ) as Record<string, unknown>[];
-        const first = results[0] || {};
-        const totalRaw = results[1];
-        const totalRow =
+        ) as ChartDataResponseResult[];
+        const first = (results[0] || {}) as ChartDataPayload;
+        const totalRaw = results[1] as ChartDataResponseResult | undefined;
+        const totalRow: ChartDataRow | null =
           totalRaw?.data &&
           Array.isArray(totalRaw.data) &&
           totalRaw.data.length > 0
-            ? (totalRaw.data[0] as Record<string, unknown>)
+            ? totalRaw.data[0]
             : null;
 
         let hasMore: boolean | undefined;
@@ -142,8 +146,8 @@ export function useDashboardData() {
       force?: boolean,
       page?: number,
     ) => {
-      const dataMap: Record<number, Record<string, unknown>> = {};
-      const totalRowMap: Record<number, Record<string, unknown> | null> = {};
+      const dataMap: Record<number, ChartDataPayload> = {};
+      const totalRowMap: Record<number, ChartDataRow | null> = {};
       const hasMoreMap: Record<number, boolean> = {};
       const CONCURRENCY = 3;
       for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
@@ -174,7 +178,7 @@ export function useDashboardData() {
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
       page?: number,
-    ): Promise<{ data: Record<string, unknown>; hasMore?: boolean } | null> => {
+    ): Promise<{ data: ChartDataPayload; hasMore?: boolean } | null> => {
       const chart = metaMap[chartId];
       if (!chart) return null;
       try {
@@ -212,7 +216,7 @@ export function useDashboardData() {
         };
         const postRes = await api.post("/chart/data", payload);
         const postResult = postRes.data?.result;
-        const data = Array.isArray(postResult)
+        const data: ChartDataPayload = Array.isArray(postResult)
           ? postResult[0] || {}
           : postResult || {};
 
@@ -235,11 +239,9 @@ export function useDashboardData() {
     chartMeta,
     chartData,
     totalRows,
-    otherRows,
     setChartMeta,
     setChartData,
     setTotalRows,
-    setOtherRows,
     buildAdhocFiltersRef,
     getChartDataWithFilters,
     fetchChartWithTotal,

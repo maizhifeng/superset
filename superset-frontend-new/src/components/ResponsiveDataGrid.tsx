@@ -14,7 +14,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
 import Pagination from "@mui/material/Pagination";
 import Typography from "@mui/material/Typography";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import { useMediaQuery, useTheme } from "@mui/material";
 import type { DataGridProps, GridPaginationModel } from "@mui/x-data-grid";
 import DataGridTable from "./DataGridTable";

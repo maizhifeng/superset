@@ -4,7 +4,10 @@ import { useMediaQuery, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 
+let cachedScrollbarWidth: number | null = null;
+
 function getScrollbarWidth(): number {
+  if (cachedScrollbarWidth !== null) return cachedScrollbarWidth;
   if (typeof document === "undefined") return 0;
   const outer = document.createElement("div");
   outer.style.visibility = "hidden";
@@ -12,9 +15,9 @@ function getScrollbarWidth(): number {
   document.body.appendChild(outer);
   const inner = document.createElement("div");
   outer.appendChild(inner);
-  const width = outer.offsetWidth - inner.offsetWidth;
+  cachedScrollbarWidth = outer.offsetWidth - inner.offsetWidth;
   outer.parentNode?.removeChild(outer);
-  return width;
+  return cachedScrollbarWidth;
 }
 
 const DataGrid = lazy(() =>

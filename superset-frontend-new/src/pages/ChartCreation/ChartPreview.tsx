@@ -5,6 +5,7 @@ import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsOption } from "echarts";
 import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
+import type { ChartDataPayload } from "@/types/api";
 import { formatMetricValue, type MetricFormatMap } from "@/utils/formatNumber";
 
 interface ChartPreviewProps {
@@ -12,7 +13,7 @@ interface ChartPreviewProps {
   resolvedType: string;
   hasValidType: boolean;
   metrics: string[];
-  chartData: Record<string, unknown> | null;
+  chartData: ChartDataPayload | null;
   loadingData: boolean;
   chartLibReady: boolean;
   option: EChartsOption | null;

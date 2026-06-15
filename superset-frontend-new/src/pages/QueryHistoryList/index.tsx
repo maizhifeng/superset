@@ -13,7 +13,7 @@ import FilterBar from "@/components/FilterBar";
 import ListPageLayout from "@/components/ListPageLayout";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 
 import type { QueryLog } from "@/types/api";

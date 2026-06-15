@@ -1,3 +1,5 @@
+import type { ChartDataRow, FormData } from "@/types/api";
+
 export type VizType = "line" | "bar" | "pie" | "table" | "big_number" | "auto";
 
 export interface DatasourceKey {
@@ -47,14 +49,14 @@ export interface QueryObject {
 export interface QueryContext {
   datasource: DatasourceKey;
   queries: QueryObject[];
-  form_data?: Record<string, unknown>;
+  form_data?: FormData;
   result_type: string;
   result_format: string;
   force: boolean;
 }
 
 export interface ChartDataResponseResult {
-  data: Record<string, unknown>[];
+  data: ChartDataRow[];
   colnames: string[];
   coltypes: number[];
   rowcount: number;

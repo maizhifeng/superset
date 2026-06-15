@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { produce } from "immer";
 import { useParams, useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Drawer from "@mui/material/Drawer";
 
-import type { DashboardData, ChartData } from "@/types/api";
+import type { DashboardData, ChartData, DashboardFilterValue, DashboardPosition } from "@/types/api";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import ChartEditor from "@/pages/ChartCreation/ChartEditor";
 import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
@@ -13,11 +12,6 @@ import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
 import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
 import api, { getDataset, getMetricFormatMap } from "@/api";
-import {
-  buildQueryObject,
-  extractQueryFields,
-} from "@/utils/query/extractQueryFields";
-import type { SimpleFilter } from "@/utils/query/types";
 import {
   DashboardFilterDrawer,
   refreshFilterValues,
@@ -30,20 +24,15 @@ import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
 import CompareModal from "@/pages/Dashboard/CompareModal";
 import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
 import { useDrawerStore } from "@/store/drawerState";
-import { useNavStore } from "@/store/navStore";
-import type {
-  CompareConfig,
-  CompareDimension,
-} from "@/pages/Dashboard/ChartCard";
-import type { ColumnOption } from "@/pages/Dashboard/CompareConfigModal";
 import { PRESET_INTERVALS } from "@/pages/Dashboard/ChartCard";
 import { useNotificationStore } from "@/store/notificationStore";
 import TableSkeleton from "@/components/TableSkeleton";
 import { EmptyState } from "@/superset-ui-mui/components";
 import {
   useDashboardData,
-  parseChartConfig,
 } from "@/pages/Dashboard/hooks/useDashboardData";
+import { useDashboardCompare } from "@/pages/Dashboard/hooks/useDashboardCompare";
+import { useDashboardLayout } from "@/pages/Dashboard/hooks/useDashboardLayout";
 import { spacing } from "@/theme/spacing";
 
 export default function Dashboard() {
@@ -53,29 +42,9 @@ export default function Dashboard() {
   const [gridId, setGridId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
   const prevTitleRef = useRef<string | null>(null);
 
-  const [compareConfig, setCompareConfig] = useState<CompareConfig | null>(
-    null,
-  );
-  const [mirrorData, setMirrorData] = useState<Record<string, unknown>>({});
-  const [compareModalOpen, setCompareModalOpen] = useState(false);
-  const [compareChartId, setCompareChartId] = useState<number | null>(null);
   const [addChartDialogOpen, setAddChartDialogOpen] = useState(false);
-  const [periodModalOpen, setPeriodModalOpen] = useState(false);
-  const [periodModalChartId, setPeriodModalChartId] = useState<number | null>(
-    null,
-  );
-  const [periodModalChartData, setPeriodModalChartData] = useState<
-    Record<string, unknown> | undefined
-  >(undefined);
-  const [datasetCompareColumns, setDatasetCompareColumns] = useState<
-    ColumnOption[]
-  >([]);
-  const [initialCompareColumns, setInitialCompareColumns] = useState<
-    ColumnOption[]
-  >([]);
 
   const {
     chartMeta,
@@ -88,6 +57,21 @@ export default function Dashboard() {
     getChartDataWithFilters,
     refreshChart: refreshChartData,
   } = useDashboardData();
+
+  const chartDataRef = useRef(chartData);
+  chartDataRef.current = chartData;
+
+  const compare = useDashboardCompare({
+    chartMeta,
+    chartData,
+    chartDataRef,
+    buildAdhocFiltersRef,
+  });
+
+  const compareConfigRef = useRef(compare.compareConfig);
+  compareConfigRef.current = compare.compareConfig;
+  const fetchMirrorRef = useRef(compare.fetchMirrorData);
+  fetchMirrorRef.current = compare.fetchMirrorData;
 
   const [chartPages, setChartPages] = useState<Record<number, number>>({});
   const [chartHasMore, setChartHasMore] = useState<Record<number, boolean>>({});
@@ -230,25 +214,12 @@ export default function Dashboard() {
   const hiddenFilters = useMemo(() => filters.slice(8), [filters]);
   const [pendingFilterIds, setPendingFilterIds] = useState<string[]>([]);
 
-  const nodeMapRef = useRef(nodeMap);
-  nodeMapRef.current = nodeMap;
-  const fullPositionRef = useRef<Record<string, unknown>>({});
-  const isSavingRef = useRef(false);
-  const [saving, setSaving] = useState(false);
-  const saveLayoutRef = useRef<() => Promise<void>>();
-
-  const [containerWidth, setContainerWidth] = useState(1200);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const sidePanelPinned = useNavStore((s) => s.sidePanelPinned);
-  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [sidePanelPinned, aiDrawerOpen]);
+  const layout = useDashboardLayout({
+    dashboardId: id ?? "",
+    nodeMap,
+    chartMeta,
+    onNodeMapChange: setNodeMap,
+  });
 
   const supportedVizTypes = useMemo(
     () =>
@@ -276,12 +247,12 @@ export default function Dashboard() {
     () =>
       layoutItems.map((item) => ({
         i: item.i,
-        x: containerWidth < 600 ? 0 : item.x,
+        x: layout.containerWidth < 600 ? 0 : item.x,
         y: item.y,
-        w: containerWidth < 600 ? 12 : item.w,
+        w: layout.containerWidth < 600 ? 12 : item.w,
         h: item.h,
       })),
-    [layoutItems, containerWidth],
+    [layoutItems, layout.containerWidth],
   );
 
   const loadDashboard = useCallback(async () => {
@@ -300,7 +271,7 @@ export default function Dashboard() {
       let root: LayoutNode | null = null;
       try {
         const posData = JSON.parse(dash.position_json || "{}");
-        fullPositionRef.current = posData;
+        layout.setFullPosition(posData);
         for (const [key, val] of Object.entries(posData)) {
           if (
             typeof val === "object" &&
@@ -449,63 +420,6 @@ export default function Dashboard() {
     loadDashboard();
   }, [loadDashboard]);
 
-  useEffect(() => {
-    if (!compareModalOpen || compareChartId == null) {
-      setDatasetCompareColumns([]);
-      setInitialCompareColumns([]);
-      return;
-    }
-    const dsId = chartMeta[compareChartId]?.datasource_id;
-    if (!dsId) {
-      setDatasetCompareColumns([]);
-      setInitialCompareColumns([]);
-      return;
-    }
-
-    let chartGroupbyCols: string[] = [];
-    try {
-      const chart = chartMeta[compareChartId];
-      if (chart) {
-        const fd = parseChartConfig(chart);
-        const { groupby, columns } = extractQueryFields(fd, chart.viz_type);
-        chartGroupbyCols = [...groupby, ...columns].filter(Boolean);
-      }
-    } catch {
-      // ignore
-    }
-
-    const numericTypes =
-      /^int\d*$|^bigint$|^smallint$|^tinyint$|^numeric$|^decimal$|^float$|^double$|^real$|^money$/i;
-    const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
-    const idPattern = /_?id$/i;
-    getDataset<{
-      columns: { column_name: string; type: string | null }[];
-    }>(dsId)
-      .then((dataset) => {
-        const allColumns: ColumnOption[] = (dataset.columns ?? [])
-          .filter((c) => {
-            if (!c.column_name || !c.type) return true;
-            if (timeTypes.test(c.type) || timeTypes.test(c.column_name))
-              return true;
-            if (idPattern.test(c.column_name)) return true;
-            return !numericTypes.test(c.type);
-          })
-          .map((c) => ({
-            datasetId: dsId,
-            column: c.column_name,
-            name: c.column_name,
-          }));
-        setDatasetCompareColumns(allColumns);
-        setInitialCompareColumns(
-          allColumns.filter((c) => chartGroupbyCols.includes(c.column)),
-        );
-      })
-      .catch(() => {
-        setDatasetCompareColumns([]);
-        setInitialCompareColumns([]);
-      });
-  }, [compareModalOpen, compareChartId, chartMeta]);
-
   const [navOpen, setNavOpen] = useState(false);
   const [navItems, setNavItems] = useState<{ id: number; name: string }[]>([]);
 
@@ -525,99 +439,6 @@ export default function Dashboard() {
 
   const chartMetaRef = useRef(chartMeta);
   chartMetaRef.current = chartMeta;
-
-  const chartDataRef = useRef(chartData);
-  chartDataRef.current = chartData;
-
-  const filterDataLocal = useCallback(
-    (
-      data: Record<string, unknown>,
-      dimensions: CompareDimension[],
-    ): Record<string, unknown> => {
-      if (data?.data && Array.isArray(data.data)) {
-        const filtered = (data.data as Record<string, unknown>[]).filter(
-          (row) =>
-            dimensions.every((d) =>
-              d.values.includes(String(row[d.dimension] ?? "")),
-            ),
-        );
-        return { ...data, data: filtered };
-      }
-      return data;
-    },
-    [],
-  );
-
-  const fetchMirrorData = useCallback(
-    async (
-      chartId: number,
-      dimensions: CompareDimension[],
-      existingDataOverride?: Record<string, unknown>,
-      forceServerQuery?: boolean,
-    ) => {
-      const chart = chartMeta[chartId];
-      if (!chart) return;
-
-      // If not forcing a fresh query and existing data is available, filter locally
-      if (!forceServerQuery) {
-        const existing = existingDataOverride ?? chartDataRef.current[chartId];
-        if (existing?.data && Array.isArray(existing.data)) {
-          setMirrorData(filterDataLocal(existing, dimensions));
-          return;
-        }
-      }
-
-      try {
-        const fd = parseChartConfig(chart);
-        const dsId =
-          chart.datasource_id ||
-          (fd.datasource ? Number(String(fd.datasource).split("__")[0]) : 0);
-        if (!dsId) return;
-        const query = buildQueryObject(fd, chart.viz_type);
-        if (!query.metrics || query.metrics.length === 0) return;
-
-        // Add compare dimension filters to the SQL query
-        const dimensionFilters: SimpleFilter[] = dimensions.map((d) => ({
-          col: d.dimension,
-          op: "IN",
-          val: d.values,
-        }));
-
-        const buildFn = buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
-        query.filters = [
-          ...(adhocFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          })) as SimpleFilter[]),
-          ...dimensionFilters,
-        ];
-        const force = adhocFilters.length > 0 || dimensions.length > 0;
-        const payload = {
-          datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries: [query],
-          form_data: fd,
-          result_format: "json",
-          result_type: "full" as const,
-          force,
-        };
-        const postRes = await api.post("/chart/data", payload);
-        const postResult = postRes.data?.result;
-        const rawData = Array.isArray(postResult)
-          ? postResult[0] || {}
-          : postResult || {};
-        setMirrorData(rawData);
-      } catch {
-        // Fall back to client-side filtering on server error
-        const existing = existingDataOverride ?? chartDataRef.current[chartId];
-        if (existing?.data && Array.isArray(existing.data)) {
-          setMirrorData(filterDataLocal(existing, dimensions));
-        }
-      }
-    },
-    [chartMeta, filterDataLocal],
-  );
 
   const refreshChartsRef = useRef<(...args: unknown[]) => void>(() => {});
   const [intervalSeconds, setIntervalSeconds] = useState(600);
@@ -653,7 +474,7 @@ export default function Dashboard() {
       try {
         const result = await refreshChartData(
           chartId,
-          chartMeta,
+          chartMetaRef.current,
           buildAdhocFiltersRef.current,
           page,
         );
@@ -663,15 +484,16 @@ export default function Dashboard() {
             const hm = result.hasMore;
             setChartHasMore((prev) => ({ ...prev, [chartId]: hm }));
           }
-          if (compareConfig?.enabled && compareConfig.chartId === chartId) {
-            fetchMirrorData(chartId, compareConfig.dimensions, result.data);
+          const cc = compareConfigRef.current;
+          if (cc?.enabled && cc.chartId === chartId) {
+            fetchMirrorRef.current(chartId, cc.dimensions, result.data);
           }
         }
       } finally {
         setChartLoading((prev) => ({ ...prev, [chartId]: false }));
       }
     },
-    [chartMeta, refreshChartData, compareConfig, fetchMirrorData],
+    [refreshChartData],
   );
 
   const handleChartPageChange = useCallback(
@@ -686,9 +508,10 @@ export default function Dashboard() {
   const refreshCharts = useCallback(
     async (chartIds?: Set<number>) => {
       refreshFilterValues();
+      const meta = chartMetaRef.current;
       const ids = chartIds
         ? Array.from(chartIds)
-        : Object.keys(chartMeta).map(Number);
+        : Object.keys(meta).map(Number);
       if (ids.length === 0) return;
       setChartLoading((prev) => {
         const next = { ...prev };
@@ -708,19 +531,16 @@ export default function Dashboard() {
       try {
         const { dataMap, totalRowMap } = await getChartDataWithFilters(
           ids,
-          chartMeta,
+          meta,
           undefined,
           true,
         );
         setChartData((prev) => ({ ...prev, ...dataMap }));
         setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
-        if (compareConfig?.enabled) {
-          const freshData = dataMap[compareConfig.chartId];
-          fetchMirrorData(
-            compareConfig.chartId,
-            compareConfig.dimensions,
-            freshData,
-          );
+        const cc = compareConfigRef.current;
+        if (cc?.enabled) {
+          const freshData = dataMap[cc.chartId];
+          fetchMirrorRef.current(cc.chartId, cc.dimensions, freshData);
         }
       } finally {
         setChartLoading((prev) => {
@@ -730,7 +550,7 @@ export default function Dashboard() {
         });
       }
     },
-    [chartMeta, compareConfig, fetchMirrorData, getChartDataWithFilters],
+    [getChartDataWithFilters],
   );
   refreshChartsRef.current = refreshCharts;
 
@@ -760,7 +580,7 @@ export default function Dashboard() {
         );
         const chart = metaRes.data?.result;
         if (chart) {
-          const newMeta = { ...chartMeta, [chartId]: chart };
+          const newMeta = { ...chartMetaRef.current, [chartId]: chart };
           setChartMeta(newMeta);
           const { dataMap } = await getChartDataWithFilters([chartId], newMeta);
           setChartData((prev) => ({ ...prev, ...dataMap }));
@@ -769,110 +589,8 @@ export default function Dashboard() {
         /* refresh failed */
       }
     },
-    [setSearchParams, chartMeta],
+    [setSearchParams],
   );
-
-  const saveLayout = useCallback(async () => {
-    if (!id) {
-      console.warn("[saveLayout] no id");
-      return;
-    }
-    isSavingRef.current = true;
-    setSaving(true);
-    try {
-      const updatedPosition = produce(fullPositionRef.current, (draft) => {
-        const d = draft as Record<string, unknown>;
-        d["DASHBOARD_VERSION_KEY"] = "v2";
-
-        // Copy nodes from nodeMap (unfreeze with spread)
-        for (const [key, node] of Object.entries(nodeMapRef.current)) {
-          if (!node.type) continue;
-          if (
-            node.type === "CHART" &&
-            node.meta?.chartId != null &&
-            !chartMetaRef.current[node.meta.chartId as number]
-          ) {
-            delete d[key];
-            continue;
-          }
-          d[key] = { ...node } as unknown as Record<string, unknown>;
-        }
-
-        // Remove children references to deleted charts
-        for (const key of Object.keys(d)) {
-          const n = d[key] as Record<string, unknown> | undefined;
-          if (
-            n &&
-            typeof n === "object" &&
-            "children" in n &&
-            Array.isArray(n.children)
-          ) {
-            n.children = n.children.filter(
-              (childId: string) => d[childId] && typeof d[childId] === "object",
-            );
-          }
-        }
-
-        // Remove stale CHART nodes that are no longer in nodeMap
-        for (const key of Object.keys(d)) {
-          const n = d[key] as Record<string, unknown> | undefined;
-          if (
-            n &&
-            typeof n === "object" &&
-            n.type === "CHART" &&
-            !nodeMapRef.current[key]
-          ) {
-            delete d[key];
-          }
-        }
-
-        // Normalize ROOT and GRID keys (backend expects ROOT_ID/GRID_ID)
-        const rootKey = Object.keys(d).find((k) => {
-          const v = d[k] as Record<string, unknown> | undefined;
-          return v?.type === "ROOT";
-        });
-        if (rootKey && rootKey !== "ROOT_ID") {
-          const rootVal = d[rootKey] as Record<string, unknown> | undefined;
-          if (rootVal) {
-            d["ROOT_ID"] = { ...rootVal, id: "ROOT_ID" };
-            delete d[rootKey];
-            const children = d["ROOT_ID"] as
-              | Record<string, unknown>
-              | undefined;
-            const gridId = (children?.children as string[] | undefined)?.[0];
-            if (gridId && gridId !== "GRID_ID" && d[gridId]) {
-              const gridVal = d[gridId] as Record<string, unknown> | undefined;
-              if (gridVal) {
-                d["GRID_ID"] = { ...gridVal, id: "GRID_ID" };
-                delete d[gridId];
-                const replaceChildRef = (obj: Record<string, unknown>) => {
-                  const kids = obj.children as string[] | undefined;
-                  if (kids) {
-                    obj.children = kids.map((c) =>
-                      c === gridId ? "GRID_ID" : c,
-                    );
-                  }
-                };
-                replaceChildRef(d["ROOT_ID"] as Record<string, unknown>);
-                replaceChildRef(d["GRID_ID"] as Record<string, unknown>);
-              }
-            }
-          }
-        }
-      }) as Record<string, Record<string, unknown>>;
-      const saved = JSON.stringify(updatedPosition);
-      await api.put(`/dashboard/${id}`, {
-        position_json: saved,
-      });
-      fullPositionRef.current = updatedPosition;
-    } catch {
-      // layout save failure should not disrupt UX
-    } finally {
-      setSaving(false);
-      isSavingRef.current = false;
-    }
-  }, [id]);
-  saveLayoutRef.current = saveLayout;
 
   const handleCloseDrawer = useCallback(() => {
     setSearchParams((prev) => {
@@ -884,10 +602,10 @@ export default function Dashboard() {
   const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFilterChange = useCallback(
-    (id: string, value: unknown) => {
-      setFilter(id, value);
+    (filterId: string, value: unknown) => {
+      setFilter(filterId, value);
       if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
-      const changedFilter = filtersRef.current.find((f) => f.id === id);
+      const changedFilter = filtersRef.current.find((f) => f.id === filterId);
       const affectedIds = changedFilter?.chartsInScope?.length
         ? new Set(changedFilter.chartsInScope)
         : undefined;
@@ -895,15 +613,15 @@ export default function Dashboard() {
         const next = { ...prev };
         const ids = affectedIds
           ? Array.from(affectedIds)
-          : Object.keys(chartMeta).map(Number);
-        for (const chartId of ids) next[chartId] = true;
+          : Object.keys(chartMetaRef.current).map(Number);
+        for (const cid of ids) next[cid] = true;
         return next;
       });
       filterTimerRef.current = setTimeout(() => {
         refreshChartsRef.current(affectedIds);
       }, 300);
     },
-    [setFilter, chartMeta],
+    [setFilter],
   );
 
   const handleClearAll = useCallback(() => {
@@ -925,7 +643,7 @@ export default function Dashboard() {
   const handleOpenInsight = useCallback(
     (chartId: number) => {
       const openAiDrawer = useDrawerStore.getState().openAiDrawer;
-      const activeFilters: Record<string, unknown> = {};
+      const activeFilters: Record<string, DashboardFilterValue> = {};
       for (const f of filters) {
         const state = filterState[f.id];
         if (state?.value != null) {
@@ -946,38 +664,10 @@ export default function Dashboard() {
     [filters, filterState, chartMeta, id],
   );
 
-  const handleToggleCompare = useCallback(
-    (chartId: number) => {
-      if (compareConfig?.enabled && compareConfig.chartId === chartId) {
-        setCompareConfig(null);
-        setMirrorData({});
-      } else {
-        setCompareChartId(chartId);
-        setCompareModalOpen(true);
-      }
-    },
-    [compareConfig],
-  );
-
-  const handleApplyCompare = useCallback(
-    (dimensions: CompareDimension[]) => {
-      if (compareChartId == null) return;
-      const cc: CompareConfig = {
-        enabled: true,
-        chartId: compareChartId,
-        dimensions,
-      };
-      setCompareConfig(cc);
-      setCompareModalOpen(false);
-      fetchMirrorData(compareChartId, dimensions, undefined, true);
-    },
-    [compareChartId, fetchMirrorData],
-  );
-
   const handleAddChartSelect = useCallback(
     async (chart: { id: number; slice_name: string; viz_type: string }) => {
       setAddChartDialogOpen(false);
-      const alreadyInLayout = Object.values(nodeMapRef.current).some(
+      const alreadyInLayout = Object.values(layout.nodeMapRef.current).some(
         (n) => n.type === "CHART" && n.meta?.chartId === chart.id,
       );
       if (alreadyInLayout) return;
@@ -1011,30 +701,33 @@ export default function Dashboard() {
           sliceName: chart.slice_name,
         },
       };
-      let gridNode = Object.values(nodeMapRef.current).find(
+      let gridNode = Object.values(layout.nodeMapRef.current).find(
         (n) => n.type === "GRID",
       );
-      let rootNode = Object.values(nodeMapRef.current).find(
+      let rootNode = Object.values(layout.nodeMapRef.current).find(
         (n) => n.type === "ROOT",
       );
-      const updatedNodeMap = { ...nodeMapRef.current, [chartKey]: newNode };
+      const updatedNodeMap = {
+        ...layout.nodeMapRef.current,
+        [chartKey]: newNode,
+      };
 
       if (!gridNode || !rootNode) {
-        const gridId = "GRID_ID";
-        const rootId = "ROOT_ID";
+        const gId = "GRID_ID";
+        const rId = "ROOT_ID";
         const grid: LayoutNode = {
-          id: gridId,
+          id: gId,
           type: "GRID",
           children: [chartKey],
         };
         const root: LayoutNode = {
-          id: rootId,
+          id: rId,
           type: "ROOT",
-          children: [gridId],
+          children: [gId],
         };
-        updatedNodeMap[rootId] = root;
-        updatedNodeMap[gridId] = grid;
-        setGridId(gridId);
+        updatedNodeMap[rId] = root;
+        updatedNodeMap[gId] = grid;
+        setGridId(gId);
       } else {
         const updatedGrid = {
           ...gridNode,
@@ -1042,13 +735,13 @@ export default function Dashboard() {
         };
         updatedNodeMap[gridNode.id] = updatedGrid;
       }
-      nodeMapRef.current = updatedNodeMap;
+      layout.nodeMapRef.current = updatedNodeMap;
       setNodeMap(updatedNodeMap);
-      fullPositionRef.current = {
-        ...fullPositionRef.current,
+      layout.fullPositionRef.current = {
+        ...layout.fullPositionRef.current,
         ...updatedNodeMap,
-      };
-      await saveLayout();
+      } as DashboardPosition;
+      await layout.saveLayout();
       if (chartMetaData) {
         try {
           const { dataMap, totalRowMap } = await getChartDataWithFilters(
@@ -1062,17 +755,17 @@ export default function Dashboard() {
         }
       }
     },
-    [saveLayout, getChartDataWithFilters],
+    [layout, getChartDataWithFilters],
   );
 
   const handleDeleteChart = useCallback(
     async (chartId: number) => {
       const chartKey = `CHART-${chartId}`;
-      const node = nodeMapRef.current[chartKey];
+      const node = layout.nodeMapRef.current[chartKey];
       if (!node || node.type !== "CHART") return;
 
       const updatedNodeMap: Record<string, LayoutNode> = {};
-      for (const [key, n] of Object.entries(nodeMapRef.current)) {
+      for (const [key, n] of Object.entries(layout.nodeMapRef.current)) {
         if (n.type === "CHART" && n.meta?.chartId === chartId) continue;
         if (n.children?.includes(chartKey)) {
           updatedNodeMap[key] = {
@@ -1085,7 +778,7 @@ export default function Dashboard() {
       }
       delete updatedNodeMap[chartKey];
 
-      nodeMapRef.current = updatedNodeMap;
+      layout.nodeMapRef.current = updatedNodeMap;
       setNodeMap(updatedNodeMap);
       setChartMeta((prev) => {
         const next = { ...prev };
@@ -1104,45 +797,14 @@ export default function Dashboard() {
         return next;
       });
       setDashboardDimensions([]);
-      await saveLayout();
+      await layout.saveLayout();
     },
-    [saveLayout],
+    [layout],
   );
 
   useEffect(() => {
     if (!filterDrawerOpen) setPendingFilterIds([]);
   }, [filterDrawerOpen]);
-
-  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleLayoutChange = useCallback(
-    (
-      newLayout: { i: string; x: number; y: number; w: number; h: number }[],
-    ) => {
-      if (containerWidth < 600) return;
-      const updated = produce(nodeMapRef.current, (draft) => {
-        for (const item of newLayout) {
-          if (draft[item.i]?.meta) {
-            draft[item.i].meta = {
-              ...draft[item.i].meta,
-              width: item.w,
-              height: Math.round((item.h * 60) / 8),
-              x: item.x,
-              y: item.y,
-            };
-          }
-        }
-      });
-      nodeMapRef.current = updated;
-      setNodeMap(updated);
-      // Debounced save — react-grid-layout calls onLayoutChange BEFORE onDragStop
-      if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
-      layoutSaveTimerRef.current = setTimeout(() => {
-        saveLayoutRef.current?.();
-      }, 300);
-    },
-    [containerWidth],
-  );
 
   if (loading) {
     return (
@@ -1182,20 +844,20 @@ export default function Dashboard() {
         }}
       >
         <DashboardGrid
-          containerWidth={containerWidth}
+          containerWidth={layout.containerWidth}
           gridLayout={gridLayout}
           layoutItems={layoutItems}
           chartMeta={chartMeta}
           chartData={chartData}
           chartLoading={chartLoading}
-          isDragging={isDragging}
-          saving={saving}
-          containerRef={containerRef}
-          onLayoutChange={handleLayoutChange}
-          onDragStart={() => setIsDragging(true)}
-          onDragStop={() => setIsDragging(false)}
-          onResizeStart={() => setIsDragging(true)}
-          onResizeStop={() => setIsDragging(false)}
+          isDragging={layout.isDragging}
+          saving={layout.saving}
+          containerRef={layout.containerRef}
+          onLayoutChange={layout.handleLayoutChange}
+          onDragStart={() => layout.setIsDragging(true)}
+          onDragStop={() => layout.setIsDragging(false)}
+          onResizeStart={() => layout.setIsDragging(true)}
+          onResizeStop={() => layout.setIsDragging(false)}
           onRefresh={refreshChart}
           onEdit={(chartId: number) => {
             useDrawerStore.getState().closeAiDrawer();
@@ -1204,14 +866,10 @@ export default function Dashboard() {
           onDelete={handleDeleteChart}
           onInsight={handleOpenInsight}
           onAddChart={() => setAddChartDialogOpen(true)}
-          compareConfig={compareConfig}
-          mirrorData={mirrorData}
-          onToggleCompare={handleToggleCompare}
-          onOpenCompareBigScreen={(chartId, chartData) => {
-            setPeriodModalChartId(chartId);
-            setPeriodModalChartData(chartData);
-            setPeriodModalOpen(true);
-          }}
+          compareConfig={compare.compareConfig}
+          mirrorData={compare.mirrorData}
+          onToggleCompare={compare.handleToggleCompare}
+          onOpenCompareBigScreen={compare.openPeriodModal}
           totalRows={totalRows}
           intervalSeconds={intervalSeconds}
           onCycleInterval={cycleInterval}
@@ -1253,30 +911,19 @@ export default function Dashboard() {
         </Box>
       </Drawer>
       <CompareConfigModal
-        open={compareModalOpen}
-        columns={datasetCompareColumns}
-        initialColumns={initialCompareColumns}
-        fullData={
-          compareChartId != null ? chartData[compareChartId] : undefined
-        }
-        onApply={handleApplyCompare}
-        onCancel={() => {
-          setCompareModalOpen(false);
-          setCompareChartId(null);
-        }}
+        open={compare.compareModalOpen}
+        columns={compare.datasetCompareColumns}
+        initialColumns={compare.initialCompareColumns}
+        fullData={compare.compareFullData}
+        onApply={compare.handleApplyCompare}
+        onCancel={compare.closeCompareModal}
       />
       <CompareModal
-        open={periodModalOpen}
-        chartId={periodModalChartId}
-        chartData={periodModalChartData}
-        chartMeta={
-          periodModalChartId != null ? chartMeta[periodModalChartId] : undefined
-        }
-        onClose={() => {
-          setPeriodModalOpen(false);
-          setPeriodModalChartId(null);
-          setPeriodModalChartData(undefined);
-        }}
+        open={compare.periodModalOpen}
+        chartId={compare.periodModalChartId}
+        chartData={compare.periodModalChartData}
+        chartMeta={compare.compareChartMeta}
+        onClose={compare.closePeriodModal}
       />
       <AddChartDialog
         open={addChartDialogOpen}
@@ -1287,7 +934,7 @@ export default function Dashboard() {
       <UndoRedoKeyListeners
         onUndo={() => {}}
         onRedo={() => {}}
-        onSave={saveLayout}
+        onSave={layout.saveLayout}
         onToggleFullScreen={() => {
           if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen();

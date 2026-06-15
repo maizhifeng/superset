@@ -31,7 +31,7 @@ import Tab from "@mui/material/Tab";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import DateColumnDetector from "@/components/DateColumnDetector";
 import { detectDateColumnsFromMeta } from "@/utils/dateHeuristics";
@@ -113,7 +113,13 @@ export default function DatasetEdit() {
         ? `/dataset/${id}?override_columns=true`
         : `/dataset/${id}`;
 
-      const payload: Record<string, unknown> = {
+      const payload: {
+        table_name: string;
+        description: string | null;
+        sql: string | null;
+        columns?: { id?: number; column_name: string; type?: string; is_dttm?: boolean; expression?: string | null; extra?: string | null }[];
+        metrics?: { id?: number; metric_name: string; expression: string; verbose_name: string | null; description: string | null; d3format: string | null }[];
+      } = {
         table_name: f.table_name,
         description: f.description || null,
         sql: f.sql || null,

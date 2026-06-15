@@ -8,7 +8,7 @@ import {
   useDashboardFilters,
 } from "@/components/DashboardFilter";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import type { DashboardData } from "@/types/api";
 import type { LayoutNode } from "@/utils/dashboard/layout";
 

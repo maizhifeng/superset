@@ -93,6 +93,7 @@ import {
 } from "@/utils/formatNumber";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
+import type { ChartDataPayload, ChartDataRow } from "@/types/api";
 
 export interface CompareDimension {
   dimension: string;
@@ -112,7 +113,7 @@ interface ChartCardProps {
   chartId: number;
   sliceName?: string;
   vizType: string;
-  data?: Record<string, unknown>;
+  data?: ChartDataPayload;
   loading?: boolean;
   meta?: { slice_name?: string };
   isDragging: boolean;
@@ -122,13 +123,13 @@ interface ChartCardProps {
   onDelete: (chartId: number) => void;
   onInsight?: (chartId: number) => void;
   compareConfig?: CompareConfig | null;
-  mirrorData?: Record<string, unknown>;
+  mirrorData?: ChartDataPayload;
   onToggleCompare: (chartId: number) => void;
   onOpenCompareBigScreen?: (
     chartId: number,
-    chartData?: Record<string, unknown>,
+    chartData?: ChartDataPayload,
   ) => void;
-  totalRow?: Record<string, unknown> | null;
+  totalRow?: ChartDataRow | null;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMap?: MetricFormatMap;
@@ -138,7 +139,7 @@ interface ChartCardProps {
 }
 
 function pctSplitIndex(
-  sorted: Record<string, unknown>[],
+  sorted: ChartDataRow[],
   col: string,
   pct: number,
 ): number {
@@ -234,10 +235,10 @@ function ChartCard({
   const copyData = async () => {
     try {
       if (vizType === "table") {
-        const raw = data as Record<string, unknown> | undefined;
-        const colnames = (raw?.colnames as string[] | undefined) ?? [];
+        const raw = data;
+        const colnames = raw?.colnames ?? [];
         const rows = Array.isArray(raw?.data)
-          ? (raw.data as Record<string, unknown>[])
+          ? raw.data
           : [];
         if (colnames.length === 0) return;
         const header = colnames.join("\t");
@@ -307,12 +308,8 @@ function ChartCard({
 
   const tableFormatCell: CellFormatter | undefined = useMemo(() => {
     if (!data) return undefined;
-    const colnames = (data as Record<string, unknown>).colnames as
-      | string[]
-      | undefined;
-    const coltypes = (data as Record<string, unknown>).coltypes as
-      | number[]
-      | undefined;
+    const colnames = data.colnames;
+    const coltypes = data.coltypes;
     if (!colnames || !coltypes) return undefined;
     const dateCols = new Set(colnames.filter((_, i) => coltypes[i] === 2));
     return (key: string, value: unknown) => {
@@ -327,12 +324,8 @@ function ChartCard({
 
   const { sortMetricCol, dimCols } = useMemo(() => {
     if (!data) return { sortMetricCol: "", dimCols: [] as string[] };
-    const colnames = (data as Record<string, unknown>).colnames as
-      | string[]
-      | undefined;
-    const coltypes = (data as Record<string, unknown>).coltypes as
-      | number[]
-      | undefined;
+    const colnames = data.colnames;
+    const coltypes = data.coltypes;
     if (!colnames || !coltypes)
       return { sortMetricCol: "", dimCols: [] as string[] };
     const smCol =
@@ -342,10 +335,8 @@ function ChartCard({
     return { sortMetricCol: smCol, dimCols: dCols };
   }, [data]);
 
-  const rows = Array.isArray(
-    (data as Record<string, unknown> | undefined)?.data,
-  )
-    ? ((data as Record<string, unknown>).data as Record<string, unknown>[])
+  const rows = Array.isArray(data?.data)
+    ? (data.data as ChartDataRow[])
     : [];
 
   const sorted = useMemo(
@@ -369,7 +360,7 @@ function ChartCard({
   const processedData = useMemo(() => {
     if (!data) return data;
 
-    let resultRows: Record<string, unknown>[];
+    let resultRows: ChartDataRow[];
     let hasMods = false;
 
     if (pct95Active && sortMetricCol && splitIdx < rows.length) {
@@ -382,13 +373,13 @@ function ChartCard({
     if (totalRow && dimCols.length > 0 && vizType === "table") {
       resultRows = [
         ...resultRows,
-        { ...totalRow, [dimCols[0]]: "合计", __isSummary: true },
+        { ...totalRow, [dimCols[0]]: "合计", __isSummary: true } as ChartDataRow,
       ];
       hasMods = true;
     }
 
     if (!hasMods) return data;
-    return { ...data, data: resultRows } as Record<string, unknown>;
+    return { ...data, data: resultRows } as ChartDataPayload;
   }, [
     data,
     rows,

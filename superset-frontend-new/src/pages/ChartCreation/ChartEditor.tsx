@@ -13,7 +13,7 @@ import { buildEChartsOption, loadECharts } from "@/utils/echarts";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
 import api, { getDataset, getMetricFormatMap } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import ChartPreview from "./ChartPreview";
@@ -21,7 +21,8 @@ import ChartEditorForm from "./ChartEditorForm";
 import ChartTypeSelector from "./ChartTypeSelector";
 import ExploreViewContainer from "@/explore/components/ExploreViewContainer";
 import ExploreWelcome from "./ExploreWelcome";
-import type { Dataset } from "@/types/api";
+import type { Dataset, FormData, ChartDataPayload, ChartData } from "@/types/api";
+import type { AdhocMetric, QueryOrderBy } from "@/utils/query/types";
 import { formatNumber } from "@/utils/formatNumber";
 
 interface FieldOption {
@@ -87,8 +88,8 @@ interface ChartInitialData {
   slice_name: string;
   viz_type: string;
   datasource_id?: number;
-  form_data?: string | Record<string, unknown> | null;
-  params?: string | Record<string, unknown> | null;
+  form_data?: string | FormData | null;
+  params?: string | FormData | null;
 }
 
 interface ChartEditorProps {
@@ -104,6 +105,8 @@ interface ChartEditorProps {
     comparator: string | string[];
   }[];
 }
+
+let datasetsCache: Dataset[] | null = null;
 
 export default function ChartEditor({
   onChartSaved,
@@ -142,10 +145,7 @@ export default function ChartEditor({
   const [metricFormatMap, setMetricFormatMap] = useState<
     Record<string, string>
   >({});
-  const [savedFormData, setSavedFormData] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
+  const [savedFormData, setSavedFormData] = useState<FormData | null>(null);
   const [sortEntry, setSortEntry] = useState<{
     column: string;
     direction: "asc" | "desc";
@@ -212,7 +212,7 @@ export default function ChartEditor({
       }));
   }, [columnsList]);
 
-  const [chartData, setChartData] = useState<Record<string, unknown> | null>(
+  const [chartData, setChartData] = useState<ChartDataPayload | null>(
     null,
   );
   const [loadingData, setLoadingData] = useState(false);
@@ -255,9 +255,15 @@ export default function ChartEditor({
   };
 
   useEffect(() => {
+    if (datasetsCache) {
+      setDatasets(datasetsCache);
+      setLoadingDatasets(false);
+      return;
+    }
     api
       .get<{ result: Dataset[] }>("/dataset/?q=(page_size:200,page:0)")
       .then((res) => {
+        datasetsCache = res.data.result;
         setDatasets(res.data.result);
         setLoadingDatasets(false);
       })
@@ -268,16 +274,16 @@ export default function ChartEditor({
   }, []);
 
   function restoreFormData(
-    raw: string | Record<string, unknown> | null | undefined,
+    raw: string | FormData | null | undefined,
   ) {
     if (!raw) return;
-    let parsed: Record<string, unknown> = {};
+    let parsed: FormData = {};
     try {
       parsed =
         typeof raw === "string"
           ? JSON.parse(raw || "{}")
           : typeof raw === "object" && raw !== null
-            ? (raw as Record<string, unknown>)
+            ? (raw as FormData)
             : {};
     } catch {
       return;
@@ -291,13 +297,7 @@ export default function ChartEditor({
           .map((item: unknown) => {
             if (typeof item === "string") return item;
             if (item && typeof item === "object")
-              return (
-                ((
-                  (item as Record<string, unknown>).column as
-                    | Record<string, unknown>
-                    | undefined
-                )?.column_name as string) || ""
-              );
+              return ((item as AdhocMetric).column?.column_name as string) || "";
             return "";
           })
           .filter(Boolean),
@@ -307,7 +307,7 @@ export default function ChartEditor({
     }
     const ob = parsed.orderby;
     if (Array.isArray(ob) && ob.length > 0) {
-      const entry = ob[0];
+      const entry = ob[0] as QueryOrderBy;
       const col =
         typeof entry[0] === "string" ? entry[0] : entry[0]?.column?.column_name;
       if (col)
@@ -336,14 +336,14 @@ export default function ChartEditor({
     api
       .get(`/chart/${sliceId}`)
       .then((res) => {
-        const chart = res.data?.result as Record<string, unknown> | undefined;
+        const chart = res.data?.result as ChartData | undefined;
         if (!chart) return;
         setSliceName(String(chart.slice_name ?? ""));
         setVizType(String(chart.viz_type ?? ""));
         setDatasourceId(String(chart.datasource_id ?? ""));
         const raw = (chart.params || chart.form_data) as
           | string
-          | Record<string, unknown>
+          | FormData
           | undefined;
         restoreFormData(raw ?? null);
       })
@@ -470,7 +470,7 @@ export default function ChartEditor({
       abortRef.current = controller;
       setLoadingData(true);
 
-      const queryFormData: Record<string, unknown> = {
+      const queryFormData: FormData = {
         metrics: buildMetricsPayload(previewParams.metrics),
         groupby: previewParams.groupby,
         viz_type: previewParams.viz_type,
@@ -563,7 +563,7 @@ export default function ChartEditor({
   const bigNumberValue = useMemo(() => {
     if (!chartData?.data) return null;
     const rows = Array.isArray(chartData.data)
-      ? (chartData.data as Record<string, unknown>[])
+      ? chartData.data
       : [];
     if (rows.length === 0) return null;
     const keys = Object.keys(rows[0]);
@@ -580,7 +580,7 @@ export default function ChartEditor({
     if (groupby.length >= 2) return true;
     if (groupby.length === 1 && chartData?.data) {
       const rows = Array.isArray(chartData.data)
-        ? (chartData.data as Record<string, unknown>[])
+        ? chartData.data
         : [];
       const dimKey = groupby[0];
       const isTimeKey = /year|date|time/i.test(dimKey);
@@ -643,7 +643,7 @@ export default function ChartEditor({
         (d) => d.id === Number(datasourceId),
       );
       const effectiveType = resolvedType === "auto" ? "line" : resolvedType;
-      const formData: Record<string, unknown> = {
+      const formData: FormData = {
         viz_type: effectiveType,
         datasource: `${datasourceId}__table`,
         metrics: buildMetricsPayload(metrics),
@@ -719,7 +719,7 @@ export default function ChartEditor({
   const handleRunQuery = useCallback(() => {
     setPage(0);
     setLoadingData(true);
-    const queryFormData: Record<string, unknown> = {
+    const queryFormData: FormData = {
       metrics: buildMetricsPayload(metrics),
       groupby,
       viz_type: resolvedType === "auto" ? "line" : resolvedType,

@@ -6,7 +6,7 @@ import MenuIcon from "@mui/icons-material/Menu";
 import ChatInput from "@/components/ChatInput";
 import { FilterToolbarButton } from "@/components/DashboardFilter";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import type { DashboardData } from "@/types/api";
 
 interface UseDashboardToolbarParams {
