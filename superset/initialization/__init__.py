@@ -20,7 +20,7 @@ import contextlib
 import logging
 import os
 import sys
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, Callable, Generator, TYPE_CHECKING
 
 import wtforms_json
 from colorama import Fore, Style
@@ -759,6 +759,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         self.setup_bundle_manifest()
         self.register_blueprints()
         self.setup_mui_static_routes()
+        self.setup_llm_proxy()
         self.configure_wtf()
         self.configure_middlewares()
         self.configure_cache()
@@ -1036,6 +1037,105 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             return send_from_directory(mui_dir, "index.html")
 
         self.superset_app.register_blueprint(mui_bp)
+
+    def setup_llm_proxy(self) -> None:
+        """Proxy /llm/<path> requests to the configured LLM endpoint.
+
+        The frontend AI assistant uses /llm as a proxy path to reach the LLM.
+        This blueprint forwards those requests to the upstream LLM server
+        configured in the LLM_PROXY_TARGET config/environment variable.
+        """
+        import requests as http_requests
+        from flask import Blueprint, Response, stream_with_context
+
+        target = self.superset_app.config.get("LLM_PROXY_TARGET", "").rstrip("/")
+        if not target:
+            return
+
+        llm_bp = Blueprint("llm_proxy", __name__)
+
+        @llm_bp.route("/<path:subpath>", methods=["GET", "POST", "OPTIONS"])
+        def llm_proxy_handler(subpath: str) -> FlaskResponse:
+            target_url = f"{target}/{subpath}"
+
+            # Filter out hop-by-hop headers
+            excluded_headers = {"host", "content-length", "transfer-encoding",
+                                "content-encoding", "connection", "keep-alive"}
+            upstream_headers = {
+                k: v for k, v in request.headers
+                if k.lower() not in excluded_headers
+            }
+
+            if request.method == "OPTIONS":
+                resp = Response()
+                resp.headers["Access-Control-Allow-Origin"] = "*"
+                resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                return resp
+
+            if request.method == "GET":
+                upstream = http_requests.get(
+                    target_url,
+                    headers=upstream_headers,
+                    params=request.args,
+                    timeout=60,
+                )
+                return Response(
+                    upstream.content,
+                    status=upstream.status_code,
+                    headers=[(k, v) for k, v in upstream.headers.items()
+                             if k.lower() not in excluded_headers],
+                )
+
+            # POST
+            body = request.get_data()
+            is_stream = (
+                request.headers.get("accept", "") == "text/event-stream"
+                or request.args.get("stream", "").lower() == "true"
+            )
+
+            if is_stream:
+                upstream = http_requests.post(
+                    target_url,
+                    headers=upstream_headers,
+                    data=body,
+                    stream=True,
+                    timeout=120,
+                )
+
+                def generate() -> Generator[bytes, None, None]:
+                    for chunk in upstream.iter_content(chunk_size=None):
+                        if chunk:
+                            yield chunk
+
+                resp_headers = [
+                    (k, v) for k, v in upstream.headers.items()
+                    if k.lower() not in excluded_headers
+                ]
+                return Response(
+                    stream_with_context(generate()),
+                    status=upstream.status_code,
+                    headers=resp_headers,
+                )
+
+            upstream = http_requests.post(
+                target_url,
+                headers=upstream_headers,
+                data=body,
+                timeout=120,
+            )
+            return Response(
+                upstream.content,
+                status=upstream.status_code,
+                headers=[(k, v) for k, v in upstream.headers.items()
+                         if k.lower() not in excluded_headers],
+            )
+
+        self.superset_app.register_blueprint(llm_bp, url_prefix="/llm")
+
+        # Exempt the LLM proxy handler from CSRF checks, since it proxies
+        # requests to an external LLM server that doesn't use Superset CSRF tokens.
+        csrf.exempt(llm_proxy_handler)
 
     def setup_bundle_manifest(self) -> None:
         manifest_processor.init_app(self.superset_app)

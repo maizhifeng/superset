@@ -125,6 +125,9 @@ TALISMAN_CONFIG = {
     "session_cookie_secure": False,
 }
 
+# LLM proxy target for AI assistant (/llm/* requests forwarded here)
+LLM_PROXY_TARGET = os.getenv("LLM_PROXY_TARGET", "")
+
 # Rate limiting via Redis (not in-memory)
 RATELIMIT_STORAGE_URI = f"redis://{REDIS_AUTH}{REDIS_HOST}:{REDIS_PORT}/2"
 RATELIMIT_STRATEGY = "fixed-window"
