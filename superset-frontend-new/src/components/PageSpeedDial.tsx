@@ -2,8 +2,8 @@ import { useState, type ReactNode } from "react";
 import SpeedDial from "@mui/material/SpeedDial";
 import SpeedDialAction from "@mui/material/SpeedDialAction";
 import SpeedDialIcon from "@mui/material/SpeedDialIcon";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
-import type { ToolEntry } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
+import type { ToolEntry } from "@/store/toolbarStore";
 
 interface PickedTool {
   id: string;

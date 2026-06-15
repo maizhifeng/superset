@@ -4,6 +4,64 @@ export interface ApiResponse<T> {
   id?: number;
 }
 
+export type ChartDataRow = Record<string, string | number>;
+
+export interface ChartDataPayload {
+  data?: ChartDataRow[];
+  colnames?: string[];
+  coltypes?: number[];
+  rowcount?: number;
+  status?: string;
+  error?: string | null;
+  query?: string;
+  applied_filters?: { column: string }[];
+  rejected_filters?: { column: string; reason: string }[];
+  [key: string]: unknown;
+}
+
+export interface FormData {
+  viz_type?: string;
+  datasource?: string;
+  metrics?: unknown[];
+  metric?: unknown;
+  groupby?: string[];
+  columns?: string[];
+  orderby?: unknown[];
+  order_desc?: boolean;
+  timeseries_limit_metric?: unknown;
+  granularity_sqla?: string;
+  time_range?: string;
+  adhoc_filters?: unknown[];
+  row_limit?: number;
+  row_offset?: number;
+  extra?: string;
+  [key: string]: unknown;
+}
+
+export interface DashboardFilterValue {
+  value: unknown;
+  column: string;
+  filterType: string;
+}
+
+export interface DashboardPosition {
+  [nodeId: string]: {
+    id?: string;
+    type?: string;
+    children?: string[];
+    meta?: {
+      chartId?: number;
+      width?: number;
+      height?: number;
+      x?: number;
+      y?: number;
+      sliceName?: string;
+      [key: string]: unknown;
+    };
+    [key: string]: unknown;
+  };
+}
+
 export interface DashboardData {
   id: number;
   dashboard_title: string;

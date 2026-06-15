@@ -1,4 +1,5 @@
 import type { VizType, AdhocMetric, QueryObject, QueryOrderBy } from "./types";
+import type { FormData } from "@/types/api";
 
 const NO_GROUPBY_VIZ: VizType[] = ["big_number"];
 
@@ -7,7 +8,7 @@ function isVizType(v: string): v is VizType {
 }
 
 export function extractQueryFields(
-  formData: Record<string, unknown>,
+  formData: FormData,
   vizType?: string,
 ): {
   metrics: (string | AdhocMetric)[];
@@ -55,7 +56,7 @@ export function extractQueryFields(
 }
 
 export function buildQueryObject(
-  formData: Record<string, unknown>,
+  formData: FormData,
   vizType?: string,
 ): QueryObject {
   const {
@@ -101,12 +102,12 @@ export function buildQueryObject(
 }
 
 export function buildChartQuery(
-  formData: Record<string, unknown>,
+  formData: FormData,
   vizType?: string,
 ): {
   datasource: { id: number; type: "table" };
   queries: QueryObject[];
-  form_data: Record<string, unknown>;
+  form_data: FormData;
 } {
   const datasourceStr = formData.datasource as string | undefined;
   let dsId = 0;

@@ -1,3 +1,4 @@
+import type { ChartDataPayload } from "@/types/api";
 import { formatNumber, formatPctValue, isRatioMetric, type MetricFormatMap } from "./formatNumber";
 
 function formatEChartsValue(key: string, value: number, formatMap?: MetricFormatMap): string {
@@ -51,7 +52,7 @@ export const chartTypeToECharts: Record<string, string> = {
 
 export function buildEChartsOption(
   vizType: string,
-  data: Record<string, unknown>,
+  data: ChartDataPayload,
   formatMap?: MetricFormatMap,
 ) {
   const echartsType = chartTypeToECharts[vizType] || "bar";
@@ -71,7 +72,7 @@ export function buildEChartsOption(
           radius: ["30%", "60%"],
           center: ["50%", "50%"],
           data: Array.isArray(data?.data)
-            ? (data.data as Record<string, unknown>[])
+            ? data.data
                 .slice(0, 10)
                 .map((d) => ({
                   name: String(Object.values(d)[0] || ""),
@@ -91,7 +92,7 @@ export function buildEChartsOption(
   }
 
   const rows = Array.isArray(data?.data)
-    ? (data.data as Record<string, unknown>[])
+    ? data.data
     : [];
   const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
   const categoryKey = keys[0] || "category";

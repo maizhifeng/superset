@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import type { ChartData } from "@/types/api";
+import type { ChartData, DashboardFilterValue } from "@/types/api";
 
 export type AiDrawerMode = "assistant" | "insight";
 
 interface OpenInsightOpts {
   chartId: number;
   chartMeta?: ChartData;
-  filters?: Record<string, unknown>;
+  filters?: Record<string, DashboardFilterValue>;
   dashboardId?: string;
 }
 
@@ -16,7 +16,7 @@ interface DrawerState {
   drawerWidth: number;
   insightChartId: number | null;
   insightChartMeta: ChartData | undefined;
-  insightFilters: Record<string, unknown>;
+  insightFilters: Record<string, DashboardFilterValue>;
   openAiDrawer: (mode: AiDrawerMode, insightOpts?: OpenInsightOpts) => void;
   closeAiDrawer: () => void;
   setDrawerWidth: (width: number) => void;

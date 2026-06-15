@@ -16,7 +16,7 @@ import Typography from "@mui/material/Typography";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
-import { useToolbarStore } from "@/contexts/ToolbarContext";
+import { useToolbarStore } from "@/store/toolbarStore";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import ListPageLayout from "@/components/ListPageLayout";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";

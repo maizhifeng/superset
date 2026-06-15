@@ -25,7 +25,8 @@ import { extractQueryFields } from "@/utils/query/extractQueryFields";
 import { formatMetricValue } from "@/utils/formatNumber";
 import type { MetricFormatMap } from "@/utils/formatNumber";
 import type { SimpleFilter, QueryObject } from "@/utils/query/types";
-import type { QueryResult, ChartData } from "@/types/api";
+import type { QueryResult, ChartData, ChartDataPayload, ChartDataRow, FormData } from "@/types/api";
+import type { ChartDataResponseResult } from "@/utils/query/types";
 
 interface GameOption {
   papp_id: string;
@@ -56,7 +57,7 @@ interface CompareModalProps {
   open: boolean;
   chartId: number | null;
   onClose: () => void;
-  chartData?: Record<string, unknown>;
+  chartData?: ChartDataPayload;
   chartMeta?: ChartData;
 }
 
@@ -86,7 +87,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
   const [selectedCchNames, setSelectedCchNames] = useState<string[]>([]);
   const [channelInput, setChannelInput] = useState("");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
-  const [chartFormData, setChartFormData] = useState<Record<string, unknown> | null>(null);
+  const [chartFormData, setChartFormData] = useState<FormData | null>(null);
   const [chartVizType, setChartVizType] = useState<string | undefined>(undefined);
   const [chartDsId, setChartDsId] = useState<number | null>(null);
   const [chartDsType, setChartDsType] = useState<string>("table");
@@ -94,10 +95,10 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
   const [channelValues, setChannelValues] = useState<string[]>([]);
   const [hoveredCell, setHoveredCell] = useState<{ table: "primary" | "secondary"; row: number } | null>(null);
   const [metricFormatMap, setMetricFormatMap] = useState<MetricFormatMap>({});
-  const [intraSecondaryResult, setIntraSecondaryResult] = useState<{ columns: { name: string; type?: string }[]; data: Record<string, unknown>[] } | null>(null);
-  const intraSecondaryAggRef = useRef<Record<string, unknown> | null>(null);
+  const [intraSecondaryResult, setIntraSecondaryResult] = useState<{ columns: { name: string; type?: string }[]; data: ChartDataRow[] } | null>(null);
+  const intraSecondaryAggRef = useRef<ChartDataRow | null>(null);
   const queryFilterSnapshot = useRef<{ games: SelectedGame[]; cchNames: string[]; channels: string[] } | null>(null);
-  const sectionAggregateCacheRef = useRef<Record<string, Record<string, unknown>>>({});
+  const sectionAggregateCacheRef = useRef<Record<string, ChartDataRow>>({});
   const scrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const syncDisabled = useRef(false);
 
@@ -289,7 +290,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       const BATCH = 3;
 
       // Build detail queries (one per game, full dimensions)
-      let detailRows: Record<string, unknown>[] = [];
+      let detailRows: ChartDataRow[] = [];
       let colNames: string[] = [];
 
       for (let i = 0; i < selectedGames.length; i += BATCH) {
@@ -325,10 +326,10 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               force: true,
             };
             const res = await api.post("/chart/data", payload);
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
-            const rows: Record<string, unknown>[] = [];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
+            const rows: ChartDataRow[] = [];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && Array.isArray(data)) rows.push(...data);
             }
             return rows;
@@ -347,7 +348,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       // Intra-project secondary query: when 1 game + at least 1 filter level
       // Must run BEFORE the detailRows early return so the secondary can still show data
       // even when the primary filter matches nothing.
-      let secondaryResult: { columns: { name: string; type?: string }[]; data: Record<string, unknown>[] } | null = null;
+      let secondaryResult: { columns: { name: string; type?: string }[]; data: ChartDataRow[] } | null = null;
       if (selectedGames.length === 1 && selectedCchNames.length <= 1 && selectedChannels.length <= 1 && (selectedCchNames.length > 0 || selectedChannels.length > 0)) {
         const game = selectedGames[0];
         const sharedMetrics = extractQueryFields(chartFormData, chartVizType).metrics;
@@ -379,9 +380,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [secQuery1],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && Array.isArray(data) && data.length > 0) {
                 secondaryResult = {
                   columns: Object.keys(data[0]).filter((k) => k !== "id").map((name) => {
@@ -418,9 +419,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [secQuery2],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && Array.isArray(data) && data.length > 0) {
                 secondaryResult = {
                   columns: Object.keys(data[0]).filter((k) => k !== "id").map((name) => {
@@ -456,9 +457,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [{ result_type: "full" as const, metrics: sharedMetrics, groupby: [COL.papp_name], columns: [], filters: aggFilters }],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const aggResults = (Array.isArray(aggRes.data?.result) ? aggRes.data.result : []) as Record<string, unknown>[];
+            const aggResults = (Array.isArray(aggRes.data?.result) ? aggRes.data.result : []) as ChartDataResponseResult[];
             for (const r of aggResults) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && data.length > 0) { intraSecondaryAggRef.current = data[0]; break; }
             }
           } catch { /* secondary agg failed */ }
@@ -527,7 +528,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       }
 
       // Fetch aggregate per game — bare query, no form_data to avoid granularity leak
-      let aggRows: Record<string, unknown>[] = [];
+      let aggRows: ChartDataRow[] = [];
       for (let i = 0; i < selectedGames.length; i += BATCH) {
         const batch = selectedGames.slice(i, i + BATCH);
         const batchAggs = await Promise.all(
@@ -554,21 +555,21 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             };
             try {
               const res = await api.post("/chart/data", payload);
-              const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
-              const rows: Record<string, unknown>[] = [];
+              const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
+              const rows: ChartDataRow[] = [];
               for (const r of results) {
-                const data = r.data as Record<string, unknown>[] | undefined;
+                const data = r.data as ChartDataRow[] | undefined;
                 if (data && Array.isArray(data)) rows.push(...data);
               }
               return rows;
-            } catch { return [] as Record<string, unknown>[]; }
+            } catch { return [] as ChartDataRow[]; }
           }),
         );
         for (const rows of batchAggs) aggRows.push(...rows);
       }
 
       // Build tree rows: aggregate rows (parents) + detail rows (children)
-      const treeRows: Record<string, unknown>[] = [];
+      const treeRows: ChartDataRow[] = [];
       let rowId = 0;
       const pappNameMap = new Map<string, string>();
       for (const g of selectedGames) pappNameMap.set(g.papp_name, g.papp_id);
@@ -576,7 +577,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       // Add parent rows from aggregate
       for (const aggRow of aggRows) {
         const pname = String(aggRow[COL.papp_name] ?? "");
-        treeRows.push({ ...aggRow, id: `p_${rowId++}`, treePath: [pname] });
+        treeRows.push({ ...aggRow, id: `p_${rowId++}`, treePath: [pname] } as unknown as ChartDataRow);
       }
 
       // Add child rows from detail data
@@ -584,7 +585,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
         const pname = String(detRow[COL.papp_name] ?? "");
         const cch = selectedCchNames.length > 0 ? String(detRow[COL.cch_name] ?? "") : "";
         const tval = String(detRow[timeCol] ?? "");
-        treeRows.push({ ...detRow, id: `c_${rowId++}`, treePath: [pname, cch || tval, cch ? tval : undefined].filter(Boolean) });
+        treeRows.push({ ...detRow, id: `c_${rowId++}`, treePath: [pname, cch || tval, cch ? tval : undefined].filter(Boolean) } as unknown as ChartDataRow);
       }
 
       const columns = colNames.map((name: string) => {
@@ -598,7 +599,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
       });
 
       // Per-section aggregate queries (for cross-comparison sections)
-      const sectionAggs: Record<string, Record<string, unknown>> = {};
+      const sectionAggs: Record<string, ChartDataRow> = {};
       const sharedMetrics = extractQueryFields(chartFormData, chartVizType).metrics;
       const timeFilters: SimpleFilter[] = timeCol && selectedGames[0] ? [
         { col: timeCol, op: ">=", val: selectedGames[0].dateRange.start },
@@ -621,9 +622,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [{ result_type: "full" as const, metrics: sharedMetrics, groupby: [COL.cch_name], columns: [], filters }],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && data.length > 0) { sectionAggs[extractName(cch)] = data[0]; break; }
             }
           } catch { /* aggregate query failed */ }
@@ -640,9 +641,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [{ result_type: "full" as const, metrics: sharedMetrics, groupby: [COL.channel_name], columns: [], filters }],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && data.length > 0) { sectionAggs[ch] = data[0]; break; }
             }
           } catch { /* aggregate query failed */ }
@@ -659,9 +660,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               queries: [{ result_type: "full" as const, metrics: sharedMetrics, groupby: [COL.papp_name], columns: [], filters }],
               result_format: "json" as const, result_type: "full" as const, force: true,
             });
-            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as Record<string, unknown>[];
+            const results = (Array.isArray(res.data?.result) ? res.data.result : []) as ChartDataResponseResult[];
             for (const r of results) {
-              const data = r.data as Record<string, unknown>[] | undefined;
+              const data = r.data as ChartDataRow[] | undefined;
               if (data && data.length > 0) { sectionAggs[g.papp_name] = data[0]; break; }
             }
           } catch { /* aggregate query failed */ }
@@ -676,9 +677,9 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
         channels: [...selectedChannels],
       };
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: Record<string, unknown> } };
-      const respData = axiosErr?.response?.data || {};
-      const serverMsg = (respData as Record<string, unknown>).message || (respData as Record<string, unknown>).error || JSON.stringify(respData);
+      const axiosErr = err as { response?: { data?: { message?: string; error?: string } }; message?: string };
+      const respData = axiosErr?.response?.data;
+      const serverMsg = respData?.message || respData?.error || axiosErr?.message || JSON.stringify(respData);
       setError(typeof serverMsg === "string" ? serverMsg : "查询失败");
     } finally {
       setLoading(false);
@@ -1016,7 +1017,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           const colGroup = <colgroup>{colWidths.map((w, i) => <col key={i} width={w} />)}</colgroup>;
 
           let rowCounter = 0;
-          const renderGroup = (groupKey: string, rows: Record<string, unknown>[], tableName: "primary" | "secondary") => {
+          const renderGroup = (groupKey: string, rows: ChartDataRow[], tableName: "primary" | "secondary") => {
             const isPrimary = tableName === "primary";
             const parent = rows[0];
             const children = rows.slice(1);
@@ -1129,7 +1130,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           );
 
           // Unified table component
-          const renderSection = (groupKey: string, rows: Record<string, unknown>[], tableName: string): React.ReactNode => (
+          const renderSection = (groupKey: string, rows: ChartDataRow[], tableName: string): React.ReactNode => (
             <Box key={groupKey} sx={{ ...(tableName !== "primary" ? { borderTop: "2px solid", borderTopColor: "primary.light" } : {}) }}>
               <Table size="small" sx={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
                 {colGroup}
@@ -1150,10 +1151,10 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           );
 
           // Build secondary tree rows (if intra-project was active at query time)
-          let intraSecondaryRows: Record<string, unknown>[] = [];
+          let intraSecondaryRows: ChartDataRow[] = [];
           if (intraSecondaryResult && intraSecondaryResult.data.length > 0) {
             const apiAgg = intraSecondaryAggRef.current;
-            const aggRow: Record<string, unknown> = {};
+            const aggRow: ChartDataRow = {};
             if (apiAgg) {
               Object.assign(aggRow, apiAgg);
               aggRow[COL.papp_name] = "其余渠道汇总";
@@ -1184,7 +1185,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               aggRow[COL.channel_name] = "其余媒体";
             }
             const detailRows = intraSecondaryResult.data.map((r) => {
-              const row: Record<string, unknown> = {};
+              const row: ChartDataRow = {};
               for (const col of columns) {
                 const dn = (col as any).displayName ?? col.name;
                 const isTime = dn === "日期" || dn === "周" || dn === "月";
@@ -1221,8 +1222,8 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             const aggCache = sectionAggregateCacheRef.current;
 
             // Helper: build section from detail rows
-            const makeSection = (label: string, filterFn: (row: Record<string, unknown>) => boolean, tableName: string) => {
-              const allRows = data.filter(filterFn);
+            const makeSection = (label: string, filterFn: (row: ChartDataRow) => boolean, tableName: string) => {
+              const allRows = data.filter(filterFn) as ChartDataRow[];
               if (allRows.length === 0) return null;
               const dataAgg = allRows.find((r) => String(r.id ?? "").startsWith("p_"));
               const detailRows = allRows.filter((r) => !String(r.id ?? "").startsWith("p_"));
@@ -1282,7 +1283,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             if (isIntraSnap) {
               const game = snapGames[0];
               const gameName = game.papp_name;
-              const primaryFilter = (r: Record<string, unknown>) => {
+              const primaryFilter = (r: ChartDataRow) => {
                 if (String(r[COL.papp_name] ?? "") !== gameName) return false;
                 if (snapCchNames.length === 1 && (r[COL.cch_name] ?? "") !== "" && String(r[COL.cch_name] ?? "") !== extractName(snapCchNames[0])) return false;
                 if (snapChannels.length === 1 && (r[COL.channel_name] ?? "") !== "" && String(r[COL.channel_name] ?? "") !== snapChannels[0]) return false;

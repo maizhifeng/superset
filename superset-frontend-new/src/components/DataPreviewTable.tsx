@@ -13,6 +13,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
+import type { ChartDataRow } from "@/types/api";
 import { formatMetricValue } from "@/utils/formatNumber";
 
 export type CellFormatter = (key: string, value: unknown) => string;
@@ -73,7 +74,7 @@ export default function DataPreviewTable({
   const pageSize = 50;
 
   const rows = Array.isArray(data?.data)
-    ? (data.data as Record<string, unknown>[])
+    ? (data.data as ChartDataRow[])
     : [];
   const keys =
     rows.length > 0

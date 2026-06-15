@@ -8,7 +8,7 @@ import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
 import { GridLayout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-import type { ChartData } from "@/types/api";
+import type { ChartData, ChartDataPayload, ChartDataRow } from "@/types/api";
 import ChartCard from "@/pages/Dashboard/ChartCard";
 import type { CompareConfig } from "@/pages/Dashboard/ChartCard";
 import type { ChartLayoutItem } from "@/utils/dashboard/layout";
@@ -18,7 +18,7 @@ interface DashboardGridProps {
   gridLayout: { i: string; x: number; y: number; w: number; h: number }[];
   layoutItems: ChartLayoutItem[];
   chartMeta: Record<number, ChartData>;
-  chartData: Record<number, Record<string, unknown>>;
+  chartData: Record<number, ChartDataPayload>;
   chartLoading: Record<number, boolean>;
   isDragging: boolean;
   saving: boolean;
@@ -36,13 +36,13 @@ interface DashboardGridProps {
   onInsight?: (chartId: number) => void;
   onAddChart?: () => void;
   compareConfig?: CompareConfig | null;
-  mirrorData?: Record<string, unknown>;
+  mirrorData?: ChartDataPayload;
   onToggleCompare: (chartId: number) => void;
   onOpenCompareBigScreen?: (
     chartId: number,
-    chartData?: Record<string, unknown>,
+    chartData?: ChartDataPayload,
   ) => void;
-  totalRows?: Record<number, Record<string, unknown> | null>;
+  totalRows?: Record<number, ChartDataRow | null>;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMaps?: Record<number, Record<string, string>>;

@@ -31,7 +31,7 @@ import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useDrawerStore } from "@/store/drawerState";
-import { useConversationStore } from "@/stores/conversationStore";
+import { useConversationStore } from "@/store/conversationStore";
 import { useAiStream } from "@/hooks/useAiStream";
 import { useNotificationStore } from "@/store/notificationStore";
 import { blink } from "@/theme/keyframes";
@@ -56,10 +56,10 @@ interface AiDrawerProps {
   variant?: "assistant" | "insight";
   chartId?: number | null;
   chartMeta?: ChartData;
-  filters?: Record<string, unknown>;
+  filters?: Record<string, DashboardFilterValue>;
 }
 
-import type { ChartData } from "@/types/api";
+import type { ChartData, DashboardFilterValue } from "@/types/api";
 
 const knowledgeCards: KnowledgeCard[] = [
   {
@@ -828,7 +828,7 @@ export default function AiDrawer({
                     chartId != null &&
                     insight.generate(
                       chartId,
-                      (filters as Record<string, unknown>) || {},
+                      filters || {},
                     )
                   }
                 >
@@ -960,7 +960,7 @@ export default function AiDrawer({
                         chartId != null &&
                         insight.generate(
                           chartId,
-                          (filters as Record<string, unknown>) || {},
+                          filters || {},
                         )
                       }
                     >
@@ -1013,7 +1013,7 @@ export default function AiDrawer({
                     chartId != null &&
                     insight.generate(
                       chartId,
-                      (filters as Record<string, unknown>) || {},
+                      filters || {},
                     )
                   }
                 >
