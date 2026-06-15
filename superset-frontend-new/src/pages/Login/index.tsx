@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
@@ -20,12 +20,20 @@ export default function Login() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const login = useAuthStore((s) => s.login);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const authLoading = useAuthStore((s) => s.loading);
   const location = useLocation();
   const navigate = useNavigate();
   const themeMode = useThemeStore((s) => s.theme);
   const isVibrant = themeMode === "vibrant";
 
   const from = (location.state as { from?: string })?.from || "/";
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [authLoading, isAuthenticated, navigate, from]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +48,25 @@ export default function Login() {
       setSubmitting(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "100vh",
+          bgcolor: "background.default",
+        }}
+      >
+        <Box
+          component="span"
+          sx={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid", borderColor: "primary.main", borderTopColor: "transparent", animation: "spin 600ms linear infinite" }}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box
