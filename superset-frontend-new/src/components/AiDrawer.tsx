@@ -4,7 +4,10 @@ import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
+import ListItemText from "@mui/material/ListItemText";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import Collapse from "@mui/material/Collapse";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
@@ -26,7 +29,6 @@ import SmartInput from "@/components/AiDrawer/SmartInput";
 import MessageBubble from "@/components/AiDrawer/MessageBubble";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
-import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
 import DocViewer, { getDocTitle } from "@/components/DocViewer";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
@@ -101,18 +103,40 @@ function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
   const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
   if (idx === -1) return [];
   const block = text.slice(idx + DRILL_DOWN_MARKER.length).trim();
-  return block
-    .split("\n")
-    .map((l) => l.replace(/^[-*]\s*/, "").trim())
-    .filter((l) => l.length > 3)
-    .slice(0, 5)
+  const lines = block.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+
+  // 优先｜分隔格式（向后兼容）
+  const pipeResults = lines
+    .filter((l) => !l.startsWith("---"))
     .map((l) => {
       const sep = l.indexOf("|");
-      if (sep !== -1) {
-        return { label: l.slice(0, sep).trim(), prompt: l.slice(sep + 1).trim() };
-      }
-      return { label: l, prompt: l };
-    });
+      if (sep === -1) return null;
+      return { label: l.slice(0, sep).trim(), prompt: l.slice(sep + 1).trim() };
+    })
+    .filter((s): s is DrillDownSuggestion => s !== null && s.label.length > 0 && s.prompt.length > 0);
+
+  if (pipeResults.length > 0) return pipeResults;
+
+  // 无序列表格式：每项是完整的分析指令，去掉开头的 - 或 *
+  const listItems = lines
+    .map((l) => l.replace(/^[-*]\s+/, "").trim())
+    .filter((l) => l.length > 5 && !l.startsWith("```") && !l.startsWith("---"));
+
+  if (listItems.length > 0) return listItems.map((l) => ({ label: l, prompt: l }));
+
+  // 成对解析（旧格式兼容）
+  const pairResults: DrillDownSuggestion[] = [];
+  for (let i = 0; i < lines.length - 1; i++) {
+    const labelMatch = lines[i].match(/^(?:展示标签|标签)[：:]\s*(.+)/);
+    const promptMatch = lines[i + 1].match(/^(?:完整分析指令|指令|提问)[：:]\s*(.+)/);
+    if (labelMatch && promptMatch) {
+      pairResults.push({ label: labelMatch[1].trim(), prompt: promptMatch[1].trim() });
+      i++;
+    }
+  }
+  if (pairResults.length > 0) return pairResults;
+
+  return [];
 }
 
 function stripDrillDownSection(text: string): string {
@@ -156,6 +180,7 @@ export default function AiDrawer({
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  const dateRangeRef = useRef("");
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     draggingRef.current = true;
@@ -220,10 +245,10 @@ export default function AiDrawer({
   }, [activeThreadId, createThread]);
 
   const handleSend = useCallback(
-    async (text: string) => {
+    async (text: string, keepSuggestions?: boolean) => {
       const threadId = ensureThread();
       addMessage(threadId, "user", { type: "text", body: text });
-      setSuggestions([]);
+      if (!keepSuggestions) setSuggestions([]);
       setStreamingText("");
 
       try {
@@ -234,7 +259,7 @@ export default function AiDrawer({
             content: (m.content as { type: "text"; body: string }).body,
           }));
 
-        const full = await stream(text, history, (t) => setStreamingText(t));
+        const full = await stream(text, history, (t) => setStreamingText(t), true);
         setStreamingText("");
         addMessage(threadId, "assistant", { type: "text", body: full });
 
@@ -311,6 +336,7 @@ export default function AiDrawer({
   const startDailyReport = async (reportPrompt: string, promptTemplate: string) => {
     const threadId = createThread();
     addMessage(threadId, "user", { type: "text", body: "📊 正在从数据集查询昨日数据..." });
+    dateRangeRef.current = "昨日";
     setStreamingText("");
 
     try {
@@ -355,7 +381,8 @@ export default function AiDrawer({
 
     try {
       const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
-      const { summaryContext } = await fetchWeeklyReportData();
+      const { summaryContext, week1Label, week2Label } = await fetchWeeklyReportData();
+      dateRangeRef.current = `${week1Label}, ${week2Label}`;
 
       const fullPrompt = [
         promptTemplate,
@@ -388,42 +415,12 @@ export default function AiDrawer({
     }
   };
 
-  const startDrillDown = async (analysisPrompt: string) => {
-    const threadId = ensureThread();
-    addMessage(threadId, "user", {
-      type: "text",
-      body: `📊 钻取分析: ${analysisPrompt}`,
-    });
-    setStreamingText("");
-
-    try {
-      const { fetchDrillDownData } = await import("@/api/drillDown");
-      const { summaryContext } = await fetchDrillDownData();
-
-      const fullPrompt = [
-        DRILL_DOWN_PROMPT,
-        "",
-        "### 分析指令",
-        analysisPrompt,
-        "",
-        "### 从 Superset 查询到的实际数据",
-        "",
-        summaryContext,
-        "",
-        "请根据以上实际数据，针对分析指令进行深入钻取分析，给出具体的结论和优化建议。",
-      ].join("\n");
-
-      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
-      setStreamingText("");
-      addMessage(threadId, "assistant", { type: "text", body: full });
-    } catch {
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "error",
-        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-        retryable: true,
-      });
+  const startDrillDown = async (analysisPrompt: string, index?: number) => {
+    if (index != null) {
+      setSuggestions((prev) => prev.filter((_, i) => i !== index));
     }
+    const range = dateRangeRef.current ? ` [${dateRangeRef.current}]` : "";
+    handleSend(`📊 钻取分析${range}: ${analysisPrompt}`, true);
   };
 
   const handleClose = () => {
@@ -1038,22 +1035,27 @@ export default function AiDrawer({
             {suggestions.length > 0 && (
               <Box
                 sx={{
-                  display: "flex",
-                  gap: 1,
-                  flexWrap: "wrap",
                   mb: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
                 }}
               >
-                {suggestions.map((s, i) => (
-                  <Chip
-                    key={i}
-                    label={s.label}
-                    size="small"
-                    onClick={() => startDrillDown(s.prompt)}
-                    disabled={streaming}
-                    sx={{ maxWidth: "100%" }}
-                  />
-                ))}
+                <List dense disablePadding>
+                  {suggestions.map((s, i) => (
+                    <ListItemButton
+                      key={i}
+                      divider={i < suggestions.length - 1}
+                      disabled={streaming}
+                      onClick={() => startDrillDown(s.prompt, i)}
+                      sx={{ py: 1, px: 1.5 }}
+                    >
+                      <AutoAwesome sx={{ fontSize: 18, color: "primary.main", mr: 1 }} />
+                      <ListItemText primary={s.label} />
+                      <PlayArrowIcon sx={{ fontSize: 16, color: "action.active", ml: 1 }} />
+                    </ListItemButton>
+                  ))}
+                </List>
               </Box>
             )}
             <SmartInput

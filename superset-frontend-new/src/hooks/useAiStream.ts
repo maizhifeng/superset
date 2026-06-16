@@ -11,6 +11,7 @@ interface UseAiStreamReturn {
     text: string,
     history?: { role: string; content: string }[],
     onToken?: (full: string) => void,
+    enableTools?: boolean,
   ) => Promise<string>;
   stop: () => void;
   streaming: boolean;
@@ -32,6 +33,7 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
       text: string,
       history?: { role: string; content: string }[],
       onToken?: (full: string) => void,
+      enableTools?: boolean,
     ) => {
       abortRef.current?.abort();
       const abort = new AbortController();
@@ -42,7 +44,7 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
       let errored = false;
       let inTable = false;
 
-      const { streamDirectChat } = await import("@/api/aiInsight");
+      const { streamDirectChat, streamWithTools } = await import("@/api/aiInsight");
       const { getActivePreset } = await import("@/config/aiConfig");
       const preset = getActivePreset();
 
@@ -78,27 +80,39 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
         rafRef.current = requestAnimationFrame(() => notify(full));
       };
 
+      const onText = (token: string) => {
+        full += token;
+        tryRender();
+      };
+
       try {
-        await streamDirectChat(
-          text,
-          systemPrompt,
-          {
-            onText: (token: string) => {
-              full += token;
-              tryRender();
+        if (enableTools) {
+          await streamWithTools(
+            systemPrompt,
+            text,
+            { onText, onError: () => { errored = true; } },
+            abort.signal,
+            {
+              provider: preset.provider,
+              model: preset.model,
+              baseUrl: preset.baseUrl,
             },
-            onError: () => {
-              errored = true;
+            history,
+          );
+        } else {
+          await streamDirectChat(
+            text,
+            systemPrompt,
+            { onText, onError: () => { errored = true; } },
+            abort.signal,
+            {
+              provider: preset.provider,
+              model: preset.model,
+              baseUrl: preset.baseUrl,
             },
-          },
-          abort.signal,
-          {
-            provider: preset.provider,
-            model: preset.model,
-            baseUrl: preset.baseUrl,
-          },
-          history,
-        );
+            history,
+          );
+        }
         cancelAnimationFrame(rafRef.current);
         if (notify) notify(full);
       } catch (e: unknown) {
