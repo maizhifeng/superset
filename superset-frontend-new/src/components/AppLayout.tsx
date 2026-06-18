@@ -1,14 +1,10 @@
-import {
-  type ReactNode,
-  useMemo,
-  useState,
-  useCallback,
-  useRef,
-} from "react";
+import { type ReactNode, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
 import SearchIcon from "@mui/icons-material/Search";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -86,7 +82,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const items = useMenuSettings((s) => s.items);
   const enabled = useMenuSettings((s) => s.enabled);
 
-  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(
+    null,
+  );
 
   const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
   const aiDrawerMode = useDrawerStore((s) => s.aiDrawerMode);
@@ -109,6 +107,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const closeOverlay = useNavStore((s) => s.closeOverlay);
   const selectDashboard = useNavStore((s) => s.selectDashboard);
 
+  const [aiMenuAnchor, setAiMenuAnchor] = useState<HTMLElement | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [hoverCat, setHoverCat] = useState<string | null>(null);
@@ -259,25 +258,47 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </Tooltip>
           }
           aiButton={
-            <Tooltip title="AI 助手" placement="right">
-              <IconButton
-                size="small"
-                onClick={() => {
-                  if (aiDrawerOpen && aiDrawerMode === "assistant") {
-                    closeAiDrawer();
-                  } else {
-                    openAiDrawer("assistant");
-                  }
-                }}
-                sx={{
-                  color: "primary.main",
-                  transition: "opacity 200ms",
-                  opacity: aiDrawerOpen && aiDrawerMode === "assistant" ? 0.6 : 1,
-                }}
+            <Box>
+              <Tooltip title="AI 助手" placement="right">
+                <IconButton
+                  size="small"
+                  onClick={(e) => setAiMenuAnchor(e.currentTarget)}
+                  sx={{
+                    color: "primary.main",
+                    transition: "opacity 200ms",
+                  }}
+                >
+                  <AutoAwesomeIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                anchorEl={aiMenuAnchor}
+                open={Boolean(aiMenuAnchor)}
+                onClose={() => setAiMenuAnchor(null)}
+                slotProps={{ paper: { sx: { minWidth: 140 } } }}
               >
-                <AutoAwesomeIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-            </Tooltip>
+                <MenuItem
+                  onClick={() => {
+                    setAiMenuAnchor(null);
+                    if (aiDrawerOpen && aiDrawerMode === "assistant") {
+                      closeAiDrawer();
+                    } else {
+                      openAiDrawer("assistant");
+                    }
+                  }}
+                >
+                  AI 助手
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setAiMenuAnchor(null);
+                    navigate("/agent");
+                  }}
+                >
+                  AI Agent
+                </MenuItem>
+              </Menu>
+            </Box>
           }
           searchDialog={
             <Dialog
@@ -333,7 +354,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Side Panel (D2) - overlays on top of main content */}
       <SidePanel
-        open={sidePanelOpen && (sidePanelPinned || activeCategory != null || hoverCat != null)}
+        open={
+          sidePanelOpen &&
+          (sidePanelPinned || activeCategory != null || hoverCat != null)
+        }
         title={
           categoryLabels[activeCategory ?? menuIdToCategory[hoverCat ?? ""]] ??
           items.find((i) => i.id === (hoverCat ?? activeCategory))?.label ??
@@ -401,7 +425,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         filters={insightFilters}
         onClose={closeAiDrawer}
       />
-
     </Box>
   );
 }

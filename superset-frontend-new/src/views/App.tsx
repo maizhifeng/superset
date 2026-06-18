@@ -27,6 +27,8 @@ const SavedQueryList = lazy(() => import("@/pages/SavedQueryList"));
 const AlertReportList = lazy(() => import("@/pages/AlertReportList"));
 const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
 const Settings = lazy(() => import("@/pages/Settings"));
+const AgentChat = lazy(() => import("@/components/AgentApp/AgentChat"));
+import AgentApp from "@/components/AgentApp/AgentApp";
 
 function LoadingFallback() {
   return (
@@ -49,6 +51,16 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
       <AppLayout>
         <PageTransition>{children}</PageTransition>
       </AppLayout>
+    </ProtectedRoute>
+  );
+}
+
+function ProtectedAgentLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <ProtectedRoute>
+      <AgentApp>
+        <PageTransition>{children}</PageTransition>
+      </AgentApp>
     </ProtectedRoute>
   );
 }
@@ -249,6 +261,22 @@ export default function App() {
             <ProtectedLayout>
               <Settings />
             </ProtectedLayout>
+          }
+        />
+        <Route
+          path="/agent"
+          element={
+            <ProtectedAgentLayout>
+              <AgentChat />
+            </ProtectedAgentLayout>
+          }
+        />
+        <Route
+          path="/agent/*"
+          element={
+            <ProtectedAgentLayout>
+              <AgentChat />
+            </ProtectedAgentLayout>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />
