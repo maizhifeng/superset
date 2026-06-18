@@ -19,6 +19,15 @@ interface Row {
   [key: string]: unknown;
 }
 
+/** 钻取动态查询参数 */
+export interface DrillDownQuery {
+  columns: string[];
+  metrics: string[];
+  filters?: { col: string; val: string }[];
+  time_range: string;
+  row_limit?: number;
+}
+
 /**
  * 数值格式化
  * @param v - 原始值
@@ -104,10 +113,32 @@ const BASE_METRICS = [
   "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7",
 ] as unknown[];
 
+/** 指标名 → Superset 指标映射 */
+const METRIC_MAP: Record<string, unknown> = {
+  "消耗": COST_METRIC,
+  "新增": USER_METRIC,
+  "cpa": "cpa",
+  "roi1": "roi_1",
+  "ltv1": "ltv_1",
+  "ltv2": "ltv_2",
+  "ltv3": "ltv_3",
+  "ltv4": "ltv_4",
+  "ltv5": "ltv_5",
+  "ltv6": "ltv_6",
+  "ltv7": "ltv_7",
+};
+
+/** 列名映射：AI/用户常用别名 → 数据集实际列名 */
+const COLUMN_MAP: Record<string, string> = {
+  "项目": "主游戏",
+};
+
 /** 钻取数据导出接口 */
 export interface DrillDownData {
   /** 完整的 Markdown 格式钻取内容 */
   summaryContext: string;
+  /** 数据日期范围描述 */
+  dateRange: string;
 }
 
 /**
@@ -210,5 +241,60 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
   sections.push("#### 4. 团队+渠道维度明细", "");
   sections.push(toMarkdownTable(rTeam.cols, rTeam.rows, 500));
 
-  return { summaryContext: sections.join("\n") };
+  return { summaryContext: sections.join("\n"), dateRange: "近7天" };
+}
+
+/**
+ * 通用钻取查询 — 根据 AI 生成的动态参数查询 Superset
+ */
+export async function queryDrillDown(
+  params: DrillDownQuery,
+): Promise<DrillDownData> {
+  const metrics: unknown[] = params.metrics.map((m) => METRIC_MAP[m] ?? m);
+  const columns: string[] = params.columns.map((c) => COLUMN_MAP[c] ?? c);
+
+  const hasCost = params.metrics.includes("消耗");
+  const query: Record<string, unknown> = {
+    metrics,
+    columns,
+    granularity: "日期",
+    time_range: params.time_range,
+    row_limit: Math.min(params.row_limit ?? 300, 500),
+  };
+  if (hasCost) {
+    query.orderby = [["SUM(ad_real_cost)", false]];
+  }
+
+  if (params.filters?.length) {
+    query.adhoc_filters = params.filters.map((f) => ({
+      clause: "WHERE",
+      expressionType: "SIMPLE",
+      subject: COLUMN_MAP[f.col] ?? f.col,
+      operator: "==",
+      comparator: f.val,
+    }));
+  }
+
+  const resp = await api.post("/chart/data", {
+    datasource: DATASOURCE,
+    queries: [query],
+    result_format: "json",
+    result_type: "full",
+  });
+
+  const { rows, cols } = parseResult(resp);
+  normalizeDates(rows);
+
+  const dates = [...new Set(rows.map((r) => String(r.日期)).filter(Boolean))].sort();
+  const dateRange = dates.length
+    ? `${dates[0]} ~ ${dates[dates.length - 1]}`
+    : "近7天";
+
+  const summaryContext = [
+    `数据范围: ${dateRange}`,
+    "",
+    toMarkdownTable(cols, rows, 100),
+  ].join("\n");
+
+  return { summaryContext, dateRange };
 }

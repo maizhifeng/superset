@@ -2,25 +2,29 @@ import api from "@/api";
 
 const DATASOURCE = { id: 26, type: "table" as const };
 
+type SupersetMetric =
+  | { expressionType: "SIMPLE"; column: { column_name: string }; aggregate: string; label: string }
+  | string;
+
 interface Row {
   [key: string]: unknown;
 }
 
-const COST_METRIC = {
-  expressionType: "SIMPLE" as const,
+const COST_METRIC: SupersetMetric = {
+  expressionType: "SIMPLE",
   column: { column_name: "返点后消耗" },
-  aggregate: "SUM" as const,
+  aggregate: "SUM",
   label: "SUM(ad_real_cost)",
 };
 
-const USER_METRIC = {
-  expressionType: "SIMPLE" as const,
+const USER_METRIC: SupersetMetric = {
+  expressionType: "SIMPLE",
   column: { column_name: "新增进入" },
-  aggregate: "SUM" as const,
+  aggregate: "SUM",
   label: "SUM(n_unum)",
 };
 
-const BASE_METRICS = [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"] as unknown[];
+const BASE_METRICS: SupersetMetric[] = [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"];
 
 function fmt(v: unknown, decimals = 2): string {
   if (v == null) return "-";
@@ -41,10 +45,8 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows = 40): string {
   return [header, sep, ...body].join("\n");
 }
 
-function parseResult(resp: unknown) {
-  const r = (resp as { data?: { result?: unknown[] } })?.data?.result?.[0] as
-    | { data?: Row[]; colnames?: string[] }
-    | undefined;
+function parseBatchResult(resp: unknown) {
+  const r = resp as { data?: Row[]; colnames?: string[] } | undefined;
   return { rows: r?.data ?? [], cols: r?.colnames ?? [] };
 }
 
@@ -90,64 +92,27 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   const orderDesc = [["SUM(ad_real_cost)", false]];
 
-  const [q1, q2, q3, qTrend, qTeam] = await Promise.all([
-    api.post("/chart/data", {
-      ...baseQuery,
-      queries: [{
-        metrics: BASE_METRICS,
-        columns: ["主游戏", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 100,
-      }],
-    }),
-    api.post("/chart/data", {
-      ...baseQuery,
-      queries: [{
-        metrics: BASE_METRICS,
-        columns: ["主游戏", "渠道商", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 500,
-      }],
-    }),
-    api.post("/chart/data", {
-      ...baseQuery,
-      queries: [{
-        metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1"] as unknown[],
-        columns: ["媒体", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 100,
-      }],
-    }),
-    api.post("/chart/data", {
-      ...baseQuery,
-      queries: [{
-        metrics: [COST_METRIC],
-        columns: ["日期"],
-        ...trendFilter,
-        orderby: orderDesc,
-        row_limit: 10,
-      }],
-    }),
-    api.post("/chart/data", {
-      ...baseQuery,
-      queries: [{
-        metrics: BASE_METRICS,
-        columns: ["团队", "渠道商", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 100,
-      }],
-    }),
-  ]);
+  const mediaMetrics: SupersetMetric[] = [COST_METRIC, USER_METRIC, "cpa", "roi_1"];
+  const trendMetrics: SupersetMetric[] = [COST_METRIC];
 
-  const r1 = parseResult(q1);
-  const r2 = parseResult(q2);
-  const r3 = parseResult(q3);
-  const rTrend = parseResult(qTrend);
-  const rTeam = parseResult(qTeam);
+  const resp = await api.post("/chart/data", {
+    ...baseQuery,
+    queries: [
+      { metrics: BASE_METRICS, columns: ["主游戏", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
+      { metrics: BASE_METRICS, columns: ["主游戏", "渠道商", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 500 },
+      { metrics: mediaMetrics, columns: ["媒体", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
+      { metrics: trendMetrics, columns: ["日期"], ...trendFilter, orderby: orderDesc, row_limit: 10 },
+      { metrics: BASE_METRICS, columns: ["团队", "渠道商", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
+    ],
+  });
+
+  const results = ((resp as { data?: { result?: unknown[] } }).data?.result) ?? [];
+  const parseAt = (idx: number) => parseBatchResult(results[idx]);
+  const r1 = parseAt(0);
+  const r2 = parseAt(1);
+  const r3 = parseAt(2);
+  const rTrend = parseAt(3);
+  const rTeam = parseAt(4);
 
   // Extract date labels BEFORE normalization (timestamps still intact)
   const rawDates1 = uniqueDates(r1.rows);

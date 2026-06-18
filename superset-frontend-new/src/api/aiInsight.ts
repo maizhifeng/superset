@@ -167,9 +167,9 @@ async function _streamLlmDirect(
   callbacks.onStatus?.("正在获取回答…");
 
   const rawBaseUrl = modelCfg?.baseUrl || "";
-  const baseUrl = /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|host\.docker\.internal)/.test(rawBaseUrl)
-    ? "/llm"
-    : rawBaseUrl || "/llm";
+  const useProxy = !rawBaseUrl || rawBaseUrl.startsWith("/") ||
+    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(rawBaseUrl);
+  const baseUrl = useProxy ? "/llm" : rawBaseUrl;
   const model = modelCfg?.model || "gemma-4-e2b-it";
 
   const messages: { role: string; content: string }[] = [];
@@ -392,9 +392,9 @@ export async function streamWithTools(
   history?: { role: string; content: string }[],
 ): Promise<string> {
   const rawBaseUrl = modelCfg?.baseUrl || "";
-  const baseUrl = /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|host\.docker\.internal)/.test(rawBaseUrl)
-    ? "/llm"
-    : rawBaseUrl || "/llm";
+  const useProxy = !rawBaseUrl || rawBaseUrl.startsWith("/") ||
+    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(rawBaseUrl);
+  const baseUrl = useProxy ? "/llm" : rawBaseUrl;
   const model = modelCfg?.model || "gemma-4-e2b-it";
 
   const toolSystem = [
