@@ -343,13 +343,19 @@ SCHEDULED_QUERIES: dict[str, Any] = {}
 # feature is on by default to make Superset secure by default, but you should
 # fine tune the limits to your needs. You can read more about the different
 # parameters here: https://flask-limiter.readthedocs.io/en/stable/configuration.html
-RATELIMIT_ENABLED = os.environ.get("SUPERSET_ENV") == "production"
+RATELIMIT_ENABLED = True
 RATELIMIT_APPLICATION = "50 per second"
 AUTH_RATE_LIMITED = True
-AUTH_RATE_LIMIT = "5 per second"
-# A storage location conforming to the scheme in storage-scheme. See the limits
-# library for allowed values: https://limits.readthedocs.io/en/stable/storage.html
-# RATELIMIT_STORAGE_URI = "redis://host:port"
+AUTH_RATE_LIMIT = "10 per minute"
+# Rate limit storage backend: use Redis for multi-process / multi-node deployments.
+# Without a shared backend, each process tracks its own counter independently.
+RATELIMIT_STORAGE_URI = "redis://redis:6379/0"
+
+# Account lockout after repeated failed login attempts.
+# The counter is reset on successful login and stored on the User model.
+AUTH_LOCKOUT_THRESHOLD = 5  # failed attempts before temporary lockout
+AUTH_LOCKOUT_DURATION = 900  # lockout duration in seconds (15 minutes)
+
 # A callable that returns the unique identity of the current request.
 # RATELIMIT_REQUEST_IDENTIFIER = flask.Request.endpoint
 
@@ -394,7 +400,8 @@ AUTH_TYPE = AUTH_DB
 # AUTH_ROLE_PUBLIC = 'Public'
 
 # Will allow user self registration
-# AUTH_USER_REGISTRATION = True
+# Set to False to restrict user creation to admin only
+AUTH_USER_REGISTRATION = False
 
 # The default user self registration role
 # AUTH_USER_REGISTRATION_ROLE = "Public"
@@ -1663,7 +1670,7 @@ FAB_API_KEY_PREFIXES = ["sst_"]
 TROUBLESHOOTING_LINK = ""
 
 # CSRF token timeout, set to None for a token that never expires
-WTF_CSRF_TIME_LIMIT = int(timedelta(weeks=1).total_seconds())
+WTF_CSRF_TIME_LIMIT = int(timedelta(days=1).total_seconds())
 
 # This link should lead to a page with instructions on how to gain access to a
 # Datasource. It will be placed at the bottom of permissions errors.
@@ -2251,7 +2258,9 @@ TALISMAN_DEV_CONFIG = {
 # for details
 #
 SESSION_COOKIE_HTTPONLY = True  # Prevent cookie from being read by frontend JS?
-SESSION_COOKIE_SECURE = False  # Prevent cookie from being transmitted over non-tls?
+SESSION_COOKIE_SECURE = (
+    True  # Restrict cookie to HTTPS-only. Set to False for dev over HTTP.
+)
 SESSION_COOKIE_SAMESITE: Literal["None", "Lax", "Strict"] | None = "Lax"
 # Whether to use server side sessions from flask-session or Flask secure cookies
 SESSION_SERVER_SIDE = False

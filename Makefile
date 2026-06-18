@@ -29,14 +29,6 @@ superset:
 	# Install Superset in editable (development) mode
 	pip install -e .
 
-	# Create an admin user in your metadata database
-	superset fab create-admin \
-                    --username admin \
-                    --firstname "Admin I."\
-                    --lastname Strator \
-                    --email admin@superset.io \
-                    --password general
-
 	# Initialize the database
 	superset db upgrade
 
@@ -109,9 +101,6 @@ report-celery-worker:
 
 report-celery-beat:
 	celery --app=superset.tasks.celery_app:app beat --pidfile /tmp/celerybeat.pid --schedule /tmp/celerybeat-schedulecd
-
-admin-user:
-	superset fab create-admin
 
 # Docker Compose with auto-assigned ports (for running multiple instances)
 up:

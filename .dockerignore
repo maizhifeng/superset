@@ -47,3 +47,6 @@ superset/static/assets/
 superset-websocket/dist/
 venv
 .venv
+pgdata/
+pgdata_light/
+pgdata_prod/

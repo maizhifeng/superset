@@ -405,8 +405,8 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
     userstatschartview = None
     register_superset_auth_view = True
     """Set to False in subclasses that provide their own auth view."""
-    register_superset_registeruser_view = True
-    """Set to False in subclasses that provide their own register user view."""
+    register_superset_registeruser_view = False
+    """Set to True to enable user self-registration. Currently disabled for security."""
     READ_ONLY_MODEL_VIEWS = {"Database", "DynamicPlugin"}
 
     role_api = SupersetRoleApi
@@ -651,6 +651,141 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
                 "user_id": getattr(user, "id", None),
             },
         )
+
+    @staticmethod
+    def _get_lockout_cache_key(username: str) -> str:
+        return f"auth:lockout:{username.lower()}"
+
+    def _is_account_locked(self, username: str) -> tuple[bool, int]:
+        """Check if an account is currently locked out.
+
+        Returns a tuple of (is_locked, remaining_seconds).
+        """
+        from flask import current_app as app
+
+        lockout_threshold = app.config.get("AUTH_LOCKOUT_THRESHOLD", 5)
+        if lockout_threshold <= 0:
+            return False, 0
+
+        user = self.find_user(username=username)
+        if user is None or user.fail_login_count < lockout_threshold:
+            return False, 0
+
+        cache_key = self._get_lockout_cache_key(username)
+        from superset.extensions import cache_manager
+
+        locked_until: int | None = cache_manager._cache.get(cache_key)
+        if locked_until is None:
+            return False, 0
+
+        now = int(time.time())
+        if (remaining := locked_until - now) > 0:
+            return True, remaining
+
+        cache_manager._cache.delete(cache_key)
+        return False, 0
+
+    def _lock_account(self, username: str) -> None:
+        """Mark an account as locked after too many failed attempts."""
+        from flask import current_app as app
+
+        from superset.extensions import cache_manager
+
+        lockout_duration = app.config.get("AUTH_LOCKOUT_DURATION", 900)
+        cache_key = self._get_lockout_cache_key(username)
+        locked_until = int(time.time()) + lockout_duration
+        cache_manager._cache.set(cache_key, locked_until, timeout=lockout_duration)
+
+    def _reset_lockout(self, username: str) -> None:
+        """Clear lockout state on successful login."""
+        from superset.extensions import cache_manager
+
+        cache_key = self._get_lockout_cache_key(username)
+        cache_manager._cache.delete(cache_key)
+
+    def auth_user_db(self, username: str | None, password: str) -> User | None:
+        from flask import current_app as app, request
+        from werkzeug.security import check_password_hash
+
+        if not username:
+            return None
+
+        is_locked, remaining = self._is_account_locked(username)
+        if is_locked:
+            logger.warning(
+                "Login blocked for locked account '%s' (%ds remaining)",
+                username,
+                remaining,
+            )
+            _log_audit_event(
+                "UserLoginBlocked",
+                {
+                    "username": username,
+                    "reason": "account_locked",
+                    "ip": request.remote_addr if request else None,
+                    "user_agent": str(request.user_agent)
+                    if request and request.user_agent
+                    else None,
+                },
+            )
+            return None
+
+        user = self.find_user(username=username)
+        if user is None:
+            user = self.find_user(email=username)
+
+        if user is None or not user.is_active:
+            check_password_hash(
+                app.config.get("AUTH_DB_FAKE_PASSWORD_HASH_CHECK", ""),
+                "password",
+            )
+            return None
+
+        if check_password_hash(user.password, password):
+            self._reset_lockout(username)
+            self.update_user_auth_stat(user, True)
+            _log_audit_event(
+                "UserLoggedIn",
+                {
+                    "username": user.username,
+                    "user_id": user.id,
+                    "ip": request.remote_addr if request else None,
+                    "user_agent": str(request.user_agent)
+                    if request and request.user_agent
+                    else None,
+                },
+            )
+            return user
+
+        self.update_user_auth_stat(user, False)
+        _log_audit_event(
+            "UserLoginFailed",
+            {
+                "username": user.username,
+                "user_id": user.id,
+                "ip": request.remote_addr if request else None,
+                "user_agent": str(request.user_agent)
+                if request and request.user_agent
+                else None,
+            },
+        )
+
+        lockout_threshold = app.config.get("AUTH_LOCKOUT_THRESHOLD", 5)
+        lockout_duration = app.config.get("AUTH_LOCKOUT_DURATION", 900)
+        if (
+            lockout_threshold > 0
+            and lockout_duration > 0
+            and user.fail_login_count >= lockout_threshold
+        ):
+            self._lock_account(username)
+            logger.warning(
+                "Account '%s' locked after %d failed login attempts (lockout %ds)",
+                username,
+                user.fail_login_count,
+                lockout_duration,
+            )
+
+        return None
 
     def request_loader(self, request: Request) -> Optional[User]:
         # pylint: disable=import-outside-toplevel

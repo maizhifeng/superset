@@ -48,12 +48,12 @@ const defaultItems: NavItem[] = [
 const defaultEnabled: Record<string, boolean> = {
   dashboards: true,
   charts: true,
-  sqllab: true,
+  sqllab: false,
   datasets: true,
   "database/list": true,
-  "saved_query/list": true,
-  "alert/list": true,
-  query_history: true,
+  "saved_query/list": false,
+  "alert/list": false,
+  query_history: false,
   project_config: true,
 };
 
@@ -61,7 +61,6 @@ interface MenuSettingsState {
   items: NavItem[];
   enabled: Record<string, boolean>;
   toggle: (id: string) => void;
-  addItem: (path: string, label: string) => void;
   removeItem: (id: string) => void;
   moveItem: (id: string, direction: "up" | "down") => void;
 }
@@ -90,13 +89,6 @@ export const useMenuSettings = create<MenuSettingsState>()(
         set((state) => ({
           enabled: { ...state.enabled, [id]: !state.enabled[id] },
         })),
-      addItem: (path, label) => {
-        const id = `custom_${Date.now()}`;
-        set((state) => ({
-          items: [...state.items, { id, path, label, builtIn: false }],
-          enabled: { ...state.enabled, [id]: true },
-        }));
-      },
       removeItem: (id) =>
         set((state) => {
           const { [id]: _removed, ...rest } = state.enabled;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
@@ -13,7 +14,7 @@ import DialogActions from "@mui/material/DialogActions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import StorageIcon from "@mui/icons-material/Storage";
 import Typography from "@mui/material/Typography";
-import type { GridColDef } from "@mui/x-data-grid";
+import type { GridColDef, GridRowParams } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { useToolbarStore } from "@/store/toolbarStore";
@@ -28,6 +29,7 @@ import { usePaginatedList } from "@/hooks/usePaginatedList";
 import type { Database } from "@/types/api";
 
 export default function DatabaseList() {
+  const navigate = useNavigate();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createUri, setCreateUri] = useState("");
@@ -192,6 +194,10 @@ export default function DatabaseList() {
         onPaginationModelChange={setPaginationModel}
         pageSizeOptions={[25, 50, 100]}
         toolbarPageKey="database_list"
+        onRowClick={(params: GridRowParams) =>
+          navigate(`/database/${params.id}`)
+        }
+        onEdit={(row) => navigate(`/database/${row.id}`)}
         onDelete={(row) =>
           setDeleteTarget({ id: row.id, name: row.database_name })
         }
