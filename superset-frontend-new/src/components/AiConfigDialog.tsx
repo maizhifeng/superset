@@ -42,7 +42,9 @@ function PresetForm({
     setLoadingModels(true);
     setModelsError("");
     try {
-      const proxyPath = baseUrl.replace(/^https?:\/\/[^\/]+\/v1\/?$/, "/llm");
+      const useProxy = baseUrl.startsWith("/") ||
+        /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(baseUrl);
+      const proxyPath = useProxy ? "/llm" : baseUrl;
       const res = await fetch(`${proxyPath}/models`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

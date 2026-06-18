@@ -29,7 +29,11 @@ import SmartInput from "@/components/AiDrawer/SmartInput";
 import MessageBubble from "@/components/AiDrawer/MessageBubble";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
+import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
+import { queryDrillDown, fetchDrillDownData } from "@/api/drillDown";
+import type { DrillDownQuery, DrillDownData } from "@/api/drillDown";
 import DocViewer, { getDocTitle } from "@/components/DocViewer";
+import type { ChartData, DashboardFilterValue } from "@/types/api";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useDrawerStore } from "@/store/drawerState";
@@ -40,17 +44,22 @@ import { blink } from "@/theme/keyframes";
 import { transitions } from "@/theme/motion";
 
 interface DrillDownSuggestion {
+  id: string;
   label: string;
   prompt: string;
+  query?: DrillDownQuery;
+  loading?: boolean;
+  analyzed?: boolean;
 }
 
-interface KnowledgeCard {
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  prompt?: string;
-  docKey?: string;
+let _suggestionIdCounter = 0;
+function nextSuggestionId(): string {
+  return `dd-${Date.now().toString(36)}-${++_suggestionIdCounter}`;
 }
+
+type KnowledgeCard =
+  | { kind: "prompt"; title: string; description: string; icon: React.ReactNode; prompt: string }
+  | { kind: "doc"; title: string; description: string; icon: React.ReactNode; docKey: string };
 
 interface AiDrawerProps {
   open: boolean;
@@ -61,34 +70,37 @@ interface AiDrawerProps {
   filters?: Record<string, DashboardFilterValue>;
 }
 
-import type { ChartData, DashboardFilterValue } from "@/types/api";
-
 const knowledgeCards: KnowledgeCard[] = [
   {
+    kind: "prompt",
     title: "生成日报",
     description: "生成昨日数据日报，含项目、渠道、媒体多维分析",
     icon: <ArticleIcon sx={{ fontSize: 24 }} />,
     prompt: DAILY_REPORT_PROMPT,
   },
   {
+    kind: "prompt",
     title: "生成周报",
     description: "生成周对比分析报告，含项目、媒体、变化趋势",
     icon: <CalendarMonthIcon sx={{ fontSize: 24 }} />,
     prompt: WEEKLY_REPORT_PROMPT,
   },
   {
+    kind: "doc",
     title: "使用手册",
     description: "平台功能、操作指南与最佳实践",
     icon: <MenuBookIcon sx={{ fontSize: 24 }} />,
     docKey: "manual",
   },
   {
+    kind: "doc",
     title: "技术架构",
     description: "系统架构、组件与部署架构说明",
     icon: <AccountTreeIcon sx={{ fontSize: 24 }} />,
     docKey: "architecture",
   },
   {
+    kind: "prompt",
     title: "数据字典",
     description: "数据模型、字段定义与业务含义",
     icon: <StorageIcon sx={{ fontSize: 24 }} />,
@@ -103,40 +115,27 @@ function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
   const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
   if (idx === -1) return [];
   const block = text.slice(idx + DRILL_DOWN_MARKER.length).trim();
-  const lines = block.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
 
-  // 优先｜分隔格式（向后兼容）
-  const pipeResults = lines
-    .filter((l) => !l.startsWith("---"))
-    .map((l) => {
-      const sep = l.indexOf("|");
-      if (sep === -1) return null;
-      return { label: l.slice(0, sep).trim(), prompt: l.slice(sep + 1).trim() };
-    })
-    .filter((s): s is DrillDownSuggestion => s !== null && s.label.length > 0 && s.prompt.length > 0);
+  const suggestions: DrillDownSuggestion[] = [];
+  const parts = block.split(/\n(?=[-*]\s)/);
 
-  if (pipeResults.length > 0) return pipeResults;
+  for (const part of parts) {
+    const lines = part.split("\n");
+    const labelLine = lines[0].replace(/^[-*]\s+/, "").trim();
+    if (labelLine.length <= 5 || labelLine.startsWith("```") || labelLine.startsWith("---")) continue;
 
-  // 无序列表格式：每项是完整的分析指令，去掉开头的 - 或 *
-  const listItems = lines
-    .map((l) => l.replace(/^[-*]\s+/, "").trim())
-    .filter((l) => l.length > 5 && !l.startsWith("```") && !l.startsWith("---"));
-
-  if (listItems.length > 0) return listItems.map((l) => ({ label: l, prompt: l }));
-
-  // 成对解析（旧格式兼容）
-  const pairResults: DrillDownSuggestion[] = [];
-  for (let i = 0; i < lines.length - 1; i++) {
-    const labelMatch = lines[i].match(/^(?:展示标签|标签)[：:]\s*(.+)/);
-    const promptMatch = lines[i + 1].match(/^(?:完整分析指令|指令|提问)[：:]\s*(.+)/);
-    if (labelMatch && promptMatch) {
-      pairResults.push({ label: labelMatch[1].trim(), prompt: promptMatch[1].trim() });
-      i++;
+    const jsonMatch = part.match(/```json\s*([\s\S]*?)```/);
+    let query: DrillDownQuery | undefined;
+    if (jsonMatch) {
+      try {
+        query = JSON.parse(jsonMatch[1]);
+      } catch { /* ignore malformed JSON */ }
     }
-  }
-  if (pairResults.length > 0) return pairResults;
 
-  return [];
+    suggestions.push({ id: nextSuggestionId(), label: labelLine, prompt: labelLine, query });
+  }
+
+  return suggestions;
 }
 
 function stripDrillDownSection(text: string): string {
@@ -176,11 +175,16 @@ export default function AiDrawer({
   const isAssist = variant === "assistant";
 
   const [streamingText, setStreamingText] = useState("");
+  const [dataLoading, setDataLoading] = useState(false);
 
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const dateRangeRef = useRef("");
+  const CACHE_TTL = 5 * 60 * 1000;
+  const reportCacheRef = useRef<{ timestamp: number; summaryContext: string; dateRange: string } | null>(null);
+  const DRILLDOWN_CACHE_TTL = 5 * 60 * 1000;
+  const drillDownCacheRef = useRef<{ timestamp: number; summaryContext: string; dateRange: string } | null>(null);
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     draggingRef.current = true;
@@ -216,10 +220,6 @@ export default function AiDrawer({
       if (!isAssist) {
         insight.clear();
         setThinkingCollapsed(true);
-      }
-    } else if (!open) {
-      if (!isAssist) {
-        // reset on close
       }
     }
     prevOpenRef.current = open;
@@ -294,13 +294,13 @@ export default function AiDrawer({
   }, [activeThread]);
 
   const handleCardClick = (card: KnowledgeCard) => {
-    if (card.docKey) {
+    if (card.kind === "doc") {
       setActiveDoc(card.docKey);
-    } else if (card.prompt) {
+    } else {
       if (card.title === "生成日报") {
-        startDailyReport("请生成昨日数据日报", card.prompt);
+        startDailyReport(card.prompt);
       } else if (card.title === "生成周报") {
-        startWeeklyReport("请生成 W1 vs W2 周对比分析报告", card.prompt);
+        startWeeklyReport(card.prompt);
       } else {
         startNewChat(card.prompt);
       }
@@ -333,94 +333,158 @@ export default function AiDrawer({
     }
   };
 
-  const startDailyReport = async (reportPrompt: string, promptTemplate: string) => {
+  const startReport = useCallback(
+    async (
+      label: string,
+      placeholder: string,
+      promptTemplate: string,
+      fetchData: () => Promise<{ summaryContext: string; dateRange: string }>,
+    ) => {
+      const threadId = createThread();
+      addMessage(threadId, "user", { type: "text", body: placeholder });
+      setStreamingText("");
+      setDataLoading(true);
+
+      try {
+        const data = await fetchData();
+        dateRangeRef.current = data.dateRange;
+
+        const today = new Date().toISOString().slice(0, 10);
+        const dateInjectedTemplate = promptTemplate.replace(
+          "{{REPORT_DATE}}",
+          today,
+        );
+
+        const fullPrompt = [
+          dateInjectedTemplate,
+          "",
+          "### 从 Superset 查询到的实际数据",
+          "",
+          data.summaryContext,
+          "",
+          `请根据以上实际数据生成完整${label}。`,
+        ].join("\n");
+
+        const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+        setStreamingText("");
+        setDataLoading(false);
+        addMessage(threadId, "assistant", {
+          type: "text",
+          body: stripDrillDownSection(full),
+        });
+
+        setSuggestions(extractDrillDownSuggestions(full));
+      } catch {
+        setStreamingText("");
+        setDataLoading(false);
+        setSuggestions([]);
+        addMessage(threadId, "assistant", {
+          type: "error",
+          message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+          retryable: true,
+        });
+      }
+    },
+    [createThread, addMessage, stream],
+  );
+
+  const startDailyReport = async (promptTemplate: string) => {
+    await startReport(
+      "日报",
+      "📊 正在从数据集查询昨日数据...",
+      promptTemplate,
+      async () => {
+        const { fetchDailyReportData } = await import("@/api/dailyReport");
+        const data = await fetchDailyReportData();
+        return { summaryContext: data.summaryContext, dateRange: "昨日" };
+      },
+    );
+  };
+
+  const startWeeklyReport = async (promptTemplate: string) => {
+    const cached = reportCacheRef.current;
+    const now = Date.now();
+
+    await startReport(
+      "周报",
+      cached && now - cached.timestamp < CACHE_TTL
+        ? "📊 正在生成周报（使用缓存数据）..."
+        : "📊 正在从数据集查询两周数据...",
+      promptTemplate,
+      async () => {
+        if (cached && now - cached.timestamp < CACHE_TTL) {
+          return { summaryContext: cached.summaryContext, dateRange: cached.dateRange };
+        }
+        const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
+        const data = await fetchWeeklyReportData();
+        const dateRange = `${data.week1Label}, ${data.week2Label}`;
+        reportCacheRef.current = { timestamp: Date.now(), summaryContext: data.summaryContext, dateRange };
+        return { summaryContext: data.summaryContext, dateRange };
+      },
+    );
+  };
+
+  const startDrillDown = async (suggestion: DrillDownSuggestion) => {
+    setSuggestions((prev) =>
+      prev.map((s) => (s.id === suggestion.id ? { ...s, loading: true } : s)),
+    );
+
+    setDataLoading(true);
     const threadId = createThread();
-    addMessage(threadId, "user", { type: "text", body: "📊 正在从数据集查询昨日数据..." });
-    dateRangeRef.current = "昨日";
-    setStreamingText("");
+    addMessage(threadId, "user", {
+      type: "text",
+      body: `📊 钻取分析: ${suggestion.label}`,
+    });
 
     try {
-      const { fetchDailyReportData } = await import("@/api/dailyReport");
-      const { summaryContext } = await fetchDailyReportData();
+      let data: DrillDownData;
+      if (suggestion.query) {
+        data = await queryDrillDown(suggestion.query);
+      } else {
+        const cached = drillDownCacheRef.current;
+        if (cached && Date.now() - cached.timestamp < DRILLDOWN_CACHE_TTL) {
+          data = { summaryContext: cached.summaryContext, dateRange: cached.dateRange };
+        } else {
+          data = await fetchDrillDownData();
+          drillDownCacheRef.current = { timestamp: Date.now(), ...data };
+        }
+      }
 
+      dateRangeRef.current = data.dateRange;
+
+      setStreamingText("");
+      const dateInjectedPrompt = DRILL_DOWN_PROMPT.replace("{dateRange}", data.dateRange);
       const fullPrompt = [
-        promptTemplate,
+        dateInjectedPrompt,
         "",
-        "### 从 Superset 查询到的实际数据",
+        "### 钻取明细数据",
         "",
-        summaryContext,
+        data.summaryContext,
         "",
-        "请根据以上实际数据生成完整日报。",
+        `请根据以上数据，完成以下钻取分析任务：${suggestion.prompt}`,
       ].join("\n");
-
-      addMessage(threadId, "user", { type: "text", body: reportPrompt });
 
       const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
       setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "text",
-        body: stripDrillDownSection(full),
-      });
+      addMessage(threadId, "assistant", { type: "text", body: stripDrillDownSection(full) });
 
-      setSuggestions(extractDrillDownSuggestions(full));
+      const secondary = extractDrillDownSuggestions(full);
+      if (secondary.length > 0) {
+        setSuggestions(secondary);
+      }
     } catch {
       setStreamingText("");
-      setSuggestions([]);
       addMessage(threadId, "assistant", {
         type: "error",
-        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
+        message: "钻取数据查询失败，请稍后重试",
         retryable: true,
       });
+    } finally {
+      setSuggestions((prev) =>
+        prev.map((s) => (s.id === suggestion.id ? { ...s, loading: false } : s)),
+      );
+      setDataLoading(false);
     }
-  };
-
-  const startWeeklyReport = async (reportPrompt: string, promptTemplate: string) => {
-    const threadId = createThread();
-    addMessage(threadId, "user", { type: "text", body: "📊 正在从数据集查询两周数据..." });
-    setStreamingText("");
-
-    try {
-      const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
-      const { summaryContext, week1Label, week2Label } = await fetchWeeklyReportData();
-      dateRangeRef.current = `${week1Label}, ${week2Label}`;
-
-      const fullPrompt = [
-        promptTemplate,
-        "",
-        "### 从 Superset 查询到的实际数据",
-        "",
-        summaryContext,
-        "",
-        "请根据以上实际数据生成完整周报。",
-      ].join("\n");
-
-      addMessage(threadId, "user", { type: "text", body: reportPrompt });
-
-      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "text",
-        body: stripDrillDownSection(full),
-      });
-
-      setSuggestions(extractDrillDownSuggestions(full));
-    } catch {
-      setStreamingText("");
-      setSuggestions([]);
-      addMessage(threadId, "assistant", {
-        type: "error",
-        message: "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-        retryable: true,
-      });
-    }
-  };
-
-  const startDrillDown = async (analysisPrompt: string, index?: number) => {
-    if (index != null) {
-      setSuggestions((prev) => prev.filter((_, i) => i !== index));
-    }
-    const range = dateRangeRef.current ? ` [${dateRangeRef.current}]` : "";
-    handleSend(`📊 钻取分析${range}: ${analysisPrompt}`, true);
   };
 
   const handleClose = () => {
@@ -755,6 +819,13 @@ export default function AiDrawer({
               </Box>
             )}
 
+            {/* Data loading indicator */}
+            {dataLoading && !streaming && (
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 0.5 }}>
+                <CircularProgress size={16} sx={{ color: "primary.main" }} />
+              </Box>
+            )}
+
             {/* Loading indicator (no text yet) */}
             {streaming && !streamingText && (
               <Box
@@ -1046,8 +1117,8 @@ export default function AiDrawer({
                     <ListItemButton
                       key={i}
                       divider={i < suggestions.length - 1}
-                      disabled={streaming}
-                      onClick={() => startDrillDown(s.prompt, i)}
+                      disabled={streaming || dataLoading}
+                      onClick={() => startDrillDown(s)}
                       sx={{ py: 1, px: 1.5 }}
                     >
                       <AutoAwesome sx={{ fontSize: 18, color: "primary.main", mr: 1 }} />
