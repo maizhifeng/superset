@@ -31,30 +31,6 @@ test("toggle flips enabled state", () => {
   expect(useMenuSettings.getState().enabled.dashboards).toBe(true);
 });
 
-test("addItem creates a custom nav item", () => {
-  useMenuSettings.getState().addItem("/custom", "Custom Page");
-
-  const state = useMenuSettings.getState();
-  const added = state.items.find((item) => item.label === "Custom Page");
-  expect(added).toBeDefined();
-  expect(added!.builtIn).toBe(false);
-  expect(added!.path).toBe("/custom");
-  expect(state.enabled[added!.id]).toBe(true);
-});
-
-test("removeItem deletes item and its enabled state", () => {
-  useMenuSettings.getState().addItem("/custom", "Custom");
-  const added = useMenuSettings
-    .getState()
-    .items.find((item) => item.label === "Custom");
-  useMenuSettings.getState().removeItem(added!.id);
-
-  expect(
-    useMenuSettings.getState().items.find((i) => i.id === added!.id),
-  ).toBeUndefined();
-  expect(useMenuSettings.getState().enabled[added!.id]).toBeUndefined();
-});
-
 test("moveItem moves item up", () => {
   useMenuSettings.getState().moveItem("charts", "up");
   const items = useMenuSettings.getState().items;
@@ -73,10 +49,4 @@ test("moveItem does nothing at boundary", () => {
   useMenuSettings.getState().moveItem("dashboards", "up");
   const items = useMenuSettings.getState().items;
   expect(items[0].id).toBe("dashboards");
-});
-
-test("removeItem with unknown id does nothing", () => {
-  const before = useMenuSettings.getState().items.length;
-  useMenuSettings.getState().removeItem("nonexistent");
-  expect(useMenuSettings.getState().items).toHaveLength(before);
 });

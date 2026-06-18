@@ -5,7 +5,7 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
@@ -35,7 +35,6 @@ import TourGuide from "@/components/TourGuide";
 import SearchExamples from "@/components/SearchExamples";
 import { usePageTip } from "@/hooks/usePageTips";
 import UserMenu from "@/components/AppLayout/UserMenu";
-import MobileDrawer from "@/components/AppLayout/MobileDrawer";
 import StatusBar from "@/components/AppLayout/StatusBar";
 import ActivityBar from "@/components/ActivityBar/ActivityBar";
 import SidePanel from "@/components/SidePanel/SidePanel";
@@ -77,7 +76,6 @@ const categoryLabels: Record<NavCategory, string> = {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = useCallback(() => {
@@ -89,7 +87,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const enabled = useMenuSettings((s) => s.enabled);
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
   const aiDrawerMode = useDrawerStore((s) => s.aiDrawerMode);
@@ -130,11 +127,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       category: "global",
       description: "按 / 搜索仪表板、图表、数据集等",
     },
-  );
-
-  const navItems = useMemo(
-    () => items.filter((item) => item.id !== "home" && enabled[item.id]),
-    [items, enabled],
   );
 
   const activityBarItems = useMemo(
@@ -372,11 +364,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             }),
         }}
       >
-        <StatusBar
-          tip={pageTip}
-          showMenuButton
-          onMenuClick={() => setDrawerOpen(true)}
-        />
+        <StatusBar tip={pageTip} />
 
         <Box
           component="main"
@@ -413,17 +401,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         filters={insightFilters}
         onClose={closeAiDrawer}
       />
-      <MobileDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        items={navItems}
-        enabled={enabled}
-        isActive={(path: string) =>
-          path === "/" ? location.pathname === "/" : location.pathname.startsWith(path)
-        }
-        username={user?.username}
-        onLogout={logout}
-      />
+
     </Box>
   );
 }

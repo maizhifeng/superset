@@ -168,10 +168,6 @@ const Login = lazy(
   () => import(/* webpackChunkName: "Login" */ 'src/pages/Login'),
 );
 
-const Register = lazy(
-  () => import(/* webpackChunkName: "Register" */ 'src/pages/Register'),
-);
-
 const GroupsList: LazyExoticComponent<any> = lazy(
   () => import(/* webpackChunkName: "GroupsList" */ 'src/pages/GroupsList'),
 );
@@ -213,12 +209,6 @@ export const routes: Routes = [
     mobileSupported: true,
   },
   { path: RoutePaths.LOGIN, Component: Login, mobileSupported: true },
-  {
-    path: RoutePaths.REGISTER_ACTIVATION,
-    Component: Register,
-    mobileSupported: true,
-  },
-  { path: RoutePaths.REGISTER, Component: Register, mobileSupported: true },
   { path: RoutePaths.LOGOUT, Component: Login, mobileSupported: true },
   { path: RoutePaths.HOME, Component: Home, mobileSupported: true },
   { path: RoutePaths.FILE_HANDLER, Component: FileHandler },

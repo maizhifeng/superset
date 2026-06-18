@@ -1,13 +1,9 @@
 import Box from "@mui/material/Box";
-import IconButton from "@mui/material/IconButton";
-import MenuIcon from "@mui/icons-material/Menu";
 import TipsAndUpdatesIcon from "@mui/icons-material/TipsAndUpdates";
 import { keyframes } from "@mui/system";
 
 interface StatusBarProps {
   tip?: { title: string; message: string } | null;
-  onMenuClick?: () => void;
-  showMenuButton?: boolean;
 }
 
 const scrollAnimation = keyframes`
@@ -15,11 +11,7 @@ const scrollAnimation = keyframes`
   100% { transform: translateX(-50%); }
 `;
 
-export default function StatusBar({
-  tip,
-  onMenuClick,
-  showMenuButton = false,
-}: StatusBarProps) {
+export default function StatusBar({ tip }: StatusBarProps) {
   const tipText = tip ? `${tip.title} — ${tip.message}` : "";
 
   return (
@@ -37,20 +29,6 @@ export default function StatusBar({
         flexShrink: 0,
       }}
     >
-      {showMenuButton && (
-        <IconButton
-          size="small"
-          onClick={onMenuClick}
-          sx={{
-            color: "text.secondary",
-            flexShrink: 0,
-            width: 24,
-            height: 24,
-          }}
-        >
-          <MenuIcon sx={{ fontSize: 16 }} />
-        </IconButton>
-      )}
 
       <TipsAndUpdatesIcon
         sx={{ fontSize: 14, flexShrink: 0, color: "primary.main", opacity: 0.8 }}

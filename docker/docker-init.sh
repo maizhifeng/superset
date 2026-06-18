@@ -35,6 +35,12 @@ Init Step ${1}/${STEP_CNT} [${2}] -- ${3}
 ######################################################################
 EOF
 }
+# If Cypress run – export env variables
+if [ "$CYPRESS_CONFIG" == "true" ]; then
+    export SUPERSET_TESTENV=true
+    export POSTGRES_DB=superset_cypress
+    export SUPERSET__SQLALCHEMY_DATABASE_URI=postgresql+psycopg2://superset:superset@db:5432/superset_cypress
+fi
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}"
 # Initialize the database
 echo_step "1" "Starting" "Applying DB migrations"
@@ -84,6 +90,7 @@ PY
 }
 
 if [ "$SUPERSET_LOAD_EXAMPLES" = "yes" ]; then
+    # Load some data to play with
     echo_step "4" "Starting" "Loading examples"
 
     # Set SUPERSET_FORCE_LOAD_EXAMPLES=yes to reload the examples regardless.

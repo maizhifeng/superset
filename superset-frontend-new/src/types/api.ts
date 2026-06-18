@@ -103,6 +103,31 @@ export interface Database {
   changed_on_delta_humanized?: string;
 }
 
+export interface DatabaseDetail {
+  id: number;
+  database_name: string;
+  backend: string;
+  driver: string;
+  expose_in_sqllab: boolean;
+  allow_dml: boolean;
+  allow_ctas: boolean;
+  allow_cvas: boolean;
+  allow_file_upload: boolean;
+  allow_run_async: boolean;
+  configuration_method: string;
+  cache_timeout: number | null;
+  force_ctas_schema: string | null;
+  impersonate_user: boolean;
+  is_managed_externally: boolean;
+  engine_information: {
+    disable_ssh_tunneling: boolean;
+    supports_dynamic_catalog: boolean;
+    supports_file_upload: boolean;
+    supports_oauth2: boolean;
+  };
+  uuid: string;
+}
+
 export interface DashboardListItem {
   id: number;
   dashboard_title: string;
