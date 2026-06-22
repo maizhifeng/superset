@@ -97,7 +97,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/llm/, ""),
       },
-
+      "/agent/ws": {
+        target: "ws://localhost:3001",
+        ws: true,
+      },
     },
   },
   test: {

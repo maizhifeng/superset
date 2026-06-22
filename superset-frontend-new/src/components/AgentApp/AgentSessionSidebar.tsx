@@ -9,7 +9,10 @@ import Tooltip from "@mui/material/Tooltip";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ChatIcon from "@mui/icons-material/Chat";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import { useAgentStore } from "@/store/agentStore";
+import { usePiAgent } from "@/hooks/usePiAgent";
 
 export default function AgentSessionSidebar() {
   const sessions = useAgentStore((s) => s.sessions);
@@ -17,6 +20,8 @@ export default function AgentSessionSidebar() {
   const createSession = useAgentStore((s) => s.createSession);
   const switchSession = useAgentStore((s) => s.switchSession);
   const deleteSession = useAgentStore((s) => s.deleteSession);
+
+  const { isSessionRunning } = usePiAgent();
 
   return (
     <Box
@@ -74,7 +79,9 @@ export default function AgentSessionSidebar() {
           </Box>
         ) : (
           <List dense disablePadding>
-            {sessions.map((session) => (
+            {sessions.map((session) => {
+              const running = isSessionRunning(session.id);
+              return (
               <ListItemButton
                 key={session.id}
                 selected={session.id === activeSessionId}
@@ -82,6 +89,7 @@ export default function AgentSessionSidebar() {
                 sx={{
                   px: 1.5,
                   py: 1,
+                  gap: 0.75,
                   "&.Mui-selected": {
                     bgcolor: "action.selected",
                     borderRight: "3px solid",
@@ -89,6 +97,26 @@ export default function AgentSessionSidebar() {
                   },
                 }}
               >
+                {session.summary ? (
+                  <CheckCircleIcon sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
+                ) : running ? (
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: "50%",
+                      bgcolor: "primary.main",
+                      flexShrink: 0,
+                      animation: "pulse 1.5s ease-in-out infinite",
+                      "@keyframes pulse": {
+                        "0%, 100%": { opacity: 0.4 },
+                        "50%": { opacity: 1 },
+                      },
+                    }}
+                  />
+                ) : (
+                  <RadioButtonUncheckedIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
+                )}
                 <ListItemText
                   primary={
                     <Typography
@@ -105,8 +133,7 @@ export default function AgentSessionSidebar() {
                   }
                   secondary={
                     <Typography variant="caption" color="text.secondary">
-                      {session.messages.length} 条消息
-                      {session.summary && " · 已完成"}
+                      {`${session.messages.length} 条消息`}
                     </Typography>
                   }
                 />
@@ -127,7 +154,8 @@ export default function AgentSessionSidebar() {
                   </IconButton>
                 </Tooltip>
               </ListItemButton>
-            ))}
+              );
+            })}
           </List>
         )}
       </Box>

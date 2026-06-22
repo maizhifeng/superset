@@ -76,7 +76,47 @@ logger = logging.getLogger(__name__)
 
 
 class ChartDataRestApi(ChartRestApi):
-    include_route_methods = {"get_data", "data", "data_from_cache"}
+    include_route_methods = {"get_data", "data", "data_from_cache", "agent_data"}
+
+    @expose("/agent-data", methods=("POST",))
+    def agent_data(self) -> Response:
+        """
+        Internal endpoint for Pi agent queries. Bypasses standard auth/CSRF
+        and uses X-Internal-Agent / X-User-Id headers for identity.
+        """
+        username = request.headers.get("X-User-Id")
+        if not username:
+            return self.response_400()
+        user = security_manager.find_user(username=username)
+        if not user:
+            return self.response_404()
+        g.user = user
+        json_body = request.json or {}
+        try:
+            query_context = self._create_query_context_from_form(json_body)
+            command = ChartDataCommand(query_context)
+            command.validate()
+        except DatasourceNotFound:
+            return self.response_404()
+        except (QueryObjectValidationError, ValidationError) as error:
+            return self.response_400(
+                message=error.message if hasattr(error, "message") else str(error)
+            )
+        cache_timeout = query_context.get_cache_timeout()
+        use_async = (
+            is_feature_enabled("GLOBAL_ASYNC_QUERIES")
+            and query_context.result_format == ChartDataResultFormat.JSON
+            and query_context.result_type == ChartDataResultType.FULL
+            and cache_timeout != CACHE_DISABLED_TIMEOUT
+        )
+        if use_async:
+            return self._run_async(json_body, command, lambda **kwargs: None)
+        return self._get_data_response(
+            command,
+            form_data=json_body.get("form_data"),
+            datasource=query_context.datasource,
+            add_extra_log_payload=lambda **kwargs: None,
+        )
 
     @expose("/<int:pk>/data/", methods=("GET",))
     @protect()

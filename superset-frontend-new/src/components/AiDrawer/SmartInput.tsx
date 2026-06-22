@@ -2,14 +2,19 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
+import ModelSelector from "@/components/AgentApp/ModelSelector";
 
 interface SmartInputProps {
   onSend: (text: string) => void;
   onStop: () => void;
   streaming: boolean;
   disabled?: boolean;
+  currentModel?: string;
+  modelList?: { id: string; name?: string }[];
+  onModelChange?: (model: string) => void;
 }
 
 const SLASH_COMMANDS = [
@@ -24,6 +29,9 @@ export default function SmartInput({
   onStop,
   streaming,
   disabled,
+  currentModel,
+  modelList,
+  onModelChange,
 }: SmartInputProps) {
   const [value, setValue] = useState("");
   const [showCommands, setShowCommands] = useState(false);
@@ -129,6 +137,20 @@ export default function SmartInput({
                 handleSend();
               }
             }
+          }}
+          slotProps={{
+            input: {
+              startAdornment: currentModel && onModelChange ? (
+                <InputAdornment position="start" sx={{ mr: 0.75 }}>
+                  <ModelSelector
+                    current={currentModel || ""}
+                    models={modelList || []}
+                    onSelect={onModelChange || (() => {})}
+                    compact
+                  />
+                </InputAdornment>
+              ) : undefined,
+            },
           }}
           sx={{
             "& .MuiOutlinedInput-root": {
