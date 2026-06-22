@@ -1099,6 +1099,10 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
 
         self.init_views()
 
+        # Exempt internal agent endpoint from CSRF
+        if self.config["WTF_CSRF_ENABLED"]:
+            csrf.exempt("superset.charts.data.api.agent_data")
+
         self.init_all_dependencies_and_extensions()
 
         # Must run after all versioned models are imported and mappers configured.
@@ -1868,18 +1872,25 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             target_url = f"{target}/{subpath}"
 
             # Filter out hop-by-hop headers
-            excluded_headers = {"host", "content-length", "transfer-encoding",
-                                "content-encoding", "connection", "keep-alive"}
+            excluded_headers = {
+                "host",
+                "content-length",
+                "transfer-encoding",
+                "content-encoding",
+                "connection",
+                "keep-alive",
+            }
             upstream_headers = {
-                k: v for k, v in request.headers
-                if k.lower() not in excluded_headers
+                k: v for k, v in request.headers if k.lower() not in excluded_headers
             }
 
             if request.method == "OPTIONS":
                 resp = Response()
                 resp.headers["Access-Control-Allow-Origin"] = "*"
                 resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-                resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+                resp.headers["Access-Control-Allow-Headers"] = (
+                    "Content-Type, Authorization"
+                )
                 return resp
 
             if request.method == "GET":
@@ -1892,8 +1903,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
                 return Response(
                     upstream.content,
                     status=upstream.status_code,
-                    headers=[(k, v) for k, v in upstream.headers.items()
-                             if k.lower() not in excluded_headers],
+                    headers=[
+                        (k, v)
+                        for k, v in upstream.headers.items()
+                        if k.lower() not in excluded_headers
+                    ],
                 )
 
             # POST
@@ -1918,7 +1932,8 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
                             yield chunk
 
                 resp_headers = [
-                    (k, v) for k, v in upstream.headers.items()
+                    (k, v)
+                    for k, v in upstream.headers.items()
                     if k.lower() not in excluded_headers
                 ]
                 return Response(
@@ -1936,8 +1951,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             return Response(
                 upstream.content,
                 status=upstream.status_code,
-                headers=[(k, v) for k, v in upstream.headers.items()
-                         if k.lower() not in excluded_headers],
+                headers=[
+                    (k, v)
+                    for k, v in upstream.headers.items()
+                    if k.lower() not in excluded_headers
+                ],
             )
 
         self.superset_app.register_blueprint(llm_bp, url_prefix="/llm")

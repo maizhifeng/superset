@@ -11,7 +11,9 @@ import HomeIcon from "@mui/icons-material/Home";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import MenuIcon from "@mui/icons-material/Menu";
+import CircleIcon from "@mui/icons-material/Circle";
 import { useAuthStore } from "@/store/authStore";
+import { usePiAgent } from "@/hooks/usePiAgent";
 
 interface AgentStatusBarProps {
   sidebarOpen?: boolean;
@@ -26,6 +28,7 @@ export default function AgentStatusBar({
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const { isConnected } = usePiAgent();
 
   const handleLogout = useCallback(() => {
     logout();
@@ -67,6 +70,24 @@ export default function AgentStatusBar({
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           AI Agent
         </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            px: 0.75,
+            py: 0.25,
+            borderRadius: 1,
+            bgcolor: isConnected ? "success.main" : "error.main",
+            color: "#fff",
+            fontSize: "0.7rem",
+            lineHeight: 1,
+            ml: 0.5,
+          }}
+        >
+          <CircleIcon sx={{ fontSize: 8 }} />
+          {isConnected ? "已连接" : "未连接"}
+        </Box>
       </Box>
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
