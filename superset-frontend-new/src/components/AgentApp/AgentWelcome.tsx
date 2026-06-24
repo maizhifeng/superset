@@ -4,8 +4,9 @@ import Card from "@mui/material/Card";
 import CardActionArea from "@mui/material/CardActionArea";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
-import AssessmentIcon from "@mui/icons-material/Assessment";
-import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import LightbulbIcon from "@mui/icons-material/Lightbulb";
 import type { AgentSession } from "@/components/AgentApp/types";
 
 interface QuickIntent {
@@ -17,28 +18,32 @@ interface QuickIntent {
 
 const quickIntents: QuickIntent[] = [
   {
-    id: "analyze",
-    label: "数据分析",
+    id: "channel",
+    label: "渠道洞察",
     icon: <ShowChartIcon sx={{ fontSize: 28 }} />,
-    prompt: "分析近7天各渠道的消耗和新增用户趋势",
+    prompt:
+      "分析近7天各渠道的消耗、新增和留存数据，找出表现最佳和最差的渠道",
   },
   {
-    id: "query",
-    label: "数据查询",
-    icon: <AutoAwesomeIcon sx={{ fontSize: 28 }} />,
-    prompt: "查询昨天各游戏的消耗和CPA数据",
+    id: "game",
+    label: "游戏分析",
+    icon: <SportsEsportsIcon sx={{ fontSize: 28 }} />,
+    prompt:
+      "对比各游戏的消耗和ROI表现，列出Top 5高ROI和低ROI游戏",
   },
   {
-    id: "report",
-    label: "生成报表",
-    icon: <AssessmentIcon sx={{ fontSize: 28 }} />,
-    prompt: "生成上周的广告投放周报",
+    id: "anomaly",
+    label: "异常监测",
+    icon: <WarningAmberIcon sx={{ fontSize: 28 }} />,
+    prompt:
+      "检查近3天数据是否有异常波动，重点关注消耗突增或ROI骤降的情况",
   },
   {
-    id: "compare",
-    label: "对比分析",
-    icon: <CompareArrowsIcon sx={{ fontSize: 28 }} />,
-    prompt: "对比本周和上周各渠道的消耗变化",
+    id: "optimize",
+    label: "优化策略",
+    icon: <LightbulbIcon sx={{ fontSize: 28 }} />,
+    prompt:
+      "基于近7天数据，给出3条可落地的广告投放优化建议",
   },
 ];
 

@@ -4,7 +4,6 @@ import Typography from "@mui/material/Typography";
 import SmartInput from "@/components/AiDrawer/SmartInput";
 import AgentWelcome from "@/components/AgentApp/AgentWelcome";
 import AgentStepCard from "@/components/AgentApp/AgentStepCard";
-import AgentStepsPanel from "@/components/AgentApp/AgentStepsPanel";
 import { useAgentStore } from "@/store/agentStore";
 import type { AgentConversationMessage } from "@/components/AgentApp/types";
 import { usePiAgent } from "@/hooks/usePiAgent";
@@ -208,15 +207,8 @@ export default function AgentChat() {
         minHeight: 0,
       }}
     >
-      <AgentStepsPanel steps={piAgent.steps} isRunning={isActiveRunning} />
       <Box ref={scrollContainerRef} onScroll={handleScroll} sx={{ flex: 1, overflow: "auto", p: 2 }}>
         {activeSession.messages.map(renderMessage)}
-        {piAgent.isRunning &&
-          piAgent.steps.map((step) => (
-            <Box key={step.id} sx={{ mb: 1 }}>
-              <AgentStepCard step={step} />
-            </Box>
-          ))}
         {activeSessionId && piAgent.isSessionRunning(activeSessionId) && piAgent.currentThinking && (
           <ThinkingBox content={piAgent.currentThinking} done={piAgent.isThinkingDone} />
         )}

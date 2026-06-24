@@ -14,6 +14,7 @@ export interface AgentStep {
   type: StepType;
   status: StepStatus;
   description: string;
+  args?: Record<string, unknown>;
   result?: string;
   subSteps?: AgentStep[];
   timestamp: number;
