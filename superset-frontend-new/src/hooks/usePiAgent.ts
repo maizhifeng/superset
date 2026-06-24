@@ -82,7 +82,8 @@ function installListener(userId: string) {
           id: event.toolCallId,
           type: "query",
           status: "running",
-          description: "正在查询数据…",
+          description: event.toolName as string || "query_superset",
+          args: event.args as Record<string, unknown> | undefined,
           timestamp: Date.now(),
         };
         store.addStep(sid, step);
@@ -93,7 +94,7 @@ function installListener(userId: string) {
         const stepTimestamp = Date.now();
         store.updateStep(sid, event.toolCallId, {
           status: "done",
-          result: event.result,
+          result: event.result as string,
           duration: stepTimestamp - (store.getActiveSession()?.steps.find((s) => s.id === event.toolCallId)?.timestamp ?? stepTimestamp),
         });
         break;
@@ -138,7 +139,7 @@ export function usePiAgent(): UsePiAgentReturn {
   const [currentThinking, setCurrentThinking] = useState("");
   const savedModel = typeof window !== "undefined" ? localStorage.getItem("pi_agent_model") || "gemma-4-e2b-it" : "gemma-4-e2b-it";
   const [currentModel, setCurrentModel] = useState(savedModel);
-  const [modelList, setModelList] = useState<{ id: string; name?: string }[]>([]);
+  const [modelList, setModelList] = useState<{ id: string; name?: string }[]>(_modelList);
   const [steps, setSteps] = useState<AgentStep[]>([]);
 
   // Stable hooks to avoid HMR reorder issues — always 4 useState + 1 callback ref
@@ -189,11 +190,11 @@ export function usePiAgent(): UsePiAgentReturn {
 
     const user = useAuthStore.getState().user;
     installListener(user?.username ?? "anonymous");
-    _client!.connect(sessionId);
     const restored = typeof window !== "undefined" ? localStorage.getItem("pi_agent_model") : null;
     if (restored && restored !== "gemma-4-e2b-it") {
       _client?.setModel(restored);
     }
+    _client!.connect(sessionId);
   }, []);
 
   const sendMessage = useCallback((text: string) => {

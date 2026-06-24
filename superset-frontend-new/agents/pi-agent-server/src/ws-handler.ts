@@ -138,7 +138,7 @@ async function handlePrompt(
         }
       }
 
-      if (event.type === "tool_call") {
+      if (event.type === "tool_execution_start") {
         toolRound++;
         if (toolRound > MAX_TOOL_ROUNDS) {
           send(ws, {
@@ -149,16 +149,17 @@ async function handlePrompt(
           agentSession.dispose();
           return;
         }
+        const args = event.args as Record<string, unknown>;
         send(ws, {
           type: "tool_execution_start",
           storeSessionId: storeSid,
-          toolCallId: event.id,
+          toolCallId: event.toolCallId,
           toolName: event.toolName,
-          args: event.args as any,
+          args,
         });
       }
 
-      if (event.type === "tool_result") {
+      if (event.type === "tool_execution_end") {
         const resultText =
           event.result?.content
             ?.map((c: any) => (typeof c === "string" ? c : c.text ?? ""))
@@ -166,7 +167,8 @@ async function handlePrompt(
         send(ws, {
           type: "tool_execution_end",
           storeSessionId: storeSid,
-          toolCallId: event.id,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
           result: resultText,
         });
       }
