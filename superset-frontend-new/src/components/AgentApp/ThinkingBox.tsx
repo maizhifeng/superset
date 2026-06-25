@@ -12,13 +12,7 @@ export default function ThinkingBox({ content, done }: ThinkingBoxProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (done) {
-      setCollapsed(true);
-    }
-  }, [done]);
-
-  useEffect(() => {
-    if (!done && content) {
+    if (content) {
       setCollapsed(false);
     }
   }, [content]);
@@ -55,8 +49,8 @@ export default function ThinkingBox({ content, done }: ThinkingBoxProps) {
           "&:hover": { bgcolor: "action.hover" },
         }}
       >
-        <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", flex: 1 }}>
-          🤔 思考中…
+        <Typography variant="caption" sx={{ fontWeight: 600, color: done ? "success.main" : "text.secondary", flex: 1 }}>
+          {done ? "💡 思考完成" : "🤔 思考中…"}
         </Typography>
         <Typography variant="caption" sx={{ color: "text.disabled", fontSize: "0.65rem", transition: "transform 0.15s", transform: collapsed ? "rotate(-90deg)" : "none" }}>
           ▼

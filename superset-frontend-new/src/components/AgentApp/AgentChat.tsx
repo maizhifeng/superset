@@ -208,10 +208,10 @@ export default function AgentChat() {
       }}
     >
       <Box ref={scrollContainerRef} onScroll={handleScroll} sx={{ flex: 1, overflow: "auto", p: 2 }}>
-        {activeSession.messages.map(renderMessage)}
-        {activeSessionId && piAgent.isSessionRunning(activeSessionId) && piAgent.currentThinking && (
+        {activeSessionId && piAgent.currentThinking && (
           <ThinkingBox content={piAgent.currentThinking} done={piAgent.isThinkingDone} />
         )}
+        {activeSession.messages.map(renderMessage)}
         {activeSessionId && piAgent.isSessionRunning(activeSessionId) && piAgent.currentText && (
           <Box sx={{ mb: 2 }}>
             <Typography
