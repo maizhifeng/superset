@@ -6,7 +6,8 @@ export type StepType =
   | "chart"
   | "report"
   | "drilldown"
-  | "compare";
+  | "compare"
+  | "schema";
 export type StepStatus = "pending" | "running" | "done" | "error";
 
 export interface AgentStep {

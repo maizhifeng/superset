@@ -14,26 +14,31 @@ export interface Session {
 }
 
 export type ClientMessage =
+  | { type: "auth"; access_token: string }
   | { type: "new_session"; user_id: string; storeSessionId: string }
   | { type: "select_session"; storeSessionId: string }
-  | { type: "prompt"; message: string; storeSessionId?: string }
+  | { type: "prompt"; message: string; storeSessionId?: string; user_id?: string }
   | { type: "set_model"; model: string }
-  | { type: "abort" }
-  | { type: "delete_session" };
+  | { type: "abort"; storeSessionId?: string }
+  | { type: "delete_session"; storeSessionId: string };
 
 export interface ModelInfo {
   id: string;
   name?: string;
 }
 
+export interface AgentWebSocketMeta {
+  preferredModel?: string;
+}
+
 export type ServerMessage =
-  | { type: "session_created"; sessionId: string }
-  | { type: "agent_start" }
-  | { type: "message_update"; assistantMessageEvent: { type: "text_delta"; delta: string } }
+  | { type: "session_created"; sessionId: string; storeSessionId?: string }
+  | { type: "agent_start"; storeSessionId?: string }
+  | { type: "message_update"; storeSessionId?: string; assistantMessageEvent: { type: "text_delta"; delta: string } }
   | { type: "thinking_delta"; delta: string }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: ToolCallArg }
+  | { type: "tool_execution_start"; storeSessionId?: string; toolCallId: string; toolName: string; args: ToolCallArg }
   | { type: "tool_execution_update"; toolCallId: string; partialResult: string }
-  | { type: "tool_execution_end"; toolCallId: string; result: string }
-  | { type: "agent_end"; messages: unknown[]; finalText?: string }
+  | { type: "tool_execution_end"; storeSessionId?: string; toolCallId: string; toolName: string; result: string }
+  | { type: "agent_end"; storeSessionId?: string; messages: unknown[]; finalText?: string }
   | { type: "model_list"; models: ModelInfo[] }
   | { type: "error"; message: string; retryable: boolean };

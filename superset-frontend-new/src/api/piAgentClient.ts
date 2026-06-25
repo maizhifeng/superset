@@ -53,6 +53,10 @@ export class PiAgentClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
+      const token = localStorage.getItem("superset_token");
+      if (token) {
+        this.send({ type: "auth", access_token: token });
+      }
       this.flushPending();
       this.send({ type: "new_session", user_id: this.userId, storeSessionId });
     };

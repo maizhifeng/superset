@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { PiAgentClient } from "@/api/piAgentClient";
 import { useAgentStore } from "@/store/agentStore";
 import { useAuthStore } from "@/store/authStore";
-import type { AgentStep } from "@/components/AgentApp/types";
+import type { AgentStep, StepType } from "@/components/AgentApp/types";
 
 interface UsePiAgentReturn {
   isConnected: boolean;
@@ -28,6 +28,7 @@ let _textBuffers = new Map<string, string>();
 let _thinkingBuffers = new Map<string, string>();
 let _thinkingDone = new Set<string>();
 let _runningSessions = new Set<string>();
+let _completedThinking = new Map<string, string>();
 let _listenerInstalled = false;
 let _modelList: { id: string; name?: string }[] = [];
 let _modelListUpdaters = new Set<(models: { id: string; name?: string }[]) => void>();
@@ -78,12 +79,29 @@ function installListener(userId: string) {
           break;
 
       case "tool_execution_start": {
+        const toolName = (event.toolName as string) || "query_superset";
+        const stepType: StepType = toolName === "get_dataset_schema" ? "schema" : "query";
+        const args = event.args as Record<string, unknown> | undefined;
+
+        // Generate human-readable description from tool args
+          let description = toolName;
+          if (toolName === "query_superset" && args) {
+            const c = args.columns as string[] | undefined;
+            const m = args.metrics as string[] | undefined;
+            const t = args.time_range as string | undefined;
+            const parts: string[] = [];
+            if (c && c.length > 0) parts.push(`维度:${c.join(",")}`);
+            if (m && m.length > 0) parts.push(`指标:${m.length}`);
+            if (t) parts.push(t);
+            description = parts.length > 0 ? parts.join(" | ") : toolName;
+          }
+
         const step: AgentStep = {
           id: event.toolCallId,
-          type: "query",
+          type: stepType,
           status: "running",
-          description: event.toolName as string || "query_superset",
-          args: event.args as Record<string, unknown> | undefined,
+          description,
+          args,
           timestamp: Date.now(),
         };
         store.addStep(sid, step);
@@ -92,16 +110,24 @@ function installListener(userId: string) {
 
       case "tool_execution_end": {
         const stepTimestamp = Date.now();
+        const rawResult = event.result as string | undefined;
+
+        const duration = stepTimestamp - (store.getActiveSession()?.steps.find((s) => s.id === event.toolCallId)?.timestamp ?? stepTimestamp);
         store.updateStep(sid, event.toolCallId, {
           status: "done",
-          result: event.result as string,
-          duration: stepTimestamp - (store.getActiveSession()?.steps.find((s) => s.id === event.toolCallId)?.timestamp ?? stepTimestamp),
+          result: rawResult?.slice(0, 500),
+          duration,
         });
         break;
       }
 
       case "agent_end": {
         _runningSessions.delete(sid);
+        _thinkingDone.add(sid);
+        const finishedThinking = _thinkingBuffers.get(sid) ?? "";
+        if (finishedThinking) {
+          _completedThinking.set(sid, finishedThinking);
+        }
         store.addMessage(sid, "assistant", {
           type: "agent_done",
           steps: store.getActiveSession()?.steps ?? [],
@@ -225,7 +251,10 @@ export function usePiAgent(): UsePiAgentReturn {
     setCurrentModel(model);
   }, []);
 
-  const isThinkingDone = _sessionId ? _thinkingDone.has(_sessionId) : false;
+  const sid = _sessionId;
+  const completionThinking = sid ? _completedThinking.get(sid) : undefined;
+  const displayThinking = currentThinking || completionThinking || "";
+  const isThinkingDone = sid ? _thinkingDone.has(sid) : false;
 
-  return { isConnected, isRunning, currentText, currentThinking, isThinkingDone, currentModel, modelList, steps, sendMessage, setModel, abort, connect, disconnect, isSessionRunning };
+  return { isConnected, isRunning, currentText, currentThinking: displayThinking, isThinkingDone, currentModel, modelList, steps, sendMessage, setModel, abort, connect, disconnect, isSessionRunning };
 }

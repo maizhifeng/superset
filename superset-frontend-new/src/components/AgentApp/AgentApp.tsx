@@ -8,7 +8,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ListIcon from "@mui/icons-material/List";
 import AgentStatusBar from "@/components/AgentApp/AgentStatusBar";
 import AgentSessionSidebar from "@/components/AgentApp/AgentSessionSidebar";
-import AgentStepCard from "@/components/AgentApp/AgentStepCard";
+import AgentStepsPanel from "@/components/AgentApp/AgentStepsPanel";
 import { useAgentStore } from "@/store/agentStore";
 
 export default function AgentApp({ children }: { children: ReactNode }) {
@@ -80,39 +80,8 @@ export default function AgentApp({ children }: { children: ReactNode }) {
               </IconButton>
             </Box>
             {stepsOpen && (
-              <Box
-                sx={{
-                  flex: 1,
-                  overflow: "auto",
-                  p: 1.5,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1,
-                }}
-              >
-                {isRunning && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                    <Box
-                      sx={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        bgcolor: "primary.main",
-                        animation: "pulse 1.5s ease-in-out infinite",
-                        "@keyframes pulse": {
-                          "0%, 100%": { opacity: 0.4 },
-                          "50%": { opacity: 1 },
-                        },
-                      }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      执行中…
-                    </Typography>
-                  </Box>
-                )}
-                {activeSteps.map((step) => (
-                  <AgentStepCard key={step.id} step={step} />
-                ))}
+              <Box sx={{ flex: 1, overflow: "auto", p: 1.5 }}>
+                <AgentStepsPanel steps={activeSteps} isRunning={isRunning} />
               </Box>
             )}
           </Box>
