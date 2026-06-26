@@ -39,6 +39,10 @@ interface AgentStoreState {
     role: "user" | "assistant",
     content: AgentConversationMessage["content"],
   ) => void;
+  setSessionMessages: (
+    sessionId: string,
+    messages: AgentConversationMessage[],
+  ) => void;
   setSessionSummary: (sessionId: string, summary: string) => void;
 }
 
@@ -133,6 +137,16 @@ export const useAgentStore = create<AgentStoreState>()(
         });
       },
 
+      setSessionMessages: (sessionId, messages) => {
+        set((state) => {
+          const sessions = state.sessions.map((s) => {
+            if (s.id !== sessionId) return s;
+            return { ...s, messages: messages.slice(-MAX_MESSAGES_PER_SESSION) };
+          });
+          return { sessions };
+        });
+      },
+
       setSessionSummary: (sessionId, summary) => {
         set((state) => {
           const sessions = state.sessions.map((s) => {
@@ -149,6 +163,20 @@ export const useAgentStore = create<AgentStoreState>()(
         sessions: state.sessions,
         activeSessionId: state.activeSessionId,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          if (!state.activeSessionId) {
+            state.createSession();
+          } else {
+            const sessionExists = state.sessions?.some(
+              (s: { id: string }) => s.id === state.activeSessionId,
+            );
+            if (!sessionExists) {
+              state.createSession();
+            }
+          }
+        }
+      },
     },
   ),
 );

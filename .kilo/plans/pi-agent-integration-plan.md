@@ -69,12 +69,11 @@ superset-frontend-new/
 │   ├── api/piAgentClient.ts         # WebSocket 客户端（自动重连、消息队列）
 │   ├── hooks/usePiAgent.ts          # React hook → Zustand store 事件映射
 │   └── components/AgentApp/
-│       ├── AgentChat.tsx            # usePiAgent() 替换 useAgent()
+│       ├── PiAgentChat.tsx          # @mui/x-chat ChatBox 聊天界面
 │       ├── AgentStatusBar.tsx       # 连接状态指示器
 │       ├── AgentStepCard.tsx        # 不变
 │       ├── AgentSessionSidebar.tsx  # 不变
-│       ├── AgentWelcome.tsx         # 不变
-│       └── MarkdownRenderer.tsx     # Markdown 格式化组件
+│       └── AgentApp.tsx             # Agent 布局容器
 superset/
 └── charts/data/api.py               # 新增 /agent-data endpoint
 ```
@@ -215,18 +214,26 @@ superset/
 | `superset-frontend-new/agents/pi-agent-server/src/types.ts` | 协议类型 |
 | `superset-frontend-new/src/api/piAgentClient.ts` | 前端 WebSocket 客户端（自动重连、消息队列） |
 | `superset-frontend-new/src/hooks/usePiAgent.ts` | React hook（事件→Zustand store 映射） |
-| `superset-frontend-new/src/components/AgentApp/MarkdownRenderer.tsx` | Markdown → MUI 组件渲染 |
+| `superset-frontend-new/src/components/AgentApp/PiAgentChat.tsx` | 使用 `@mui/x-chat` `ChatBox` 的完整聊天界面（替换 AgentChat） |
 
 ### 修改文件
 
 | 文件 | 变更内容 |
 |------|----------|
-| `AgentChat.tsx` | `useAgent()` → `usePiAgent()`，流式文本实时渲染，动态滚动 |
 | `AgentStatusBar.tsx` | 添加连接状态绿色/红色圆点 |
 | `vite.config.ts` | 添加 `/agent/ws` WebSocket proxy |
 | `docker-frontend-mui.sh` | 在 Vite 前启动 Pi agent 后台进程 + trap 清理 |
 | `charts/data/api.py` | 新增 `/agent-data` endpoint + `include_route_methods` + CSRF exempt |
 | `initialization/__init__.py` | CSRF exempt `superset.charts.data.api.agent_data` |
+
+### 删除文件
+
+| 文件 | 原因 |
+|------|------|
+| `AgentChat.tsx` | 被 `PiAgentChat.tsx` 替代（使用 `@mui/x-chat`） |
+| `AgentWelcome.tsx` | 仅被 `AgentChat.tsx` 引用 |
+| `MarkdownRenderer.tsx` | 仅被 `AgentChat.tsx` 引用 |
+| `ThinkingBox.tsx` | 仅被 `AgentChat.tsx` 引用 |
 
 ### 移除文件
 
@@ -242,6 +249,8 @@ superset/
 |------------|------|
 | `aiInsight.ts` 中的 `streamWithTools()` | 被 Pi agent 替换（Agent 模式） |
 | `hooks/useAgent.ts`（如仍存在） | 被 `usePiAgent.ts` 替换 |
+| `AgentStepsPanel.tsx` | 未被引用 |
+| `AgentSessionSidebar.tsx` | 未被引用 |
 
 **注意**: 保留 `streamChartInsight()`、`streamChat()`、`streamDirectChat()` 等传统模式 AiDrawer 使用的函数不变，仅 Agent 模式切换为 Pi agent。
 
