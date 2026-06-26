@@ -298,6 +298,7 @@ export async function executeQuerySuperset(
   const columns = args.columns as string[];
   const metricsArr = args.metrics as string[];
   const hasDateCol = columns.includes("日期");
+  const temporalCol = "日期";
   let metrics: MetricEntry[] = metricsArr.map(buildMetricEntry);
   const filters = buildFilters(args.filters);
   const showAll = args.show_all === true;
@@ -342,7 +343,7 @@ export async function executeQuerySuperset(
     result_type: "full",
     queries: [
       {
-        ...(hasDateCol ? { granularity: "日期" } : {}),
+        ...(timeRange || hasDateCol ? { granularity: temporalCol } : {}),
         time_range: timeRange,
         metrics,
         columns,

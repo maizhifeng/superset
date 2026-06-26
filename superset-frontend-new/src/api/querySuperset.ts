@@ -214,7 +214,7 @@ export async function executeQuery(params: QuerySupersetParams): Promise<string>
       result_type: "full" as const,
       queries: [
         {
-          ...(hasDateCol ? { granularity: "日期" as const } : {}),
+          ...(hasDateCol || timeRange ? { granularity: "日期" as const } : {}),
           time_range: timeRange,
           metrics: params.metrics.map(buildMetricEntry),
           columns: params.columns,

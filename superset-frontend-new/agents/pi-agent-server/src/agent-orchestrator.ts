@@ -215,7 +215,7 @@ export async function processPrompt(
             assistantMessageEvent: { type: "text_delta", delta: ae.delta },
           });
         } else if (ae.type === "thinking_delta") {
-          emit({ type: "thinking_delta", delta: ae.delta });
+          emit({ type: "thinking_delta", storeSessionId, delta: ae.delta });
         }
       }
 

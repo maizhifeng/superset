@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -13,7 +13,6 @@ import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import MenuIcon from "@mui/icons-material/Menu";
 import CircleIcon from "@mui/icons-material/Circle";
 import { useAuthStore } from "@/store/authStore";
-import { usePiAgent } from "@/hooks/usePiAgent";
 
 interface AgentStatusBarProps {
   sidebarOpen?: boolean;
@@ -28,7 +27,21 @@ export default function AgentStatusBar({
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const { isConnected } = usePiAgent();
+  const [wsConnected, setWsConnected] = useState(false);
+
+  useEffect(() => {
+    const wsUrl =
+      import.meta.env.VITE_PI_AGENT_WS_URL || "ws://localhost:9000/agent/ws";
+    const ws = new WebSocket(wsUrl);
+    ws.onopen = () => { setWsConnected(true); ws.close(); };
+    ws.onerror = () => setWsConnected(false);
+    const timer = setInterval(() => {
+      const probe = new WebSocket(wsUrl);
+      probe.onopen = () => { setWsConnected(true); probe.close(); };
+      probe.onerror = () => setWsConnected(false);
+    }, 30000);
+    return () => { ws.close(); clearInterval(timer); };
+  }, []);
 
   const handleLogout = useCallback(() => {
     logout();
@@ -50,22 +63,24 @@ export default function AgentStatusBar({
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-        <Tooltip
-          title={sidebarOpen ? "收起会话列表" : "展开会话列表"}
-          placement="bottom"
-        >
-          <IconButton
-            size="small"
-            onClick={onToggleSidebar}
-            sx={{ color: "text.secondary" }}
+        {onToggleSidebar && (
+          <Tooltip
+            title={sidebarOpen ? "收起会话列表" : "展开会话列表"}
+            placement="bottom"
           >
-            {sidebarOpen ? (
-              <MenuOpenIcon sx={{ fontSize: 20 }} />
-            ) : (
-              <MenuIcon sx={{ fontSize: 20 }} />
-            )}
-          </IconButton>
-        </Tooltip>
+            <IconButton
+              size="small"
+              onClick={onToggleSidebar}
+              sx={{ color: "text.secondary" }}
+            >
+              {sidebarOpen ? (
+                <MenuOpenIcon sx={{ fontSize: 20 }} />
+              ) : (
+                <MenuIcon sx={{ fontSize: 20 }} />
+              )}
+            </IconButton>
+          </Tooltip>
+        )}
         <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 20 }} />
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           AI Agent
@@ -78,7 +93,7 @@ export default function AgentStatusBar({
             px: 0.75,
             py: 0.25,
             borderRadius: 1,
-            bgcolor: isConnected ? "success.main" : "error.main",
+            bgcolor: wsConnected ? "success.main" : "error.main",
             color: "#fff",
             fontSize: "0.7rem",
             lineHeight: 1,
@@ -86,7 +101,7 @@ export default function AgentStatusBar({
           }}
         >
           <CircleIcon sx={{ fontSize: 8 }} />
-          {isConnected ? "已连接" : "未连接"}
+          {wsConnected ? "已连接" : "未连接"}
         </Box>
       </Box>
 

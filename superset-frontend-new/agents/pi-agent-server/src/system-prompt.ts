@@ -17,7 +17,7 @@ export function buildSystemPrompt(): string {
     "- 用户提到时间（近7天、昨天、上周等）→ 设 time_range",
     '- 用户要求趋势/逐日/钻取/每天/分天分析 → columns 加「日期」',
     '- 用户只要汇总排名 → columns 不加「日期」',
-    "- 用户不提时间 → 不传 time_range（默认 Last 14 days）",
+    '- 用户不提时间 → 传 time_range="Last 14 days"（默认最近 14 天）',
     "",
     "### orderby 和 row_limit",
     "orderby 必须是数组 [['列名', true/false]]，row_limit 必须是纯数字。禁止用字符串包裹数组。默认只按首个 orderby 指标保留累计占比前 95% 的主要项，用户要求完整明细时设 show_all=true。同一个分析场景下，仅调用一次 query_superset，无需重复查询相同数据。",

@@ -3,7 +3,7 @@ type ServerMessage =
   | { type: "session_created"; sessionId: string }
   | { type: "agent_start"; storeSessionId?: string }
   | { type: "message_update"; storeSessionId?: string; assistantMessageEvent: { type: "text_delta"; delta: string } }
-  | { type: "thinking_delta"; delta: string }
+  | { type: "thinking_delta"; storeSessionId?: string; delta: string }
   | { type: "tool_execution_start"; storeSessionId?: string; toolCallId: string; toolName: string; args: unknown }
   | { type: "tool_execution_update"; toolCallId: string; partialResult: string }
   | { type: "tool_execution_end"; storeSessionId?: string; toolCallId: string; result: string }

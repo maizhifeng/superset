@@ -26,7 +26,8 @@ let _client: PiAgentClient | null = null;
 let _sessionId: string | null = null;
 let _textBuffers = new Map<string, string>();
 let _thinkingBuffers = new Map<string, string>();
-let _thinkingDone = new Set<string>();
+type ReasoningState = 'streaming' | 'done';
+let _reasoningState = new Map<string, ReasoningState>();
 let _runningSessions = new Set<string>();
 let _completedThinking = new Map<string, string>();
 let _listenerInstalled = false;
@@ -54,7 +55,7 @@ function installListener(userId: string) {
       case "agent_start":
         _textBuffers.set(sid, "");
         _thinkingBuffers.set(sid, "");
-        _thinkingDone.delete(sid);
+        _reasoningState.set(sid, 'streaming');
         _runningSessions.add(sid);
         break;
 
@@ -62,8 +63,12 @@ function installListener(userId: string) {
           if (event.assistantMessageEvent.type === "text_delta") {
             const delta = event.assistantMessageEvent.delta;
             const buf = _textBuffers.get(sid) ?? "";
-            if (!buf && _thinkingBuffers.has(sid) && !_thinkingDone.has(sid)) {
-              _thinkingDone.add(sid);
+            // first text_delta: transition reasoning streaming→done (idempotent)
+            if (!buf && _reasoningState.get(sid) === 'streaming') {
+              const thought = _thinkingBuffers.get(sid);
+              if (thought && thought.length > 0) {
+                _reasoningState.set(sid, 'done');
+              }
             }
             _textBuffers.set(sid, buf + delta);
           }
@@ -72,7 +77,6 @@ function installListener(userId: string) {
       case "thinking_delta":
           if ((event as any).delta) {
             const delta = (event as any).delta;
-            if (_thinkingDone.has(sid)) _thinkingDone.delete(sid);
             const buf = _thinkingBuffers.get(sid) ?? "";
             _thinkingBuffers.set(sid, buf + delta);
           }
@@ -123,19 +127,23 @@ function installListener(userId: string) {
 
       case "agent_end": {
         _runningSessions.delete(sid);
-        _thinkingDone.add(sid);
+        _reasoningState.set(sid, 'done');
         const finishedThinking = _thinkingBuffers.get(sid) ?? "";
         if (finishedThinking) {
           _completedThinking.set(sid, finishedThinking);
         }
+        // if text never arrived, use thinking content as the answer
+        const textContent = _textBuffers.get(sid) ?? "";
+        const summary = (event as any).finalText || textContent || finishedThinking || "";
         store.addMessage(sid, "assistant", {
           type: "agent_done",
           steps: store.getActiveSession()?.steps ?? [],
-          summary: (event as any).finalText || _textBuffers.get(sid) || "",
+          summary,
         });
-        store.setSessionSummary(sid, ((event as any).finalText || _textBuffers.get(sid) || "").slice(0, 200));
+        store.setSessionSummary(sid, summary.slice(0, 200));
         _textBuffers.delete(sid);
         _thinkingBuffers.delete(sid);
+        _reasoningState.delete(sid);
         break;
       }
 
@@ -254,7 +262,7 @@ export function usePiAgent(): UsePiAgentReturn {
   const sid = _sessionId;
   const completionThinking = sid ? _completedThinking.get(sid) : undefined;
   const displayThinking = currentThinking || completionThinking || "";
-  const isThinkingDone = sid ? _thinkingDone.has(sid) : false;
+  const isThinkingDone = sid ? _reasoningState.get(sid) === 'done' : false;
 
   return { isConnected, isRunning, currentText, currentThinking: displayThinking, isThinkingDone, currentModel, modelList, steps, sendMessage, setModel, abort, connect, disconnect, isSessionRunning };
 }

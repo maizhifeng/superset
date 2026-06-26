@@ -35,6 +35,7 @@ export interface AgentConversationMessage {
   id: string;
   role: "user" | "assistant";
   content: AgentMessageContent;
+  rawParts?: Record<string, unknown>[];
   timestamp: number;
 }
 
