@@ -243,3 +243,34 @@ export interface TableResult {
   type: string;
   extra?: Record<string, unknown>;
 }
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  is_active: boolean;
+  last_login: string | null;
+  login_count: number;
+  fail_login_count: number;
+  created_on: string;
+  changed_on: string;
+  roles?: { id: number; name: string }[];
+}
+
+export interface AdminRole {
+  id: number;
+  name: string;
+  user_ids?: number[];
+  permission_ids?: number[];
+  group_ids?: number[];
+  users?: { id: number; username: string }[];
+  permissions?: { id: number; permission: { name: string }; view_menu: { name: string } }[];
+}
+
+export interface AdminPermission {
+  id: number;
+  permission: { id: number; name: string };
+  view_menu: { id: number; name: string };
+}

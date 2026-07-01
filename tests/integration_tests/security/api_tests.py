@@ -456,8 +456,9 @@ class TestSecurityGuestTokenApiTokenValidator(SupersetTestCase):
 
     @with_config(
         {
-            "GUEST_TOKEN_VALIDATOR_HOOK": lambda x: len(x["rls"]) == 1
-            and "tenant_id=" in x["rls"][0]["clause"]
+            "GUEST_TOKEN_VALIDATOR_HOOK": lambda x: (
+                len(x["rls"]) == 1 and "tenant_id=" in x["rls"][0]["clause"]
+            )
         }
     )
     def test_guest_validator_hook_real_world_example_positive(self):
@@ -472,8 +473,9 @@ class TestSecurityGuestTokenApiTokenValidator(SupersetTestCase):
 
     @with_config(
         {
-            "GUEST_TOKEN_VALIDATOR_HOOK": lambda x: len(x["rls"]) == 1
-            and "tenant_id=" in x["rls"][0]["clause"]
+            "GUEST_TOKEN_VALIDATOR_HOOK": lambda x: (
+                len(x["rls"]) == 1 and "tenant_id=" in x["rls"][0]["clause"]
+            )
         }
     )
     def test_guest_validator_hook_real_world_example_negative(self):

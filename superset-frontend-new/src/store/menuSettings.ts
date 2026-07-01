@@ -6,6 +6,8 @@ export interface NavItem {
   path: string;
   label: string;
   builtIn: boolean;
+  /** Optional role names required to see this menu item. */
+  roles?: string[];
 }
 
 const defaultItems: NavItem[] = [
@@ -40,8 +42,37 @@ const defaultItems: NavItem[] = [
   {
     id: "project_config",
     path: "/project/config",
-    label: "配置",
+    label: "游戏配置",
     builtIn: true,
+    roles: ["Admin"],
+  },
+  {
+    id: "channel_config",
+    path: "/project/channel",
+    label: "渠道商配置",
+    builtIn: true,
+    roles: ["Admin"],
+  },
+  {
+    id: "profit_sharing_config",
+    path: "/project/profit-sharing",
+    label: "分成配置",
+    builtIn: true,
+    roles: ["Admin"],
+  },
+  {
+    id: "admin_users",
+    path: "/admin/users",
+    label: "用户管理",
+    builtIn: true,
+    roles: ["Admin"],
+  },
+  {
+    id: "admin_roles",
+    path: "/admin/roles",
+    label: "角色管理",
+    builtIn: true,
+    roles: ["Admin"],
   },
 ];
 
@@ -55,6 +86,10 @@ const defaultEnabled: Record<string, boolean> = {
   "alert/list": false,
   query_history: false,
   project_config: true,
+  channel_config: true,
+  profit_sharing_config: true,
+  admin_users: true,
+  admin_roles: true,
 };
 
 interface MenuSettingsState {
@@ -71,6 +106,17 @@ function mergeDefaults(
   const items = persisted?.items ?? [...defaultItems];
   const enabled = { ...(persisted?.enabled ?? defaultEnabled) };
   const knownIds = new Set(items.map((i) => i.id));
+  const defaultsById = new Map(defaultItems.map((d) => [d.id, d]));
+  for (const item of items) {
+    const def = defaultsById.get(item.id);
+    if (def) {
+      item.label = def.label;
+      item.path = def.path;
+      if (def.roles) {
+        item.roles = def.roles;
+      }
+    }
+  }
   for (const def of defaultItems) {
     if (!knownIds.has(def.id)) {
       items.push(def);
@@ -110,6 +156,7 @@ export const useMenuSettings = create<MenuSettingsState>()(
     }),
     {
       name: "superset-menu-settings",
+      version: 1,
       merge: (persisted, current) => ({
         ...current,
         ...mergeDefaults(

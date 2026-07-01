@@ -82,8 +82,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def verify_presto_column(self, column, expected_results):
         inspector = mock.MagicMock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         row = mock.Mock()
         row.Column, row.Type, row.Null = column
@@ -832,8 +832,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def test_show_columns(self):
         inspector = mock.MagicMock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         inspector.engine.connect().__enter__().execute.return_value.fetchall = (
             mock.MagicMock(return_value=["a", "b"])
@@ -850,8 +850,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def test_show_columns_with_schema(self):
         inspector = mock.MagicMock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         inspector.engine.connect().__enter__().execute.return_value.fetchall = (
             mock.MagicMock(return_value=["a", "b"])

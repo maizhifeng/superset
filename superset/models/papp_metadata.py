@@ -12,7 +12,7 @@ class PappMetadata(Model):
     papp_id = Column(Integer, nullable=False, unique=True)
     papp_name = Column(String(255), nullable=True)
     updated_at = Column(String(255), nullable=True)
-    上线时间 = Column(String(255), nullable=True)
+    白名单控制参数 = Column(String(255), nullable=True)
 
     @classmethod
     def get_by_papp_id(cls, papp_id: int) -> PappMetadata | None:
@@ -26,21 +26,21 @@ class PappMetadata(Model):
         papp_id: int,
         papp_name: str | None,
         updated_at: str | None,
-        上线时间: str | None,
+        白名单控制参数: str | None,  # noqa: N803
     ) -> PappMetadata:
         from superset import db
 
         if existing := cls.get_by_papp_id(papp_id):
             existing.papp_name = papp_name
             existing.updated_at = updated_at
-            existing.上线时间 = 上线时间
+            existing.白名单控制参数 = 白名单控制参数
             db.session.commit()
             return existing
         record = cls(
             papp_id=papp_id,
             papp_name=papp_name,
             updated_at=updated_at,
-            上线时间=上线时间,
+            白名单控制参数=白名单控制参数,
         )
         db.session.add(record)
         db.session.commit()

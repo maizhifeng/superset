@@ -16,9 +16,14 @@ import TablePagination from "@mui/material/TablePagination";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import dayjs from "dayjs";
+import HelpOutlinedIcon from "@mui/icons-material/HelpOutlined";
 import CircularProgress from "@mui/material/CircularProgress";
+import Tooltip from "@mui/material/Tooltip";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
+import TextField from "@mui/material/TextField";
+import Checkbox from "@mui/material/Checkbox";
+import Autocomplete from "@mui/material/Autocomplete";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import { useToolbarStore } from "@/store/toolbarStore";
 import api from "@/api";
@@ -31,10 +36,10 @@ interface PappRow {
   papp_id: string;
   papp_name: string;
   updated_at: string;
-  上线时间: string;
+  白名单控制参数: string;
 }
 
-const COLUMNS = ["papp_id", "papp_name", "updated_at", "上线时间"];
+const COLUMNS = ["papp_id", "papp_name", "updated_at", "白名单控制参数"];
 
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
@@ -58,7 +63,7 @@ export default function ProjectConfig() {
         papp_id: String(r.papp_id),
         papp_name: r.papp_name ?? "",
         updated_at: r.updated_at ?? "",
-        上线时间: r.上线时间 ?? "",
+        白名单控制参数: r.白名单控制参数 ?? "",
       }))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     setRows(sorted);
@@ -79,12 +84,12 @@ export default function ProjectConfig() {
         sql,
       });
 
-      const existingRes = await api.get<{ result: { papp_id: number; 上线时间: string }[] }>(
+      const existingRes = await api.get<{ result: { papp_id: number; 白名单控制参数: string }[] }>(
         "/project/papp",
       );
-      const existingDates = new Map<number, string>();
+      const existingParams = new Map<number, string>();
       for (const entry of existingRes.data.result ?? []) {
-        if (entry.上线时间) existingDates.set(entry.papp_id, entry.上线时间);
+        if (entry.白名单控制参数) existingParams.set(entry.papp_id, entry.白名单控制参数);
       }
 
       let count = 0;
@@ -94,7 +99,7 @@ export default function ProjectConfig() {
         await api.put(`/project/papp/${pappId}`, {
           papp_name: String(raw.papp_name ?? ""),
           updated_at: String(raw.updated_at ?? ""),
-          上线时间: existingDates.get(pappId) ?? "",
+          白名单控制参数: existingParams.get(pappId) ?? "",
         });
         count++;
       }
@@ -115,7 +120,7 @@ export default function ProjectConfig() {
       await api.put(`/project/papp/${row.papp_id}`, {
         papp_name: row.papp_name,
         updated_at: row.updated_at,
-        上线时间: row.上线时间,
+        白名单控制参数: row.白名单控制参数,
       });
       setSuccess(`已保存 ${row.papp_name}`);
     } catch (err: unknown) {
@@ -125,9 +130,11 @@ export default function ProjectConfig() {
     }
   }, []);
 
-  const updateDate = useCallback((pappId: string, date: string) => {
+  const updateWhitelist = useCallback((pappId: string, checked: boolean) => {
     setRows((prev) =>
-      prev.map((r) => (r.papp_id === pappId ? { ...r, 上线时间: date } : r)),
+      prev.map((r) =>
+        r.papp_id === pappId ? { ...r, 白名单控制参数: checked ? "Y" : "" } : r,
+      ),
     );
   }, []);
 
@@ -156,7 +163,12 @@ export default function ProjectConfig() {
     },
     [],
   );
-  const visibleRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const [filterName, setFilterName] = useState<string | null>(null);
+  const [whitelistOnly, setWhitelistOnly] = useState(false);
+  const filteredRows = rows
+    .filter((r) => !whitelistOnly || r.白名单控制参数 === "Y")
+    .filter((r) => !filterName || r.papp_name === filterName);
+  const visibleRows = filteredRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   if (loading) {
     return (
@@ -166,9 +178,8 @@ export default function ProjectConfig() {
     );
   }
 
-  const totalRows = rows.length;
-
   return (
+    <>
     <Box sx={{ p: 3 }}>
       {success && (
         <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setSuccess(null)}>
@@ -187,14 +198,39 @@ export default function ProjectConfig() {
           borderRadius: 2,
           display: "flex",
           flexDirection: "column",
-          height: "calc(100vh - 140px)",
+          height: "calc(100vh - 80px)",
         }}
       >
         <CardHeader
-          title={`游戏 (${totalRows})`}
+          title={`游戏 (${filteredRows.length})`}
           sx={cardHeaderSx}
           action={
-            <Box sx={{ display: "flex", gap: 1, pr: 0.5 }}>
+            <Box sx={{ display: "flex", gap: 1, pr: 0.5, alignItems: "center" }}>
+              <Autocomplete
+                size="small"
+                options={[...new Set(rows.map((r) => r.papp_name))].sort()}
+                value={filterName}
+                onChange={(_, v) => { setFilterName(v); setPage(0); }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="搜索游戏..."
+                    sx={{ "& input": { fontSize: "0.75rem", py: 0.5 } }}
+                  />
+                )}
+                sx={{ width: 180 }}
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={whitelistOnly}
+                    onChange={(_, c) => { setWhitelistOnly(c); setPage(0); }}
+                  />
+                }
+                label={<Typography sx={{ fontSize: "0.75rem" }}>仅白名单</Typography>}
+                sx={{ m: 0 }}
+              />
               <Button
                 size="small"
                 variant="outlined"
@@ -245,12 +281,19 @@ export default function ProjectConfig() {
                             bgcolor: "grey.50",
                             fontSize: "0.75rem",
                             py: 1,
-                            minWidth: col === "上线时间" ? 140 : 100,
+                            minWidth: col === "白名单控制参数" ? 80 : 100,
                             textAlign: "center",
                           }}
                         >
                           <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, px: 0.5, textAlign: "center" }}>
-                            {col}
+                            {col === "白名单控制参数" ? (
+                              <Tooltip title="勾选后该游戏将参与分成配置的白名单组合" arrow placement="top">
+                                <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.3, cursor: "help" }}>
+                                  {col}
+                                  <HelpOutlinedIcon sx={{ fontSize: "0.85rem", color: "text.secondary" }} />
+                                </Box>
+                              </Tooltip>
+                            ) : col}
                           </Typography>
                         </TableCell>
                       ))}
@@ -275,23 +318,11 @@ export default function ProjectConfig() {
                             {row.updated_at}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 140 }}>
-                          <DatePicker
-                            format="YYYY/MM/DD"
-                            value={row.上线时间 ? dayjs(row.上线时间) : null}
-                            onChange={(v) =>
-                              updateDate(row.papp_id, v ? v.format("YYYY/MM/DD") : "")
-                            }
-                            slotProps={{
-                              textField: {
-                                size: "small",
-                                variant: "standard",
-                                sx: {
-                                  "& input": { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                  "& .MuiSvgIcon-root": { fontSize: "1rem" },
-                                },
-                              },
-                            }}
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}>
+                          <Checkbox
+                            size="small"
+                            checked={row.白名单控制参数 === "Y"}
+                            onChange={(_, checked) => updateWhitelist(row.papp_id, checked)}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
@@ -321,18 +352,19 @@ export default function ProjectConfig() {
                 borderColor: "divider",
                 bgcolor: "grey.50",
                 flexShrink: 0,
+                overflow: "hidden",
               }}
             >
               <TablePagination
                 component="div"
-                count={rows.length}
+                count={filteredRows.length}
                 page={page}
                 onPageChange={handleChangePage}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={handleChangeRowsPerPage}
                 rowsPerPageOptions={[10, 25, 50, 100]}
                 sx={{
-                  ".MuiTablePagination-toolbar": { minHeight: 36, pl: 1 },
+                  ".MuiTablePagination-toolbar": { minHeight: 36, pl: 1, overflow: "hidden" },
                   ".MuiTablePagination-selectLabel, .MuiTablePagination-input": {
                     fontSize: "0.75rem",
                   },
@@ -344,7 +376,8 @@ export default function ProjectConfig() {
         )}
       </Card>
 
-      <PageSpeedDial pageKeys="project_config" />
     </Box>
+      <PageSpeedDial pageKeys="project_config" />
+    </>
   );
 }
