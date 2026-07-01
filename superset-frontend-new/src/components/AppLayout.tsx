@@ -18,11 +18,15 @@ import StorageIcon from "@mui/icons-material/Storage";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import HistoryIcon from "@mui/icons-material/History";
 import SettingsIcon from "@mui/icons-material/Settings";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import PeopleIcon from "@mui/icons-material/People";
+import SecurityIcon from "@mui/icons-material/Security";
 
 import { useAuthStore } from "@/store/authStore";
 import { useDrawerStore } from "@/store/drawerState";
 import { useNavStore } from "@/store/navStore";
 import { useMenuSettings } from "@/store/menuSettings";
+import { useUserRouteOverrides } from "@/store/userRouteOverrides";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import GlobalSnackbar from "@/components/GlobalSnackbar";
 import ChatInput from "@/components/ChatInput";
@@ -47,6 +51,10 @@ const menuIconMap: Record<string, React.ReactNode> = {
   "alert/list": <NotificationsIcon sx={{ fontSize: 20 }} />,
   query_history: <HistoryIcon sx={{ fontSize: 20 }} />,
   project_config: <SettingsIcon sx={{ fontSize: 20 }} />,
+  channel_config: <AccountTreeIcon sx={{ fontSize: 20 }} />,
+  profit_sharing_config: <SettingsIcon sx={{ fontSize: 20 }} />,
+  admin_users: <PeopleIcon sx={{ fontSize: 20 }} />,
+  admin_roles: <SecurityIcon sx={{ fontSize: 20 }} />,
 };
 
 const defaultIcon = <SettingsIcon sx={{ fontSize: 20 }} />;
@@ -71,6 +79,8 @@ const categoryLabels: Record<NavCategory, string> = {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
+  const isSwitchedUser = useAuthStore((s) => s.isSwitchedUser);
+  const switchBackToAdmin = useAuthStore((s) => s.switchBackToAdmin);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -128,16 +138,31 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     },
   );
 
+  const userRoles = useAuthStore((s) => s.user?.roles);
+  const routeOverrides = useUserRouteOverrides((s) => s.overrides);
+  const currentUsername = useAuthStore((s) => s.user?.username);
+
   const activityBarItems = useMemo(
     () =>
       items
-        .filter((item) => item.id !== "home" && enabled[item.id])
+        .filter((item) => {
+          if (item.id === "home") return false;
+          if (!enabled[item.id]) return false;
+          if (!item.roles || item.roles.length === 0) return true;
+          if (item.roles.some((role) => userRoles?.[role] === true)) return true;
+          if (currentUsername) {
+            const userOverrides = routeOverrides[currentUsername] ?? {};
+            const override = userOverrides[item.path];
+            if (override === true) return true;
+          }
+          return false;
+        })
         .map((item) => ({
           id: item.id,
           icon: menuIconMap[item.id] ?? defaultIcon,
           label: item.label,
         })),
-    [items, enabled],
+    [items, enabled, userRoles, routeOverrides, currentUsername],
   );
 
   const handleNavEnter = useCallback((cat: string) => {
@@ -347,6 +372,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onOpen={(e) => setUserMenuAnchor(e.currentTarget)}
               onClose={() => setUserMenuAnchor(null)}
               onLogout={handleLogout}
+              isSwitchedUser={isSwitchedUser}
+              onSwitchBack={async () => {
+                await switchBackToAdmin();
+                navigate("/");
+              }}
             />
           }
         />

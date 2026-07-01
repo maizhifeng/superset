@@ -9,6 +9,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Logout from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import PaletteIcon from "@mui/icons-material/Palette";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { useThemeStore } from "@/store/themeStore";
 
 interface UserMenuProps {
@@ -17,6 +18,8 @@ interface UserMenuProps {
   onOpen: (e: React.MouseEvent<HTMLElement>) => void;
   onClose: () => void;
   onLogout: () => void;
+  isSwitchedUser?: boolean;
+  onSwitchBack?: () => void;
 }
 
 export default function UserMenu({
@@ -25,6 +28,8 @@ export default function UserMenu({
   onOpen,
   onClose,
   onLogout,
+  isSwitchedUser,
+  onSwitchBack,
 }: UserMenuProps) {
   const navigate = useNavigate();
   const themeMode = useThemeStore((s) => s.theme);
@@ -64,6 +69,21 @@ export default function UserMenu({
         >
           {username || "User"}
         </MenuItem>
+        {isSwitchedUser && (
+          <MenuItem
+            dense
+            onClick={() => {
+              onClose();
+              onSwitchBack?.();
+            }}
+            sx={{ fontSize: "0.8125rem", color: "warning.main" }}
+          >
+            <ListItemIcon sx={{ minWidth: 28 }}>
+              <SwapHorizIcon sx={{ fontSize: 18 }} />
+            </ListItemIcon>
+            切换回管理员
+          </MenuItem>
+        )}
         <Divider />
         <MenuItem
           dense

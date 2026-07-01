@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import SpeedDial from "@mui/material/SpeedDial";
 import SpeedDialAction from "@mui/material/SpeedDialAction";
 import SpeedDialIcon from "@mui/material/SpeedDialIcon";
@@ -51,9 +52,8 @@ export default function PageSpeedDial({
 
   if (tools.length === 0) return null;
 
-  return (
-    <>
-      <SpeedDial
+  return createPortal(
+    <SpeedDial
         ariaLabel="Tools"
         icon={<SpeedDialIcon />}
         onClose={() => setOpen(false)}
@@ -96,7 +96,7 @@ export default function PageSpeedDial({
             }}
           />
         ))}
-      </SpeedDial>
-    </>
+      </SpeedDial>,
+    document.body,
   );
 }

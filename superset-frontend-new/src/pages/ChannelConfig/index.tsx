@@ -17,36 +17,38 @@ import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
 import HelpOutlinedIcon from "@mui/icons-material/HelpOutlined";
+import InputAdornment from "@mui/material/InputAdornment";
 import CircularProgress from "@mui/material/CircularProgress";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
+import Autocomplete from "@mui/material/Autocomplete";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
-import TextField from "@mui/material/TextField";
 import Checkbox from "@mui/material/Checkbox";
-import Autocomplete from "@mui/material/Autocomplete";
 import PageSpeedDial from "@/components/PageSpeedDial";
 import { useToolbarStore } from "@/store/toolbarStore";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
 
-const DB_CONFIG = { database_id: 2, schema: "sj_platform", table: "part_papp" };
+const DB_CONFIG = { database_id: 2, schema: "sj_platform", table: "part_channel" };
 
-interface PappRow {
-  papp_id: string;
-  papp_name: string;
+interface ChannelRow {
+  channel_id: string;
+  channel_name: string;
   updated_at: string;
   白名单控制参数: string;
+  默认分成: string;
 }
 
-const COLUMNS = ["papp_id", "papp_name", "updated_at", "白名单控制参数"];
+const COLUMNS = ["channel_id", "channel_name", "updated_at", "默认分成", "白名单控制参数"];
 
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
 };
 
-export default function ProjectConfig() {
-  const [rows, setRows] = useState<PappRow[]>([]);
+export default function ChannelConfig() {
+  const [rows, setRows] = useState<ChannelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
@@ -57,13 +59,14 @@ export default function ProjectConfig() {
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
   const fetchRows = useCallback(async () => {
-    const res = await api.get<{ result: PappRow[] }>("/project/papp");
+    const res = await api.get<{ result: ChannelRow[] }>("/project/channel");
     const sorted = (res.data.result ?? [])
       .map((r) => ({
-        papp_id: String(r.papp_id),
-        papp_name: r.papp_name ?? "",
+        channel_id: String(r.channel_id),
+        channel_name: r.channel_name ?? "",
         updated_at: r.updated_at ?? "",
         白名单控制参数: r.白名单控制参数 ?? "",
+        默认分成: r.默认分成 ?? "",
       }))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     setRows(sorted);
@@ -84,22 +87,27 @@ export default function ProjectConfig() {
         sql,
       });
 
-      const existingRes = await api.get<{ result: { papp_id: number; 白名单控制参数: string }[] }>(
-        "/project/papp",
+      const existingRes = await api.get<{ result: { channel_id: number; 白名单控制参数: string; 默认分成: string }[] }>(
+        "/project/channel",
       );
-      const existingParams = new Map<number, string>();
+      const existingParams = new Map<number, { 白名单控制参数: string; 默认分成: string }>();
       for (const entry of existingRes.data.result ?? []) {
-        if (entry.白名单控制参数) existingParams.set(entry.papp_id, entry.白名单控制参数);
+        existingParams.set(entry.channel_id, {
+          白名单控制参数: entry.白名单控制参数 ?? "",
+          默认分成: entry.默认分成 ?? "",
+        });
       }
 
       let count = 0;
       for (const raw of q.data.data) {
-        const pappId = Number(raw.papp_id);
-        if (!pappId) continue;
-        await api.put(`/project/papp/${pappId}`, {
-          papp_name: String(raw.papp_name ?? ""),
+        const channelId = Number(raw.channel_id);
+        if (!channelId) continue;
+        const prev = existingParams.get(channelId) ?? { 白名单控制参数: "", 默认分成: "" };
+        await api.put(`/project/channel/${channelId}`, {
+          channel_name: String(raw.channel_name ?? ""),
           updated_at: String(raw.updated_at ?? ""),
-          白名单控制参数: existingParams.get(pappId) ?? "",
+          白名单控制参数: prev.白名单控制参数,
+          默认分成: prev.默认分成,
         });
         count++;
       }
@@ -112,34 +120,39 @@ export default function ProjectConfig() {
     }
   }, [fetchRows]);
 
-  const handleSave = useCallback(async (row: PappRow) => {
-    setSaving((prev) => ({ ...prev, [row.papp_id]: true }));
+  const handleSave = useCallback(async (row: ChannelRow) => {
+    setSaving((prev) => ({ ...prev, [row.channel_id]: true }));
     setError(null);
     setSuccess(null);
     try {
-      await api.put(`/project/papp/${row.papp_id}`, {
-        papp_name: row.papp_name,
+      await api.put(`/project/channel/${row.channel_id}`, {
+        channel_name: row.channel_name,
         updated_at: row.updated_at,
         白名单控制参数: row.白名单控制参数,
+        默认分成: row.默认分成,
       });
-      setSuccess(`已保存 ${row.papp_name}`);
+      setSuccess(`已保存 ${row.channel_name}`);
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "保存失败"));
     } finally {
-      setSaving((prev) => ({ ...prev, [row.papp_id]: false }));
+      setSaving((prev) => ({ ...prev, [row.channel_id]: false }));
     }
   }, []);
 
-  const updateWhitelist = useCallback((pappId: string, checked: boolean) => {
+  const updateWhitelist = useCallback((channelId: string, value: string) => {
     setRows((prev) =>
-      prev.map((r) =>
-        r.papp_id === pappId ? { ...r, 白名单控制参数: checked ? "Y" : "" } : r,
-      ),
+      prev.map((r) => (r.channel_id === channelId ? { ...r, 白名单控制参数: value } : r)),
+    );
+  }, []);
+
+  const updateDefaultSplit = useCallback((channelId: string, value: string) => {
+    setRows((prev) =>
+      prev.map((r) => (r.channel_id === channelId ? { ...r, 默认分成: value } : r)),
     );
   }, []);
 
   useEffect(() => {
-    registerTools("project_config", [
+    registerTools("channel_config", [
       {
         id: "sync",
         priority: 20,
@@ -150,7 +163,7 @@ export default function ProjectConfig() {
         render: null,
       },
     ]);
-    return () => unregisterTools("project_config");
+    return () => unregisterTools("channel_config");
   }, [registerTools, unregisterTools, handleSync]);
 
   const [page, setPage] = useState(0);
@@ -167,7 +180,7 @@ export default function ProjectConfig() {
   const [whitelistOnly, setWhitelistOnly] = useState(false);
   const filteredRows = rows
     .filter((r) => !whitelistOnly || r.白名单控制参数 === "Y")
-    .filter((r) => !filterName || r.papp_name === filterName);
+    .filter((r) => !filterName || r.channel_name === filterName);
   const visibleRows = filteredRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   if (loading) {
@@ -202,19 +215,19 @@ export default function ProjectConfig() {
         }}
       >
         <CardHeader
-          title={`游戏 (${filteredRows.length})`}
+          title={`渠道商 (${filteredRows.length})`}
           sx={cardHeaderSx}
           action={
             <Box sx={{ display: "flex", gap: 1, pr: 0.5, alignItems: "center" }}>
               <Autocomplete
                 size="small"
-                options={[...new Set(rows.map((r) => r.papp_name))].sort()}
+                options={[...new Set(rows.map((r) => r.channel_name))].sort()}
                 value={filterName}
                 onChange={(_, v) => { setFilterName(v); setPage(0); }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    placeholder="搜索游戏..."
+                    placeholder="搜索渠道..."
                     sx={{ "& input": { fontSize: "0.75rem", py: 0.5 } }}
                   />
                 )}
@@ -287,7 +300,7 @@ export default function ProjectConfig() {
                         >
                           <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, px: 0.5, textAlign: "center" }}>
                             {col === "白名单控制参数" ? (
-                              <Tooltip title="勾选后该游戏将参与分成配置的白名单组合" arrow placement="top">
+                              <Tooltip title="勾选后该渠道商将参与分成配置的白名单组合" arrow placement="top">
                                 <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.3, cursor: "help" }}>
                                   {col}
                                   <HelpOutlinedIcon sx={{ fontSize: "0.85rem", color: "text.secondary" }} />
@@ -302,15 +315,15 @@ export default function ProjectConfig() {
                   </TableHead>
                   <TableBody>
                     {visibleRows.map((row) => (
-                      <TableRow key={row.papp_id}>
+                      <TableRow key={row.channel_id}>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
-                            {row.papp_id}
+                            {row.channel_id}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
-                            {row.papp_name}
+                            {row.channel_name}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
@@ -318,18 +331,40 @@ export default function ProjectConfig() {
                             {row.updated_at}
                           </Typography>
                         </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                          <TextField
+                            size="small"
+                            variant="standard"
+                            value={row.默认分成}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                updateDefaultSplit(row.channel_id, v);
+                              }
+                            }}
+                            slotProps={{
+                              input: {
+                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
+                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                              },
+                            }}
+                            sx={{ "& input": { textAlign: "center" } }}
+                          />
+                        </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}>
                           <Checkbox
                             size="small"
                             checked={row.白名单控制参数 === "Y"}
-                            onChange={(_, checked) => updateWhitelist(row.papp_id, checked)}
+                            onChange={(_, checked) =>
+                              updateWhitelist(row.channel_id, checked ? "Y" : "")
+                            }
                           />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <IconButton
                             size="small"
                             onClick={() => handleSave(row)}
-                            disabled={saving[row.papp_id]}
+                            disabled={saving[row.channel_id]}
                             color="primary"
                           >
                             <SaveIcon fontSize="small" />
@@ -377,7 +412,7 @@ export default function ProjectConfig() {
       </Card>
 
     </Box>
-      <PageSpeedDial pageKeys="project_config" />
+      <PageSpeedDial pageKeys="channel_config" />
     </>
   );
 }

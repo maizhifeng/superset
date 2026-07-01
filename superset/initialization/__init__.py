@@ -645,6 +645,9 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         if self.config["WTF_CSRF_ENABLED"]:
             csrf.exempt("superset.charts.data.api.agent_data")
 
+            # Exempt impersonation endpoint from CSRF
+            csrf.exempt("CurrentUserRestApi.impersonate")
+
         self.init_all_dependencies_and_extensions()
 
     def check_secret_key(self) -> None:
@@ -975,6 +978,14 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             csrf.exempt("superset.project.papp.api.get_papp")
             csrf.exempt("superset.project.papp.api.put_papp")
             csrf.exempt("superset.project.papp.api.delete_papp")
+            # Channel metadata endpoints
+            csrf.exempt("superset.project.channel.api.list_channel")
+            csrf.exempt("superset.project.channel.api.get_channel")
+            csrf.exempt("superset.project.channel.api.put_channel")
+            csrf.exempt("superset.project.channel.api.delete_channel")
+            # Profit sharing endpoints
+            csrf.exempt("superset.project.channel.api.sync_profit_sharing")
+            csrf.exempt("superset.project.channel.api.update_profit_sharing")
 
     def configure_async_queries(self) -> None:
         if feature_flag_manager.is_feature_enabled("GLOBAL_ASYNC_QUERIES"):
@@ -1000,6 +1011,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.project.papp.api import papp_blueprint
 
         self.superset_app.register_blueprint(papp_blueprint)
+
+        # Register channel metadata blueprint
+        from superset.project.channel.api import channel_blueprint
+
+        self.superset_app.register_blueprint(channel_blueprint)
 
     def setup_mui_static_routes(self) -> None:
         """Serve MUI frontend static assets from /app/mui-static/assets/

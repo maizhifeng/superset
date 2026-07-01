@@ -21,13 +21,14 @@ from flask import current_app as app, g, redirect, request, Response
 from flask_appbuilder.api import expose, permission_name, safe
 from flask_appbuilder.security.decorators import protect
 from flask_appbuilder.security.sqla.models import User
+from flask_jwt_extended import create_access_token, create_refresh_token
 from marshmallow import ValidationError
 from sqlalchemy.orm.exc import NoResultFound
 from werkzeug.security import generate_password_hash
 
 from superset import is_feature_enabled
 from superset.daos.user import UserDAO
-from superset.extensions import db, event_logger
+from superset.extensions import db, event_logger, security_manager
 from superset.utils.slack import get_user_avatar, SlackClientError
 from superset.views.base_api import BaseSupersetApi, requires_json, statsd_metrics
 from superset.views.users.schemas import CurrentUserPutSchema, UserResponseSchema
@@ -110,6 +111,54 @@ class CurrentUserRestApi(BaseSupersetApi):
         """
         user = bootstrap_user_data(g.user, include_perms=True)
         return self.response(200, result=user)
+
+    @expose("/impersonate/", methods=("GET",))
+    def impersonate(self) -> Response:
+        from flask_jwt_extended import get_jwt, verify_jwt_in_request
+
+        try:
+            verify_jwt_in_request()
+        except Exception:
+            return self.response_401()
+
+        claims = get_jwt()
+        current_uid = claims.get("sub")
+        if not current_uid:
+            return self.response_401()
+
+        current_user = security_manager.get_user_by_id(int(current_uid))
+        if not current_user:
+            return self.response_401()
+
+        if "Admin" not in [role.name for role in getattr(current_user, "roles", [])]:
+            return self.response_403()
+
+        username = request.args.get("username")
+        if not username:
+            return self.response_400(message="username is required")
+
+        target_user = security_manager.find_user(username=username)
+        if not target_user:
+            return self.response_404()
+
+        access_token = create_access_token(
+            identity=str(target_user.id),
+            additional_claims={
+                "fresh": True,
+                "type": "access",
+                "sub": str(target_user.id),
+            },
+        )
+        refresh_token = create_refresh_token(identity=str(target_user.id))
+
+        target_roles = [role.name for role in getattr(target_user, "roles", [])]
+
+        return self.response(
+            200,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            roles=target_roles,
+        )
 
     @expose("/", methods=["PUT"])
     @protect()

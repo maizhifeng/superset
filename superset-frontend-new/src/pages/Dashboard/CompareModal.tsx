@@ -32,7 +32,6 @@ interface GameOption {
   papp_id: string;
   papp_name: string;
   上线时间: string;
-  cch_name?: string;
 }
 
 interface SelectedGame extends GameOption {
@@ -215,19 +214,34 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
     }
 
     // Games list — fires in parallel with column value calls
-    api
-      .get<{ result: { papp_id: number; papp_name: string; 上线时间: string; cch_name?: string }[] }>(
+    const gamesPromise = api
+      .get<{ result: { papp_id: number; papp_name: string }[] }>(
         "/project/papp",
       )
-      .then((res) => {
+      .then((res) => res.data?.result ?? []);
+    const profitSharingPromise = api
+      .get<{ result: { papp_id: number; 上线时间: string }[] }>(
+        "/project/profit-sharing",
+      )
+      .then((res) => res.data?.result ?? []);
+
+    Promise.all([gamesPromise, profitSharingPromise])
+      .then(([games, profitShares]) => {
         if (cancelled) return;
-        const list = (res.data.result ?? []).map((r) => ({
-          papp_id: String(r.papp_id),
-          papp_name: r.papp_name ?? "",
-          上线时间: r.上线时间 ?? "",
-          cch_name: r.cch_name ?? "",
-        }));
-        setGames(list.filter((g) => g.上线时间));
+        const launchTimeByPapp: Record<number, string> = {};
+        for (const ps of profitShares) {
+          if (ps.上线时间) {
+            launchTimeByPapp[ps.papp_id] = ps.上线时间;
+          }
+        }
+        const list = games
+          .filter((g) => launchTimeByPapp[g.papp_id])
+          .map((g) => ({
+            papp_id: String(g.papp_id),
+            papp_name: g.papp_name ?? "",
+            上线时间: launchTimeByPapp[g.papp_id],
+          }));
+        setGames(list);
       })
       .catch((err) => {
         if (!cancelled) setError(parseErrorMessage(err, "加载游戏失败"));
@@ -782,7 +796,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               inputValue={inputValue}
               onInputChange={(_, v) => setInputValue(v)}
               options={gameOptions}
-              getOptionLabel={(o) => `${o.papp_name}${o.cch_name ? ` - ${o.cch_name}` : ""} (${o.papp_id})`}
+              getOptionLabel={(o) => `${o.papp_name} (${o.papp_id})`}
             onChange={(_, value) => {
               setSelectedGames(
                 value.map((g: GameOption | SelectedGame) => {
@@ -944,7 +958,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
               <Chip
                 key={g.papp_id}
                 icon={g.papp_id === primaryPappId ? <Box component="span" sx={{ fontSize: 10, ml: 0.25 }}>★</Box> : undefined}
-                label={`${g.papp_name}${g.cch_name ? ` - ${g.cch_name}` : ""} (${g.dateRange.start} ~ ${g.dateRange.end})`}
+                label={`${g.papp_name} (${g.dateRange.start} ~ ${g.dateRange.end})`}
                 onDelete={() => removeGame(g.papp_id)}
                 onClick={() => setPrimaryPappId(g.papp_id)}
                 size="small"

@@ -316,6 +316,13 @@ WTF_CSRF_EXEMPT_LIST = [
     "superset.project.papp.api.get_papp",
     "superset.project.papp.api.put_papp",
     "superset.project.papp.api.delete_papp",
+    "superset.project.channel.api.list_channel",
+    "superset.project.channel.api.get_channel",
+    "superset.project.channel.api.put_channel",
+    "superset.project.channel.api.delete_channel",
+    "superset.project.channel.api.sync_profit_sharing",
+    "superset.project.channel.api.update_profit_sharing",
+    "superset.sqllab.api.execute_sql_query",
 ]
 
 # Whether to run the web server in debug mode or not

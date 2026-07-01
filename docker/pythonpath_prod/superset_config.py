@@ -107,7 +107,9 @@ TALISMAN_CONFIG = {
         "base-uri": ["'self'"],
         "default-src": ["'self'"],
         "img-src": [
-            "'self'", "blob:", "data:",
+            "'self'",
+            "blob:",
+            "data:",
             "https://apachesuperset.gateway.scarf.sh",
             "https://static.scarf.sh/",
             "ows.terrestris.de",
@@ -117,7 +119,11 @@ TALISMAN_CONFIG = {
         "connect-src": ["'self'"],
         "object-src": "'none'",
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        "font-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+        "font-src": [
+            "'self'",
+            "https://fonts.googleapis.com",
+            "https://fonts.gstatic.com",
+        ],
         "script-src": ["'self'"],
     },
     "content_security_policy_nonce_in": [],

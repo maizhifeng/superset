@@ -30,7 +30,6 @@ from flask import (
     current_app as app,
     g,
     redirect,
-    request,
     Response,
     session,
     url_for,
@@ -237,9 +236,12 @@ class BaseSupersetView(BaseView):
             html = mui_index.read_text(encoding="utf-8")
             from flask import make_response
             from flask_wtf.csrf import generate_csrf
+
             generate_csrf()
             resp = make_response(html)
-            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Cache-Control"] = (
+                "no-store, no-cache, must-revalidate, max-age=0"
+            )
             return resp
         context = get_spa_template_context(
             entry, extra_bootstrap_data, **template_kwargs
