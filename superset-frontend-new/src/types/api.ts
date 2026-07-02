@@ -200,6 +200,7 @@ export interface DatasetDetail {
   template_params: string | null;
   catalog: string | null;
   kind: string;
+  extra: string | null;
   database: { database_name: string; id: number };
   columns: DatasetColumn[];
   metrics: DatasetMetric[];

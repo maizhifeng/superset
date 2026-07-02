@@ -83,6 +83,7 @@ def list_profit_sharing():  # type: ignore[no-untyped-def]
                     "channel_id": r.channel_id,
                     "channel_name": r.channel_name,
                     "上线时间": r.上线时间 or "",
+                    "渠道商分成": r.渠道商分成 or "",
                     "分成比例": r.分成比例 or "",
                     "研发分成": r.研发分成 or "",
                     "IP分成": r.IP分成 or "",
@@ -121,6 +122,8 @@ def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
 
     if (上线时间 := data.get("上线时间")) is not None:  # noqa: N806
         record.上线时间 = 上线时间
+    if (渠道商分成 := data.get("渠道商分成")) is not None:  # noqa: N806
+        record.渠道商分成 = 渠道商分成
     if (分成比例 := data.get("分成比例")) is not None:  # noqa: N806
         record.分成比例 = 分成比例
     if (研发分成 := data.get("研发分成")) is not None:  # noqa: N806
@@ -129,6 +132,19 @@ def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
         record.IP分成 = IP分成
     if (分成方式 := data.get("分成方式")) is not None:  # noqa: N806
         record.分成方式 = 分成方式
+
+    # Auto-compute net 分成比例
+    try:
+        qd = float(record.渠道商分成 or "0")
+        yf = float(record.研发分成 or "0")
+        ip = float(record.IP分成 or "0")
+        if record.分成方式 == "利润后分成":
+            net = (100 - qd - ip) * (100 - yf) / 100
+        else:
+            net = 100 - qd - yf - ip
+        record.分成比例 = f"{net:.1f}"
+    except (ValueError, TypeError):
+        record.分成比例 = None
 
     db.session.commit()
     return jsonify(
@@ -140,6 +156,7 @@ def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
                 "channel_id": record.channel_id,
                 "channel_name": record.channel_name,
                 "上线时间": record.上线时间 or "",
+                "渠道商分成": record.渠道商分成 or "",
                 "分成比例": record.分成比例 or "",
                 "研发分成": record.研发分成 or "",
                 "IP分成": record.IP分成 or "",

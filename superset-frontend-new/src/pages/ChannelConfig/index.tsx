@@ -5,6 +5,7 @@ import Card from "@mui/material/Card";
 import CardHeader from "@mui/material/CardHeader";
 import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
+import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -195,14 +196,18 @@ export default function ChannelConfig() {
     <>
     <Box sx={{ p: 3 }}>
       {success && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setSuccess(null)}>
-          {success}
-        </Alert>
+        <Snackbar open autoHideDuration={3000} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} onClose={() => setSuccess(null)}>
+          <Alert severity="success" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setSuccess(null)}>
+            {success}
+          </Alert>
+        </Snackbar>
       )}
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
+        <Snackbar open autoHideDuration={6000} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} onClose={() => setError(null)}>
+          <Alert severity="error" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Snackbar>
       )}
 
       <Card
