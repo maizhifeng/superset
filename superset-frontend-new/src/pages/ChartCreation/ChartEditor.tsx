@@ -134,6 +134,7 @@ export default function ChartEditor({
       type: string | null;
       expression?: string;
       is_dttm?: boolean;
+      verbose_name?: string | null;
     }[]
   >([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
@@ -164,7 +165,7 @@ export default function ChartEditor({
       if (!c.column_name) continue;
       items.push({
         value: c.column_name,
-        label: c.column_name,
+        label: c.verbose_name || c.column_name,
         group: "列",
       });
     }
@@ -207,7 +208,7 @@ export default function ChartEditor({
       })
       .map((c) => ({
         value: c.column_name,
-        label: c.column_name,
+        label: c.verbose_name || c.column_name,
         group: "维度",
       }));
   }, [columnsList]);
@@ -366,6 +367,7 @@ export default function ChartEditor({
         type: string | null;
         expression?: string;
         is_dttm?: boolean;
+        verbose_name?: string | null;
       }[];
       metrics: {
         metric_name: string;
@@ -379,6 +381,7 @@ export default function ChartEditor({
           type: string | null;
           expression?: string;
           is_dttm?: boolean;
+          verbose_name?: string | null;
         }[];
         const mets = (r.metrics ?? []) as {
           metric_name: string;

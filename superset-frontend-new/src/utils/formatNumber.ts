@@ -8,10 +8,10 @@ export function formatNumber(value: number): string {
 
   const abs = Math.abs(value);
 
-  if (abs >= 1e12) return trimZeros((value / 1e12).toFixed(1)) + "T";
-  if (abs >= 1e9) return trimZeros((value / 1e9).toFixed(1)) + "B";
-  if (abs >= 1e6) return trimZeros((value / 1e6).toFixed(1)) + "M";
-  if (abs >= 1e3) return trimZeros((value / 1e3).toFixed(1)) + "K";
+  if (abs >= 1e12) return trimZeros((value / 1e12).toFixed(2)) + "T";
+  if (abs >= 1e9) return trimZeros((value / 1e9).toFixed(2)) + "B";
+  if (abs >= 1e6) return trimZeros((value / 1e6).toFixed(2)) + "M";
+  if (abs >= 1e3) return trimZeros((value / 1e3).toFixed(2)) + "K";
 
   if (value === 0) return "0";
 

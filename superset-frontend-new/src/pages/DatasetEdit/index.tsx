@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
+import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Chip from "@mui/material/Chip";
@@ -23,6 +24,10 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Checkbox from "@mui/material/Checkbox";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
@@ -48,11 +53,18 @@ export default function DatasetEdit() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  interface ExtraConfig {
+    profit_sharing?: { papp_name_column?: string; channel_name_column?: string };
+    computed_columns?: { name: string; formula: string; type: string }[];
+  }
+
   const [form, setForm] = useState({
     table_name: "",
     description: "",
     sql: "",
   });
+  const [extraConfig, setExtraConfig] = useState<ExtraConfig>({});
+
   const [detectedDateColumns, setDetectedDateColumns] = useState<
     {
       columnName: string;
@@ -87,6 +99,15 @@ export default function DatasetEdit() {
           description: d.description ?? "",
           sql: d.sql ?? "",
         });
+        try {
+          const parsed = JSON.parse(d.extra ?? "{}");
+          setExtraConfig({
+            profit_sharing: parsed.profit_sharing,
+            computed_columns: parsed.computed_columns,
+          });
+        } catch {
+          setExtraConfig({});
+        }
         setDetectedDateColumns(detectDateColumnsFromMeta(d.columns));
         setLoading(false);
       })
@@ -113,16 +134,22 @@ export default function DatasetEdit() {
         ? `/dataset/${id}?override_columns=true`
         : `/dataset/${id}`;
 
+      const extraStr =
+        extraConfig.profit_sharing || (extraConfig.computed_columns?.length ?? 0) > 0
+          ? JSON.stringify(extraConfig)
+          : null;
       const payload: {
         table_name: string;
         description: string | null;
         sql: string | null;
+        extra: string | null;
         columns?: { id?: number; column_name: string; type?: string; is_dttm?: boolean; expression?: string | null; extra?: string | null }[];
         metrics?: { id?: number; metric_name: string; expression: string; verbose_name: string | null; description: string | null; d3format: string | null }[];
       } = {
         table_name: f.table_name,
         description: f.description || null,
         sql: f.sql || null,
+        extra: extraStr,
       };
       if (sqlChanged && dataset) {
         payload.columns = dataset.columns.map((col) => ({
@@ -159,7 +186,7 @@ export default function DatasetEdit() {
       const msg = parseErrorMessage(err, "保存失败");
       setError(msg);
     }
-  }, [id, navigate, modifiedColumns, dataset]);
+    }, [id, navigate, modifiedColumns, dataset, extraConfig]);
 
   const handleAddMetric = useCallback(() => {
     setNewMetric({
@@ -316,16 +343,6 @@ export default function DatasetEdit() {
           }}
         />
       </Box>
-      {success && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
-          数据集已保存
-        </Alert>
-      )}
-      {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {error}
-        </Alert>
-      )}
 
       {detectedDateColumns.length > 0 && id && (
         <Box sx={{ mb: 2 }}>
@@ -383,6 +400,10 @@ export default function DatasetEdit() {
                   sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
                 />
               )}
+              <Tab
+                label="额外配置"
+                sx={{ fontSize: "0.8125rem", minHeight: 48, py: 0 }}
+              />
             </Tabs>
             {tabValue === 1 && (
               <Button
@@ -747,6 +768,240 @@ export default function DatasetEdit() {
                     />
                   </Box>
                 )}
+                {tabValue === (dataset?.kind !== "physical" ? 4 : 3) && (
+                  <Box sx={{ p: 1.5, flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                    <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                      <CardHeader title="分成配置" sx={cardHeaderSx} />
+                      <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <TextField
+                          size="small"
+                          label="游戏名称列名 (papp_name_column)"
+                          placeholder="例如 主游戏"
+                          value={extraConfig.profit_sharing?.papp_name_column ?? ""}
+                          onChange={(e) => {
+                            setExtraConfig((prev) => ({
+                              ...prev,
+                              profit_sharing: {
+                                ...(prev.profit_sharing ?? {}),
+                                papp_name_column: e.target.value,
+                              },
+                            }));
+                          }}
+                        />
+                        <TextField
+                          size="small"
+                          label="渠道名称列名 (channel_name_column)"
+                          placeholder="例如 渠道商"
+                          value={extraConfig.profit_sharing?.channel_name_column ?? ""}
+                          onChange={(e) => {
+                            setExtraConfig((prev) => ({
+                              ...prev,
+                              profit_sharing: {
+                                ...(prev.profit_sharing ?? {}),
+                                channel_name_column: e.target.value,
+                              },
+                            }));
+                          }}
+                        />
+                      </CardContent>
+                    </Card>
+                    <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                      <CardHeader
+                        title="计算列"
+                        sx={cardHeaderSx}
+                        action={
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<AddIcon />}
+                            onClick={() => {
+                              setExtraConfig((prev) => ({
+                                ...prev,
+                                computed_columns: [
+                                  ...(prev.computed_columns ?? []),
+                                  { name: "", formula: "", type: "float" },
+                                ],
+                              }));
+
+                            }}
+                          >
+                            添加计算列
+                          </Button>
+                        }
+                      />
+                      <CardContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {(extraConfig.computed_columns ?? []).length === 0 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                            暂无计算列。点击"添加计算列"创建。
+                          </Typography>
+                        )}
+                        {(extraConfig.computed_columns ?? []).map((cc, idx) => (
+                          <Card
+                            key={idx}
+                            variant="outlined"
+                            sx={{ borderRadius: 2, borderColor: "divider" }}
+                          >
+                            <CardContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+                              <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-start" }}>
+                                <TextField
+                                  size="small"
+                                  label="名称"
+                                  placeholder="例如 分成后成本"
+                                  value={cc.name}
+                                  onChange={(e) => {
+                                    setExtraConfig((prev) => {
+                                      const cols = [...(prev.computed_columns ?? [])];
+                                      cols[idx] = { ...cols[idx], name: e.target.value };
+                                      return { ...prev, computed_columns: cols };
+                                    });
+
+                                  }}
+                                  sx={{ flex: 1 }}
+                                />
+                                <FormControl size="small" sx={{ minWidth: 100 }}>
+                                  <InputLabel>类型</InputLabel>
+                                  <Select
+                                    value={cc.type}
+                                    label="类型"
+                                    onChange={(e) => {
+                                      setExtraConfig((prev) => {
+                                        const cols = [...(prev.computed_columns ?? [])];
+                                        cols[idx] = { ...cols[idx], type: e.target.value };
+                                        return { ...prev, computed_columns: cols };
+                                      });
+
+                                    }}
+                                  >
+                                    <MenuItem value="float">float</MenuItem>
+                                    <MenuItem value="int">int</MenuItem>
+                                    <MenuItem value="str">str</MenuItem>
+                                  </Select>
+                                </FormControl>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => {
+                                    setExtraConfig((prev) => ({
+                                      ...prev,
+                                      computed_columns: (prev.computed_columns ?? []).filter(
+                                        (_, i) => i !== idx,
+                                      ),
+                                    }));
+
+                                  }}
+                                  sx={{ mt: 0.5 }}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                              <TextField
+                                size="small"
+                                label="公式"
+                                placeholder="ad_real_cost * float(渠道商分成 or '100') / 100"
+                                value={cc.formula}
+                                onChange={(e) => {
+                                  setExtraConfig((prev) => {
+                                    const cols = [...(prev.computed_columns ?? [])];
+                                    cols[idx] = { ...cols[idx], formula: e.target.value };
+                                    return { ...prev, computed_columns: cols };
+                                  });
+                                }}
+                                multiline
+                                rows={2}
+                                sx={{
+                                  "& textarea": {
+                                    fontFamily: "monospace",
+                                    fontSize: "0.8125rem",
+                                  },
+                                }}
+                              />
+                              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ width: "100%", fontWeight: 600, fontSize: "0.7rem" }}>
+                                  可用列:
+                                </Typography>
+                                {(dataset?.columns ?? [])
+                                  .filter((c) => c.column_name && c.is_active !== false)
+                                  .map((c) => (
+                                    <Box
+                                      key={c.column_name}
+                                      component="span"
+                                      onClick={() => {
+                                        setExtraConfig((prev) => {
+                                          const cols = [...(prev.computed_columns ?? [])];
+                                          cols[idx] = { ...cols[idx], formula: cols[idx].formula + c.column_name };
+                                          return { ...prev, computed_columns: cols };
+                                        });
+                                      }}
+                                      sx={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 0.25,
+                                        px: 0.5,
+                                        py: 0.25,
+                                        borderRadius: 0.5,
+                                        bgcolor: "grey.100",
+                                        fontSize: "0.65rem",
+                                        cursor: "pointer",
+                                        fontFamily: "monospace",
+                                        border: "1px solid",
+                                        borderColor: "divider",
+                                        "&:hover": { bgcolor: "grey.200" },
+                                      }}
+                                    >
+                                      {c.column_name}
+                                      {c.verbose_name && c.verbose_name !== c.column_name && (
+                                        <Typography component="span" variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary", ml: 0.25 }}>
+                                          / {c.verbose_name}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  ))}
+                                {(dataset?.metrics ?? [])
+                                  .filter((m) => m.metric_name && ["分成比例", "渠道分成", "渠道商分成", "研发分成", "IP分成", "分成方式", "上线时间"].includes(m.metric_name))
+                                  .map((m) => (
+                                    <Box
+                                      key={m.metric_name}
+                                      component="span"
+                                      onClick={() => {
+                                        setExtraConfig((prev) => {
+                                          const cols = [...(prev.computed_columns ?? [])];
+                                          cols[idx] = { ...cols[idx], formula: cols[idx].formula + m.metric_name };
+                                          return { ...prev, computed_columns: cols };
+                                        });
+                                      }}
+                                      sx={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 0.25,
+                                        px: 0.5,
+                                        py: 0.25,
+                                        borderRadius: 0.5,
+                                        bgcolor: "grey.100",
+                                        color: "info.main",
+                                        fontSize: "0.65rem",
+                                        cursor: "pointer",
+                                        fontFamily: "monospace",
+                                        border: "1px solid",
+                                        borderColor: "info.main",
+                                        "&:hover": { bgcolor: "grey.200" },
+                                      }}
+                                    >
+                                      {m.metric_name}
+                                      {m.verbose_name && m.verbose_name !== m.metric_name && (
+                                        <Typography component="span" variant="caption" sx={{ fontSize: "0.6rem", color: "text.secondary", ml: 0.25 }}>
+                                          / {m.verbose_name}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  ))}
+                              </Box>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           )}
@@ -978,6 +1233,20 @@ export default function DatasetEdit() {
           </Box>
         </Box>
       </Drawer>
+      {success && (
+        <Snackbar open autoHideDuration={3000} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} onClose={() => setSuccess(false)}>
+          <Alert severity="success" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setSuccess(false)}>
+            数据集已保存
+          </Alert>
+        </Snackbar>
+      )}
+      {error && (
+        <Snackbar open autoHideDuration={6000} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} onClose={() => setError(null)}>
+          <Alert severity="error" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Snackbar>
+      )}
     </Box>
   );
 }

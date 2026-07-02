@@ -5,6 +5,8 @@ import Card from "@mui/material/Card";
 import CardHeader from "@mui/material/CardHeader";
 import CardContent from "@mui/material/CardContent";
 import Typography from "@mui/material/Typography";
+import Tooltip from "@mui/material/Tooltip";
+import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -34,6 +36,7 @@ interface WhitelistRow {
   channel_id: number;
   channel_name: string;
   上线时间: string;
+  渠道商分成: string;
   分成比例: string;
   研发分成: string;
   IP分成: string;
@@ -42,7 +45,12 @@ interface WhitelistRow {
 
 const SPLIT_TYPES = ["流水分成", "利润后分成"];
 
-const COLUMNS = ["papp_id", "papp_name", "channel_id", "channel_name", "渠道分成", "研发分成", "IP分成", "分成方式", "上线时间"];
+const COLUMNS = ["papp_id", "papp_name", "channel_id", "channel_name", "渠道商分成", "研发分成", "IP分成", "分成比例", "分成方式", "上线时间"];
+
+const COL_DESCS: Record<string, string> = {
+  "分成比例": "最终净比例（流水分成: 1-渠道商%-研发%-IP%；利润后分成: (1-渠道商%-IP%)×(1-研发%)）",
+  "分成方式": "流水分成：各比例基于流水X；利润后分成：研发分成基于扣除渠道商和IP后的剩余部分",
+};
 
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
@@ -96,6 +104,7 @@ export default function ProfitSharingConfig() {
       const promises = rows.map((row) =>
         api.put(`/project/profit-sharing/${row.id}`, {
           上线时间: row.上线时间,
+          渠道商分成: row.渠道商分成,
           分成比例: row.分成比例,
           研发分成: row.研发分成,
           IP分成: row.IP分成,
@@ -118,6 +127,7 @@ export default function ProfitSharingConfig() {
     try {
       await api.put(`/project/profit-sharing/${row.id}`, {
         上线时间: row.上线时间,
+        渠道商分成: row.渠道商分成,
         分成比例: row.分成比例,
         研发分成: row.研发分成,
         IP分成: row.IP分成,
@@ -131,7 +141,7 @@ export default function ProfitSharingConfig() {
     }
   }, []);
 
-  const updateField = useCallback((id: number, field: "上线时间" | "分成比例" | "研发分成" | "IP分成" | "分成方式", value: string) => {
+  const updateField = useCallback((id: number, field: "上线时间" | "渠道商分成" | "研发分成" | "IP分成" | "分成方式", value: string) => {
     setRows((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
     );
@@ -176,14 +186,28 @@ export default function ProfitSharingConfig() {
   return (
     <Box sx={{ p: 3 }}>
       {success && (
-        <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setSuccess(null)}>
-          {success}
-        </Alert>
+        <Snackbar
+          open
+          autoHideDuration={3000}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          onClose={() => setSuccess(null)}
+        >
+          <Alert severity="success" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setSuccess(null)}>
+            {success}
+          </Alert>
+        </Snackbar>
       )}
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
+        <Snackbar
+          open
+          autoHideDuration={6000}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          onClose={() => setError(null)}
+        >
+          <Alert severity="error" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Snackbar>
       )}
 
       <Card
@@ -285,20 +309,27 @@ export default function ProfitSharingConfig() {
                             bgcolor: "grey.50",
                             fontSize: "0.75rem",
                             py: 1,
-                            minWidth: col === "上线时间" ? 140 : col === "渠道分成" ? 120 : col === "研发分成" ? 120 : col === "IP分成" ? 120 : col === "分成方式" ? 140 : 100,
+                            minWidth: col === "上线时间" ? 90 : col === "分成比例" ? 100 : col === "渠道商分成" || col === "研发分成" || col === "IP分成" ? 90 : col === "分成方式" ? 120 : col === "channel_id" || col === "papp_id" || col === "id" ? 70 : 90,
                             textAlign: "center",
                           }}
                         >
-                          <Typography
-                            sx={{
-                              fontSize: "0.75rem",
-                              fontWeight: 700,
-                              px: 0.5,
-                              textAlign: "center",
-                            }}
-                          >
-                            {col}
-                          </Typography>
+                          <Tooltip title={COL_DESCS[col] || ""} placement="top" arrow>
+                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25 }}>
+                              <Typography
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontWeight: 700,
+                                  px: 0.5,
+                                  textAlign: "center",
+                                }}
+                              >
+                                {col}
+                              </Typography>
+                              {COL_DESCS[col] && (
+                                <Typography component="span" sx={{ fontSize: "0.7rem", color: "info.main", fontWeight: 700, cursor: "help" }}>?</Typography>
+                              )}
+                            </Box>
+                          </Tooltip>
                         </TableCell>
                       ))}
                       <TableCell sx={{ fontWeight: 700, bgcolor: "grey.50", fontSize: "0.75rem", py: 1, width: 60, textAlign: "center" }} />
@@ -327,15 +358,15 @@ export default function ProfitSharingConfig() {
                             {row.channel_name}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
                           <TextField
                             size="small"
                             variant="standard"
-                            value={row.分成比例}
+                            value={row.渠道商分成}
                             onChange={(e) => {
                               const v = e.target.value;
                               if (/^\d*\.?\d*$/.test(v) || v === "") {
-                                updateField(row.id, "分成比例", v);
+                                updateField(row.id, "渠道商分成", v);
                               }
                             }}
                             slotProps={{
@@ -347,7 +378,7 @@ export default function ProfitSharingConfig() {
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
                           <TextField
                             size="small"
                             variant="standard"
@@ -367,7 +398,7 @@ export default function ProfitSharingConfig() {
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
                           <TextField
                             size="small"
                             variant="standard"
@@ -387,7 +418,19 @@ export default function ProfitSharingConfig() {
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 140 }}>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}>
+                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5, fontWeight: 600, color: "text.secondary" }}>
+                            {row.分成比例 || `${(() => {
+                              const qd = parseFloat(row.渠道商分成 || '0');
+                              const yf = parseFloat(row.研发分成 || '0');
+                              const ip = parseFloat(row.IP分成 || '0');
+                              return row.分成方式 === "利润后分成"
+                                ? ((100 - qd - ip) * (100 - yf) / 100).toFixed(1)
+                                : (100 - qd - yf - ip).toFixed(1);
+                            })()}%`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
                           <Select
                             size="small"
                             variant="standard"
@@ -400,7 +443,7 @@ export default function ProfitSharingConfig() {
                             ))}
                           </Select>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 140 }}>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}>
                           <DatePicker
                             format="YYYY/MM/DD"
                             value={row.上线时间 ? dayjs(row.上线时间) : null}

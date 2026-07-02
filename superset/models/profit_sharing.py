@@ -19,6 +19,7 @@ class ProfitSharing(Model):
     papp_name = Column(String(255), nullable=True)
     channel_name = Column(String(255), nullable=True)
     上线时间 = Column(String(255), nullable=True)
+    渠道商分成 = Column(String(255), nullable=True)
     分成比例 = Column(String(255), nullable=True)
     研发分成 = Column(String(255), nullable=True)
     IP分成 = Column(String(255), nullable=True)
@@ -58,9 +59,8 @@ class ProfitSharing(Model):
                 if existing:
                     existing.papp_name = game.papp_name
                     existing.channel_name = channel.channel_name
-                    if not existing.分成比例:
-                        channel_data = channels_by_id.get(channel.channel_id)
-                        existing.分成比例 = (
+                    if not existing.渠道商分成:
+                        existing.渠道商分成 = (
                             channel_data.默认分成 if channel_data else None
                         )
                 else:
@@ -70,10 +70,30 @@ class ProfitSharing(Model):
                             papp_id=game.papp_id,
                             channel_id=channel.channel_id,
                             papp_name=game.papp_name,
-                            channel_name=channel.channel_name,
-                            分成比例=channel_data.默认分成 if channel_data else None,
+                            channel_name=game.channel_name,
+                            渠道商分成=channel_data.默认分成 if channel_data else None,
                         )
                     )
                 count += 1
         db.session.commit()
+        cls._compute_net_ratio()
         return count
+
+    @classmethod
+    def _compute_net_ratio(cls) -> None:
+        from superset import db
+
+        records = db.session.query(cls).all()
+        for r in records:
+            try:
+                qd = float(r.渠道商分成 or "0")
+                yf = float(r.研发分成 or "0")
+                ip = float(r.IP分成 or "0")
+                if r.分成方式 == "利润后分成":
+                    net = (100 - qd - ip) * (100 - yf) / 100
+                else:
+                    net = 100 - qd - yf - ip
+                r.分成比例 = f"{net:.1f}"
+            except (ValueError, TypeError):
+                r.分成比例 = None
+        db.session.commit()

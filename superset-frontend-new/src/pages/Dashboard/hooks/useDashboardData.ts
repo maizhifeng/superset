@@ -120,6 +120,20 @@ export function useDashboardData() {
             ? totalRaw.data[0]
             : null;
 
+        // Client-side computed columns: sum from detail rows for accuracy
+        if (totalRow && first?.data && Array.isArray(first.data) && first.data.length > 0) {
+          const computedCols = ["分成后流水"];
+          for (const col of computedCols) {
+            if (col in totalRow && first.data.some((r) => col in r)) {
+              const sum = first.data.reduce((acc, r) => {
+                const v = Number(r[col]);
+                return acc + (Number.isFinite(v) ? v : 0);
+              }, 0);
+              totalRow[col] = sum;
+            }
+          }
+        }
+
         let hasMore: boolean | undefined;
         if (page != null && first && Array.isArray(first.data)) {
           hasMore = first.data.length > pageSize;

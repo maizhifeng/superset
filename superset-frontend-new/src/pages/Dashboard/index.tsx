@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
@@ -6,7 +6,6 @@ import Drawer from "@mui/material/Drawer";
 
 import type { DashboardData, ChartData, DashboardFilterValue, DashboardPosition } from "@/types/api";
 import PageSpeedDial from "@/components/PageSpeedDial";
-import ChartEditor from "@/pages/ChartCreation/ChartEditor";
 import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
 import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
@@ -20,9 +19,6 @@ import {
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
-import CompareConfigModal from "@/pages/Dashboard/CompareConfigModal";
-import CompareModal from "@/pages/Dashboard/CompareModal";
-import AddChartDialog from "@/pages/Dashboard/AddChartDialog";
 import { useDrawerStore } from "@/store/drawerState";
 import { PRESET_INTERVALS } from "@/pages/Dashboard/ChartCard";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -34,6 +30,11 @@ import {
 import { useDashboardCompare } from "@/pages/Dashboard/hooks/useDashboardCompare";
 import { useDashboardLayout } from "@/pages/Dashboard/hooks/useDashboardLayout";
 import { spacing } from "@/theme/spacing";
+
+const ChartEditor = lazy(() => import("@/pages/ChartCreation/ChartEditor"));
+const CompareConfigModal = lazy(() => import("@/pages/Dashboard/CompareConfigModal"));
+const CompareModal = lazy(() => import("@/pages/Dashboard/CompareModal"));
+const AddChartDialog = lazy(() => import("@/pages/Dashboard/AddChartDialog"));
 
 export default function Dashboard() {
   const { id } = useParams<{ id: string }>();
@@ -899,38 +900,46 @@ export default function Dashboard() {
       >
         <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
           {isDrawerOpen && (
-            <ChartEditor
-              compact
-              onChartSaved={handleChartSaved}
-              initialData={
-                editingSliceId ? chartMeta[Number(editingSliceId)] : null
-              }
-              buildDashboardAdhocFilters={buildAdhocFilters}
-            />
+            <Suspense fallback={null}>
+              <ChartEditor
+                compact
+                onChartSaved={handleChartSaved}
+                initialData={
+                  editingSliceId ? chartMeta[Number(editingSliceId)] : null
+                }
+                buildDashboardAdhocFilters={buildAdhocFilters}
+              />
+            </Suspense>
           )}
         </Box>
       </Drawer>
-      <CompareConfigModal
-        open={compare.compareModalOpen}
-        columns={compare.datasetCompareColumns}
-        initialColumns={compare.initialCompareColumns}
-        fullData={compare.compareFullData}
-        onApply={compare.handleApplyCompare}
-        onCancel={compare.closeCompareModal}
-      />
-      <CompareModal
-        open={compare.periodModalOpen}
-        chartId={compare.periodModalChartId}
-        chartData={compare.periodModalChartData}
-        chartMeta={compare.compareChartMeta}
-        onClose={compare.closePeriodModal}
-      />
-      <AddChartDialog
-        open={addChartDialogOpen}
-        excludeIds={dashboardChartIds}
-        onSelect={handleAddChartSelect}
-        onClose={() => setAddChartDialogOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <CompareConfigModal
+          open={compare.compareModalOpen}
+          columns={compare.datasetCompareColumns}
+          initialColumns={compare.initialCompareColumns}
+          fullData={compare.compareFullData}
+          onApply={compare.handleApplyCompare}
+          onCancel={compare.closeCompareModal}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <CompareModal
+          open={compare.periodModalOpen}
+          chartId={compare.periodModalChartId}
+          chartData={compare.periodModalChartData}
+          chartMeta={compare.compareChartMeta}
+          onClose={compare.closePeriodModal}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <AddChartDialog
+          open={addChartDialogOpen}
+          excludeIds={dashboardChartIds}
+          onSelect={handleAddChartSelect}
+          onClose={() => setAddChartDialogOpen(false)}
+        />
+      </Suspense>
       <UndoRedoKeyListeners
         onUndo={() => {}}
         onRedo={() => {}}

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 from datetime import datetime
 from typing import Any, Callable, TYPE_CHECKING
 
@@ -513,6 +514,211 @@ class ChartDataRestApi(ChartRestApi):
         result = async_command.run(form_data, get_user_id())
         return self.response(202, **result)
 
+    FIELD_MAP = {"渠道商分成": "渠道商分成", "研发分成": "研发分成", "IP分成": "IP分成", "分成方式": "分成方式", "上线时间": "上线时间", "分成比例": "分成比例"}
+    DISPLAY_FIELDS = list(FIELD_MAP.keys())
+    INJECT_FIELDS_SET = set(DISPLAY_FIELDS)
+
+    def _ensure_profit_sharing_metrics(
+        self, datasource: Any, display_fields: list[str],
+    ) -> None:
+        from superset import db
+        from superset.connectors.sqla.models import SqlMetric
+
+        ds_id = getattr(datasource, "id", None)
+        if not ds_id:
+            return
+        # Clean up old metric names that were renamed
+        old_names = {"分成比例", "渠道分成"}
+        for m in getattr(datasource, "metrics", []) or []:
+            if m.metric_name in old_names and m.metric_name not in display_fields:
+                try:
+                    db.session.delete(m)
+                except Exception:
+                    pass
+        existing = {
+            m.metric_name for m in getattr(datasource, "metrics", []) or []
+        }
+        created = False
+        for field in display_fields:
+            if field not in existing:
+                try:
+                    db.session.add(
+                        SqlMetric(
+                            metric_name=field,
+                            expression="NULL",
+                            verbose_name=field,
+                            table_id=ds_id,
+                        )
+                    )
+                    created = True
+                except Exception:
+                    pass
+        if created:
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+    def _inject_profit_sharing(self, result: dict[str, Any]) -> dict[str, Any]:
+        qc: QueryContext | None = result.get("query_context")
+        if not qc:
+            logger.debug("_inject_profit_sharing: no query_context")
+            return result
+
+        ds = qc.datasource
+        ds_id = getattr(ds, "id", None)
+        ds_extra_raw = getattr(ds, "extra", None)
+        logger.debug(
+            "_inject_profit_sharing: ds.id=%s extra=%s",
+            ds_id, ds_extra_raw,
+        )
+        ds_extra = json.loads(ds_extra_raw or "{}")
+        ps_config = ds_extra.get("profit_sharing")
+        computed = ds_extra.get("computed_columns", [])
+
+        if not ps_config and not computed:
+            logger.debug("_inject_profit_sharing: no config (ps=%s computed=%s)", bool(ps_config), bool(computed))
+            return result
+
+        from superset import db
+        from superset.models.profit_sharing import ProfitSharing
+
+        papp_col = ps_config["papp_name_column"] if ps_config else None
+        channel_col = ps_config["channel_name_column"] if ps_config else None
+        profit_shares = db.session.query(ProfitSharing).all()
+        logger.debug(
+            "_inject_profit_sharing: papp_col=%s channel_col=%s profit_shares=%d",
+            papp_col, channel_col, len(profit_shares),
+        )
+        ps_map = {(ps.papp_name, ps.channel_name): ps for ps in profit_shares}
+
+        # Ensure SqlMetric records exist (appear in metrics selector under "指标")
+        self._ensure_profit_sharing_metrics(ds, self.DISPLAY_FIELDS)
+
+        # Ensure SqlMetric records exist for computed columns too
+        if computed:
+            from superset.connectors.sqla.models import SqlMetric
+            ds_id_inner = getattr(ds, "id", None)
+            if ds_id_inner:
+                existing = {
+                    m.metric_name for m in getattr(ds, "metrics", []) or []
+                }
+                cc_created = False
+                for cc in computed:
+                    name = cc.get("name", "")
+                    if name and name not in existing:
+                        try:
+                            db.session.add(
+                                SqlMetric(
+                                    metric_name=name,
+                                    expression="NULL",
+                                    verbose_name=name,
+                                    table_id=ds_id_inner,
+                                )
+                            )
+                            cc_created = True
+                        except Exception:
+                            pass
+                if cc_created:
+                    try:
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+        # Determine which inject fields the user selected in this query
+        requested_inject: set[str] = set()
+        for query_obj in getattr(qc, "queries", []) or []:
+            for metric in (getattr(query_obj, "metrics", None) or []):
+                if isinstance(metric, str) and metric in self.INJECT_FIELDS_SET:
+                    requested_inject.add(metric)
+        # Also include fields stripped from groupby/columns by _get_data_response
+        requested_inject |= getattr(self, "_requested_inject_fields", set())
+
+        active_inject = list(requested_inject) if requested_inject else []
+
+        for query in result.get("queries") or []:
+            colnames: list[str] = query.get("colnames") or []
+            data = query.get("data") or []
+            new_cols: list[str] = []
+
+            # Step 1: Profit sharing injection (match by game+channel name)
+            if (
+                ps_config
+                and active_inject
+                and papp_col
+                and channel_col
+                and papp_col in colnames
+                and channel_col in colnames
+            ):
+                new_cols.extend(active_inject)
+                matched = 0
+                for row in data:
+                    for field in active_inject:
+                        row[field] = None
+                    try:
+                        key = (str(row.get(papp_col)), str(row.get(channel_col)))
+                    except (ValueError, TypeError, KeyError):
+                        continue
+                    ps = ps_map.get(key)
+                    if ps:
+                        for field in active_inject:
+                            attr = self.FIELD_MAP.get(field, field)
+                            val = getattr(ps, attr, None)
+                            if field == "分成比例" and not val:
+                                val = "100"
+                            row[field] = val
+                        matched += 1
+                    elif "分成比例" in active_inject:
+                        row["分成比例"] = "100"
+                logger.debug(
+                    "_inject_profit_sharing: matched=%d/%d active=%s cols=%s",
+                    matched, len(data), active_inject, colnames,
+                )
+            # Step 1b: For aggregate-only queries (e.g. totals sub-query), still init defaults
+            elif (
+                ps_config
+                and active_inject
+                and any(f in colnames for f in active_inject)
+            ):
+                new_cols.extend(active_inject)
+                for row in data:
+                    for field in active_inject:
+                        row[field] = row.get(field) or None
+
+            # Step 2: Computed columns (always runs for all queries)
+            if computed:
+                new_cols.extend(c["name"] for c in computed)
+                for row in data:
+                    local_vars: dict[str, Any] = {
+                        **row,
+                        "float": float,
+                        "int": int,
+                        "str": str,
+                        "round": round,
+                    }
+                    # Also expose raw column names from aggregate wrappers like SUM(col)
+                    for key in list(row.keys()):
+                        m = re.match(r"^(\w+)\((.+)\)$", key)
+                        if m and m.group(2) not in local_vars:
+                            local_vars[m.group(2)] = row[key]
+                    for cc in computed:
+                        try:
+                            row[cc["name"]] = eval(
+                                cc["formula"],
+                                {"__builtins__": {}},
+                                local_vars,
+                            )
+                        except Exception:
+                            row[cc["name"]] = None
+
+            if new_cols:
+                existing_lower = {c.lower() for c in colnames}
+                query["colnames"] = colnames + [
+                    c for c in new_cols if c.lower() not in existing_lower
+                ]
+
+        return result
+
     def _send_chart_response(  # noqa: C901
         self,
         result: dict[Any, Any],
@@ -522,6 +728,7 @@ class ChartDataRestApi(ChartRestApi):
         expected_rows: int | None = None,
         dashboard_filter_context: DashboardFilterContext | None = None,
     ) -> Response:
+        result = self._inject_profit_sharing(result)
         result_type = result["query_context"].result_type
         result_format = result["query_context"].result_format
 
@@ -632,6 +839,16 @@ class ChartDataRestApi(ChartRestApi):
         dashboard_filter_context: DashboardFilterContext | None = None,
     ) -> Response:
         """Get data response and optionally log is_cached information."""
+        # Strip virtual columns from GROUP BY to avoid SQL errors (GROUP BY NULL)
+        qc = command._query_context
+        self._requested_inject_fields: set[str] = set()
+        for q in getattr(qc, "queries", []) or []:
+            cols = getattr(q, "columns", None)
+            if cols:
+                for c in cols:
+                    if isinstance(c, str) and c in self.INJECT_FIELDS_SET:
+                        self._requested_inject_fields.add(c)
+                q.columns = [c for c in cols if c not in self.INJECT_FIELDS_SET]
         try:
             result = command.run(force_cached=force_cached)
         except ChartDataCacheLoadError as exc:

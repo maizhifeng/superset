@@ -6,7 +6,21 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   optimizeDeps: {
-    include: ["immer"],
+    include: [
+      "immer",
+      "react",
+      "react-dom",
+      "react-router-dom",
+      "@mui/material",
+      "@mui/icons-material",
+      "@emotion/react",
+      "@emotion/styled",
+      "echarts",
+      "echarts-for-react",
+      "dayjs",
+      "axios",
+      "zustand",
+    ],
   },
   plugins: [
     react({
