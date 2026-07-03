@@ -104,7 +104,7 @@ export default function UserMenu({
             <PaletteIcon sx={{ fontSize: 18 }} />
           </ListItemIcon>
           <ListItemText>
-            主题: {themeMode === "paper" ? "纸本" : "缤纷"}
+             切换至: {themeMode === "paper" ? "Notion" : "纸本"}
           </ListItemText>
         </MenuItem>
         <Divider />

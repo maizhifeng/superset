@@ -27,10 +27,10 @@ function formatDuration(ms: number): string {
 }
 
 function durationColor(ms: number): string {
-  if (ms < 1000) return "#5ac189";
-  if (ms < 10000) return "#20a7c9";
-  if (ms < 60000) return "#ff7f44";
-  return "#e0432e";
+  if (ms < 1000) return "success.main";
+  if (ms < 10000) return "info.main";
+  if (ms < 60000) return "warning.main";
+  return "error.main";
 }
 
 export default function QueryHistoryList() {
@@ -120,7 +120,7 @@ export default function QueryHistoryList() {
                   flex: 1,
                   height: 6,
                   borderRadius: 3,
-                  bgcolor: "rgba(0,0,0,0.06)",
+                  bgcolor: "action.hover",
                   "& .MuiLinearProgress-bar": {
                     bgcolor: durationColor(ms),
                     borderRadius: 3,
@@ -269,7 +269,7 @@ export default function QueryHistoryList() {
                       width: 40,
                       height: 3,
                       borderRadius: 2,
-                      bgcolor: "rgba(0,0,0,0.06)",
+                      bgcolor: "action.hover",
                       "& .MuiLinearProgress-bar": {
                         bgcolor: durationColor(ms),
                         borderRadius: 2,

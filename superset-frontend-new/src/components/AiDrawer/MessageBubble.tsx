@@ -149,7 +149,7 @@ export default function MessageBubble({ role, content, onRetry }: MessageBubbleP
             fontSize: "0.8125rem",
             lineHeight: 1.6,
             wordBreak: "break-word",
-            boxShadow: isUser ? "none" : "0 1px 2px rgba(0,0,0,0.04)",
+            boxShadow: isUser ? "none" : "var(--mui-palette-shadow-sm)",
             overflow: "hidden",
           }}
         >

@@ -82,7 +82,7 @@ export default function ChartTypeSelector({
           "&.Mui-disabled": {
             opacity: 0.5,
             borderColor: "error.light",
-            bgcolor: "rgba(211, 47, 47, 0.04)",
+            bgcolor: "error.light",
             cursor: "not-allowed",
             "& .MuiSvgIcon-root": {
               opacity: 0.4,
@@ -114,7 +114,7 @@ export default function ChartTypeSelector({
                     ? {
                         borderColor: "primary.light",
                         borderWidth: 2,
-                        bgcolor: "rgba(32, 167, 201, 0.04)",
+                        bgcolor: "primary.container",
                       }
                     : undefined
                 }

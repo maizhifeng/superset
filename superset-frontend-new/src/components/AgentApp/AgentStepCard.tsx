@@ -10,13 +10,13 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import type { AgentStep } from "@/components/AgentApp/types";
 
 const stepTypeConfig: Record<string, { label: string; color: string; bg: string }> = {
-  query: { label: "查询", color: "#1976d2", bg: "rgba(25, 118, 210, 0.08)" },
-  analyze: { label: "分析", color: "#388e3c", bg: "rgba(56, 142, 60, 0.08)" },
-  chart: { label: "图表", color: "#7b1fa2", bg: "rgba(123, 31, 162, 0.08)" },
-  report: { label: "报告", color: "#e65100", bg: "rgba(230, 81, 0, 0.08)" },
-  drilldown: { label: "钻取", color: "#1565c0", bg: "rgba(21, 101, 192, 0.08)" },
-  compare: { label: "对比", color: "#2e7d32", bg: "rgba(46, 125, 50, 0.08)" },
-  schema: { label: "元数据", color: "#546e7a", bg: "rgba(84, 110, 122, 0.08)" },
+  query: { label: "查询", color: "info.main", bg: "status.infoBg" },
+  analyze: { label: "分析", color: "success.main", bg: "status.successBg" },
+  chart: { label: "图表", color: "secondary.main", bg: "secondary.container" },
+  report: { label: "报告", color: "warning.main", bg: "status.warningBg" },
+  drilldown: { label: "钻取", color: "info.main", bg: "status.infoBg" },
+  compare: { label: "对比", color: "success.main", bg: "status.successBg" },
+  schema: { label: "元数据", color: "text.secondary", bg: "action.hover" },
 };
 
 interface AgentStepCardProps {
@@ -27,7 +27,7 @@ interface AgentStepCardProps {
 
 export default function AgentStepCard({ step, compact, isLast }: AgentStepCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const cfg = stepTypeConfig[step.type] ?? { label: step.type, color: "#78909c", bg: "rgba(120, 144, 156, 0.08)" };
+  const cfg = stepTypeConfig[step.type] ?? { label: step.type, color: "text.secondary", bg: "action.hover" };
 
 
   const statusIcon = () => {
@@ -36,20 +36,20 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
         return <CircularProgress size={16} sx={{ color: cfg.color }} />;
       case "done":
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "#4caf50", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>✓</Typography>
+          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "success.main", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>✓</Typography>
           </Box>
         );
       case "error":
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "#ef5350", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>✗</Typography>
+          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "error.main", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>✗</Typography>
           </Box>
         );
       default:
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "grey.300", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>○</Typography>
+          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "divider", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>○</Typography>
           </Box>
         );
     }
@@ -61,7 +61,7 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
       <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}>
         {statusIcon()}
         {!isLast && (
-          <Box sx={{ width: 2, flex: 1, bgcolor: step.status === "error" ? "#ef5350" : "grey.300", mt: 0.5, minHeight: 16 }} />
+          <Box sx={{ width: 2, flex: 1, bgcolor: step.status === "error" ? "error.main" : "divider", mt: 0.5, minHeight: 16 }} />
         )}
       </Box>
 
@@ -71,10 +71,10 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
           sx={{
             borderRadius: 1.5,
             border: "1px solid",
-            borderColor: step.status === "error" ? "#ef5350" : "grey.200",
+            borderColor: step.status === "error" ? "error.main" : "divider",
             overflow: "hidden",
             transition: "box-shadow 200ms",
-            "&:hover": { boxShadow: "0 1px 4px rgba(0,0,0,0.08)" },
+            "&:hover": { boxShadow: "var(--mui-palette-shadow-sm)" },
           }}
         >
           <Box
@@ -119,7 +119,7 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
                   </Typography>
                 </Box>
                 {step.status === "error" && (
-                  <Typography sx={{ fontSize: "0.65rem", color: "#ef5350", fontWeight: 500 }}>失败</Typography>
+                  <Typography sx={{ fontSize: "0.65rem", color: "error.main", fontWeight: 500 }}>失败</Typography>
                 )}
               </Box>
             </Box>

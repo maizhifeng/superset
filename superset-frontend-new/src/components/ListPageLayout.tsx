@@ -1,13 +1,7 @@
-import { type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import TableSkeleton from "@/components/TableSkeleton";
-import { keyframes } from "@mui/material";
-
-const contentFadeIn = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
 
 interface ListPageLayoutProps {
   loading: boolean;
@@ -31,11 +25,7 @@ export default function ListPageLayout({
   if (loading && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {skeleton ?? (
-          <Box sx={{ mt: 2 }}>
-            <TableSkeleton />
-          </Box>
-        )}
+        {skeleton ?? <Box sx={{ mt: 2 }}><TableSkeleton /></Box>}
       </Box>
     );
   }
@@ -43,11 +33,7 @@ export default function ListPageLayout({
   if (error && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {errorAlert ?? (
-          <Alert severity="error" sx={{ borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+        {errorAlert ?? <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
       </Box>
     );
   }
@@ -59,26 +45,13 @@ export default function ListPageLayout({
         flexDirection: "column",
         flex: 1,
         minHeight: 0,
-        overflow: "auto",
-        p: 3,
-        pt: 2,
-        animation: `${contentFadeIn} 400ms cubic-bezier(0.25, 0.1, 0.15, 1) both`,
+        position: "relative",
+        p: { xs: 1.5, md: 3 },
+        pt: { xs: 1.5, md: 2 },
       }}
     >
-      {!hasData && !loading ? (
-        emptyState
-      ) : (
-        <Box
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          {children}
-        </Box>
-      )}
+      {error && <Alert severity="error" sx={{ mx: 3, mt: 2, borderRadius: 2 }}>{error}</Alert>}
+      {!hasData ? emptyState : children}
     </Box>
   );
 }

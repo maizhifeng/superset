@@ -32,9 +32,9 @@ export default function DashboardNav({
             maxHeight: 500,
             borderRadius: 2,
             boxShadow:
-              "0 4px 8px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.12)",
+              "var(--mui-palette-shadow-modal)",
             "& .MuiBackdrop-root": {
-              backgroundColor: "rgba(0, 0, 0, 0.35)",
+              backgroundColor: "var(--mui-palette-shadow-backdrop)",
               backdropFilter: "blur(2px)",
             },
           },

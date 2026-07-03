@@ -514,12 +514,21 @@ class ChartDataRestApi(ChartRestApi):
         result = async_command.run(form_data, get_user_id())
         return self.response(202, **result)
 
-    FIELD_MAP = {"渠道商分成": "渠道商分成", "研发分成": "研发分成", "IP分成": "IP分成", "分成方式": "分成方式", "上线时间": "上线时间", "分成比例": "分成比例"}
+    FIELD_MAP = {
+        "渠道商分成": "渠道商分成",
+        "研发分成": "研发分成",
+        "IP分成": "IP分成",
+        "分成方式": "分成方式",
+        "上线时间": "上线时间",
+        "分成比例": "分成比例",
+    }
     DISPLAY_FIELDS = list(FIELD_MAP.keys())
     INJECT_FIELDS_SET = set(DISPLAY_FIELDS)
 
     def _ensure_profit_sharing_metrics(
-        self, datasource: Any, display_fields: list[str],
+        self,
+        datasource: Any,
+        display_fields: list[str],
     ) -> None:
         from superset import db
         from superset.connectors.sqla.models import SqlMetric
@@ -534,10 +543,8 @@ class ChartDataRestApi(ChartRestApi):
                 try:
                     db.session.delete(m)
                 except Exception:
-                    pass
-        existing = {
-            m.metric_name for m in getattr(datasource, "metrics", []) or []
-        }
+                    logger.warning("Failed to delete old metric: %s", m.metric_name)
+        existing = {m.metric_name for m in getattr(datasource, "metrics", []) or []}
         created = False
         for field in display_fields:
             if field not in existing:
@@ -552,14 +559,14 @@ class ChartDataRestApi(ChartRestApi):
                     )
                     created = True
                 except Exception:
-                    pass
+                    logger.warning("Failed to add metric: %s", field)
         if created:
             try:
                 db.session.commit()
             except Exception:
                 db.session.rollback()
 
-    def _inject_profit_sharing(self, result: dict[str, Any]) -> dict[str, Any]:
+    def _inject_profit_sharing(self, result: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
         qc: QueryContext | None = result.get("query_context")
         if not qc:
             logger.debug("_inject_profit_sharing: no query_context")
@@ -570,14 +577,19 @@ class ChartDataRestApi(ChartRestApi):
         ds_extra_raw = getattr(ds, "extra", None)
         logger.debug(
             "_inject_profit_sharing: ds.id=%s extra=%s",
-            ds_id, ds_extra_raw,
+            ds_id,
+            ds_extra_raw,
         )
         ds_extra = json.loads(ds_extra_raw or "{}")
         ps_config = ds_extra.get("profit_sharing")
         computed = ds_extra.get("computed_columns", [])
 
         if not ps_config and not computed:
-            logger.debug("_inject_profit_sharing: no config (ps=%s computed=%s)", bool(ps_config), bool(computed))
+            logger.debug(
+                "_inject_profit_sharing: no config (ps=%s computed=%s)",
+                bool(ps_config),
+                bool(computed),
+            )
             return result
 
         from superset import db
@@ -588,7 +600,9 @@ class ChartDataRestApi(ChartRestApi):
         profit_shares = db.session.query(ProfitSharing).all()
         logger.debug(
             "_inject_profit_sharing: papp_col=%s channel_col=%s profit_shares=%d",
-            papp_col, channel_col, len(profit_shares),
+            papp_col,
+            channel_col,
+            len(profit_shares),
         )
         ps_map = {(ps.papp_name, ps.channel_name): ps for ps in profit_shares}
 
@@ -598,11 +612,10 @@ class ChartDataRestApi(ChartRestApi):
         # Ensure SqlMetric records exist for computed columns too
         if computed:
             from superset.connectors.sqla.models import SqlMetric
+
             ds_id_inner = getattr(ds, "id", None)
             if ds_id_inner:
-                existing = {
-                    m.metric_name for m in getattr(ds, "metrics", []) or []
-                }
+                existing = {m.metric_name for m in getattr(ds, "metrics", []) or []}
                 cc_created = False
                 for cc in computed:
                     name = cc.get("name", "")
@@ -618,7 +631,7 @@ class ChartDataRestApi(ChartRestApi):
                             )
                             cc_created = True
                         except Exception:
-                            pass
+                            logger.warning("Failed to create computed column")
                 if cc_created:
                     try:
                         db.session.commit()
@@ -628,7 +641,7 @@ class ChartDataRestApi(ChartRestApi):
         # Determine which inject fields the user selected in this query
         requested_inject: set[str] = set()
         for query_obj in getattr(qc, "queries", []) or []:
-            for metric in (getattr(query_obj, "metrics", None) or []):
+            for metric in getattr(query_obj, "metrics", None) or []:
                 if isinstance(metric, str) and metric in self.INJECT_FIELDS_SET:
                     requested_inject.add(metric)
         # Also include fields stripped from groupby/columns by _get_data_response
@@ -672,9 +685,12 @@ class ChartDataRestApi(ChartRestApi):
                         row["分成比例"] = "100"
                 logger.debug(
                     "_inject_profit_sharing: matched=%d/%d active=%s cols=%s",
-                    matched, len(data), active_inject, colnames,
+                    matched,
+                    len(data),
+                    active_inject,
+                    colnames,
                 )
-            # Step 1b: For aggregate-only queries (e.g. totals sub-query), still init defaults
+            # Step 1b: For aggregate-only queries (e.g. totals sub-query), init defaults
             elif (
                 ps_config
                 and active_inject
@@ -685,31 +701,44 @@ class ChartDataRestApi(ChartRestApi):
                     for field in active_inject:
                         row[field] = row.get(field) or None
 
-            # Step 2: Computed columns (always runs for all queries)
+            # Step 2: Computed columns (inject per user via metrics/columns)
             if computed:
-                new_cols.extend(c["name"] for c in computed)
-                for row in data:
-                    local_vars: dict[str, Any] = {
-                        **row,
-                        "float": float,
-                        "int": int,
-                        "str": str,
-                        "round": round,
-                    }
-                    # Also expose raw column names from aggregate wrappers like SUM(col)
-                    for key in list(row.keys()):
-                        m = re.match(r"^(\w+)\((.+)\)$", key)
-                        if m and m.group(2) not in local_vars:
-                            local_vars[m.group(2)] = row[key]
-                    for cc in computed:
-                        try:
-                            row[cc["name"]] = eval(
-                                cc["formula"],
-                                {"__builtins__": {}},
-                                local_vars,
-                            )
-                        except Exception:
-                            row[cc["name"]] = None
+                requested_computed: set[str] = set()
+                for query_obj in getattr(qc, "queries", []) or []:
+                    for metric in getattr(query_obj, "metrics", None) or []:
+                        if isinstance(metric, str):
+                            requested_computed.add(metric)
+                requested_computed |= getattr(self, "_requested_inject_fields", set())
+                computed_names_set = {c["name"] for c in computed}
+                active_computed = [
+                    c
+                    for c in computed
+                    if c["name"] in (requested_computed & computed_names_set)
+                ]
+
+                if active_computed:
+                    new_cols.extend(c["name"] for c in active_computed)
+                    for row in data:
+                        local_vars: dict[str, Any] = {
+                            **row,
+                            "float": float,
+                            "int": int,
+                            "str": str,
+                            "round": round,
+                        }
+                        for key in list(row.keys()):
+                            m = re.match(r"^(\w+)\((.+)\)$", str(key))
+                            if m and m.group(2) not in local_vars:
+                                local_vars[m.group(2)] = row[key]
+                        for cc in active_computed:
+                            try:
+                                row[cc["name"]] = eval(  # noqa: S307
+                                    cc["formula"],
+                                    {"__builtins__": {}},
+                                    local_vars,
+                                )
+                            except Exception:
+                                row[cc["name"]] = None
 
             if new_cols:
                 existing_lower = {c.lower() for c in colnames}
@@ -827,7 +856,7 @@ class ChartDataRestApi(ChartRestApi):
                 add_extra_log_payload(is_cached=is_cached_values)
 
     @event_logger.log_this
-    def _get_data_response(
+    def _get_data_response(  # noqa: C901
         self,
         command: ChartDataCommand,
         force_cached: bool = False,
@@ -842,13 +871,44 @@ class ChartDataRestApi(ChartRestApi):
         # Strip virtual columns from GROUP BY to avoid SQL errors (GROUP BY NULL)
         qc = command._query_context
         self._requested_inject_fields: set[str] = set()
+
+        # Read computed column names from datasource
+        computed_names: set[str] = set()
+        ds_extra_raw = getattr(qc.datasource, "extra", "{}") or "{}"
+        ds_extra = (
+            json.loads(ds_extra_raw) if isinstance(ds_extra_raw, str) else ds_extra_raw
+        )
+        for cc in ds_extra.get("computed_columns", []):
+            if name := cc.get("name"):
+                computed_names.add(name)
+
         for q in getattr(qc, "queries", []) or []:
             cols = getattr(q, "columns", None)
             if cols:
                 for c in cols:
-                    if isinstance(c, str) and c in self.INJECT_FIELDS_SET:
-                        self._requested_inject_fields.add(c)
-                q.columns = [c for c in cols if c not in self.INJECT_FIELDS_SET]
+                    if isinstance(c, str):
+                        if c in self.INJECT_FIELDS_SET:
+                            self._requested_inject_fields.add(c)
+                        elif c in computed_names:
+                            self._requested_inject_fields.add(c)
+                q.columns = [
+                    c
+                    for c in cols
+                    if c not in self.INJECT_FIELDS_SET and c not in computed_names
+                ]
+
+            # Strip computed columns from metrics to prevent NULL-valued columns
+            # in the SQL result when the user hasn't selected them
+            metrics = getattr(q, "metrics", None)
+            if metrics:
+                for m in metrics:
+                    if isinstance(m, str) and m in computed_names:
+                        self._requested_inject_fields.add(m)
+                q.metrics = [
+                    m
+                    for m in metrics
+                    if not (isinstance(m, str) and m in computed_names)
+                ]
         try:
             result = command.run(force_cached=force_cached)
         except ChartDataCacheLoadError as exc:

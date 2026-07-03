@@ -1,5 +1,6 @@
 import { memo, useRef, useMemo, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
@@ -31,11 +32,11 @@ const spin = keyframes`
 `;
 
 const loadingBarColors = [
-  "var(--mui-palette-primary-main, #20a7c9)",
-  "var(--mui-palette-warning-main, #ff7f44)",
-  "var(--mui-palette-info-main, #66bcfe)",
-  "var(--mui-palette-success-main, #5ac189)",
-  "var(--mui-palette-error-main, #e0432e)",
+  "primary.main",
+  "warning.main",
+  "info.main",
+  "success.main",
+  "error.main",
 ];
 
 function ChartLoadingSkeleton() {
@@ -179,6 +180,7 @@ function ChartCard({
   hasMore,
   onPageChange,
 }: ChartCardProps) {
+  const theme = useTheme();
   const storageKey = `pct95_threshold_${chartId}`;
   const [pct95Threshold, setPct95Threshold] = useState(() => {
     const saved = localStorage.getItem(storageKey);
@@ -392,7 +394,7 @@ function ChartCard({
   ]);
 
   const option = processedData
-    ? buildEChartsOption(vizType, processedData, metricFormatMap)
+    ? buildEChartsOption(vizType, processedData, metricFormatMap, theme.palette.chart)
     : null;
 
   const toggleFullScreen = async () => {
@@ -453,19 +455,20 @@ function ChartCard({
           flexDirection: "column",
           overflow: "hidden",
           borderRadius: 2,
-          border: 0,
+          border: "1px solid",
+          borderColor: "divider",
           bgcolor: "background.paper",
           boxShadow: isCompareActive
-            ? "0 0 0 2px var(--mui-palette-primary-main, #20a7c9), 0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)"
+            ? "0 0 0 2px var(--mui-palette-primary-main), var(--mui-palette-shadow-popover)"
             : isDragging
-              ? "0 4px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.10)"
-              : "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
+              ? "var(--mui-palette-shadow-modal)"
+              : "var(--mui-palette-shadow-card)",
           transition:
-            "box-shadow 200ms cubic-bezier(0, 0, 0.2, 1), transform 200ms cubic-bezier(0, 0, 0.2, 1)",
+            "box-shadow 250ms cubic-bezier(0, 0, 0.2, 1), transform 250ms cubic-bezier(0, 0, 0.2, 1)",
           "&:hover": {
-            transform: "translateY(-1px)",
+            transform: "translateY(-2px)",
             boxShadow:
-              "0 2px 4px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.10)",
+              "var(--mui-palette-shadow-cardHover)",
           },
         }}
       >
@@ -481,7 +484,7 @@ function ChartCard({
             borderColor: "divider",
             bgcolor: "background.paper",
             backgroundImage:
-              "linear-gradient(to bottom, rgba(32,167,201,0.03), transparent)",
+              "linear-gradient(to bottom, color-mix(in srgb, var(--mui-palette-primary-main) 4%, transparent), transparent)",
           }}
         >
           <IconButton
@@ -732,7 +735,7 @@ function ChartCard({
                 position: "fixed",
                 inset: 0,
                 zIndex: 99998,
-                bgcolor: "rgba(0,0,0,0.5)",
+                bgcolor: "var(--mui-palette-shadow-backdrop)",
               }}
               onClick={exitFullScreen}
             />

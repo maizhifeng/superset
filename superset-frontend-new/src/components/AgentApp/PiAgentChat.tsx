@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useRef, useState, useMemo, useEffect } from "react";
+import { useTheme } from "@mui/material/styles";
 import { ChatBox } from "@mui/x-chat";
 import type { ChatPartRendererProps, ChatPartRenderer } from "@mui/x-chat-headless";
 import type {
@@ -343,13 +344,13 @@ function ModelSelector() {
           cursor: "pointer",
           fontSize: "0.68rem",
           color: "primary.main",
-          bgcolor: "rgba(0, 122, 115, 0.08)",
+          bgcolor: "color-mix(in srgb, var(--mui-palette-accent-teal) 8%, transparent)",
           border: "1px solid",
-          borderColor: "rgba(0, 122, 115, 0.2)",
+          borderColor: "color-mix(in srgb, var(--mui-palette-accent-teal) 20%, transparent)",
           userSelect: "none",
           "&:hover": {
-            bgcolor: "rgba(0, 122, 115, 0.12)",
-            borderColor: "rgba(0, 122, 115, 0.35)",
+            bgcolor: "color-mix(in srgb, var(--mui-palette-accent-teal) 12%, transparent)",
+            borderColor: "color-mix(in srgb, var(--mui-palette-accent-teal) 35%, transparent)",
           },
         }}
       >
@@ -388,7 +389,7 @@ function ModelSelector() {
             border: "1px solid",
             borderColor: "divider",
             borderRadius: 1.5,
-            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            boxShadow: "var(--mui-palette-shadow-popover)",
             zIndex: 1300,
           }}
         >
@@ -403,7 +404,7 @@ function ModelSelector() {
                 "&:hover": { bgcolor: "action.hover" },
                 bgcolor:
                   m.id === currentModel
-                    ? "rgba(0, 122, 115, 0.08)"
+                    ? "color-mix(in srgb, var(--mui-palette-accent-teal) 8%, transparent)"
                     : "transparent",
                 borderLeft:
                   m.id === currentModel
@@ -641,6 +642,7 @@ function sessionToConversation(
 }
 
 export default function PiAgentChat() {
+  const theme = useTheme();
   const user = useAuthStore((s) => s.user);
   const adapter = getPiAgentAdapter(user?.username ?? "anonymous");
   const sessions = useAgentStore((s) => s.sessions);
@@ -651,20 +653,20 @@ export default function PiAgentChat() {
   const currentUser: ChatUser = {
     id: userName,
     displayName: userName,
-    avatarUrl: avatarDataUrl(userName[0].toUpperCase(), "#1976d2"),
+    avatarUrl: avatarDataUrl(userName[0].toUpperCase(), theme.palette.primary.main),
     role: "user",
   };
   const assistantUser: ChatUser = {
     id: "ai-assistant",
     displayName: "AI",
-    avatarUrl: avatarDataUrl("A", "#9c27b0"),
+    avatarUrl: avatarDataUrl("A", theme.palette.secondary.main),
     role: "assistant",
   };
   const members = [currentUser, assistantUser];
 
   const userAvatar = useMemo(
-    () => avatarDataUrl(((user?.username || "U")[0]).toUpperCase()),
-    [user?.username],
+    () => avatarDataUrl(((user?.username || "U")[0]).toUpperCase(), theme.palette.primary.main),
+    [user?.username, theme.palette.primary.main],
   );
 
   // Ensure at least one session exists
@@ -795,7 +797,7 @@ export default function PiAgentChat() {
             sx: {
               "&:hover": {
                 transform: "translateX(-50%)",
-                boxShadow: (theme: any) => theme.shadows[2],
+                boxShadow: "var(--mui-palette-shadow-md)",
               },
             },
           },

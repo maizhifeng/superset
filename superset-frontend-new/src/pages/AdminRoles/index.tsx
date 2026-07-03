@@ -14,8 +14,8 @@ import SecurityIcon from "@mui/icons-material/Security";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
+import PageHeader from "@/components/PageHeader";
 import { useToolbarStore } from "@/store/toolbarStore";
-import PageSpeedDial from "@/components/PageSpeedDial";
 import ListPageLayout from "@/components/ListPageLayout";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
@@ -68,16 +68,6 @@ export default function AdminRoles() {
             sx={{ minWidth: 220 }}
           />
         ),
-      },
-      {
-        id: "create",
-        priority: 10,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <SecurityIcon />,
-        fabLabel: "新建角色",
-        action: () => setCreateOpen(true),
-        render: null,
       },
     ]);
     return () => unregisterTools("admin_roles");
@@ -144,104 +134,110 @@ export default function AdminRoles() {
   ];
 
   return (
-    <ListPageLayout
-      loading={loading}
-      error={error}
-      hasData={rows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<SecurityIcon />}
-            title="角色管理"
-            description={searchText ? "请调整搜索条件" : "暂无角色数据"}
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  新建角色
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
-    >
-      <ResponsiveDataGrid
-        rows={rows}
-        columns={columns}
+    <>
+      <PageHeader title="角色管理" actions={
+        <Button variant="contained" size="small" startIcon={<SecurityIcon />} onClick={() => setCreateOpen(true)}>
+          新建角色
+        </Button>
+      } />
+      <ListPageLayout
         loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="admin_roles"
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除角色"
-        description={`确定要删除角色"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <Dialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>新建角色</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="角色名称"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            variant="outlined"
-            size="small"
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>取消</Button>
-          <Button
-            variant="contained"
-            disabled={creating || !createName.trim()}
-            onClick={async () => {
-              setCreating(true);
-              try {
-                await api.post("/security/roles/", {
-                  name: createName.trim(),
-                });
-                setCreateOpen(false);
-                setCreateName("");
-                fetchData();
-              } catch {
-                /* ignore */
+        error={error}
+        hasData={rows.length > 0}
+        emptyState={
+          <>
+            <EmptyState
+              icon={<SecurityIcon />}
+              title="角色管理"
+              description={searchText ? "请调整搜索条件" : "暂无角色数据"}
+              action={
+                !searchText ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    新建角色
+                  </Button>
+                ) : undefined
               }
-              setCreating(false);
-            }}
-          >
-            {creating ? "创建中..." : "创建"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <PageSpeedDial pageKeys="admin_roles" />
-    </ListPageLayout>
+            />
+            <EmptyStateShortcutHint />
+          </>
+        }
+      >
+        <ResponsiveDataGrid
+          rows={rows}
+          columns={columns}
+          loading={loading}
+          autoHeight
+          paginationModel={paginationModel}
+          rowCount={rowCount}
+          paginationMode="server"
+          onPaginationModelChange={setPaginationModel}
+          pageSizeOptions={[25, 50, 100]}
+          toolbarPageKey="admin_roles"
+        />
+        {deleteError && (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+            {deleteError}
+          </Alert>
+        )}
+        <ConfirmModal
+          open={!!deleteTarget}
+          title="删除角色"
+          description={`确定要删除角色"${deleteTarget?.name}"？此操作不可撤销。`}
+          confirmText="删除"
+          cancelText="取消"
+          confirmLoading={deleteLoading}
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+        <Dialog
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>新建角色</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              label="角色名称"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 1 }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button
+              variant="contained"
+              disabled={creating || !createName.trim()}
+              onClick={async () => {
+                setCreating(true);
+                try {
+                  await api.post("/security/roles/", {
+                    name: createName.trim(),
+                  });
+                  setCreateOpen(false);
+                  setCreateName("");
+                  fetchData();
+                } catch {
+                  /* ignore */
+                }
+                setCreating(false);
+              }}
+            >
+              {creating ? "创建中..." : "创建"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </ListPageLayout>
+    </>
   );
 }

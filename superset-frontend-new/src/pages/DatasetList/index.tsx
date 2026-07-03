@@ -1,9 +1,12 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -15,7 +18,6 @@ import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { useToolbarStore } from "@/store/toolbarStore";
-import PageSpeedDial from "@/components/PageSpeedDial";
 import ListPageLayout from "@/components/ListPageLayout";
 import { ConfirmModal } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
@@ -67,19 +69,9 @@ export default function DatasetList() {
           />
         ),
       },
-      {
-        id: "create",
-        priority: 10,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <FunctionsIcon />,
-        fabLabel: "新建数据集",
-        action: () => navigate("/dataset/create"),
-        render: null,
-      },
     ]);
     return () => unregisterTools("dataset_list");
-  }, [navigate, registerTools, unregisterTools, handleSearchChange]);
+  }, [registerTools, unregisterTools, handleSearchChange]);
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
@@ -161,70 +153,89 @@ export default function DatasetList() {
   ];
 
   return (
-    <ListPageLayout
-      loading={loading}
-      error={error}
-      hasData={rows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<TableChartIcon />}
-            title="未找到数据集"
-            description={
-              searchText
-                ? "请调整搜索条件"
-                : "创建第一个数据集开始构建图表"
-            }
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => navigate("/dataset/create")}
-                >
-                  创建数据集
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
-    >
-      <ResponsiveDataGrid
-        rows={rows}
-        columns={columns}
+    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, p: { xs: 1.5, md: 3 }, pt: { xs: 1.5, md: 2 } }}>
+      <Card variant="outlined" sx={{ borderRadius: 2, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <CardHeader title={<Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>数据集</Typography>}
+          action={<Button variant="contained" size="small" startIcon={<FunctionsIcon />} onClick={() => navigate("/dataset/create")}>新建数据集</Button>}
+          sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
+        />
+        <Divider />
+        <ListPageLayout
         loading={loading}
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        onRowClick={(params) => navigate(`/dataset/edit/${params.id}`)}
-        onEdit={(row) => navigate(`/dataset/edit/${row.id as number}`)}
-        toolbarPageKey="dataset_list"
-        onDelete={(row) =>
-          setDeleteTarget({ id: row.id, name: row.table_name })
-        }
-        onBatchDelete={async (ids) => {
-          await Promise.all(ids.map((id) => api.delete(`/dataset/${id}`)));
-          fetchData();
-        }}
-        renderCard={(row) => (
+        error={error}
+        hasData={rows.length > 0}
+        emptyState={
           <>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-              <Typography
-                variant="body2"
-                sx={{ fontWeight: 600, lineHeight: 1.3, flex: 1 }}
-              >
-                {row.table_name}
-              </Typography>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
-              {row.schema && (
+            <EmptyState
+              icon={<TableChartIcon />}
+              title="未找到数据集"
+              description={
+                searchText
+                  ? "请调整搜索条件"
+                  : "创建第一个数据集开始构建图表"
+              }
+              action={
+                !searchText ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => navigate("/dataset/create")}
+                  >
+                    创建数据集
+                  </Button>
+                ) : undefined
+              }
+            />
+            <EmptyStateShortcutHint />
+          </>
+        }
+      >
+        <ResponsiveDataGrid
+          rows={rows}
+          columns={columns}
+          loading={loading}
+          paginationModel={paginationModel}
+          rowCount={rowCount}
+          paginationMode="server"
+          onPaginationModelChange={setPaginationModel}
+          pageSizeOptions={[25, 50, 100]}
+          onRowClick={(params) => navigate(`/dataset/edit/${params.id}`)}
+          onEdit={(row) => navigate(`/dataset/edit/${row.id as number}`)}
+          toolbarPageKey="dataset_list"
+          onDelete={(row) =>
+            setDeleteTarget({ id: row.id, name: row.table_name })
+          }
+          onBatchDelete={async (ids) => {
+            await Promise.all(ids.map((id) => api.delete(`/dataset/${id}`)));
+            fetchData();
+          }}
+          renderCard={(row) => (
+            <>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600, lineHeight: 1.3, flex: 1 }}
+                >
+                  {row.table_name}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
+                {row.schema && (
+                  <Chip
+                    label={row.schema}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      height: 16,
+                      fontSize: "0.75rem",
+                      "& .MuiChip-label": { px: 0.5 },
+                    }}
+                  />
+                )}
                 <Chip
-                  label={row.schema}
+                  label={row.kind}
                   size="small"
+                  color={row.kind === "physical" ? "primary" : "secondary"}
                   variant="outlined"
                   sx={{
                     height: 16,
@@ -232,55 +243,44 @@ export default function DatasetList() {
                     "& .MuiChip-label": { px: 0.5 },
                   }}
                 />
-              )}
-              <Chip
-                label={row.kind}
-                size="small"
-                color={row.kind === "physical" ? "primary" : "secondary"}
-                variant="outlined"
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
-              />
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ fontSize: "0.75rem" }}
-              >
-                {row.database?.database_name ?? "未知"}
-              </Typography>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", mt: 0.25 }}>
-              <Typography
-                variant="caption"
-                color="text.disabled"
-                sx={{ fontSize: "0.75rem" }}
-              >
-                {row.changed_on_delta_humanized ?? ""}
-              </Typography>
-            </Box>
-          </>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontSize: "0.75rem" }}
+                >
+                  {row.database?.database_name ?? "未知"}
+                </Typography>
+              </Box>
+              <Box sx={{ display: "flex", alignItems: "center", mt: 0.25 }}>
+                <Typography
+                  variant="caption"
+                  color="text.disabled"
+                  sx={{ fontSize: "0.75rem" }}
+                >
+                  {row.changed_on_delta_humanized ?? ""}
+                </Typography>
+              </Box>
+            </>
+          )}
+        />
+        {deleteError && (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+            {deleteError}
+          </Alert>
         )}
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除数据集"
-        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <PageSpeedDial pageKeys="dataset_list" />
-    </ListPageLayout>
+        <ConfirmModal
+          open={!!deleteTarget}
+          title="删除数据集"
+          description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+          confirmText="删除"
+          cancelText="取消"
+          confirmLoading={deleteLoading}
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      </ListPageLayout>
+      </Card>
+    </Box>
   );
 }

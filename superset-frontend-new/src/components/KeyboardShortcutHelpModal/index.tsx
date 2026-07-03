@@ -31,12 +31,12 @@ const CATEGORY_LABELS: Record<ShortcutCategory, string> = {
 };
 
 const CATEGORY_COLORS: Record<ShortcutCategory, string> = {
-  global: "#1a73e8",
-  navigation: "#1a73e8",
-  sql_lab: "#34a853",
-  explore: "#ea8600",
-  dashboard: "#9c27b0",
-  list_view: "#607d8b",
+  global: "info.main",
+  navigation: "info.main",
+  sql_lab: "success.main",
+  explore: "warning.main",
+  dashboard: "secondary.main",
+  list_view: "text.secondary",
 };
 
 interface KeyboardShortcutHelpModalProps {

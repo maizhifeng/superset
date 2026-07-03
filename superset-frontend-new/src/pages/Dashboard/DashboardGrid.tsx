@@ -90,7 +90,7 @@ export default function DashboardGrid({
           p: 4,
           textAlign: "center",
           borderRadius: 2,
-          boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
+          boxShadow: "var(--mui-palette-shadow-card)",
         }}
       >
         <BarChartOutlinedIcon

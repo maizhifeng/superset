@@ -133,7 +133,7 @@ export default function DashboardFilterDrawer({
         top: 0,
         zIndex: 10,
         bgcolor: "background.paper",
-        boxShadow: open ? "none" : "0 2px 8px rgba(0,0,0,0.12)",
+        boxShadow: open ? "none" : "var(--mui-palette-shadow-md)",
         transition: "box-shadow 200ms",
       }}
     >

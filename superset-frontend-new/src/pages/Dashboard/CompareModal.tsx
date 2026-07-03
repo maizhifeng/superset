@@ -712,7 +712,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
         backdrop: {
           sx: {
             backdropFilter: "blur(4px)",
-            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            backgroundColor: "var(--mui-palette-shadow-backdrop)",
           },
         },
         paper: {
@@ -720,7 +720,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             borderRadius: 3,
             height: "95vh",
             maxWidth: 1600,
-            boxShadow: "0 8px 40px rgba(0, 0, 0, 0.24)",
+            boxShadow: "var(--mui-palette-shadow-modal)",
           },
         },
       }}
@@ -859,8 +859,8 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             )}
           />
           {selectedGames.length > 1 && (
-            <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "#d32f2f", color: "#fff", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }}>
-              <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "#fff", mr: 0.5, verticalAlign: "middle" }} />
+            <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "error.main", color: "common.white", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "var(--mui-palette-shadow-sm)" }}>
+              <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "common.white", mr: 0.5, verticalAlign: "middle" }} />
               外对比
             </Box>
           )}
@@ -884,14 +884,14 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           />
           {(() => {
             if (selectedCchNames.length > 1) {
-              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "#d32f2f", color: "#fff", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }}>
-                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "#fff", mr: 0.5, verticalAlign: "middle" }} />
+              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "error.main", color: "common.white", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "var(--mui-palette-shadow-sm)" }}>
+                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "common.white", mr: 0.5, verticalAlign: "middle" }} />
                 外对比
               </Box>;
             }
             if (selectedGames.length === 1 && selectedCchNames.length === 1 && selectedChannels.length <= 1) {
-              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "#0288d1", color: "#fff", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }}>
-                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "#fff", mr: 0.5, verticalAlign: "middle" }} />
+              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "info.main", color: "common.white", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "var(--mui-palette-shadow-sm)" }}>
+                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "common.white", mr: 0.5, verticalAlign: "middle" }} />
                 内对比
               </Box>;
             }
@@ -917,14 +917,14 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
           />
           {(() => {
             if (selectedChannels.length > 1) {
-              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "#d32f2f", color: "#fff", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }}>
-                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "#fff", mr: 0.5, verticalAlign: "middle" }} />
+              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "error.main", color: "common.white", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "var(--mui-palette-shadow-sm)" }}>
+                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "common.white", mr: 0.5, verticalAlign: "middle" }} />
                 外对比
               </Box>;
             }
             if (selectedGames.length === 1 && selectedChannels.length === 1 && selectedCchNames.length <= 1) {
-              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "#0288d1", color: "#fff", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "0 1px 4px rgba(0,0,0,0.25)" }}>
-                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "#fff", mr: 0.5, verticalAlign: "middle" }} />
+              return <Box sx={{ position: "absolute", top: -8, right: -8, px: 0.75, py: 0.15, borderRadius: "3px", bgcolor: "info.main", color: "common.white", fontSize: "0.65rem", fontWeight: 700, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none", boxShadow: "var(--mui-palette-shadow-sm)" }}>
+                <Box sx={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", bgcolor: "common.white", mr: 0.5, verticalAlign: "middle" }} />
                 内对比
               </Box>;
             }
@@ -939,11 +939,11 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             const showWarning = isInter && sectionCount > 4;
             return (
               <>
-              <Box sx={{ ml: "auto", alignSelf: "center", color: "text.secondary", fontSize: "0.8125rem", whiteSpace: "nowrap", px: 1, py: 0.25, borderRadius: "4px", bgcolor: isIntra ? "rgba(2,136,209,0.06)" : "rgba(211,47,47,0.06)", border: "1px dashed", borderColor: isIntra ? "rgba(2,136,209,0.3)" : "rgba(211,47,47,0.3)" }}>
+              <Box sx={{ ml: "auto", alignSelf: "center", color: "text.secondary", fontSize: "0.8125rem", whiteSpace: "nowrap", px: 1, py: 0.25, borderRadius: "4px", bgcolor: isIntra ? "status.infoBg" : "status.errorBg", border: "1px dashed", borderColor: isIntra ? "color-mix(in srgb, var(--mui-palette-info-main) 30%, transparent)" : "color-mix(in srgb, var(--mui-palette-error-main) 30%, transparent)" }}>
                 {isIntra ? "选定为主表，其他为次表" : `维度组合独立分表 (${sectionCount}项)`}
               </Box>
               {showWarning && (
-                <Box sx={{ alignSelf: "center", px: 1, py: 0.15, borderRadius: "3px", bgcolor: "rgba(245,124,0,0.12)", border: "1px solid", borderColor: "rgba(245,124,0,0.4)", color: "#e65100", fontSize: "0.7rem", whiteSpace: "nowrap", fontWeight: 600 }}>
+                <Box sx={{ alignSelf: "center", px: 1, py: 0.15, borderRadius: "3px", bgcolor: "status.warningBg", border: "1px solid", borderColor: "color-mix(in srgb, var(--mui-palette-warning-main) 40%, transparent)", color: "warning.main", fontSize: "0.7rem", whiteSpace: "nowrap", fontWeight: 600 }}>
                   ⚠ 项目较多，可能影响性能
                 </Box>
               )}
@@ -1038,7 +1038,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
             return (
               <Fragment key={groupKey}>
                 {/* Aggregate header row */}
-                <TableRow sx={{ bgcolor: isPrimary ? "#e3f2fd" : "#f5f5f5", position: "sticky", top: isPrimary ? "28px" : 0, zIndex: isPrimary ? 3 : 2, "&:hover": { backgroundColor: isPrimary ? "#bbdefb" : "#e0e0e0" } }}
+                <TableRow sx={{ bgcolor: isPrimary ? "primary.container" : "surface.variant", position: "sticky", top: isPrimary ? "28px" : 0, zIndex: isPrimary ? 3 : 2, "&:hover": { backgroundColor: "action.hover" } }}
                   onMouseEnter={() => setHoveredCell({ table: tableName, row: rowCounter++ })}
                   onMouseLeave={() => setHoveredCell(null)}
                 >
@@ -1076,7 +1076,7 @@ export default function CompareModal({ open, chartId, onClose, chartData, chartM
                   const localIdx = rowCounter++;
                   const shouldHighlight = hoveredCell && hoveredCell.table !== tableName && hoveredCell.row === localIdx;
                   return (
-                    <TableRow key={`${groupKey}-${ri}`} sx={{ bgcolor: shouldHighlight ? (isPrimary ? "#90caf9" : "#e0e0e0") : (isPrimary ? "#e3f2fd" : "#fafafa") }}
+                    <TableRow key={`${groupKey}-${ri}`} sx={{ bgcolor: shouldHighlight ? "action.selected" : (isPrimary ? "primary.container" : "surface.main") }}
                       onMouseEnter={() => setHoveredCell({ table: tableName, row: localIdx })}
                       onMouseLeave={() => setHoveredCell(null)}
                     >

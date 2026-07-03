@@ -19,34 +19,25 @@ export default function PageHeader({
       sx={{
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "flex-start",
+        alignItems: "center",
         mb: spacing.md,
-        position: "relative",
       }}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Box
-          sx={{
-            width: 32,
-            height: 3,
-            borderRadius: 1.5,
-            bgcolor: "primary.main",
-            mb: 1,
-          }}
-        />
         <Typography
           variant="h5"
           sx={{
-            fontWeight: 650,
-            letterSpacing: "-0.01em",
+            fontWeight: 700,
+            letterSpacing: "-0.25px",
             color: "text.primary",
+            lineHeight: 1.27,
           }}
         >
           {title}
         </Typography>
         {subtitle && (
           <Typography
-            variant="caption"
+            variant="body2"
             color="text.secondary"
             sx={{ mt: spacing.xs, display: "block" }}
           >
@@ -61,7 +52,6 @@ export default function PageHeader({
             alignItems: "center",
             gap: gap.sm,
             flexShrink: 0,
-            mt: 3,
           }}
         >
           {actions}
