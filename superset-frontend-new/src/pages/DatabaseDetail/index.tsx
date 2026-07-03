@@ -114,7 +114,7 @@ export default function DatabaseDetailPage() {
       </Tabs>
 
       {tab === 0 && (
-        <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+        <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}>
           <Table size="small">
             <TableBody>
               <TableRow>
@@ -281,7 +281,7 @@ export default function DatabaseDetailPage() {
       )}
 
       {tab === 1 && (
-        <Paper sx={{ borderRadius: 2, boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}>
+        <Paper sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}>
           {schemas.length === 0 ? (
             <Box sx={{ p: 4, textAlign: "center" }}>
               <Typography variant="body2" color="text.secondary">

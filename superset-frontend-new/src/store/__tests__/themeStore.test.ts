@@ -11,17 +11,17 @@ test("initial theme is paper", () => {
 });
 
 test("setTheme changes theme", () => {
-  useThemeStore.getState().setTheme("vibrant");
-  expect(useThemeStore.getState().theme).toBe("vibrant");
+  useThemeStore.getState().setTheme("notion");
+  expect(useThemeStore.getState().theme).toBe("notion");
 
   useThemeStore.getState().setTheme("paper");
   expect(useThemeStore.getState().theme).toBe("paper");
 });
 
-test("toggleTheme switches between paper and vibrant", () => {
+test("toggleTheme switches between paper and notion", () => {
   expect(useThemeStore.getState().theme).toBe("paper");
   useThemeStore.getState().toggleTheme();
-  expect(useThemeStore.getState().theme).toBe("vibrant");
+  expect(useThemeStore.getState().theme).toBe("notion");
   useThemeStore.getState().toggleTheme();
   expect(useThemeStore.getState().theme).toBe("paper");
 });

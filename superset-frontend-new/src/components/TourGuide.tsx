@@ -20,6 +20,10 @@ import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CodeIcon from "@mui/icons-material/Code";
 import { useDismissible } from "@/hooks/useDismissible";
 
+const paletteVar = (key: string) => `var(--mui-palette-${key}-main)`;
+const paletteTint = (key: string, pct: number) =>
+  `color-mix(in srgb, var(--mui-palette-${key}-main) ${pct}%, transparent)`;
+
 const PIPELINE_STEP = 3;
 
 const pipelineNodes = [
@@ -27,29 +31,29 @@ const pipelineNodes = [
     icon: <StorageIcon />,
     label: "数据库",
     desc: "连接数据源",
-    color: "#1565c0",
-    bg: "#e3f2fd",
+    color: "info.main",
+    bg: "status.infoBg",
   },
   {
     icon: <TableChartIcon />,
     label: "数据集",
     desc: "映射表与定义列",
-    color: "#2e7d32",
-    bg: "#e8f5e9",
+    color: "success.main",
+    bg: "status.successBg",
   },
   {
     icon: <BarChartIcon />,
     label: "图表",
     desc: "选择可视化类型与拖拽字段",
-    color: "#e65100",
-    bg: "#fff3e0",
+    color: "warning.main",
+    bg: "status.warningBg",
   },
   {
     icon: <DashboardIcon />,
     label: "仪表板",
     desc: "组合与分享洞察",
-    color: "#6a1b9a",
-    bg: "#f3e5f5",
+    color: "secondary.main",
+    bg: "secondary.container",
   },
 ];
 
@@ -77,9 +81,9 @@ const STEPS: StepDef[] = [
         }}
       >
         {[
-          { icon: <DashboardIcon />, label: "仪表板", color: "#6a1b9a" },
-          { icon: <BarChartIcon />, label: "图表", color: "#e65100" },
-          { icon: <CodeIcon />, label: "SQL 实验室", color: "#1565c0" },
+          { icon: <DashboardIcon />, label: "仪表板", key: "secondary" },
+          { icon: <BarChartIcon />, label: "图表", key: "warning" },
+          { icon: <CodeIcon />, label: "SQL 实验室", key: "info" },
         ].map((item) => (
           <Box
             key={item.label}
@@ -91,18 +95,18 @@ const STEPS: StepDef[] = [
               px: 2,
               py: 1.5,
               borderRadius: 2,
-              bgcolor: `${item.color}10`,
+              bgcolor: paletteTint(item.key, 6),
               border: "1px solid",
-              borderColor: `${item.color}30`,
+              borderColor: paletteTint(item.key, 19),
               minWidth: 90,
             }}
           >
-            <Box sx={{ color: item.color, fontSize: 24, lineHeight: 1 }}>
+            <Box sx={{ color: paletteVar(item.key), fontSize: 24, lineHeight: 1 }}>
               {item.icon}
             </Box>
             <Typography
               variant="caption"
-              sx={{ fontWeight: 600, color: item.color }}
+              sx={{ fontWeight: 600, color: paletteVar(item.key) }}
             >
               {item.label}
             </Typography>
@@ -212,7 +216,7 @@ const STEPS: StepDef[] = [
               px: 1.25,
               py: 1,
               borderRadius: 1.5,
-              bgcolor: "grey.50",
+              bgcolor: "bg.muted",
               border: "1px solid",
               borderColor: "divider",
               minWidth: 80,
@@ -270,7 +274,7 @@ const STEPS: StepDef[] = [
                 border: "1px solid",
                 borderColor: node.color,
                 minWidth: 110,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                boxShadow: "var(--mui-palette-shadow-md)",
               }}
             >
               <Box sx={{ color: node.color, fontSize: 24, lineHeight: 1 }}>
@@ -450,11 +454,11 @@ const STEPS: StepDef[] = [
         }}
       >
         {[
-          { label: "柱状", icon: "▇", color: "#e65100" },
-          { label: "折线", icon: "━", color: "#1565c0" },
-          { label: "饼图", icon: "●", color: "#2e7d32" },
-          { label: "表格", icon: "⊞", color: "#6a1b9a" },
-          { label: "大数字", icon: "123", color: "#c62828" },
+          { label: "柱状", icon: "▇", key: "warning" },
+          { label: "折线", icon: "━", key: "info" },
+          { label: "饼图", icon: "●", key: "success" },
+          { label: "表格", icon: "⊞", key: "secondary" },
+          { label: "大数字", icon: "123", key: "error" },
         ].map((t) => (
           <Box
             key={t.label}
@@ -466,21 +470,21 @@ const STEPS: StepDef[] = [
               px: 1.25,
               py: 1,
               borderRadius: 1.5,
-              bgcolor: `${t.color}10`,
+              bgcolor: paletteTint(t.key, 6),
               border: "1px solid",
-              borderColor: `${t.color}30`,
+              borderColor: paletteTint(t.key, 19),
               minWidth: 60,
             }}
           >
             <Typography
               variant="body2"
-              sx={{ color: t.color, fontWeight: 700, lineHeight: 1 }}
+              sx={{ color: paletteVar(t.key), fontWeight: 700, lineHeight: 1 }}
             >
               {t.icon}
             </Typography>
             <Typography
               variant="caption"
-              sx={{ color: t.color, fontWeight: 600 }}
+              sx={{ color: paletteVar(t.key), fontWeight: 600 }}
             >
               {t.label}
             </Typography>
@@ -511,20 +515,20 @@ const STEPS: StepDef[] = [
             gap: 0.5,
             p: 1,
             borderRadius: 1.5,
-            bgcolor: "grey.50",
+            bgcolor: "bg.muted",
             border: "1px solid",
             borderColor: "divider",
             width: 200,
           }}
         >
           {[
-            { c: "#e65100", s: 2 },
-            { c: "#1565c0", s: 1 },
-            { c: "#1565c0", s: 1 },
-            { c: "#2e7d32", s: 1 },
-            { c: "#6a1b9a", s: 1 },
-            { c: "#2e7d32", s: 1 },
-            { c: "#6a1b9a", s: 1 },
+            { c: "warning.main", s: 2 },
+            { c: "info.main", s: 1 },
+            { c: "info.main", s: 1 },
+            { c: "success.main", s: 1 },
+            { c: "secondary.main", s: 1 },
+            { c: "success.main", s: 1 },
+            { c: "secondary.main", s: 1 },
           ].map((cell, i) => (
             <Box
               key={i}

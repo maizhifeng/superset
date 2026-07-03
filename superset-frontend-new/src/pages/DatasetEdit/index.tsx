@@ -37,7 +37,6 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useToolbarStore } from "@/store/toolbarStore";
-import PageSpeedDial from "@/components/PageSpeedDial";
 import DateColumnDetector from "@/components/DateColumnDetector";
 import { detectDateColumnsFromMeta } from "@/utils/dateHeuristics";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
@@ -259,19 +258,9 @@ export default function DatasetEdit() {
         action: handleAddMetric,
         render: null,
       },
-      {
-        id: "save",
-        priority: 30,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <SaveIcon />,
-        fabLabel: "保存",
-        action: handleSave,
-        render: null,
-      },
     ]);
     return () => unregisterTools("dataset_edit");
-  }, [registerTools, unregisterTools, handleSave, handleAddMetric]);
+  }, [registerTools, unregisterTools, handleAddMetric]);
 
   if (loading)
     return (
@@ -342,6 +331,15 @@ export default function DatasetEdit() {
             },
           }}
         />
+        <Box sx={{ flex: 1 }} />
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+        >
+          保存
+        </Button>
       </Box>
 
       {detectedDateColumns.length > 0 && id && (
@@ -1005,7 +1003,6 @@ export default function DatasetEdit() {
               </CardContent>
             </Card>
           )}
-      <PageSpeedDial pageKeys="dataset_edit" />
       <Drawer
         open={addMetricOpen}
         onClose={() => setAddMetricOpen(false)}

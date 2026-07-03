@@ -27,7 +27,6 @@ import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { useToolbarStore } from "@/store/toolbarStore";
-import PageSpeedDial from "@/components/PageSpeedDial";
 import ListPageLayout from "@/components/ListPageLayout";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
@@ -434,7 +433,6 @@ export default function AdminUsers() {
           <Button onClick={() => setRouteTarget(null)}>关闭</Button>
         </DialogActions>
       </Dialog>
-      <PageSpeedDial pageKeys="admin_users" />
     </ListPageLayout>
   );
 }

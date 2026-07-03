@@ -42,7 +42,7 @@ export default function TableSkeleton({ rows = 8 }: { rows?: number }) {
             py: 1.5,
             borderBottom: i < rows - 1 ? "1px solid" : undefined,
             borderColor: "divider",
-            bgcolor: i % 2 === 0 ? "transparent" : "rgba(0,0,0,0.02)",
+            bgcolor: i % 2 === 0 ? "transparent" : "bg.muted",
             animation: `${fadeIn} 300ms ease-out both`,
             animationDelay: `${i * 40}ms`,
           }}

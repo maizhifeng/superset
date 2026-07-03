@@ -20,7 +20,7 @@ export default function EmptyState({
       sx={{
         bgcolor: "background.paper",
         borderRadius: 1,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 1px 3px rgba(0,0,0,0.06)",
+        boxShadow: "var(--mui-palette-shadow-card)",
         p: 4,
         textAlign: "center",
       }}

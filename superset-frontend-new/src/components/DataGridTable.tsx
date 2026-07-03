@@ -1,24 +1,8 @@
-import { Suspense, lazy, useMemo } from "react";
+import { Suspense, lazy } from "react";
 import type { DataGridProps } from "@mui/x-data-grid";
 import { useMediaQuery, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
-
-let cachedScrollbarWidth: number | null = null;
-
-function getScrollbarWidth(): number {
-  if (cachedScrollbarWidth !== null) return cachedScrollbarWidth;
-  if (typeof document === "undefined") return 0;
-  const outer = document.createElement("div");
-  outer.style.visibility = "hidden";
-  outer.style.overflow = "scroll";
-  document.body.appendChild(outer);
-  const inner = document.createElement("div");
-  outer.appendChild(inner);
-  cachedScrollbarWidth = outer.offsetWidth - inner.offsetWidth;
-  outer.parentNode?.removeChild(outer);
-  return cachedScrollbarWidth;
-}
 
 const DataGrid = lazy(() =>
   import("@mui/x-data-grid").then((m) => ({ default: m.DataGrid })),
@@ -27,8 +11,6 @@ const DataGrid = lazy(() =>
 export default function DataGridTable(props: DataGridProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const scrollbarWidth = useMemo(() => getScrollbarWidth(), []);
-
   return (
     <Box sx={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
       <Suspense
@@ -51,15 +33,17 @@ export default function DataGridTable(props: DataGridProps) {
               borderColor: "divider",
               borderRadius: 2,
               "& .MuiDataGrid-columnHeaders": {
-                backgroundColor: "background.paper",
-                borderBottom: "2px solid",
-                borderColor: "primary.light",
+                backgroundColor: "grey.50",
+                borderBottom: "1px solid",
+                borderColor: "divider",
               },
               "& .MuiDataGrid-columnHeaderTitle": {
-                fontWeight: 600,
+                fontWeight: 700,
                 fontSize: "0.75rem",
-                letterSpacing: "0.04em",
-                color: "text.secondary",
+                color: "text.primary",
+              },
+              "& .MuiDataGrid-columnHeader": {
+                "&:focus, &:focus-within": { outline: "none" },
               },
               "& .MuiDataGrid-row": {
                 cursor: props.onRowClick ? "pointer" : "default",
@@ -67,11 +51,11 @@ export default function DataGridTable(props: DataGridProps) {
                 "&:hover": {
                   backgroundColor: "action.hover",
                   boxShadow:
-                    "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
+                    "var(--mui-palette-shadow-sm)",
                 },
                 "&:nth-of-type(even)": {
                   backgroundColor:
-                    "var(--mui-palette-action-hover, rgba(0,0,0,0.04))",
+                    "var(--mui-palette-action-hover)",
                 },
                 "&:nth-of-type(even):hover": {
                   backgroundColor: "action.hover",
@@ -80,6 +64,7 @@ export default function DataGridTable(props: DataGridProps) {
               "& .MuiDataGrid-cell": {
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 padding: "0 12px",
                 borderBottom: "1px solid",
                 borderColor: "divider",
@@ -91,11 +76,11 @@ export default function DataGridTable(props: DataGridProps) {
                 justifyContent: "flex-start",
               },
               "& .MuiDataGrid-cell:focus": {
-                outline: "2px solid var(--mui-palette-primary-main, #20a7c9)",
+                outline: "2px solid var(--mui-palette-primary-main)",
                 outlineOffset: -2,
               },
               "& .MuiDataGrid-cell:focus-within": {
-                outline: "2px solid var(--mui-palette-primary-main, #20a7c9)",
+                outline: "2px solid var(--mui-palette-primary-main)",
                 outlineOffset: -2,
               },
               "& .MuiDataGrid-cellContent": {
@@ -105,7 +90,8 @@ export default function DataGridTable(props: DataGridProps) {
                 borderTop: "1px solid",
                 borderColor: "divider",
                 minHeight: 52,
-                pr: scrollbarWidth > 0 ? scrollbarWidth + 12 : 0,
+                px: 2,
+                backgroundColor: "grey.50",
               },
               "& .MuiTablePagination-root": {
                 fontSize: "0.75rem",

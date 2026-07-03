@@ -11,7 +11,6 @@ import PersonIcon from "@mui/icons-material/Person";
 import LockIcon from "@mui/icons-material/Lock";
 import InputAdornment from "@mui/material/InputAdornment";
 import { useAuthStore } from "@/store/authStore";
-import { useThemeStore } from "@/store/themeStore";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 export default function Login() {
@@ -24,8 +23,6 @@ export default function Login() {
   const authLoading = useAuthStore((s) => s.loading);
   const location = useLocation();
   const navigate = useNavigate();
-  const themeMode = useThemeStore((s) => s.theme);
-  const isVibrant = themeMode === "vibrant";
 
   const from = (location.state as { from?: string })?.from || "/";
 
@@ -82,92 +79,56 @@ export default function Login() {
           content: '""',
           position: "absolute",
           inset: 0,
-          background: isVibrant
-            ? `
-              radial-gradient(ellipse 70% 60% at 15% 25%, rgba(99,102,241,0.06) 0%, transparent 60%),
-              radial-gradient(ellipse 50% 50% at 85% 75%, rgba(225,29,143,0.05) 0%, transparent 60%),
-              radial-gradient(ellipse 40% 40% at 50% 50%, rgba(139,92,246,0.04) 0%, transparent 50%)
-            `
-            : `
-              radial-gradient(ellipse 60% 50% at 20% 30%, rgba(184,101,58,0.03) 0%, transparent 70%),
-              radial-gradient(ellipse 50% 40% at 80% 70%, rgba(201,160,74,0.03) 0%, transparent 70%)
+          background: `
+              radial-gradient(ellipse 70% 60% at 15% 25%, color-mix(in srgb, var(--mui-palette-secondary-main) 6%, transparent) 0%, transparent 60%),
+              radial-gradient(ellipse 50% 50% at 85% 75%, color-mix(in srgb, var(--mui-palette-primary-main) 5%, transparent) 0%, transparent 60%),
+              radial-gradient(ellipse 40% 40% at 50% 50%, color-mix(in srgb, var(--mui-palette-secondary-main) 4%, transparent) 0%, transparent 50%)
             `,
           pointerEvents: "none",
         },
       }}
     >
-      {isVibrant ? (
-        <>
-          <Box
-            sx={{
-              position: "absolute",
-              width: 200,
-              height: 200,
-              borderRadius: "50%",
-              background: "radial-gradient(circle, rgba(66,133,244,0.07) 0%, transparent 70%)",
-              top: "-5%",
-              right: "-5%",
-              pointerEvents: "none",
-            }}
-          />
-          <Box
-            sx={{
-              position: "absolute",
-              width: 140,
-              height: 140,
-              borderRadius: "50%",
-              border: "1px solid",
-              borderColor: "rgba(66,133,244,0.08)",
-              bottom: "10%",
-              left: "5%",
-              pointerEvents: "none",
-            }}
-          />
-          <Box
-            sx={{
-              position: "absolute",
-              width: 60,
-              height: 60,
-              borderRadius: "20%",
-              transform: "rotate(45deg)",
-              border: "1px solid",
-              borderColor: "rgba(13,148,136,0.08)",
-              top: "40%",
-              left: "20%",
-              pointerEvents: "none",
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <Box
-            sx={{
-              position: "absolute",
-              width: 120,
-              height: 120,
-              borderRadius: "50%",
-              border: "1px solid",
-              borderColor: "rgba(184,101,58,0.06)",
-              top: "15%",
-              right: "20%",
-              pointerEvents: "none",
-            }}
-          />
-          <Box
-            sx={{
-              position: "absolute",
-              width: 80,
-              height: 80,
-              borderRadius: "50%",
-              border: "1px solid",
-              borderColor: "rgba(201,160,74,0.06)",
-              bottom: "20%",
-              left: "15%",
-              pointerEvents: "none",
-            }}
-          />
-        </>
-      )}
+      <>
+        <Box
+          sx={{
+            position: "absolute",
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, color-mix(in srgb, var(--mui-palette-secondary-main) 7%, transparent) 0%, transparent 70%)",
+            top: "-5%",
+            right: "-5%",
+            pointerEvents: "none",
+          }}
+        />
+        <Box
+          sx={{
+            position: "absolute",
+            width: 140,
+            height: 140,
+            borderRadius: "50%",
+            border: "1px solid",
+            borderColor: "color-mix(in srgb, var(--mui-palette-secondary-main) 10%, transparent)",
+            bottom: "10%",
+            left: "5%",
+            pointerEvents: "none",
+          }}
+        />
+        <Box
+          sx={{
+            position: "absolute",
+            width: 60,
+            height: 60,
+            borderRadius: "20%",
+            transform: "rotate(45deg)",
+            border: "1px solid",
+            borderColor: "color-mix(in srgb, var(--mui-palette-primary-main) 8%, transparent)",
+            top: "40%",
+            left: "20%",
+            pointerEvents: "none",
+          }}
+        />
+      </>
       <Card
         sx={{
           maxWidth: 420,
@@ -176,8 +137,6 @@ export default function Login() {
           zIndex: 1,
           border: "1px solid",
           borderColor: "border.light",
-          borderTop: isVibrant ? "3px solid" : "1px solid",
-          borderTopColor: isVibrant ? "#4285F4" : undefined,
           animation: "cardEntrance 500ms cubic-bezier(0.25,0.1,0.15,1) both",
           "@keyframes cardEntrance": {
             from: { opacity: 0, transform: "translateY(24px) scale(0.98)" },
@@ -192,7 +151,7 @@ export default function Login() {
                 width: 48,
                 height: 48,
                 borderRadius: "50%",
-                bgcolor: "rgba(184,101,58,0.06)",
+                bgcolor: "action.hover",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

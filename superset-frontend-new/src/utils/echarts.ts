@@ -54,6 +54,7 @@ export function buildEChartsOption(
   vizType: string,
   data: ChartDataPayload,
   formatMap?: MetricFormatMap,
+  chartColors?: string[],
 ) {
   const echartsType = chartTypeToECharts[vizType] || "bar";
 
@@ -125,16 +126,18 @@ export function buildEChartsOption(
   const yLabelChars = Math.max(String(Math.round(yMax)).length, 1);
   const yLabelWidth = yLabelChars * 7;
 
-  const palette = [
-    "#20a7c9",
-    "#ff7f50",
-    "#5ab1ef",
-    "#ffb980",
-    "#d87a80",
-    "#8d98b3",
-    "#e5cf0d",
-    "#97b552",
-  ];
+  const palette = chartColors && chartColors.length > 0
+    ? chartColors
+    : [
+        "#20a7c9",
+        "#ff7f50",
+        "#5ab1ef",
+        "#ffb980",
+        "#d87a80",
+        "#8d98b3",
+        "#e5cf0d",
+        "#97b552",
+      ];
   const series =
     valueKeys.length > 0
       ? valueKeys.map((key, i) => ({
@@ -148,7 +151,7 @@ export function buildEChartsOption(
             type: echartsType as "bar" | "line",
             name: "value",
             data: slicedRows.map((r) => Number(r[categoryKey] || 0)),
-            itemStyle: { color: "#20a7c9" },
+            itemStyle: { color: palette[0] },
           },
         ];
 

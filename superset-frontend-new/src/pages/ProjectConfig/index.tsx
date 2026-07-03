@@ -25,8 +25,6 @@ import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Checkbox from "@mui/material/Checkbox";
 import Autocomplete from "@mui/material/Autocomplete";
-import PageSpeedDial from "@/components/PageSpeedDial";
-import { useToolbarStore } from "@/store/toolbarStore";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
@@ -54,8 +52,7 @@ export default function ProjectConfig() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const registerTools = useToolbarStore((s) => s.registerTools);
-  const unregisterTools = useToolbarStore((s) => s.unregisterTools);
+
 
   const fetchRows = useCallback(async () => {
     const res = await api.get<{ result: PappRow[] }>("/project/papp");
@@ -138,21 +135,6 @@ export default function ProjectConfig() {
       ),
     );
   }, []);
-
-  useEffect(() => {
-    registerTools("project_config", [
-      {
-        id: "sync",
-        priority: 20,
-        showOnMobile: true,
-        fabIcon: <SyncIcon />,
-        fabLabel: "同步",
-        action: handleSync,
-        render: null,
-      },
-    ]);
-    return () => unregisterTools("project_config");
-  }, [registerTools, unregisterTools, handleSync]);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -368,7 +350,6 @@ export default function ProjectConfig() {
       </Card>
 
     </Box>
-      <PageSpeedDial pageKeys="project_config" />
       {success && (
         <Snackbar open autoHideDuration={3000} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} onClose={() => setSuccess(null)}>
           <Alert severity="success" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setSuccess(null)}>

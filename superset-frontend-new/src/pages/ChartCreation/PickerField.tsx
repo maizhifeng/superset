@@ -92,7 +92,7 @@ function OptionRow({
         borderBottom: "1px solid",
         borderColor: "divider",
         textAlign: "left",
-        bgcolor: isSelected ? "rgba(32, 167, 201, 0.08)" : "transparent",
+        bgcolor: isSelected ? "action.selected" : "transparent",
         color: "inherit",
         minHeight: compact ? 32 : 44,
         "&:last-of-type": { borderBottom: "none" },
@@ -150,7 +150,7 @@ function SortableSelectedItem({
       sx={{
         opacity: isDragging ? 0.3 : 1,
         cursor: "pointer",
-        "&:hover": { bgcolor: "rgba(32, 167, 201, 0.12)" },
+        "&:hover": { bgcolor: "action.hover" },
       }}
     >
       <OptionRow
@@ -370,7 +370,7 @@ export default function PickerField({
           transition: "border-color 150ms ease, box-shadow 150ms ease",
           "&:hover": {
             borderColor: "primary.light",
-            boxShadow: "0 0 0 2px rgba(32, 167, 201, 0.1)",
+            boxShadow: "var(--mui-palette-shadow-focus)",
           },
         }}
       >
@@ -431,7 +431,7 @@ export default function PickerField({
                   border: "1px solid",
                   borderColor: "primary.light",
                   boxShadow:
-                    "0 4px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.12)",
+                    "var(--mui-palette-shadow-modal)",
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
@@ -592,7 +592,7 @@ export default function PickerField({
                           bgcolor: "background.paper",
                           borderRadius: 1,
                           boxShadow:
-                            "0 8px 24px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)",
+                            "var(--mui-palette-shadow-modal)",
                           border: "1px solid",
                           borderColor: "primary.light",
                           width: (containerRef.current?.offsetWidth || 320) / 2,

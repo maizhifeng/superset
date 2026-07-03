@@ -92,10 +92,10 @@ export default {
   },
   MuiBackdrop: {
     styleOverrides: {
-      root: {
-        backgroundColor: "rgba(0, 0, 0, 0.35)",
+      root: ({ theme }: { theme: Theme }) => ({
+        backgroundColor: theme.palette.shadow.backdrop,
         backdropFilter: "blur(3px)",
-      },
+      }),
     },
   },
   MuiDialogTitle: {

@@ -58,7 +58,7 @@ export default function SidePanel({
         pointerEvents: open ? "auto" : "none",
         zIndex: (theme) => theme.zIndex.drawer,
         boxShadow: open
-          ? "2px 0 8px rgba(0,0,0,0.08)"
+          ? "var(--mui-palette-shadow-drawer)"
           : "none",
       }}
     >

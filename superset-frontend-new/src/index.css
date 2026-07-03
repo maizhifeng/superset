@@ -40,23 +40,23 @@
   background: rgba(44, 36, 22, 0.2);
 }
 
-[data-theme="vibrant"]::-webkit-scrollbar,
-[data-theme="vibrant"] ::-webkit-scrollbar {
+[data-theme="notion"]::-webkit-scrollbar,
+[data-theme="notion"] ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-[data-theme="vibrant"]::-webkit-scrollbar-track,
-[data-theme="vibrant"] ::-webkit-scrollbar-track {
+[data-theme="notion"]::-webkit-scrollbar-track,
+[data-theme="notion"] ::-webkit-scrollbar-track {
   background: transparent;
 }
-[data-theme="vibrant"]::-webkit-scrollbar-thumb,
-[data-theme="vibrant"] ::-webkit-scrollbar-thumb {
-  background: rgba(66, 133, 244, 0.2);
+[data-theme="notion"]::-webkit-scrollbar-thumb,
+[data-theme="notion"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 117, 222, 0.2);
   border-radius: 3px;
 }
-[data-theme="vibrant"]::-webkit-scrollbar-thumb:hover,
-[data-theme="vibrant"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(66, 133, 244, 0.35);
+[data-theme="notion"]::-webkit-scrollbar-thumb:hover,
+[data-theme="notion"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 117, 222, 0.35);
 }
 
 [data-theme="paper"]::selection,
@@ -65,9 +65,9 @@
   color: inherit;
 }
 
-[data-theme="vibrant"]::selection,
-[data-theme="vibrant"] ::selection {
-  background: rgba(66, 133, 244, 0.15);
+[data-theme="notion"]::selection,
+[data-theme="notion"] ::selection {
+  background: rgba(0, 117, 222, 0.15);
   color: inherit;
 }
 
@@ -77,9 +77,9 @@
   border-radius: 2px;
 }
 
-[data-theme="vibrant"] *:focus-visible {
+[data-theme="notion"] *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 0 0 3px rgba(0, 117, 222, 0.25);
   border-radius: 2px;
 }
 

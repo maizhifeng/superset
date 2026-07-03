@@ -156,9 +156,7 @@ function SwipeableCard({
         borderRadius: 1.5,
         border: isSelected ? "2px solid" : 0,
         borderColor: isSelected ? "primary.main" : undefined,
-        boxShadow: isSelected
-          ? "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))"
-          : "var(--mui-palette-shadow-sm, 0 1px 3px rgba(0,0,0,0.08))",
+        boxShadow: "var(--mui-palette-shadow-sm)",
         overflow: "hidden",
         userSelect: "none",
         touchAction: "pan-y",

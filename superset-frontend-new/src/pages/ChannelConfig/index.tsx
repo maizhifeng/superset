@@ -26,8 +26,6 @@ import Autocomplete from "@mui/material/Autocomplete";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Checkbox from "@mui/material/Checkbox";
-import PageSpeedDial from "@/components/PageSpeedDial";
-import { useToolbarStore } from "@/store/toolbarStore";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
@@ -55,9 +53,6 @@ export default function ChannelConfig() {
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  const registerTools = useToolbarStore((s) => s.registerTools);
-  const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
   const fetchRows = useCallback(async () => {
     const res = await api.get<{ result: ChannelRow[] }>("/project/channel");
@@ -151,21 +146,6 @@ export default function ChannelConfig() {
       prev.map((r) => (r.channel_id === channelId ? { ...r, 默认分成: value } : r)),
     );
   }, []);
-
-  useEffect(() => {
-    registerTools("channel_config", [
-      {
-        id: "sync",
-        priority: 20,
-        showOnMobile: true,
-        fabIcon: <SyncIcon />,
-        fabLabel: "同步",
-        action: handleSync,
-        render: null,
-      },
-    ]);
-    return () => unregisterTools("channel_config");
-  }, [registerTools, unregisterTools, handleSync]);
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -417,7 +397,6 @@ export default function ChannelConfig() {
       </Card>
 
     </Box>
-      <PageSpeedDial pageKeys="channel_config" />
     </>
   );
 }

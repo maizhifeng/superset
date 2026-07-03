@@ -48,6 +48,7 @@ class ProfitSharing(Model):
         count = 0
         for game in whitelisted_games:
             for channel in whitelisted_channels:
+                channel_data = channels_by_id.get(channel.channel_id)
                 existing = (
                     db.session.query(cls)
                     .filter(
@@ -64,7 +65,6 @@ class ProfitSharing(Model):
                             channel_data.默认分成 if channel_data else None
                         )
                 else:
-                    channel_data = channels_by_id.get(channel.channel_id)
                     db.session.add(
                         cls(
                             papp_id=game.papp_id,

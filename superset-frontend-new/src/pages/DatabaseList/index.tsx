@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
+import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import TextField from "@mui/material/TextField";
@@ -18,7 +21,6 @@ import type { GridColDef, GridRowParams } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { useToolbarStore } from "@/store/toolbarStore";
-import PageSpeedDial from "@/components/PageSpeedDial";
 import ListPageLayout from "@/components/ListPageLayout";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
@@ -72,16 +74,6 @@ export default function DatabaseList() {
             sx={{ minWidth: 220 }}
           />
         ),
-      },
-      {
-        id: "create",
-        priority: 10,
-        showOnMobile: true,
-        primary: true,
-        fabIcon: <StorageIcon />,
-        fabLabel: "连接数据库",
-        action: () => setCreateDialogOpen(true),
-        render: null,
       },
     ]);
     return () => unregisterTools("database_list");
@@ -153,187 +145,195 @@ export default function DatabaseList() {
   ];
 
   return (
-    <ListPageLayout
-      loading={loading}
-      error={error}
-      hasData={rows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<StorageIcon />}
-            title="未连接数据库"
-            description={
-              searchText
-                ? "请调整搜索条件"
-                : "连接数据库开始探索您的数据"
-            }
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateDialogOpen(true)}
-                >
-                  连接数据库
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
-    >
-      <ResponsiveDataGrid
-        rows={rows}
-        columns={columns}
+    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, p: { xs: 1.5, md: 3 }, pt: { xs: 1.5, md: 2 } }}>
+      <Card variant="outlined" sx={{ borderRadius: 2, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+        <CardHeader title={<Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>数据库</Typography>}
+          action={<Button variant="contained" size="small" startIcon={<StorageIcon />} onClick={() => setCreateDialogOpen(true)}>连接数据库</Button>}
+          sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
+        />
+        <Divider />
+        <ListPageLayout
         loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="database_list"
-        onRowClick={(params: GridRowParams) =>
-          navigate(`/database/${params.id}`)
-        }
-        onEdit={(row) => navigate(`/database/${row.id}`)}
-        onDelete={(row) =>
-          setDeleteTarget({ id: row.id, name: row.database_name })
-        }
-        onBatchDelete={async (ids) => {
-          await Promise.all(ids.map((id) => api.delete(`/database/${id}`)));
-          fetchData();
-        }}
-        renderCard={(row) => (
+        error={error}
+        hasData={rows.length > 0}
+        emptyState={
           <>
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 600, lineHeight: 1.3 }}
-            >
-              {row.database_name}
-            </Typography>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                columnGap: 0.25,
-                mt: 0.25,
+            <EmptyState
+              icon={<StorageIcon />}
+              title="未连接数据库"
+              description={
+                searchText
+                  ? "请调整搜索条件"
+                  : "连接数据库开始探索您的数据"
+              }
+              action={
+                !searchText ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => setCreateDialogOpen(true)}
+                  >
+                    连接数据库
+                  </Button>
+                ) : undefined
+              }
+            />
+            <EmptyStateShortcutHint />
+          </>
+        }
+      >
+        <ResponsiveDataGrid
+          rows={rows}
+          columns={columns}
+          loading={loading}
+          autoHeight
+          paginationModel={paginationModel}
+          rowCount={rowCount}
+          paginationMode="server"
+          onPaginationModelChange={setPaginationModel}
+          pageSizeOptions={[25, 50, 100]}
+          toolbarPageKey="database_list"
+          onRowClick={(params: GridRowParams) =>
+            navigate(`/database/${params.id}`)
+          }
+          onEdit={(row) => navigate(`/database/${row.id}`)}
+          onDelete={(row) =>
+            setDeleteTarget({ id: row.id, name: row.database_name })
+          }
+          onBatchDelete={async (ids) => {
+            await Promise.all(ids.map((id) => api.delete(`/database/${id}`)));
+            fetchData();
+          }}
+          renderCard={(row) => (
+            <>
+              <Typography
+                variant="body2"
+                sx={{ fontWeight: 600, lineHeight: 1.3 }}
+              >
+                {row.database_name}
+              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  columnGap: 0.25,
+                  mt: 0.25,
+                }}
+              >
+                <Chip
+                  label={row.backend!}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    height: 16,
+                    fontSize: "0.75rem",
+                    "& .MuiChip-label": { px: 0.5 },
+                  }}
+                />
+                <Chip
+                  label={row.expose_in_sqllab ? "已启用" : "已禁用"}
+                  size="small"
+                  color={row.expose_in_sqllab ? "success" : "default"}
+                  variant={row.expose_in_sqllab ? "filled" : "outlined"}
+                  sx={{
+                    height: 16,
+                    fontSize: "0.75rem",
+                    "& .MuiChip-label": { px: 0.5 },
+                  }}
+                />
+                <Chip
+                  label={row.allow_dml ? "DML: 是" : "DML: 否"}
+                  size="small"
+                  color={row.allow_dml ? "success" : "default"}
+                  variant={row.allow_dml ? "filled" : "outlined"}
+                  sx={{
+                    height: 16,
+                    fontSize: "0.75rem",
+                    "& .MuiChip-label": { px: 0.5 },
+                  }}
+                />
+                <Typography
+                  variant="caption"
+                  color="text.disabled"
+                  sx={{ fontSize: "0.75rem" }}
+                >
+                  {row.changed_on_delta_humanized ?? ""}
+                </Typography>
+              </Box>
+            </>
+          )}
+        />
+        {deleteError && (
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+            {deleteError}
+          </Alert>
+        )}
+        <ConfirmModal
+          open={!!deleteTarget}
+          title="删除数据库"
+          description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+          confirmText="删除"
+          cancelText="取消"
+          confirmLoading={deleteLoading}
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+        <Dialog
+          open={createDialogOpen}
+          onClose={() => setCreateDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>连接数据库</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              label="数据库名称"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 1, mb: 2 }}
+            />
+            <TextField
+              fullWidth
+              label="数据库连接串"
+              value={createUri}
+              onChange={(e) => setCreateUri(e.target.value)}
+              variant="outlined"
+              size="small"
+              placeholder="postgresql://user:pass@host:port/dbname"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateDialogOpen(false)}>取消</Button>
+            <Button
+              variant="contained"
+              disabled={creating || !createName.trim() || !createUri.trim()}
+              onClick={async () => {
+                setCreating(true);
+                try {
+                  const res = await api.post("/database/", {
+                    database_name: createName.trim(),
+                    sqlalchemy_uri: createUri.trim(),
+                  });
+                  setCreateDialogOpen(false);
+                  if (res.data?.id) fetchData();
+                } catch {
+                  /* ignore */
+                }
+                setCreating(false);
               }}
             >
-              <Chip
-                label={row.backend!}
-                size="small"
-                variant="outlined"
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
-              />
-              <Chip
-                label={row.expose_in_sqllab ? "已启用" : "已禁用"}
-                size="small"
-                color={row.expose_in_sqllab ? "success" : "default"}
-                variant={row.expose_in_sqllab ? "filled" : "outlined"}
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
-              />
-              <Chip
-                label={row.allow_dml ? "DML: 是" : "DML: 否"}
-                size="small"
-                color={row.allow_dml ? "success" : "default"}
-                variant={row.allow_dml ? "filled" : "outlined"}
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
-              />
-              <Typography
-                variant="caption"
-                color="text.disabled"
-                sx={{ fontSize: "0.75rem" }}
-              >
-                {row.changed_on_delta_humanized ?? ""}
-              </Typography>
-            </Box>
-          </>
-        )}
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除数据库"
-        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <Dialog
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>连接数据库</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="数据库名称"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            variant="outlined"
-            size="small"
-            sx={{ mt: 1, mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            label="数据库连接串"
-            value={createUri}
-            onChange={(e) => setCreateUri(e.target.value)}
-            variant="outlined"
-            size="small"
-            placeholder="postgresql://user:pass@host:port/dbname"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>取消</Button>
-          <Button
-            variant="contained"
-            disabled={creating || !createName.trim() || !createUri.trim()}
-            onClick={async () => {
-              setCreating(true);
-              try {
-                const res = await api.post("/database/", {
-                  database_name: createName.trim(),
-                  sqlalchemy_uri: createUri.trim(),
-                });
-                setCreateDialogOpen(false);
-                if (res.data?.id) fetchData();
-              } catch {
-                /* ignore */
-              }
-              setCreating(false);
-            }}
-          >
-            {creating ? "连接中..." : "连接"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <PageSpeedDial pageKeys="database_list" />
-    </ListPageLayout>
+              {creating ? "连接中..." : "连接"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </ListPageLayout>
+      </Card>
+    </Box>
   );
 }
