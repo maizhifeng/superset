@@ -391,6 +391,8 @@ WTF_CSRF_EXEMPT_LIST = [
     # Headless query endpoint for token-authenticated API clients, exempted for
     # the same reason as the chart data endpoint above.
     "superset.datasource.api.query",
+    "superset.charts.api.put",
+    "superset.charts.api.post",
     "superset.dashboards.api.cache_dashboard_screenshot",
     # Guest-token (embedded) sessions authenticate via the guest token
     # header and carry no CSRF token cookie; without the exemption their
