@@ -301,7 +301,11 @@ export function useChartEditor({ onChartSaved, initialData, compact, buildDashbo
       else { const res = await api.post("/chart/", body); savedId = res.data?.id ?? null; }
       if (onChartSaved && savedId) { notify({ severity: "success", message: "图表已保存" }); onChartSaved(savedId); }
       else { notify({ severity: "success", message: "图表已保存" }); navigate("/chart/list"); }
-    } catch (err: unknown) { const errMsg = parseErrorMessage(err, "保存图表失败"); setError(errMsg); notify({ severity: "error", message: errMsg });
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: unknown; status?: number } };
+      if (apiErr?.response?.data) console.error("Chart save error response:", JSON.stringify(apiErr.response.data));
+      const errMsg = parseErrorMessage(err, "保存图表失败");
+      setError(errMsg); notify({ severity: "error", message: errMsg });
     } finally { setCreating(false); }
   }, [datasourceId, hasValidType, datasets, resolvedType, sliceName, metricNames, metrics, groupby, isEditing, sliceId, onChartSaved, navigate, notify]);
 
