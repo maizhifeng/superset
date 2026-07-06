@@ -383,7 +383,11 @@ EXTRA_PANDAS_POSTPROCESSING_OPS: list[Callable[..., Any]] = []
 QUERY_SEARCH_LIMIT = 1000
 
 # Flask-WTF flag for CSRF
-WTF_CSRF_ENABLED = True
+# NOTE: JWT authentication is stateless — no server-side session cookie is set.
+# Flask-WTF CSRF relies on a session to store/validate tokens, so it cannot work
+# with JWT. Flask-AppBuilder's @protect() decorator handles JWT authentication
+# and CSRF natively, so Flask-WTF middleware is redundant here.
+WTF_CSRF_ENABLED = False
 
 # Add endpoints that need to be exempt from CSRF protection
 WTF_CSRF_EXEMPT_LIST = [
