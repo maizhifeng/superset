@@ -61,22 +61,30 @@ export function setStoredRefreshToken(token: string | null): void {
 let csrfToken: string | null = null;
 let csrfPromise: Promise<string | null> | null = null;
 
+export async function fetchCsrfToken(): Promise<string | null> {
+  const token = getStoredToken();
+  try {
+    const res = await axios.get("/api/v1/security/csrf_token/", {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      withCredentials: true,
+    });
+    const result = res.data?.result ?? null;
+    if (result) {
+      csrfToken = result;
+    }
+    return result;
+  } catch (err) {
+    console.error("CSRF token fetch failed:", err);
+    return null;
+  }
+}
+
 async function ensureCsrfToken(): Promise<string | null> {
   if (csrfToken) return csrfToken;
   if (csrfPromise) return csrfPromise;
-  const token = getStoredToken();
-  csrfPromise = axios
-    .get("/api/v1/security/csrf_token/", {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
-    .then((res) => {
-      csrfToken = res.data?.result ?? null;
-      return csrfToken;
-    })
-    .catch(() => null)
-    .finally(() => {
-      csrfPromise = null;
-    });
+  csrfPromise = fetchCsrfToken().finally(() => {
+    csrfPromise = null;
+  });
   return csrfPromise;
 }
 
@@ -225,7 +233,21 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Do NOT swallow 400 errors on /chart/data — let callers handle them
+    // Retry with fresh CSRF token if session token was missing
+    if (
+      error.response?.status === 400 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      /CSRF/i.test(JSON.stringify(error.response.data))
+    ) {
+      csrfToken = null;
+      const newCsrf = await fetchCsrfToken();
+      if (newCsrf) {
+        originalRequest._retry = true;
+        originalRequest.headers["X-CSRFToken"] = newCsrf;
+        return api(originalRequest);
+      }
+    }
 
     return Promise.reject(error);
   },
