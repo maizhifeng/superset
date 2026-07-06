@@ -307,6 +307,8 @@ WTF_CSRF_ENABLED = True
 # Add endpoints that need to be exempt from CSRF protection
 WTF_CSRF_EXEMPT_LIST = [
     "superset.charts.data.api.data",
+    "superset.charts.api.put",
+    "superset.charts.api.post",
     "superset.dashboards.api.cache_dashboard_screenshot",
     "superset.views.core.explore_json",
     "superset.views.core.log",
