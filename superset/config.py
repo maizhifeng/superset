@@ -302,30 +302,11 @@ SQLGLOT_DIALECTS_EXTENSIONS: DialectExtensions | Callable[[], DialectExtensions]
 QUERY_SEARCH_LIMIT = 1000
 
 # Flask-WTF flag for CSRF
-WTF_CSRF_ENABLED = True
-
-# Add endpoints that need to be exempt from CSRF protection
-WTF_CSRF_EXEMPT_LIST = [
-    "superset.charts.data.api.data",
-    "superset.charts.api.put",
-    "superset.charts.api.post",
-    "superset.dashboards.api.cache_dashboard_screenshot",
-    "superset.views.core.explore_json",
-    "superset.views.core.log",
-    "superset.views.datasource.views.samples",
-    "flask_appbuilder.security.views.acs",
-    "superset.project.papp.api.list_papp",
-    "superset.project.papp.api.get_papp",
-    "superset.project.papp.api.put_papp",
-    "superset.project.papp.api.delete_papp",
-    "superset.project.channel.api.list_channel",
-    "superset.project.channel.api.get_channel",
-    "superset.project.channel.api.put_channel",
-    "superset.project.channel.api.delete_channel",
-    "superset.project.channel.api.sync_profit_sharing",
-    "superset.project.channel.api.update_profit_sharing",
-    "superset.sqllab.api.execute_sql_query",
-]
+# NOTE: JWT authentication is stateless — no server-side session cookie is set.
+# Flask-WTF CSRF relies on a session to store/validate tokens, so it cannot work
+# with JWT. Flask-AppBuilder's @protect() decorator handles JWT authentication
+# and CSRF natively, so Flask-WTF middleware is redundant here.
+WTF_CSRF_ENABLED = False
 
 # Whether to run the web server in debug mode or not
 DEBUG = utils.parse_boolean_string(os.environ.get("FLASK_DEBUG"))
