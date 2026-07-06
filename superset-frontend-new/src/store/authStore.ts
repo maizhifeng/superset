@@ -8,6 +8,7 @@ import api, {
   cancelTokenRefresh,
   setStoredBackupToken,
   getStoredBackupToken,
+  fetchCsrfToken,
   clearAuthAndBackup,
   SWITCHED_FLAG_KEY,
 } from "@/api";
@@ -129,6 +130,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     set({ token: accessToken, user: userData, isAuthenticated: true });
     setupTokenRefresh();
     await _get().fetchRoles();
+    fetchCsrfToken();
   },
 
   logout: () => {
