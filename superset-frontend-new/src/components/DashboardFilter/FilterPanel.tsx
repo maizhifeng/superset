@@ -13,6 +13,7 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
 import rison from "rison";
 import api from "@/api";
+import { isFederatedDataset } from "@/config/federatedDatasets";
 import type { FilterConfig, FilterState } from "./types";
 
 interface FilterPanelProps {
@@ -121,9 +122,10 @@ function FilterSelect({
         setLoading(true);
         try {
           const q: Record<string, unknown> = { page_size: 100, page: 0, filters: [{ col: "value", op: "ct", val: search }] };
-          const res = await api.get(
-            `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
-          );
+          const path = isFederatedDataset(filter.datasetId)
+            ? `/bi/filter-values/${filter.datasetId}/${encodeURIComponent(filter.column)}/?q=${rison.encode(q)}`
+            : `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`;
+          const res = await api.get(path);
           const raw: unknown[] = res.data?.result || [];
           const vals = raw.filter((v): v is string => v != null).map((v) => ({ value: String(v), label: filter.columnType === "time" ? formatTimeLabel(v) : String(v) }));
           setOptions(vals);
@@ -166,9 +168,10 @@ function FilterSelect({
       const fetchPromise = (async () => {
         try {
           const q: Record<string, unknown> = { page_size: 100, page: 0 };
-          const res = await api.get(
-            `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`,
-          );
+          const path = isFederatedDataset(filter.datasetId)
+            ? `/bi/filter-values/${filter.datasetId}/${encodeURIComponent(filter.column)}/?q=${rison.encode(q)}`
+            : `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`;
+          const res = await api.get(path);
           const raw: unknown[] = res.data?.result || [];
           const vals: { label: string; value: string }[] = raw
             .filter((v): v is string => v != null)

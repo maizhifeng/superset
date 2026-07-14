@@ -986,6 +986,9 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             # Profit sharing endpoints
             csrf.exempt("superset.project.channel.api.sync_profit_sharing")
             csrf.exempt("superset.project.channel.api.update_profit_sharing")
+            # Bi (federated query) endpoints
+            csrf.exempt("superset.project.bi.api.chart_data")
+            csrf.exempt("superset.project.bi.api.filter_values")
 
     def configure_async_queries(self) -> None:
         if feature_flag_manager.is_feature_enabled("GLOBAL_ASYNC_QUERIES"):
@@ -1016,6 +1019,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.project.channel.api import channel_blueprint
 
         self.superset_app.register_blueprint(channel_blueprint)
+
+        # Register bi (federated query) blueprint
+        from superset.project.bi.api import bi_blueprint
+
+        self.superset_app.register_blueprint(bi_blueprint)
 
     def setup_mui_static_routes(self) -> None:
         """Serve MUI frontend static assets from /app/mui-static/assets/

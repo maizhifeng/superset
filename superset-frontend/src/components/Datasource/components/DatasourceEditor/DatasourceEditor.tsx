@@ -1551,92 +1551,187 @@ class DatasourceEditor extends PureComponent<
   renderSettingsFieldset() {
     const { datasource } = this.state;
     return (
-      <Fieldset
-        title={t('Basic')}
-        item={datasource}
-        onChange={this.onDatasourceChange}
-      >
-        <Field
-          fieldKey="description"
-          label={t('Description')}
-          control={
-            <TextAreaControl
-              language="markdown"
-              offerEditInModal={false}
-              resize="vertical"
-            />
-          }
-        />
-        <Field
-          fieldKey="default_endpoint"
-          label={t('Default URL')}
-          description={
-            <>
-              {t(
-                'Default URL to redirect to when accessing from the dataset list page. Accepts relative URLs such as',
-              )}{' '}
-              <Typography.Text code>
-                /superset/dashboard/{'{id}'}/
-              </Typography.Text>
-            </>
-          }
-          control={<TextControl controlId="default_endpoint" />}
-        />
-        <Field
-          inline
-          fieldKey="filter_select_enabled"
-          label={t('Autocomplete filters')}
-          description={t('Whether to populate autocomplete filters options')}
-          control={<CheckboxControl />}
-        />
-        {this.state.isSqla && (
+      <>
+        <Fieldset
+          title={t('Basic')}
+          item={datasource}
+          onChange={this.onDatasourceChange}
+        >
           <Field
-            fieldKey="fetch_values_predicate"
-            label={t('Autocomplete query predicate')}
-            description={t(
-              'When using "Autocomplete filters", this can be used to improve performance ' +
-                'of the query fetching the values. Use this option to apply a ' +
-                'predicate (WHERE clause) to the query selecting the distinct ' +
-                'values from the table. Typically the intent would be to limit the scan ' +
-                'by applying a relative time filter on a partitioned or indexed time-related field.',
-            )}
+            fieldKey="description"
+            label={t('Description')}
             control={
               <TextAreaControl
-                language="sql"
-                controlId="fetch_values_predicate"
-                minLines={5}
-                resize="vertical"
-              />
-            }
-          />
-        )}
-        {this.state.isSqla && (
-          <Field
-            fieldKey="extra"
-            label={t('Extra')}
-            description={t(
-              'Extra data to specify table metadata. Currently supports ' +
-                'metadata of the format: `{ "certification": { "certified_by": ' +
-                '"Data Platform Team", "details": "This table is the source of truth." ' +
-                '}, "warning_markdown": "This is a warning." }`.',
-            )}
-            control={
-              <TextAreaControl
-                controlId="extra"
-                language="json"
+                language="markdown"
                 offerEditInModal={false}
                 resize="vertical"
               />
             }
           />
-        )}
-        <OwnersSelector
-          datasource={datasource}
-          onChange={newOwners => {
-            this.onDatasourceChange({ ...datasource, owners: newOwners });
-          }}
-        />
-      </Fieldset>
+          <Field
+            fieldKey="default_endpoint"
+            label={t('Default URL')}
+            description={
+              <>
+                {t(
+                  'Default URL to redirect to when accessing from the dataset list page. Accepts relative URLs such as',
+                )}{' '}
+                <Typography.Text code>
+                  /superset/dashboard/{'{id}'}/
+                </Typography.Text>
+              </>
+            }
+            control={<TextControl controlId="default_endpoint" />}
+          />
+          <Field
+            inline
+            fieldKey="filter_select_enabled"
+            label={t('Autocomplete filters')}
+            description={t('Whether to populate autocomplete filters options')}
+            control={<CheckboxControl />}
+          />
+          {this.state.isSqla && (
+            <Field
+              fieldKey="fetch_values_predicate"
+              label={t('Autocomplete query predicate')}
+              description={t(
+                'When using "Autocomplete filters", this can be used to improve performance ' +
+                  'of the query fetching the values. Use this option to apply a ' +
+                  'predicate (WHERE clause) to the query selecting the distinct ' +
+                  'values from the table. Typically the intent would be to limit the scan ' +
+                  'by applying a relative time filter on a partitioned or indexed time-related field.',
+              )}
+              control={
+                <TextAreaControl
+                  language="sql"
+                  controlId="fetch_values_predicate"
+                  minLines={5}
+                  resize="vertical"
+                />
+              }
+            />
+          )}
+          {this.state.isSqla && (
+            <Field
+              fieldKey="extra"
+              label={t('Extra')}
+              description={t(
+                'Extra data to specify table metadata. Currently supports ' +
+                  'metadata of the format: `{ "certification": { "certified_by": ' +
+                  '"Data Platform Team", "details": "This table is the source of truth." ' +
+                  '}, "warning_markdown": "This is a warning." }`.',
+              )}
+              control={
+                <TextAreaControl
+                  controlId="extra"
+                  language="json"
+                  offerEditInModal={false}
+                  resize="vertical"
+                />
+              }
+            />
+          )}
+          <OwnersSelector
+            datasource={datasource}
+            onChange={newOwners => {
+              this.onDatasourceChange({ ...datasource, owners: newOwners });
+            }}
+          />
+        </Fieldset>
+        {(() => {
+          let extraParsed: Record<string, any> = {};
+          try {
+            extraParsed = JSON.parse(datasource.extra || '{}');
+          } catch {
+            extraParsed = {};
+          }
+          const federated = extraParsed.federated || {};
+          const isEnabled = federated.enabled || false;
+          const dbs: string[] = federated.databases || ['', ''];
+          return (
+            <Fieldset
+              title={'\u8DE8\u5E93\u5173\u8054'}
+              item={datasource}
+              onChange={this.onDatasourceChange}
+            >
+              <Field
+                inline
+                fieldKey="extra"
+                label={'\u5F00\u542F\u8DE8\u5E93\u67E5\u8BE2'}
+                control={
+                  <CheckboxControl
+                    value={isEnabled}
+                    onChange={(val: boolean) => {
+                      const updated = {
+                        ...extraParsed,
+                        federated: { ...federated, enabled: val },
+                      };
+                      this.onDatasourceChange({
+                        ...datasource,
+                        extra: JSON.stringify(updated),
+                      });
+                    }}
+                  />
+                }
+              />
+              {isEnabled && (
+                <>
+                  <Field
+                    fieldKey="extra"
+                    label={'\u6570\u636E\u5E931'}
+                    description={
+                      '\u4E3B\u6570\u636E\u5E93\u540D\u79F0\uFF08\u5F53\u524D\u6570\u636E\u96C6\u6240\u5728\u6570\u636E\u5E93\uFF09'
+                    }
+                    control={
+                      <TextControl
+                        value={dbs[0]}
+                        onChange={(val: string) => {
+                          const updated = {
+                            ...extraParsed,
+                            federated: {
+                              ...federated,
+                              databases: [val, dbs[1]],
+                            },
+                          };
+                          this.onDatasourceChange({
+                            ...datasource,
+                            extra: JSON.stringify(updated),
+                          });
+                        }}
+                      />
+                    }
+                  />
+                  <Field
+                    fieldKey="extra"
+                    label={'\u6570\u636E\u5E932'}
+                    description={
+                      '\u5173\u8054\u6570\u636E\u5E93\u540D\u79F0\uFF08\u8981\u5408\u5E76\u7684\u53E6\u4E00\u6570\u636E\u5E93\uFF09'
+                    }
+                    control={
+                      <TextControl
+                        value={dbs[1]}
+                        onChange={(val: string) => {
+                          const updated = {
+                            ...extraParsed,
+                            federated: {
+                              ...federated,
+                              databases: [dbs[0], val],
+                            },
+                          };
+                          this.onDatasourceChange({
+                            ...datasource,
+                            extra: JSON.stringify(updated),
+                          });
+                        }}
+                      />
+                    }
+                  />
+                </>
+              )}
+            </Fieldset>
+          );
+        })()}
+      </>
     );
   }
 

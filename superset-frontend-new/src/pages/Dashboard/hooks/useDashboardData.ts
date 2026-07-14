@@ -3,6 +3,11 @@ import type { ChartData, ChartDataPayload, ChartDataRow, FormData } from "@/type
 import api from "@/api";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
 import type { SimpleFilter, ChartDataResponseResult } from "@/utils/query/types";
+import { isFederatedDataset } from "@/config/federatedDatasets";
+
+function getChartDataUrl(dsId: number): string {
+  return isFederatedDataset(dsId) ? "/bi/chart/data" : "/chart/data";
+}
 
 export { buildQueryObject };
 
@@ -107,7 +112,8 @@ export function useDashboardData() {
           result_type: "full",
         };
         if (force) body.force = true;
-        const postRes = await api.post("/chart/data", body);
+        const chartDataUrl = getChartDataUrl(dsId);
+        const postRes = await api.post(chartDataUrl, body);
         const results = (
           Array.isArray(postRes.data?.result) ? postRes.data.result : []
         ) as ChartDataResponseResult[];
@@ -228,7 +234,8 @@ export function useDashboardData() {
           result_type: "full" as const,
           force: true,
         };
-        const postRes = await api.post("/chart/data", payload);
+        const chartDataUrl = getChartDataUrl(dsId);
+        const postRes = await api.post(chartDataUrl, payload);
         const postResult = postRes.data?.result;
         const data: ChartDataPayload = Array.isArray(postResult)
           ? postResult[0] || {}

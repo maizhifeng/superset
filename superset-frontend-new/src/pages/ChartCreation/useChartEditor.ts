@@ -10,6 +10,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import type { Dataset, FormData, ChartDataPayload, ChartData } from "@/types/api";
 import type { AdhocMetric, QueryOrderBy } from "@/utils/query/types";
 import { formatNumber } from "@/utils/formatNumber";
+import { isFederatedDataset } from "@/config/federatedDatasets";
 
 export function autoSuggestChartType(
   metrics: string[],
@@ -235,7 +236,8 @@ export function useChartEditor({ onChartSaved, initialData, compact, buildDashbo
       const query = buildQueryObject(queryFormData, previewParams.viz_type);
       const dashboardFilters = buildDashboardAdhocFilters?.(previewParams.datasource_id);
       if (dashboardFilters && dashboardFilters.length > 0) query.filters = dashboardFilters.map((f) => ({ col: f.subject, op: f.operator, val: f.comparator }));
-      api.post("/chart/data", { datasource: { id: previewParams.datasource_id, type: "table" }, queries: [query], form_data: { viz_type: previewParams.viz_type, metrics: previewParams.metrics, groupby: previewParams.groupby } }, { signal: controller.signal })
+      const chartUrl = isFederatedDataset(Number(previewParams.datasource_id)) ? "/bi/chart/data" : "/chart/data";
+      api.post(chartUrl, { datasource: { id: previewParams.datasource_id, type: "table" }, queries: [query], form_data: { viz_type: previewParams.viz_type, metrics: previewParams.metrics, groupby: previewParams.groupby } }, { signal: controller.signal })
         .then((res) => {
           if (controller.signal.aborted) return;
           const result = res.data?.result; const rowData = Array.isArray(result) ? result[0] || {} : result || {};
@@ -317,7 +319,8 @@ export function useChartEditor({ onChartSaved, initialData, compact, buildDashbo
     const query = buildQueryObject(queryFormData, resolvedType === "auto" ? "line" : resolvedType);
     const dashboardFilters = buildDashboardAdhocFilters?.(Number(datasourceId));
     if (dashboardFilters && dashboardFilters.length > 0) query.filters = dashboardFilters.map((f) => ({ col: f.subject, op: f.operator, val: f.comparator }));
-    api.post("/chart/data", { datasource: { id: Number(datasourceId), type: "table" }, queries: [query], form_data: { viz_type: resolvedType, metrics, groupby } })
+    const chartUrl = isFederatedDataset(Number(datasourceId)) ? "/bi/chart/data" : "/chart/data";
+    api.post(chartUrl, { datasource: { id: Number(datasourceId), type: "table" }, queries: [query], form_data: { viz_type: resolvedType, metrics, groupby } })
       .then((res) => { const result = res.data?.result; const rowData = Array.isArray(result) ? result[0] || {} : result || {}; if (rowData && Array.isArray(rowData.data)) { const hasNext = rowData.data.length > pageSize; setHasMore(hasNext); if (hasNext) rowData.data = rowData.data.slice(0, pageSize); } setChartData(rowData); })
       .catch(() => setChartData({})).finally(() => setLoadingData(false));
   }, [datasourceId, resolvedType, metrics, groupby, metricNames, savedFormData, sortEntry, buildDashboardAdhocFilters]);

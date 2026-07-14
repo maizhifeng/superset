@@ -133,10 +133,14 @@ export default function DatasetEdit() {
         ? `/dataset/${id}?override_columns=true`
         : `/dataset/${id}`;
 
-      const extraStr =
-        extraConfig.profit_sharing || (extraConfig.computed_columns?.length ?? 0) > 0
-          ? JSON.stringify(extraConfig)
-          : null;
+      let extraObj: Record<string, any> = { ...extraConfig };
+      try {
+        const oldExtra = JSON.parse(dataset?.extra ?? "{}");
+        if (oldExtra.federated) {
+          extraObj.federated = oldExtra.federated;
+        }
+      } catch { /* keep extraConfig as-is */ }
+      const extraStr = Object.keys(extraObj).length > 0 ? JSON.stringify(extraObj) : null;
       const payload: {
         table_name: string;
         description: string | null;
