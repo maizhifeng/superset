@@ -44,6 +44,10 @@ import {
   addDangerToast,
   addWarningToast,
 } from 'src/components/MessageToasts/actions';
+import {
+  getFederatedDataset,
+  extractDatasetId,
+} from 'src/config/federatedDatasets';
 import { logEvent } from 'src/logger/actions';
 import { Logger, LOG_ACTIONS_LOAD_CHART } from 'src/logger/LogUtils';
 import { allowCrossDomain as domainShardingEnabled } from 'src/utils/hostNamesConfig';
@@ -462,8 +466,11 @@ const v1ChartDataRequest = async (
     // eslint-disable-next-line camelcase
     domainShardingEnabled && requestParams?.dashboard_id,
   );
+  const datasetId = extractDatasetId(formData.datasource);
+  const federated = getFederatedDataset(datasetId);
+  const path = federated ? '/api/v1/bi/chart/data' : '/api/v1/chart/data';
   const url = getChartDataUri({
-    path: '/api/v1/chart/data',
+    path,
     qs,
     allowDomainSharding,
   }).toString();

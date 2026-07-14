@@ -1849,15 +1849,8 @@ function DatasourceEditor({
         />
         {isSqla && (
           <Field
-            fieldKey="fetch_values_predicate"
-            label={t('Autocomplete query predicate')}
-            description={t(
-              'When using "Autocomplete filters", this can be used to improve performance ' +
-                'of the query fetching the values. Use this option to apply a ' +
-                'predicate (WHERE clause) to the query selecting the distinct ' +
-                'values from the table. Typically the intent would be to limit the scan ' +
-                'by applying a relative time filter on a partitioned or indexed time-related field.',
-            )}
+            fieldKey="description"
+            label={t('Description')}
             control={
               <TextAreaControl
                 language="sql"
@@ -1897,6 +1890,100 @@ function DatasourceEditor({
     ),
     [datasource, onDatasourcePropChange, isSqla],
   );
+
+  const renderFederatedFieldset = useCallback(() => {
+    let extraParsed: Record<string, any> = {};
+    try {
+      extraParsed = JSON.parse(datasource.extra || '{}');
+    } catch {
+      extraParsed = {};
+    }
+    const federated = extraParsed.federated || {};
+    const isEnabled = federated.enabled || false;
+    const dbs: string[] = federated.databases || ['', ''];
+    return (
+      <Fieldset
+        title={'\u8DE8\u5E93\u5173\u8054'}
+        item={datasource}
+        onChange={onDatasourceChange}
+      >
+        <Field
+          inline
+          fieldKey="extra"
+          label={'\u5F00\u542F\u8DE8\u5E93\u67E5\u8BE2'}
+          control={
+            <CheckboxControl
+              value={isEnabled}
+              onChange={(val: boolean) => {
+                const updated = {
+                  ...extraParsed,
+                  federated: { ...federated, enabled: val },
+                };
+                onDatasourceChange({
+                  ...datasource,
+                  extra: JSON.stringify(updated),
+                });
+              }}
+            />
+          }
+        />
+        {isEnabled && (
+          <>
+            <Field
+              fieldKey="extra"
+              label={'\u6570\u636E\u5E931'}
+              description={
+                '\u4E3B\u6570\u636E\u5E93\u540D\u79F0\uFF08\u5F53\u524D\u6570\u636E\u96C6\u6240\u5728\u6570\u636E\u5E93\uFF09'
+              }
+              control={
+                <TextControl
+                  value={dbs[0]}
+                  onChange={(val: string) => {
+                    const updated = {
+                      ...extraParsed,
+                      federated: {
+                        ...federated,
+                        databases: [val, dbs[1]],
+                      },
+                    };
+                    onDatasourceChange({
+                      ...datasource,
+                      extra: JSON.stringify(updated),
+                    });
+                  }}
+                />
+              }
+            />
+            <Field
+              fieldKey="extra"
+              label={'\u6570\u636E\u5E932'}
+              description={
+                '\u5173\u8054\u6570\u636E\u5E93\u540D\u79F0\uFF08\u8981\u5408\u5E76\u7684\u53E6\u4E00\u6570\u636E\u5E93\uFF09'
+              }
+              control={
+                <TextControl
+                  value={dbs[1]}
+                  onChange={(val: string) => {
+                    const updated = {
+                      ...extraParsed,
+                      federated: {
+                        ...federated,
+                        databases: [dbs[0], val],
+                      },
+                    };
+                    onDatasourceChange({
+                      ...datasource,
+                      extra: JSON.stringify(updated),
+                    });
+                  }}
+                />
+              }
+            />
+          </>
+        )}
+      </Fieldset>
+    );
+  }, [datasource, onDatasourceChange]);
 
   const renderAdvancedFieldset = useCallback(
     () => (
@@ -2733,6 +2820,7 @@ function DatasourceEditor({
               <FormContainer>
                 {renderSettingsFieldset()}
                 {renderCertificationFieldset()}
+                {renderFederatedFieldset()}
               </FormContainer>
             </Col>
             <Col xs={24} md={12}>
