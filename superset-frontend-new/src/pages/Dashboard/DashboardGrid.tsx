@@ -3,33 +3,79 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import Button from "@mui/material/Button";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import AddIcon from "@mui/icons-material/Add";
 import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
-import { GridLayout } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
 import type { ChartData, ChartDataPayload, ChartDataRow } from "@/types/api";
 import ChartCard from "@/pages/Dashboard/ChartCard";
 import type { CompareConfig } from "@/pages/Dashboard/ChartCard";
 import type { ChartLayoutItem } from "@/utils/dashboard/layout";
 
+const MIN_CARD_WIDTH = 120;
+const MOBILE_BREAKPOINT = 768;
+
+function sizeValue(cols: number, fraction: number): number {
+  return Math.max(1, Math.round(cols * fraction));
+}
+
+function buildSizeOptions(colCount: number) {
+  const options = [
+    { label: "小", value: sizeValue(colCount, 1/3), height: 10 },
+    { label: "中", value: sizeValue(colCount, 2/3), height: 14 },
+    { label: "全宽", value: colCount, height: 18 },
+  ];
+  const seen = new Set<number>();
+  return options.filter((o) => {
+    if (seen.has(o.value)) return false;
+    seen.add(o.value);
+    return true;
+  });
+}
+
+function SizeSelector({
+  currentW,
+  currentH,
+  maxCols,
+  onChange,
+}: {
+  currentW: number;
+  currentH: number;
+  maxCols: number;
+  onChange: (w: number, h: number) => void;
+}) {
+  const options = buildSizeOptions(maxCols);
+  const effectiveW = currentW === maxCols ? maxCols : currentW;
+
+  return (
+    <ToggleButtonGroup
+      size="small"
+      value={effectiveW}
+      exclusive
+      onChange={(_, v) => {
+        if (v === null) return;
+        const opt = options.find((o) => o.value === v);
+        onChange(v, opt?.height ?? currentH);
+      }}
+    >
+      {options.map((o) => (
+        <ToggleButton key={o.label} value={o.value} sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}>
+          {o.label}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
+
 interface DashboardGridProps {
   containerWidth: number;
-  gridLayout: { i: string; x: number; y: number; w: number; h: number }[];
   layoutItems: ChartLayoutItem[];
   chartMeta: Record<number, ChartData>;
   chartData: Record<number, ChartDataPayload>;
   chartLoading: Record<number, boolean>;
-  isDragging: boolean;
   saving: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
-  onLayoutChange: (
-    layout: { i: string; x: number; y: number; w: number; h: number }[],
-  ) => void;
-  onDragStart: () => void;
-  onDragStop: () => void;
-  onResizeStart: () => void;
-  onResizeStop: () => void;
+  onSizeChange: (chartId: number, newW: number, newH: number) => void;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
   onDelete: (chartId: number) => void;
@@ -53,19 +99,13 @@ interface DashboardGridProps {
 
 export default function DashboardGrid({
   containerWidth,
-  gridLayout,
   layoutItems,
   chartMeta,
   chartData,
   chartLoading,
-  isDragging,
   saving,
   containerRef,
-  onLayoutChange,
-  onDragStart,
-  onDragStop,
-  onResizeStart,
-  onResizeStop,
+  onSizeChange,
   onRefresh,
   onEdit,
   onDelete,
@@ -83,6 +123,11 @@ export default function DashboardGrid({
   chartHasMore,
   onChartPageChange,
 }: DashboardGridProps) {
+  const isMobile = containerWidth < MOBILE_BREAKPOINT;
+  const colCount = isMobile
+    ? 1
+    : Math.max(1, Math.floor(containerWidth / MIN_CARD_WIDTH));
+
   if (layoutItems.length === 0) {
     return (
       <Box
@@ -113,11 +158,18 @@ export default function DashboardGrid({
     );
   }
 
+  const gapPx = isMobile ? 4 : 6;
+  const H_UNIT = 24;
+
+  function itemPct(w: number): string {
+    if (w >= colCount) return "100%";
+    if (w <= sizeValue(colCount, 1/3)) return `${(1 / 3) * 100}%`;
+    if (w <= sizeValue(colCount, 2/3)) return `${(2 / 3) * 100}%`;
+    return `${(w / colCount) * 100}%`;
+  }
+
   return (
-    <Box
-      ref={containerRef}
-      sx={{ width: "100%", position: "relative", minHeight: 400 }}
-    >
+    <Box ref={containerRef}>
       {saving && (
         <Box
           sx={{
@@ -141,33 +193,33 @@ export default function DashboardGrid({
           </Typography>
         </Box>
       )}
-      <GridLayout
-        key={`layout-${containerWidth < 600 ? "mobile" : "desktop"}`}
-        width={containerWidth}
-        layout={gridLayout}
-        gridConfig={{
-          cols: 12,
-          rowHeight:
-            containerWidth < 600
-              ? 40
-              : Math.max(40, Math.round(containerWidth / 20)),
-          margin: [8, 8],
+      <Box
+        sx={{
+          display: "flex",
+          flexWrap: "wrap",
+          width: "100%",
+          alignItems: "stretch",
+          m: `-${gapPx}px`,
         }}
-        onLayoutChange={onLayoutChange}
-        onDragStart={onDragStart}
-        onDragStop={onDragStop}
-        onResizeStart={onResizeStart}
-        onResizeStop={onResizeStop}
-        dragConfig={{ enabled: containerWidth >= 600, handle: ".drag-handle" }}
-        resizeConfig={{ enabled: containerWidth >= 600, handles: ["se"] }}
-        autoSize
       >
         {layoutItems.map((item) => {
           const meta = chartMeta[item.chartId];
           const dsId = meta?.datasource_id ?? 0;
           const metricFormatMap = metricFormatMaps?.[dsId];
+          const itemCols = isMobile ? 1 : Math.min(item.w || 6, colCount);
+          const pct = isMobile ? "100%" : itemPct(itemCols);
+          const cardHeight = isMobile ? "auto" : `${(item.h || 14) * H_UNIT}px`;
+
           return (
-            <div key={item.i} data-chart-index={item.chartId}>
+            <Box
+              key={item.i}
+              sx={{
+                flex: `0 0 calc(${pct} - ${gapPx * 2}px)`,
+                height: cardHeight,
+                minWidth: 0,
+                m: `${gapPx}px`,
+              }}
+            >
               <ChartCard
                 chartId={item.chartId}
                 sliceName={item.sliceName}
@@ -175,7 +227,6 @@ export default function DashboardGrid({
                 data={chartData[item.chartId]}
                 loading={!!chartLoading[item.chartId]}
                 meta={meta}
-                isDragging={isDragging}
                 containerWidth={containerWidth}
                 onRefresh={onRefresh}
                 onEdit={onEdit}
@@ -192,11 +243,21 @@ export default function DashboardGrid({
                 page={chartPages?.[item.chartId] ?? 0}
                 hasMore={chartHasMore?.[item.chartId] ?? false}
                 onPageChange={(p) => onChartPageChange?.(item.chartId, p)}
+                sizeSelector={
+                  !isMobile ? (
+                    <SizeSelector
+                      currentW={itemCols}
+                      currentH={item.h}
+                      maxCols={colCount}
+                      onChange={(w, h) => onSizeChange(item.chartId, w, h)}
+                    />
+                  ) : undefined
+                }
               />
-            </div>
+            </Box>
           );
         })}
-      </GridLayout>
+      </Box>
     </Box>
   );
 }

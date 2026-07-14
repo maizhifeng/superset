@@ -11,11 +11,13 @@ type ServerMessage =
   | { type: "model_list"; models: ModelInfo[] }
   | { type: "error"; message: string; retryable: boolean };
 
+/** @deprecated Use PiAgentChatAdapter instead. This client is no longer the primary WS interface. */
 export type PiAgentEventHandler = (event: ServerMessage) => void;
 
 const RECONNECT_BASE_MS = 1500;
 const PENDING_TIMEOUT_MS = 5000;
 
+/** @deprecated Use PiAgentChatAdapter from piAgentAdapter.ts instead. */
 export class PiAgentClient {
   private ws: WebSocket | null = null;
   private userId: string;
@@ -99,7 +101,7 @@ export class PiAgentClient {
   }
 
   sendMessage(text: string, storeSessionId?: string): void {
-    const msg: any = { type: "prompt", message: text };
+    const msg: Record<string, unknown> = { type: "prompt", message: text };
     if (storeSessionId) msg.storeSessionId = storeSessionId;
     if (!this.sessionId) {
       this.pendingMessages.push(msg);
@@ -126,7 +128,6 @@ export class PiAgentClient {
     if (this.pendingTimer) return;
     this.pendingTimer = setTimeout(() => {
       this.pendingTimer = null;
-      // Pending messages never got flushed — reconnect to get a fresh session
       this.pendingMessages.unshift(
         { type: "new_session", user_id: this.userId, storeSessionId: this.storeSessionId || "reconnect" }
       );

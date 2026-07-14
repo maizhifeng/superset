@@ -1,5 +1,14 @@
 import api from "@/api";
-import { executeQuery } from "@/api/querySuperset";
+import {
+  DATA_ANALYST_SYSTEM_PROMPT,
+  CHART_INSIGHT_SYSTEM_PROMPT,
+} from "@/config/systemPrompts";
+import {
+  QUERY_SUPERSET_TOOL,
+  type ToolCallDelta,
+  type CompletedToolCall,
+  executeToolCalls,
+} from "@/tools/querySupersetTool";
 
 interface ModelConfig {
   provider: string;
@@ -14,90 +23,6 @@ export interface InsightCallbacks {
   onDone?: () => void;
   onError?: (error: string) => void;
 }
-
-/** OpenAI 流式 tool_call delta 分段 */
-interface ToolCallDelta {
-  index: number;
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
-}
-
-/** 累积完成的 tool call */
-interface CompletedToolCall {
-  index: number;
-  id: string;
-  type: string;
-  name: string;
-  arguments: string;
-}
-
-/**
- * query_superset 工具的 OpenAI function-calling 定义。
- * 参数 schema 与 QuerySupersetParams 对齐。
- */
-const QUERY_SUPERSET_TOOL = {
-  type: "function" as const,
-  function: {
-    name: "query_superset",
-    description:
-      "从广告投放数据集（数据集 26）查询按维度聚合的数据，返回 markdown 表格。columns 必须包含「日期」以展示分天趋势，可附加其他维度。各维度含义：日期=数据日期，媒体=广告投放平台（微信/抖音/华为等），平台=操作系统（iOS/Android），渠道商=具体合作渠道，主游戏=游戏项目名，团队=运营团队。metrics 指定聚合指标（如 SUM(消耗)）。示例：columns=[\"日期\", \"媒体\"], metrics=[\"SUM(消耗)\", \"cpa\"], time_range=\"Last 7 days\"",
-    parameters: {
-      type: "object",
-      properties: {
-        columns: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: ["日期", "媒体", "平台", "渠道商", "主游戏", "团队"],
-          },
-          description: "分组维度：日期=数据日期，媒体=广告投放平台（微信/抖音/华为），平台=操作系统（iOS/Android），渠道商=具体合作渠道，主游戏=游戏项目，团队=运营团队。必须包含「日期」。",
-        },
-        metrics: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: [
-              "SUM(消耗)", "SUM(返点后消耗)", "SUM(新增进入)",
-              "cpa", "roi_1", "roi_2", "roi_3", "roi_4", "roi_5", "roi_6", "roi_7",
-              "ltv_1", "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7",
-            ],
-          },
-          description: "查询指标",
-        },
-        time_range: {
-          type: "string",
-          enum: ["Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days"],
-          description: "时间范围，默认 Last 14 days",
-          optional: true,
-        },
-        filters: {
-          type: "object",
-          description: "列级过滤条件。当分析指定了具体游戏/渠道/媒体时，必须传入对应的过滤条件。如 {\"主游戏\":\"三国：天命再临\"} 或 {\"渠道商\":\"微信小游戏\"}",
-          optional: true,
-        },
-        orderby: {
-          type: "array",
-          items: {
-            type: "array",
-            minItems: 2,
-            maxItems: 2,
-            items: [{ type: "string" }, { type: "boolean" }],
-          },
-          description: "排序，如 [[\"SUM(消耗)\", false]]",
-          optional: true,
-        },
-        row_limit: {
-          type: "number",
-          maximum: 1000,
-          description: "返回行数上限，默认 100",
-          optional: true,
-        },
-      },
-      required: ["columns", "metrics", "time_range"],
-    },
-  },
-};
 
 // --- Chart data helpers ---
 
@@ -328,8 +253,7 @@ export async function streamChartInsight(
   const dataBlock = sorted.length ? `\n数据:\n${tableStr}` : "";
 
   callbacks.onStatus?.("正在分析…");
-  const system =
-    "你是一个专业的数据分析师。请直接分析下面给出的图表数据，输出结构化的分析结果（趋势、异常、建议等），使用中文和 markdown 格式。不要生成或执行任何代码。";
+  const system = CHART_INSIGHT_SYSTEM_PROMPT;
   const text = `分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}`;
 
   await _streamLlmDirect(system, text, callbacks, signal, modelCfg);
@@ -397,76 +321,7 @@ export async function streamWithTools(
   const baseUrl = useProxy ? "/llm" : rawBaseUrl;
   const model = modelCfg?.model || "gemma-4-e2b-it";
 
-  const toolSystem = [
-    "你是一个专业的数据分析师助手，内置于数据平台中。",
-    "你可以使用 query_superset 工具从广告投放数据集中按需查询聚合数据。",
-    "该工具返回标准的 Markdown 表格，表头即为你请求的列名。",
-    "",
-    "### 使用方法",
-    "columns 参数指定分组维度，metrics 参数指定聚合指标，time_range 指定时间范围。",
-    "工具会自动按 columns 中的维度分组聚合后返回。",
-    "例如：columns=[\"日期\", \"平台\"], metrics=[\"SUM(消耗)\", \"SUM(新增进入)\", \"cpa\"], time_range=\"Last 7 days\"",
-    "→ 返回每天每个平台的消耗、新增用户、CPA 表格。",
-    "",
-    "**重要：钻取分析时必须包含「日期」在 columns 中，以展示分天趋势，不得仅返回汇总值。**",
-    "",
-    "### 钻取分析规范",
-    "钻取分析时，必须使用 query_superset 工具查询分天的详细数据（columns 包含「日期」），不得仅依赖已有的周汇总数据进行结论。",
-    "分析应以逐日视角展开，如「6/7 消耗突然上升至 X，6/8 回落至 Y」，而非仅比较 W1→W2 汇总值。",
-    "展示数据表格时，行按日期升序排列，让用户能直观看到每日变化趋势。",
-    "",
-    "### 钻取查询规则",
-    "用户消息以「📊 钻取分析 [日期范围]」开头，根据方括号中的日期范围选取最合适的 time_range（如 14 天用 Last 14 days），如不确定则不传（默认 Last 14 days）。",
-    "分析方向文本中提到的具体实体（如游戏名「三国：天命再临」、渠道名「微信小游戏」）必须作为列级过滤条件（filters）传入 query_superset，同时将对应的维度列包含在 columns 中。",
-    "示例：用户说「按日查看命再临各渠道消耗趋势」→ columns=[\"日期\",\"主游戏\",\"渠道商\"], filters={\"主游戏\":\"三国：天命再临\"}",
-    "",
-    "### 维度说明（用户问什么维度就用什么列）",
-    "columns 支持以下中文维度列名，用户提到某维度时必须使用对应的列名，不得混淆：",
-    "- 日期：数据发生的日期",
-    "- 媒体：广告投放平台，如微信、抖音、华为、腾讯等（==> 用 columns=[\"日期\", \"媒体\"]）",
-    "- 平台：操作系统平台，如 iOS、Android（==> 用 columns=[\"日期\", \"平台\"]）",
-    "- 渠道商：具体的合作渠道名称，如微信小游戏、天拓手游、官网Appstore（==> 用 columns=[\"日期\", \"渠道商\"]）",
-    "- 主游戏：游戏项目名称（==> 用 columns=[\"日期\", \"主游戏\"]）",
-    "- 团队：运营团队名称（==> 用 columns=[\"日期\", \"团队\"]）",
-    "",
-    "metrics 支持以下指标名：",
-    "- SUM(消耗)：广告消耗金额",
-    "- SUM(返点后消耗)：返点后广告消耗（用于计算 CPA/ROI）",
-    "- SUM(新增进入)：新增用户数",
-    "- cpa：获客成本",
-    "- roi_1 ~ roi_7：ROI（百分比，如 8.95 = 8.95%，直接显示）",
-    "- ltv_1 ~ ltv_7：LTV（生命周期价值）",
-    "",
-    "### LTV 曲线分析",
-    "用户提到「LTV曲线」「LTV走势」「LTV差异」时，指对比不同维度下 ltv_1 到 ltv_7 的完整序列。",
-    "在 metrics 中同时传入 ltv_1 ~ ltv_7 即可获得每日各 LTV 指标值，通过对比 LTV7/LTV1 增长系数评估用户留存质量。",
-    "示例：metrics=[\"SUM(消耗)\", \"ltv_1\", \"ltv_2\", \"ltv_3\", \"ltv_4\", \"ltv_5\", \"ltv_6\", \"ltv_7\"]",
-    "",
-    "### 输出规范",
-    "- 使用**中文**输出，Markdown 格式",
-    "- 数据优先：先展示 query_superset 返回的数据表格（原样复制，不得修改列名、数据或添加/删除行），再给出分析和结论",
-    "- 表格使用标准 Markdown 表格（| 列1 | 列2 |）",
-    "",
-    "### 指标业务含义解读",
-    "分析指标变化时需要结合业务逻辑：",
-    "- 消耗 ↑ + 新增用户 ↑ + CPA ↓ → 健康增长，获客效率提升",
-    "- 消耗 ↑ + 新增用户 ↓ + CPA ↑ → 获客效率恶化，需排查渠道/素材/定向问题",
-    "- ROI1 ↓ → 首日付费转化或付费金额下降，可能用户质量变差",
-    "- ROI1 ↑ → 首日回收效果改善",
-    "- LTV 增长系数（LTV7/LTV1）高 → 用户留存和长期价值好",
-    "- LTV 曲线整体偏低 → 用户付费能力或留存不足",
-    "",
-    "- 数值按可读性格式化：整数显示整数，小数保留 2 位，不要出现「0.01万」之类",
-    "- 新增用户数整数显示",
-    "- ROI 值已经是百分比，直接显示（如 8.95 → 8.95%）",
-    "- 变化率显示为 ±X% 格式",
-    "- 输出分析时必须标明数据日期范围",
-    "- **禁止使用 LaTeX 数学语法**（$...$、\\frac 等），所有公式用普通文本",
-    "- 不要输出思考过程或规划步骤，只输出最终分析结果",
-    "- 只能基于实际查询到的数据进行分析，不得输出推测性、假设性或「可能」类的不确定结论，无数据支撑的结论不写",
-    "",
-  ].join("\n");
-  const effectiveSystem = system ? `${system}\n\n${toolSystem}` : toolSystem;
+  const effectiveSystem = system ? `${system}\n\n${DATA_ANALYST_SYSTEM_PROMPT}` : DATA_ANALYST_SYSTEM_PROMPT;
 
   type Msg = Record<string, unknown>;
   const messages: Msg[] = [];
@@ -555,13 +410,11 @@ export async function streamWithTools(
 
     const toolCalls = [...toolCallMap.values()];
 
-    // 如果没有 tool_calls 或全部无效 → 本轮结束
     if (toolCalls.length === 0 || toolCalls.every((tc) => !tc.id)) {
       callbacks.onDone?.();
       return fullText;
     }
 
-    // 追加 assistant 消息（含 tool_calls）
     messages.push({
       role: "assistant",
       content: roundText || null,
@@ -572,30 +425,9 @@ export async function streamWithTools(
       })),
     });
 
-    callbacks.onStatus?.("正在查询数据…");
-
-    // 执行所有 tool call
-    for (const tc of toolCalls) {
-      if (!tc.id || tc.name !== "query_superset") continue;
-      try {
-        const args = JSON.parse(tc.arguments);
-        const result = await executeQuery(args);
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: result,
-        });
-      } catch (e: unknown) {
-        messages.push({
-          role: "tool",
-          tool_call_id: tc.id,
-          content: `查询失败: ${(e as Error).message}`,
-        });
-      }
-    }
+    await executeToolCalls(toolCalls, messages, callbacks);
 
     callbacks.onStatus?.("正在分析数据…");
-    // 继续下一轮
   }
 
   callbacks.onDone?.();

@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
-import type { AgentStep } from "@/components/AgentApp/types";
+import type { AgentStep } from "@/types/ai";
 import AgentStepCard from "@/components/AgentApp/AgentStepCard";
 
 interface AgentStepsPanelProps {

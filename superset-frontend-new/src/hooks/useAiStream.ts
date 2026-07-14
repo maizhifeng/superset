@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { DEFAULT_CHAT_SYSTEM_PROMPT } from "@/config/systemPrompts";
 
 interface UseAiStreamOptions {
   systemPrompt?: string;
@@ -20,11 +21,9 @@ interface UseAiStreamReturn {
 export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn {
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const rafRef = useRef(0);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
-    cancelAnimationFrame(rafRef.current);
     setStreaming(false);
   }, []);
 
@@ -42,47 +41,19 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
 
       let full = "";
       let errored = false;
-      let inTable = false;
 
       const { streamDirectChat, streamWithTools } = await import("@/api/aiInsight");
       const { getActivePreset } = await import("@/config/aiConfig");
       const preset = getActivePreset();
 
       const systemPrompt =
-        options.systemPrompt ??
-        "You are a helpful data analysis assistant embedded inside Starfly. " +
-          "Answer general questions about Starfly features, data visualization, " +
-          "SQL, and data analysis. Be concise and practical.\n" +
-          "IMPORTANT: Do NOT output any reasoning, planning, or thinking process. " +
-          "Output only the final answer directly.";
+        options.systemPrompt ?? DEFAULT_CHAT_SYSTEM_PROMPT;
 
       const notify = (onToken ?? options.onToken);
-      const lastLine = () => {
-        const nl = full.lastIndexOf("\n");
-        return nl >= 0 ? full.slice(nl + 1) : full;
-      };
-
-      const tryRender = () => {
-        if (!notify) return;
-        const ll = lastLine();
-        if (ll.startsWith("|")) {
-          if (!ll.endsWith("|") || ll.length <= 1) return;
-          if (!full.endsWith("|\n")) return;
-          inTable = true;
-        } else if (ll.trim() === "" && inTable) {
-          return;
-        } else if (inTable) {
-          return;
-        } else {
-          inTable = false;
-        }
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = requestAnimationFrame(() => notify(full));
-      };
 
       const onText = (token: string) => {
         full += token;
-        tryRender();
+        if (notify) notify(full);
       };
 
       try {
@@ -113,7 +84,6 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
             history,
           );
         }
-        cancelAnimationFrame(rafRef.current);
         if (notify) notify(full);
       } catch (e: unknown) {
         if ((e as Error).name === "AbortError") {

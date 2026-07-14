@@ -5,7 +5,7 @@ import type {
   AgentSession,
   AgentStep,
   AgentConversationMessage,
-} from "@/components/AgentApp/types";
+} from "@/types/ai";
 
 const MAX_SESSIONS = 20;
 const MAX_MESSAGES_PER_SESSION = 100;

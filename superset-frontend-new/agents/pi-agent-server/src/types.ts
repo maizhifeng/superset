@@ -11,11 +11,12 @@ export interface Session {
   id: string;
   userId: string;
   state: "idle" | "running";
+  datasetId?: number;
 }
 
 export type ClientMessage =
   | { type: "auth"; access_token: string }
-  | { type: "new_session"; user_id: string; storeSessionId: string }
+  | { type: "new_session"; user_id: string; storeSessionId: string; dataset_id?: number }
   | { type: "select_session"; storeSessionId: string }
   | { type: "prompt"; message: string; storeSessionId?: string; user_id?: string }
   | { type: "set_model"; model: string }

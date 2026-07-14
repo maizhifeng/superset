@@ -26,6 +26,7 @@ import Paper from "@mui/material/Paper";
 import { getPiAgentAdapter } from "@/api/piAgentAdapter";
 import { useAuthStore } from "@/store/authStore";
 import { useAgentStore } from "@/store/agentStore";
+import { getAgentModel, setAgentModel } from "@/config/aiConfig";
 
 const reasoningRenderer: ChatPartRenderer<ChatReasoningMessagePart> =
   ({ part }: ChatPartRendererProps<ChatReasoningMessagePart>) => {
@@ -275,11 +276,7 @@ const suggestions = [
 function ModelSelector() {
   const [open, setOpen] = useState(false);
   const [modelList, setModelList] = useState<{ id: string; name?: string }[]>([]);
-  const [currentModel, setCurrentModel] = useState(
-    typeof window !== "undefined"
-      ? localStorage.getItem("pi_agent_model") || "gemma-4-e2b-it"
-      : "gemma-4-e2b-it",
-  );
+  const [currentModel, setCurrentModel] = useState(getAgentModel());
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -318,9 +315,7 @@ function ModelSelector() {
 
   const handleSelect = useCallback((id: string) => {
     setCurrentModel(id);
-    try {
-      localStorage.setItem("pi_agent_model", id);
-    } catch {}
+    setAgentModel(id);
     setOpen(false);
   }, []);
 

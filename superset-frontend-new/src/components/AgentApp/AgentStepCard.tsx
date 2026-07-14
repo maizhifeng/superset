@@ -7,7 +7,7 @@ import IconButton from "@mui/material/IconButton";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ScheduleIcon from "@mui/icons-material/Schedule";
-import type { AgentStep } from "@/components/AgentApp/types";
+import type { AgentStep } from "@/types/ai";
 
 const stepTypeConfig: Record<string, { label: string; color: string; bg: string }> = {
   query: { label: "查询", color: "info.main", bg: "status.infoBg" },

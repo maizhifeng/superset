@@ -13,7 +13,7 @@ export default function Dashboard() {
   const {
     dashboard, loading, error, isDrawerOpen, editingSliceId, buildDashboardAdhocFilters,
     chartMeta, chartData, totalRows, chartLoading, chartPages, chartHasMore, metricFormatMaps,
-    gridLayout, layoutItems, layout,
+    layoutItems, layout,
     filters, filterState, pendingFilterIds, filterDrawerOpen,
     navOpen, navItems, addChartDialogOpen,
     intervalSeconds, pageKey,
@@ -47,19 +47,13 @@ export default function Dashboard() {
       <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden", px: { xs: spacing.xs, md: spacing.md } }}>
         <DashboardGrid
           containerWidth={layout.containerWidth}
-          gridLayout={gridLayout}
           layoutItems={layoutItems}
           chartMeta={chartMeta}
           chartData={chartData}
           chartLoading={chartLoading}
-          isDragging={layout.isDragging}
           saving={layout.saving}
           containerRef={layout.containerRef}
-          onLayoutChange={layout.handleLayoutChange}
-          onDragStart={() => layout.setIsDragging(true)}
-          onDragStop={() => layout.setIsDragging(false)}
-          onResizeStart={() => layout.setIsDragging(true)}
-          onResizeStop={() => layout.setIsDragging(false)}
+          onSizeChange={layout.handleSizeChange}
           onRefresh={refreshChart}
           onEdit={(chartId: number) => {
             useDrawerStore.getState().closeAiDrawer();

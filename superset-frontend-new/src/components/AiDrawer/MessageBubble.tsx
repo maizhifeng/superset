@@ -13,7 +13,7 @@ import FaceIcon from "@mui/icons-material/Face";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import LightMdRenderer from "@/components/LightMdRenderer";
-import type { MessageContent } from "@/components/AiDrawer/types";
+import type { MessageContent } from "@/types/ai";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";

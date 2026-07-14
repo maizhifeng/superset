@@ -1,4 +1,4 @@
-import { memo, useRef, useMemo, useState, useEffect } from "react";
+import { memo, useRef, useMemo, useState, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
@@ -11,7 +11,6 @@ import Tooltip from "@mui/material/Tooltip";
 import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import DragHandleIcon from "@mui/icons-material/DragIndicator";
 import FlipIcon from "@mui/icons-material/Flip";
 import CloseIcon from "@mui/icons-material/Close";
 import FullscreenOutlined from "@mui/icons-material/FullscreenOutlined";
@@ -117,7 +116,6 @@ interface ChartCardProps {
   data?: ChartDataPayload;
   loading?: boolean;
   meta?: { slice_name?: string };
-  isDragging: boolean;
   containerWidth: number;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
@@ -137,6 +135,7 @@ interface ChartCardProps {
   page?: number;
   hasMore?: boolean;
   onPageChange?: (page: number) => void;
+  sizeSelector?: ReactNode;
 }
 
 function pctSplitIndex(
@@ -162,7 +161,6 @@ function ChartCard({
   data,
   loading: chartLoading,
   meta,
-  isDragging,
   containerWidth,
   onRefresh,
   onEdit,
@@ -176,9 +174,10 @@ function ChartCard({
   intervalSeconds,
   onCycleInterval,
   metricFormatMap,
-  page,
+  page = 0,
   hasMore,
   onPageChange,
+  sizeSelector,
 }: ChartCardProps) {
   const theme = useTheme();
   const storageKey = `pct95_threshold_${chartId}`;
@@ -460,9 +459,7 @@ function ChartCard({
           bgcolor: "background.paper",
           boxShadow: isCompareActive
             ? "0 0 0 2px var(--mui-palette-primary-main), var(--mui-palette-shadow-popover)"
-            : isDragging
-              ? "var(--mui-palette-shadow-modal)"
-              : "var(--mui-palette-shadow-card)",
+            : "var(--mui-palette-shadow-card)",
           transition:
             "box-shadow 250ms cubic-bezier(0, 0, 0.2, 1), transform 250ms cubic-bezier(0, 0, 0.2, 1)",
           "&:hover": {
@@ -473,32 +470,18 @@ function ChartCard({
         }}
       >
         <Box
-          className="drag-handle"
           sx={{
             display: "flex",
             alignItems: "center",
             px: 1.5,
             py: 0.5,
-            cursor: "move",
             borderBottom: "1px solid",
             borderColor: "divider",
             bgcolor: "background.paper",
-            backgroundImage:
-              "linear-gradient(to bottom, color-mix(in srgb, var(--mui-palette-primary-main) 4%, transparent), transparent)",
+            gap: 0.5,
           }}
         >
-          <IconButton
-            size="small"
-            disabled
-            sx={{
-              p: 0.5,
-              mr: isMobile ? 0.5 : 0,
-              cursor: "move",
-              color: "text.disabled",
-            }}
-          >
-            <DragHandleIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
-          </IconButton>
+          {sizeSelector}
           <Typography
             variant="body2"
             sx={{
@@ -844,7 +827,6 @@ export default memo(ChartCard, (prev, next) => {
   return (
     prev.chartId === next.chartId &&
     prev.vizType === next.vizType &&
-    prev.isDragging === next.isDragging &&
     prev.containerWidth === next.containerWidth &&
     prev.meta?.slice_name === next.meta?.slice_name &&
     prev.sliceName === next.sliceName &&

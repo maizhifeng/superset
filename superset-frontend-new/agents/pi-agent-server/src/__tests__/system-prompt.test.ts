@@ -34,9 +34,10 @@ test("contains analysis scenario rules", () => {
   expect(prompt).toContain("报表生成");
 });
 
-test("contains constraints", () => {
+test("contains business logic analysis rules", () => {
   const prompt = buildSystemPrompt();
-  expect(prompt).toContain("Schema");
+  expect(prompt).toContain("获客效率");
+  expect(prompt).toContain("留存");
 });
 
 test("outputs in Chinese", () => {
