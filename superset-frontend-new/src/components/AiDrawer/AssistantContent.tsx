@@ -5,7 +5,7 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import MessageBubble from "@/components/AiDrawer/MessageBubble";
 import KnowledgeCards from "./KnowledgeCards";
 import StreamingMessage from "./StreamingMessage";
-import type { ConversationThread, KnowledgeCard } from "./types";
+import type { ConversationThread, KnowledgeCard } from "@/types/ai";
 
 interface AssistantContentProps {
   activeThread: ConversationThread | null;

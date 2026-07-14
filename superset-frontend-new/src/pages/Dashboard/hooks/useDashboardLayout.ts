@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { produce } from "immer";
 import api from "@/api";
 import type { ChartData, DashboardPosition } from "@/types/api";
 import { type LayoutNode } from "@/utils/dashboard/layout";
-import { useNavStore } from "@/store/navStore";
-import { useDrawerStore } from "@/store/drawerState";
 
 interface UseDashboardLayoutParams {
   dashboardId: string;
@@ -19,7 +17,6 @@ export function useDashboardLayout({
   chartMeta,
   onNodeMapChange,
 }: UseDashboardLayoutParams) {
-  const [isDragging, setIsDragging] = useState(false);
   const [saving, setSaving] = useState(false);
   const [containerWidth, setContainerWidth] = useState(1200);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,29 +30,25 @@ export function useDashboardLayout({
   const fullPositionRef = useRef<DashboardPosition>({});
   const isSavingRef = useRef(false);
   const saveLayoutRef = useRef<() => Promise<void>>();
-  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const sidePanelPinned = useNavStore((s) => s.sidePanelPinned);
-  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
 
   const nodeCount = useMemo(
     () => Object.keys(nodeMap).filter((k) => nodeMap[k].type === "CHART").length,
     [nodeMap],
   );
 
-  const chartMetaCount = useMemo(
-    () => Object.keys(chartMeta).length,
-    [chartMeta],
-  );
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.offsetWidth);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry && entry.contentRect.width > 0) {
+        setContainerWidth(entry.contentRect.width);
       }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [sidePanelPinned, aiDrawerOpen, nodeCount, chartMetaCount]);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [nodeCount]);
 
   const saveLayout = useCallback(async () => {
     if (!dashboardId) return;
@@ -151,38 +144,24 @@ export function useDashboardLayout({
   }, [dashboardId]);
   saveLayoutRef.current = saveLayout;
 
-  const handleLayoutChange = useCallback(
-    (
-      newLayout: { i: string; x: number; y: number; w: number; h: number }[],
-    ) => {
-      if (containerWidth < 600) return;
+  const handleSizeChange = useCallback(
+    (chartId: number, newWidth: number, newHeight: number) => {
       const updated = produce(nodeMapRef.current, (draft) => {
-        for (const item of newLayout) {
-          if (draft[item.i]?.meta) {
-            draft[item.i].meta = {
-              ...draft[item.i].meta,
-              width: item.w,
-              height: Math.round((item.h * 60) / 8),
-              x: item.x,
-              y: item.y,
-            };
+        for (const key of Object.keys(draft)) {
+          const node = draft[key];
+          if (node?.type === "CHART" && node.meta?.chartId === chartId) {
+            node.meta = { ...node.meta, width: newWidth, height: newHeight };
           }
         }
       });
       nodeMapRef.current = updated;
       onNodeMapChange(updated);
-      if (layoutSaveTimerRef.current)
-        clearTimeout(layoutSaveTimerRef.current);
-      layoutSaveTimerRef.current = setTimeout(() => {
-        saveLayoutRef.current?.();
-      }, 300);
+      setTimeout(() => saveLayoutRef.current?.(), 300);
     },
-    [containerWidth],
+    [onNodeMapChange],
   );
 
   return {
-    isDragging,
-    setIsDragging,
     saving,
     containerWidth,
     containerRef,
@@ -190,7 +169,7 @@ export function useDashboardLayout({
     fullPositionRef,
     saveLayout,
     saveLayoutRef,
-    handleLayoutChange,
+    handleSizeChange,
     setFullPosition: (data: DashboardPosition) => {
       fullPositionRef.current = data;
     },

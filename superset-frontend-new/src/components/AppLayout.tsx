@@ -145,15 +145,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         }}
       >
         <StatusBar tip={pageTip} />
-        <Box component="main" sx={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
-          {children}
+        <Box sx={{ display: "flex", flexDirection: "row", flex: 1, overflow: "hidden", minHeight: 0 }}>
+          <Box component="main" sx={{ flex: 1, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>
+            {children}
+          </Box>
+          <AiDrawer variant={aiDrawerMode} open={aiDrawerOpen} chartId={insightChartId} chartMeta={insightChartMeta} filters={insightFilters} onClose={closeAiDrawer} />
         </Box>
       </Box>
 
       {activeOverlay && <DetailOverlay open type={activeOverlay.type} id={activeOverlay.id} onClose={closeOverlay} />}
       <TourGuide />
       <GlobalSnackbar />
-      <AiDrawer variant={aiDrawerMode} open={aiDrawerOpen} chartId={insightChartId} chartMeta={insightChartMeta} filters={insightFilters} onClose={closeAiDrawer} />
     </Box>
   );
 }

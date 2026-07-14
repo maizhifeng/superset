@@ -13,7 +13,7 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import LightMdRenderer from "@/components/LightMdRenderer";
 import SmartInput from "@/components/AiDrawer/SmartInput";
 import { blink } from "@/theme/keyframes";
-import type { InsightState } from "./types";
+import type { InsightState } from "@/types/ai";
 
 interface InsightContentProps {
   insight: InsightState;

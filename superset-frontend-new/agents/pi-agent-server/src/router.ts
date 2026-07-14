@@ -139,6 +139,7 @@ async function handleNewSession(
   const tools = createTools(
     user_id,
     () => getWsAuthToken(ws),
+    () => sessionStore.getSession(storeSessionId)?.datasetId,
   );
   const agentSession = await sessionFactory(user_id, tools, ws);
   if (!agentSession) {
@@ -150,7 +151,7 @@ async function handleNewSession(
     return;
   }
 
-  sessionStore.create(ws, storeSessionId, user_id, agentSession);
+  sessionStore.create(ws, storeSessionId, user_id, agentSession, msg.dataset_id);
   send(ws, { type: "session_created", sessionId: storeSessionId });
 }
 

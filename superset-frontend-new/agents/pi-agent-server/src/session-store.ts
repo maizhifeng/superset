@@ -50,6 +50,7 @@ export class SessionStore {
     storeSessionId: string,
     userId: string,
     agentSession: AgentSession,
+    datasetId?: number,
   ): void {
     const wsStore = this.getWsStore(ws);
     if (wsStore.has(storeSessionId)) {
@@ -59,6 +60,7 @@ export class SessionStore {
       id: storeSessionId,
       userId,
       state: "idle",
+      datasetId,
     });
     wsStore.set(storeSessionId, { agentSession, unsub: () => {} });
   }

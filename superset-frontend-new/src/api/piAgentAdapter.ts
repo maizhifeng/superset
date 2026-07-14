@@ -1,6 +1,7 @@
 import type { ChatAdapter, ChatUser } from "@mui/x-chat-headless";
 import type { ChatMessageChunk } from "@mui/x-chat-headless";
 import { useAgentStore } from "@/store/agentStore";
+import { getAgentModel } from "@/config/aiConfig";
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -161,10 +162,7 @@ class PiAgentChatAdapter implements ChatAdapter {
             ws.send(JSON.stringify({ type: "auth", access_token: token }));
           }
           // restore stored model preference
-          const savedModel =
-            typeof localStorage !== "undefined"
-              ? localStorage.getItem("pi_agent_model")
-              : null;
+          const savedModel = getAgentModel();
           if (savedModel) {
             ws.send(JSON.stringify({ type: "set_model", model: savedModel }));
           }

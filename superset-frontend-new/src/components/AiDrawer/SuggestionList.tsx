@@ -3,7 +3,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow"
-import type { DrillDownSuggestion } from "./types";
+import type { DrillDownSuggestion } from "@/types/ai";
 
 interface SuggestionListProps {
   suggestions: DrillDownSuggestion[];

@@ -162,6 +162,60 @@ function isCacheValid(cacheTime: number, ttl: number): boolean {
   return cacheTime > 0 && Date.now() - cacheTime < ttl;
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = 2,
+  baseDelayMs = 500,
+): Promise<Response> {
+  let lastErr: Error | null = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok) return res;
+      if (i < retries && res.status >= 500) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastErr = e as Error;
+      if (i < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200));
+      }
+    }
+  }
+  throw lastErr ?? new Error("fetch failed");
+}
+
+function parseAndCacheSchema(json: { result: Record<string, unknown> }): string {
+  const r = json.result;
+  if (!r) return "";
+
+  const cols = r.columns as Array<{ column_name: string; groupby?: boolean }> | undefined;
+  const metrics = r.metrics as Array<{ metric_name: string }> | undefined;
+
+  const lines: string[] = [];
+  if (cols) {
+    const displayCols = cols
+      .filter((c) => c.groupby !== false && !(c.column_name || "").endsWith("[ID]"))
+      .map((c) => c.column_name);
+    lines.push(`可用维度列: ${displayCols.join(", ")}`);
+    lines.push("");
+  }
+  if (metrics) {
+    const displayMetrics = metrics.map((m) => m.metric_name);
+    lines.push(`可用指标: ${displayMetrics.join(", ")}`);
+    lines.push("");
+  }
+  validColNames = new Set((cols ?? []).map((c) => c.column_name));
+  validMetricNames = new Set((metrics ?? []).map((m) => m.metric_name));
+  schemaCache = lines.join("\n");
+  schemaCacheTime = Date.now();
+  logger.info("schema", `fetched ${cols?.length ?? 0} cols, ${metrics?.length ?? 0} metrics`);
+  return schemaCache;
+}
+
 async function resolveToken(authToken?: string): Promise<string | null> {
   // Frontend-provided token takes priority
   if (authToken) return authToken;
@@ -173,7 +227,7 @@ async function resolveToken(authToken?: string): Promise<string | null> {
   if (!config.supersetUsername || !config.supersetPassword) return null;
   const { flaskInternalUrl, supersetUsername, supersetPassword } = config;
   try {
-    const res = await fetch(`${flaskInternalUrl}/api/v1/security/login`, {
+    const res = await fetchWithRetry(`${flaskInternalUrl}/api/v1/security/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -198,6 +252,7 @@ async function resolveToken(authToken?: string): Promise<string | null> {
 export async function getSchema(
   userId: string,
   authToken?: string,
+  datasetId?: number,
 ): Promise<string> {
   if (schemaCache && isCacheValid(schemaCacheTime, SCHEMA_CACHE_TTL)) {
     return schemaCache;
@@ -206,58 +261,39 @@ export async function getSchema(
   schemaCache = null;
   schemaCacheTime = 0;
 
+  const dsId = datasetId ?? config.datasetId;
   const token = await resolveToken(authToken);
-
-  const tryFetch = (headers: Record<string, string>) =>
-    fetch(`${config.flaskInternalUrl}/api/v1/dataset/${config.datasetId}`, {
-      headers,
-      signal: AbortSignal.timeout(5000),
-    });
-
-  let res: Response | null = null;
+  let schemaError: string | null = null;
 
   if (token) {
-    res = await tryFetch({ Authorization: `Bearer ${token}` });
+    try {
+      const res = await fetchWithRetry(
+        `${config.flaskInternalUrl}/api/v1/dataset/${dsId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (res.ok) {
+        const json = (await res.json()) as { result: Record<string, unknown> };
+        return parseAndCacheSchema(json);
+      }
+    } catch (e) {
+      schemaError = `Bearer auth failed: ${(e as Error).message}`;
+    }
   }
-  if (!res?.ok) {
-    res = await tryFetch({ "X-Internal-Agent": "true" }).catch(() => null);
-  }
-  if (!res?.ok) {
-    logger.warn("schema", "failed to fetch schema (no valid auth)");
-    return "";
-  }
-
   try {
-    const json = (await res.json()) as { result: Record<string, unknown> };
-    const r = json.result;
-    if (!r) return "";
-
-    const cols = r.columns as Array<{ column_name: string; groupby?: boolean }> | undefined;
-    const metrics = r.metrics as Array<{ metric_name: string }> | undefined;
-
-    const lines: string[] = [];
-    if (cols) {
-      const displayCols = cols
-        .filter((c) => c.groupby !== false && !(c.column_name || "").endsWith("[ID]"))
-        .map((c) => c.column_name);
-      lines.push(`可用维度列: ${displayCols.join(", ")}`);
-      lines.push("");
+    const res = await fetchWithRetry(
+      `${config.flaskInternalUrl}/api/v1/dataset/${dsId}`,
+      { headers: { "X-Internal-Agent": "true" } },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { result: Record<string, unknown> };
+      return parseAndCacheSchema(json);
     }
-    if (metrics) {
-      const displayMetrics = metrics.map((m) => m.metric_name);
-      lines.push(`可用指标: ${displayMetrics.join(", ")}`);
-      lines.push("");
-    }
-    validColNames = new Set((cols ?? []).map((c) => c.column_name));
-    validMetricNames = new Set((metrics ?? []).map((m) => m.metric_name));
-    schemaCache = lines.join("\n");
-    schemaCacheTime = Date.now();
-    logger.info("schema", `fetched ${cols?.length ?? 0} cols, ${metrics?.length ?? 0} metrics`);
-  } catch {
-    // schema unavailable
+    schemaError = `Internal agent auth failed: HTTP ${res.status}`;
+  } catch (e) {
+    schemaError = `Internal agent auth failed: ${(e as Error).message}`;
   }
-
-  return schemaCache ?? "";
+  logger.warn("schema", `failed to fetch schema: ${schemaError}`);
+  return "";
 }
 
 // ── Query result cache (LRU, 30s TTL, max 500 entries) ──────────

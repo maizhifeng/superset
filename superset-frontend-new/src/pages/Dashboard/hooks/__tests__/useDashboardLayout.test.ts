@@ -6,18 +6,6 @@ vi.mock("@/api", () => ({
   default: { put: vi.fn(), defaults: { headers: { common: {} } } },
 }));
 
-vi.mock("@/store/navStore", () => ({
-  useNavStore: vi.fn((selector) =>
-    selector({ sidePanelPinned: false }),
-  ),
-}));
-
-vi.mock("@/store/drawerState", () => ({
-  useDrawerStore: vi.fn((selector) =>
-    selector({ aiDrawerOpen: false }),
-  ),
-}));
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -32,25 +20,33 @@ test("initial state defaults", () => {
       onNodeMapChange,
     }),
   );
-  expect(result.current.isDragging).toBe(false);
   expect(result.current.saving).toBe(false);
   expect(result.current.containerWidth).toBe(1200);
 });
 
-test("setIsDragging works", () => {
+test("handleSizeChange updates width in nodeMap", () => {
   const onNodeMapChange = vi.fn();
+  const chartNode = {
+    type: "CHART" as const,
+    children: [],
+    id: "CHART-1",
+    meta: { chartId: 1, width: 6 },
+  };
+  const nodeMap = { "CHART-1": chartNode };
+
   const { result } = renderHook(() =>
     useDashboardLayout({
       dashboardId: "d1",
-      nodeMap: {},
-      chartMeta: {},
+      nodeMap,
+      chartMeta: { 1: { slice_name: "Test", datasource_id: 26, viz_type: "table" } as any },
       onNodeMapChange,
     }),
   );
-  act(() => result.current.setIsDragging(true));
-  expect(result.current.isDragging).toBe(true);
-  act(() => result.current.setIsDragging(false));
-  expect(result.current.isDragging).toBe(false);
+  act(() => result.current.handleSizeChange(1, 12, 18));
+  expect(onNodeMapChange).toHaveBeenCalled();
+  const updatedMap = onNodeMapChange.mock.calls[0][0];
+  expect(updatedMap["CHART-1"].meta?.width).toBe(12);
+  expect(updatedMap["CHART-1"].meta?.height).toBe(18);
 });
 
 test("returned refs are stable references", () => {

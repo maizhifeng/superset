@@ -94,17 +94,6 @@ export function useDashboardState() {
     });
   }, [nodeMap, gridId, chartMeta, supportedVizTypes]);
 
-  const gridLayout = useMemo(() =>
-    layoutItems.map((item) => ({
-      i: item.i,
-      x: layout.containerWidth < 600 ? 0 : item.x,
-      y: item.y,
-      w: layout.containerWidth < 600 ? 12 : item.w,
-      h: item.h,
-    })),
-    [layoutItems, layout.containerWidth],
-  );
-
   const loadDashboard = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -367,7 +356,7 @@ export function useDashboardState() {
   return {
     id, dashboard, loading, error, isDrawerOpen, editingSliceId, buildDashboardAdhocFilters,
     chartMeta, chartData, totalRows, chartLoading, chartPages, chartHasMore, metricFormatMaps,
-    nodeMap, gridId, gridLayout, layoutItems, layout,
+    nodeMap, gridId, layoutItems, layout,
     filters, filterState, activeCount, hiddenFilters, pendingFilterIds, filterDrawerOpen,
     navOpen, navItems, addChartDialogOpen,
     intervalSeconds, pageKey,

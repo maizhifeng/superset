@@ -9,7 +9,7 @@ import {
   buildFallbackOutput,
 } from "./renderer.js";
 
-const MAX_TOOL_ROUNDS = 10;
+const MAX_TOOL_ROUNDS = parseInt(process.env.AGENT_MAX_TOOL_ROUNDS || "10", 10) || 10;
 
 // ── Event sender abstraction ────────────────────────────────────
 export interface AgentEventSender {
@@ -88,6 +88,7 @@ export function extractToolResultText(messages: unknown[]): string {
 export function createTools(
   userId: string,
   getAuthToken?: () => string | undefined,
+  getDatasetId?: () => number | undefined,
 ): ToolDefinition[] {
   return [
     {
@@ -98,7 +99,8 @@ export function createTools(
       parameters: Type.Object({}),
       execute: async () => {
         const token = getAuthToken?.();
-        const schema = await getSchema(userId, token);
+        const dsId = getDatasetId?.();
+        const schema = await getSchema(userId, token, dsId);
         return {
           content: [{ type: "text" as const, text: schema || "（未获取到 Schema 信息）" }],
           details: {},

@@ -22,7 +22,8 @@ import AssistantContent from "./AssistantContent";
 import InsightContent from "./InsightContent";
 import SuggestionList from "./SuggestionList";
 import { useAiDrawerResize } from "./useAiDrawerResize";
-import type { DrillDownSuggestion, KnowledgeCard, AiDrawerProps } from "./types";
+import type { DrillDownSuggestion, KnowledgeCard } from "@/types/ai";
+import type { AiDrawerProps } from "./types";
 import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
 import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
 import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
@@ -36,7 +37,8 @@ const DRILL_DOWN_MARKER = "DRILL_DOWN_SUGGESTIONS";
 
 function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
   const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
-  if (idx === -1) return [];
+  if (idx === -1) return extractInlineJsonSuggestions(text);
+
   const block = text.slice(idx + DRILL_DOWN_MARKER.length).trim();
   const suggestions: DrillDownSuggestion[] = [];
   const parts = block.split(/\n(?=[-*]\s)/);
@@ -54,10 +56,36 @@ function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
   return suggestions;
 }
 
+function extractInlineJsonSuggestions(text: string): DrillDownSuggestion[] {
+  const suggestions: DrillDownSuggestion[] = [];
+  const pattern = /([^\n`]*?针对[^\n`]*?)\s*`{2,3}json\s*(\{(?:"columns"|"metrics")[\s\S]*?\})\s*`{2,3}/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const label = match[1].replace(/^[-*\s]+/, "").trim();
+    if (label.length <= 5) continue;
+    let query: DrillDownQuery | undefined;
+    try { query = JSON.parse(match[2]); } catch { /* ignore */ }
+    suggestions.push({ id: nextSuggestionId(), label, prompt: label, query });
+  }
+  return suggestions;
+}
+
 function stripDrillDownSection(text: string): string {
-  const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
-  if (idx === -1) return text;
-  return text.slice(0, idx).trim();
+  let result = text;
+  const idx = result.lastIndexOf(DRILL_DOWN_MARKER);
+  if (idx !== -1) {
+    result = result.slice(0, idx).trim();
+  }
+  result = stripInlineJsonQueries(result);
+  return result;
+}
+
+function stripInlineJsonQueries(text: string): string {
+  const result = text.replace(/`{2,3}json\s*(\{(?:[^{}]|\{[^{}]*\})*\})\s*`{2,3}/g, (match, json) => {
+    if (json.includes('"columns"') || json.includes('"metrics"')) return "";
+    return match;
+  });
+  return result.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 const knowledgeCards: KnowledgeCard[] = [
@@ -170,9 +198,9 @@ export default function AiDrawer({
             role: m.role,
             content: (m.content as { type: "text"; body: string }).body,
           }));
-        const full = await stream(text, history, (t) => setStreamingText(t), true);
+        const full = await stream(text, history, (t) => setStreamingText(stripDrillDownSection(t)), true);
         setStreamingText("");
-        addMessage(threadId, "assistant", { type: "text", body: full });
+        addMessage(threadId, "assistant", { type: "text", body: stripDrillDownSection(full) });
         const drillDowns = extractDrillDownSuggestions(full);
         if (drillDowns.length > 0) setSuggestions(drillDowns);
       } catch (e: unknown) {
@@ -236,9 +264,9 @@ export default function AiDrawer({
     setSuggestions([]);
     setStreamingText("");
     try {
-      const full = await stream(text, [], (t) => setStreamingText(t));
+      const full = await stream(text, [], (t) => setStreamingText(stripDrillDownSection(t)));
       setStreamingText("");
-      addMessage(threadId, "assistant", { type: "text", body: full });
+      addMessage(threadId, "assistant", { type: "text", body: stripDrillDownSection(full) });
       const drillDowns = extractDrillDownSuggestions(full);
       if (drillDowns.length > 0) setSuggestions(drillDowns);
     } catch (e: unknown) {
@@ -270,7 +298,7 @@ export default function AiDrawer({
           data.summaryContext, "",
           `请根据以上实际数据生成完整${label}。`,
         ].join("\n");
-        const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+        const full = await stream(fullPrompt, [], (t) => setStreamingText(stripDrillDownSection(t)));
         setStreamingText("");
         setDataLoading(false);
         addMessage(threadId, "assistant", { type: "text", body: stripDrillDownSection(full) });
@@ -316,7 +344,7 @@ export default function AiDrawer({
         data.summaryContext, "",
         `请根据以上数据，完成以下钻取分析任务：${suggestion.prompt}`,
       ].join("\n");
-      const full = await stream(fullPrompt, [], (t) => setStreamingText(t));
+      const full = await stream(fullPrompt, [], (t) => setStreamingText(stripDrillDownSection(t)));
       setStreamingText("");
       addMessage(threadId, "assistant", { type: "text", body: stripDrillDownSection(full) });
       const secondary = extractDrillDownSuggestions(full);
@@ -361,42 +389,33 @@ export default function AiDrawer({
   return (
     <Box
       sx={{
-        position: "absolute",
-        right: 0,
-        top: 0,
-        height: "100%",
         width: open ? (typeof drawerWidth === "number" ? drawerWidth : 640) : 0,
-        zIndex: (theme) => theme.zIndex.drawer + 2,
+        flexShrink: 0,
         bgcolor: "background.paper",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        transition: "width 350ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 300ms ease",
-        pointerEvents: open ? "auto" : "none",
-        boxShadow: open ? (theme) => `-${theme.palette.shadow.drawer}` : "none",
+        transition: "width 350ms cubic-bezier(0.4, 0, 0.2, 1)",
         borderLeft: "1px solid",
         borderColor: "divider",
-        borderTopLeftRadius: 12,
-        borderBottomLeftRadius: 12,
+        visibility: open ? "visible" : "hidden",
       }}
     >
-      {/* Drag handle */}
-      <Box
-        onMouseDown={handleMouseDown}
-        sx={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 4,
-          cursor: "ew-resize",
-          zIndex: (theme) => theme.zIndex.drawer + 3,
-          "&:hover": { bgcolor: "primary.main", opacity: 0.5 },
-          transition: (t) => t.transitions.create("background-color", { duration: t.transitions.duration.shorter }),
-        }}
-      />
+      <Box sx={{ display: "flex", flex: 1, overflow: "hidden", minHeight: 0 }}>
+        {/* Drag handle */}
+        <Box
+          onMouseDown={handleMouseDown}
+          sx={{
+            width: 4,
+            flexShrink: 0,
+            cursor: "ew-resize",
+            "&:hover": { bgcolor: "primary.main", opacity: 0.5 },
+            transition: (t) => t.transitions.create("background-color", { duration: t.transitions.duration.shorter }),
+          }}
+        />
 
-      <AiDrawerHeader
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <AiDrawerHeader
         title={title}
         subtitle={subtitle}
         showSettings={isAssist && !activeDoc}
@@ -448,6 +467,8 @@ export default function AiDrawer({
       )}
 
       <AiConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
+        </Box>
+      </Box>
     </Box>
   );
 }

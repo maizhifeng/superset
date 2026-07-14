@@ -6,6 +6,7 @@ export interface AiPreset {
   provider: string;
   model: string;
   baseUrl: string;
+  agentModel?: string;
 }
 
 const STORAGE_KEY = "superset_ai_presets";
@@ -47,6 +48,7 @@ function loadPresets(): AiPreset[] {
       provider: p.provider,
       model: p.model,
       baseUrl: p.baseUrl,
+      agentModel: (p as unknown as Record<string, unknown>).agentModel as string | undefined,
     }));
   const changed =
     cleaned.length !== presets.length ||
@@ -124,6 +126,17 @@ export function deletePreset(id: string) {
 
 export function setActivePreset(id: string) {
   saveActiveId(id);
+}
+
+export function getAgentModel(): string {
+  const preset = getActivePreset();
+  if (preset.agentModel) return preset.agentModel;
+  return preset.model || "gemma-4-e2b-it";
+}
+
+export function setAgentModel(model: string) {
+  const preset = getActivePreset();
+  updatePreset(preset.id, { agentModel: model });
 }
 
 // --- Zustand store for reactive consumption (React components) ---
