@@ -38,9 +38,10 @@ interface ChannelRow {
   updated_at: string;
   白名单控制参数: string;
   默认分成: string;
+  ios虚拟支付分成: string;
 }
 
-const COLUMNS = ["channel_id", "channel_name", "updated_at", "默认分成", "白名单控制参数"];
+const COLUMNS = ["channel_id", "channel_name", "updated_at", "默认分成", "ios虚拟支付分成", "白名单控制参数"];
 
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
@@ -63,6 +64,7 @@ export default function ChannelConfig() {
         updated_at: r.updated_at ?? "",
         白名单控制参数: r.白名单控制参数 ?? "",
         默认分成: r.默认分成 ?? "",
+        ios虚拟支付分成: r.ios虚拟支付分成 ?? "",
       }))
       .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     setRows(sorted);
@@ -83,14 +85,15 @@ export default function ChannelConfig() {
         sql,
       });
 
-      const existingRes = await api.get<{ result: { channel_id: number; 白名单控制参数: string; 默认分成: string }[] }>(
+      const existingRes = await api.get<{ result: { channel_id: number; 白名单控制参数: string; 默认分成: string; ios虚拟支付分成: string }[] }>(
         "/project/channel",
       );
-      const existingParams = new Map<number, { 白名单控制参数: string; 默认分成: string }>();
+      const existingParams = new Map<number, { 白名单控制参数: string; 默认分成: string; ios虚拟支付分成: string }>();
       for (const entry of existingRes.data.result ?? []) {
         existingParams.set(entry.channel_id, {
           白名单控制参数: entry.白名单控制参数 ?? "",
           默认分成: entry.默认分成 ?? "",
+          ios虚拟支付分成: entry.ios虚拟支付分成 ?? "",
         });
       }
 
@@ -98,12 +101,13 @@ export default function ChannelConfig() {
       for (const raw of q.data.data) {
         const channelId = Number(raw.channel_id);
         if (!channelId) continue;
-        const prev = existingParams.get(channelId) ?? { 白名单控制参数: "", 默认分成: "" };
+        const prev = existingParams.get(channelId) ?? { 白名单控制参数: "", 默认分成: "", ios虚拟支付分成: "" };
         await api.put(`/project/channel/${channelId}`, {
           channel_name: String(raw.channel_name ?? ""),
           updated_at: String(raw.updated_at ?? ""),
           白名单控制参数: prev.白名单控制参数,
           默认分成: prev.默认分成,
+          ios虚拟支付分成: prev.ios虚拟支付分成,
         });
         count++;
       }
@@ -126,6 +130,7 @@ export default function ChannelConfig() {
         updated_at: row.updated_at,
         白名单控制参数: row.白名单控制参数,
         默认分成: row.默认分成,
+        ios虚拟支付分成: row.ios虚拟支付分成,
       });
       setSuccess(`已保存 ${row.channel_name}`);
     } catch (err: unknown) {
@@ -144,6 +149,12 @@ export default function ChannelConfig() {
   const updateDefaultSplit = useCallback((channelId: string, value: string) => {
     setRows((prev) =>
       prev.map((r) => (r.channel_id === channelId ? { ...r, 默认分成: value } : r)),
+    );
+  }, []);
+
+  const updateIosSplit = useCallback((channelId: string, value: string) => {
+    setRows((prev) =>
+      prev.map((r) => (r.channel_id === channelId ? { ...r, ios虚拟支付分成: value } : r)),
     );
   }, []);
 
@@ -325,6 +336,26 @@ export default function ChannelConfig() {
                               const v = e.target.value;
                               if (/^\d*\.?\d*$/.test(v) || v === "") {
                                 updateDefaultSplit(row.channel_id, v);
+                              }
+                            }}
+                            slotProps={{
+                              input: {
+                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
+                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                              },
+                            }}
+                            sx={{ "& input": { textAlign: "center" } }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                          <TextField
+                            size="small"
+                            variant="standard"
+                            value={row.ios虚拟支付分成}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                updateIosSplit(row.channel_id, v);
                               }
                             }}
                             slotProps={{

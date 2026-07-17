@@ -14,6 +14,7 @@ class ChannelMetadata(Model):
     updated_at = Column(String(255), nullable=True)
     白名单控制参数 = Column(String(255), nullable=True)
     默认分成 = Column(String(255), nullable=True)
+    ios虚拟支付分成 = Column(String(255), nullable=True)
 
     @classmethod
     def get_by_channel_id(cls, channel_id: int) -> ChannelMetadata | None:
@@ -29,6 +30,7 @@ class ChannelMetadata(Model):
         updated_at: str | None,
         白名单控制参数: str | None,  # noqa: N803
         默认分成: str | None = None,  # noqa: N803
+        ios虚拟支付分成: str | None = None,  # noqa: N803
     ) -> ChannelMetadata:
         from superset import db
 
@@ -38,6 +40,8 @@ class ChannelMetadata(Model):
             existing.白名单控制参数 = 白名单控制参数
             if 默认分成 is not None:
                 existing.默认分成 = 默认分成
+            if ios虚拟支付分成 is not None:
+                existing.ios虚拟支付分成 = ios虚拟支付分成
             db.session.commit()
             return existing
         record = cls(
@@ -46,6 +50,7 @@ class ChannelMetadata(Model):
             updated_at=updated_at,
             白名单控制参数=白名单控制参数,
             默认分成=默认分成,
+            ios虚拟支付分成=ios虚拟支付分成,
         )
         db.session.add(record)
         db.session.commit()
