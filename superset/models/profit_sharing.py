@@ -24,6 +24,8 @@ class ProfitSharing(Model):
     研发分成 = Column(String(255), nullable=True)
     IP分成 = Column(String(255), nullable=True)
     分成方式 = Column(String(255), nullable=True)
+    商户分成 = Column(String(255), nullable=True)
+    ios虚拟支付分成 = Column(String(255), nullable=True)
 
     @classmethod
     def list_all(cls) -> list[ProfitSharing]:
@@ -64,6 +66,11 @@ class ProfitSharing(Model):
                         existing.渠道商分成 = (
                             channel_data.默认分成 if channel_data else None
                         )
+                    if not existing.商户分成:
+                        existing.商户分成 = "1"
+                    existing.ios虚拟支付分成 = (
+                        channel_data.ios虚拟支付分成 if channel_data else None
+                    ) or "0"
                 else:
                     db.session.add(
                         cls(
@@ -72,6 +79,10 @@ class ProfitSharing(Model):
                             papp_name=game.papp_name,
                             channel_name=game.channel_name,
                             渠道商分成=channel_data.默认分成 if channel_data else None,
+                            商户分成="1",
+                            ios虚拟支付分成=channel_data.ios虚拟支付分成
+                            if channel_data
+                            else None,
                         )
                     )
                 count += 1

@@ -17,6 +17,7 @@ def _serialize(record: Any) -> dict:  # type: ignore[type-arg]
         "updated_at": record.updated_at,
         "白名单控制参数": record.白名单控制参数,
         "默认分成": record.默认分成 or "",
+        "ios虚拟支付分成": record.ios虚拟支付分成 or "",
     }
 
 
@@ -51,6 +52,7 @@ def put_channel(channel_id: int):  # type: ignore[no-untyped-def]
         updated_at=data.get("updated_at"),
         白名单控制参数=data.get("白名单控制参数"),
         默认分成=data.get("默认分成"),
+        ios虚拟支付分成=data.get("ios虚拟支付分成"),
     )
     return jsonify({"result": _serialize(record)}), 200
 
@@ -88,6 +90,8 @@ def list_profit_sharing():  # type: ignore[no-untyped-def]
                     "研发分成": r.研发分成 or "",
                     "IP分成": r.IP分成 or "",
                     "分成方式": r.分成方式 or "",
+                    "商户分成": r.商户分成 or "",
+                    "ios虚拟支付分成": r.ios虚拟支付分成 or "",
                 }
                 for r in records
             ],
@@ -104,7 +108,7 @@ def sync_profit_sharing():  # type: ignore[no-untyped-def]
 
 
 @channel_blueprint.route("/profit-sharing/<int:combo_id>", methods=["PUT"])
-def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
+def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def] # noqa: C901
     from superset import db
     from superset.models.profit_sharing import ProfitSharing
 
@@ -132,6 +136,10 @@ def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
         record.IP分成 = IP分成
     if (分成方式 := data.get("分成方式")) is not None:  # noqa: N806
         record.分成方式 = 分成方式
+    if (商户分成 := data.get("商户分成")) is not None:  # noqa: N806
+        record.商户分成 = 商户分成
+    if (ios虚拟支付分成 := data.get("ios虚拟支付分成")) is not None:  # noqa: N806
+        record.ios虚拟支付分成 = ios虚拟支付分成
 
     # Auto-compute net 分成比例
     try:
@@ -161,6 +169,8 @@ def update_profit_sharing(combo_id: int):  # type: ignore[no-untyped-def]
                 "研发分成": record.研发分成 or "",
                 "IP分成": record.IP分成 or "",
                 "分成方式": record.分成方式 or "",
+                "商户分成": record.商户分成 or "",
+                "ios虚拟支付分成": record.ios虚拟支付分成 or "",
             }
         }
     ), 200

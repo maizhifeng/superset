@@ -18,8 +18,6 @@ import TablePagination from "@mui/material/TablePagination";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import dayjs from "dayjs";
 import CircularProgress from "@mui/material/CircularProgress";
 import InputAdornment from "@mui/material/InputAdornment";
 import Select from "@mui/material/Select";
@@ -41,15 +39,17 @@ interface WhitelistRow {
   研发分成: string;
   IP分成: string;
   分成方式: string;
+  商户分成: string;
+  ios虚拟支付分成: string;
 }
 
 const SPLIT_TYPES = ["流水分成", "利润后分成"];
 
-const COLUMNS = ["papp_id", "papp_name", "channel_id", "channel_name", "渠道商分成", "研发分成", "IP分成", "分成比例", "分成方式", "上线时间"];
+const COLUMNS = ["papp_id", "papp_name", "channel_id", "channel_name", "商户分成", "ios虚拟支付分成", "渠道商分成", "研发分成", "IP分成", "分成比例", "分成方式", "上线时间"];
 
 const COL_DESCS: Record<string, string> = {
-  "分成比例": "最终净比例（流水分成: 1-渠道商%-研发%-IP%；利润后分成: (1-渠道商%-IP%)×(1-研发%)）",
-  "分成方式": "流水分成：各比例基于流水X；利润后分成：研发分成基于扣除渠道商和IP后的剩余部分",
+  "分成比例": "最终净比例 流水分成: 1-渠道商%-研发%-IP%\n利润后分成: (1-渠道商%-IP%)×(1-研发%)\n渠道商%=(商户占比×商户分成)+(虚拟占比×ios虚拟支付分成)+(渠道商占比×渠道商分成)",
+  "分成方式": "流水分成：各比例基于流水X\n利润后分成：研发分成基于扣除渠道商和IP后的剩余部分",
 };
 
 const cardHeaderSx = {
@@ -71,6 +71,8 @@ export default function ProfitSharingConfig() {
     const mapped = (res.data.result ?? []).map((r) => ({
       ...r,
       分成方式: r.分成方式 || "流水分成",
+      商户分成: r.商户分成 || "1",
+      ios虚拟支付分成: r.ios虚拟支付分成 || "0",
     }));
     setRows(mapped);
   }, []);
@@ -109,6 +111,8 @@ export default function ProfitSharingConfig() {
           研发分成: row.研发分成,
           IP分成: row.IP分成,
           分成方式: row.分成方式,
+          商户分成: row.商户分成,
+          ios虚拟支付分成: row.ios虚拟支付分成,
         }),
       );
       await Promise.all(promises);
@@ -132,6 +136,8 @@ export default function ProfitSharingConfig() {
         研发分成: row.研发分成,
         IP分成: row.IP分成,
         分成方式: row.分成方式,
+        商户分成: row.商户分成,
+        ios虚拟支付分成: row.ios虚拟支付分成,
       });
       setSuccess(`已保存`);
     } catch (err: unknown) {
@@ -141,7 +147,7 @@ export default function ProfitSharingConfig() {
     }
   }, []);
 
-  const updateField = useCallback((id: number, field: "上线时间" | "渠道商分成" | "研发分成" | "IP分成" | "分成方式", value: string) => {
+  const updateField = useCallback((id: number, field: "上线时间" | "渠道商分成" | "研发分成" | "IP分成" | "分成方式" | "商户分成" | "ios虚拟支付分成", value: string) => {
     setRows((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
     );
@@ -309,11 +315,11 @@ export default function ProfitSharingConfig() {
                             bgcolor: "grey.50",
                             fontSize: "0.75rem",
                             py: 1,
-                            minWidth: col === "上线时间" ? 90 : col === "分成比例" ? 100 : col === "渠道商分成" || col === "研发分成" || col === "IP分成" ? 90 : col === "分成方式" ? 120 : col === "channel_id" || col === "papp_id" || col === "id" ? 70 : 90,
+                            minWidth: col === "上线时间" ? 70 : col === "分成比例" ? 100 : col === "渠道商分成" || col === "研发分成" || col === "IP分成" ? 90 : col === "分成方式" ? 120 : col === "channel_id" || col === "papp_id" || col === "id" ? 70 : 90,
                             textAlign: "center",
                           }}
                         >
-                          <Tooltip title={COL_DESCS[col] || ""} placement="top" arrow>
+                          <Tooltip title={COL_DESCS[col] || ""} placement="top" arrow slotProps={{ tooltip: { sx: { whiteSpace: "pre-line", maxWidth: "none" } } }}>
                             <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25 }}>
                               <Typography
                                 sx={{
@@ -357,6 +363,46 @@ export default function ProfitSharingConfig() {
                           <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
                             {row.channel_name}
                           </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                          <TextField
+                            size="small"
+                            variant="standard"
+                            value={row.商户分成}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                updateField(row.id, "商户分成", v);
+                              }
+                            }}
+                            slotProps={{
+                              input: {
+                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
+                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                              },
+                            }}
+                            sx={{ "& input": { textAlign: "center" } }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                          <TextField
+                            size="small"
+                            variant="standard"
+                            value={row.ios虚拟支付分成}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                updateField(row.id, "ios虚拟支付分成", v);
+                              }
+                            }}
+                            slotProps={{
+                              input: {
+                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
+                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                              },
+                            }}
+                            sx={{ "& input": { textAlign: "center" } }}
+                          />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
                           <TextField
@@ -443,23 +489,21 @@ export default function ProfitSharingConfig() {
                             ))}
                           </Select>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}>
-                          <DatePicker
-                            format="YYYY/MM/DD"
-                            value={row.上线时间 ? dayjs(row.上线时间) : null}
-                            onChange={(v) =>
-                              updateField(row.id, "上线时间", v ? v.format("YYYY/MM/DD") : "")
+                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 70 }}>
+                          <TextField
+                            size="small"
+                            variant="standard"
+                            placeholder="YYYY/MM/DD"
+                            value={row.上线时间}
+                            onChange={(e) =>
+                              updateField(row.id, "上线时间", e.target.value)
                             }
                             slotProps={{
-                              textField: {
-                                size: "small",
-                                variant: "standard",
-                                sx: {
-                                  "& input": { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                  "& .MuiSvgIcon-root": { fontSize: "1rem" },
-                                },
+                              input: {
+                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5, px: 0.25 },
                               },
                             }}
+                            sx={{ "& input": { textAlign: "center", minWidth: 0 } }}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
