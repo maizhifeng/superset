@@ -199,7 +199,6 @@ export default function DashboardGrid({
           flexWrap: "wrap",
           width: "100%",
           alignItems: "stretch",
-          m: `-${gapPx}px`,
         }}
       >
         {layoutItems.map((item) => {

@@ -1786,6 +1786,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             # Bi (federated query) endpoints
             csrf.exempt("superset.project.bi.api.chart_data")
             csrf.exempt("superset.project.bi.api.filter_values")
+            csrf.exempt("superset.project.bi.api.federated_datasets")
 
     def configure_task_manager(self) -> None:
         """Initialize the TaskManager for GTF realtime notifications."""

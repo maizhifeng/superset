@@ -97,14 +97,37 @@ function useRefreshNotify(onRefresh: () => void): void {
   }, [onRefresh]);
 }
 
+export function buildSiblingFilters(
+  filter: FilterConfig,
+  allFilters: FilterConfig[],
+  filterState: FilterState,
+): { col: string; op: string; val: unknown }[] {
+  const result: { col: string; op: string; val: unknown }[] = [];
+  for (const f of allFilters) {
+    if (f.datasetId !== filter.datasetId) continue;
+    if (f.column === filter.column) continue;
+    if (f.filterType !== "value" && f.filterType !== "filter_select") continue;
+    const raw = filterState[f.id]?.value;
+    if (raw === undefined || raw === null || raw === "") continue;
+    const vals = Array.isArray(raw) ? (raw as unknown[]) : [raw];
+    if (vals.length === 0) continue;
+    result.push({ col: f.column, op: "in", val: vals });
+  }
+  return result;
+}
+
 function FilterSelect({
   filter,
   value,
   onChange,
+  allFilters,
+  filterState,
 }: {
   filter: FilterConfig;
   value: unknown;
   onChange: (value: unknown) => void;
+  allFilters: FilterConfig[];
+  filterState: FilterState;
 }) {
   const [options, setOptions] = useState<{ label: string; value: string }[]>(
     [],
@@ -118,10 +141,23 @@ function FilterSelect({
 
   const fetchValues = useCallback(
     async (search: string) => {
+      const siblingFilters = buildSiblingFilters(
+        filter,
+        allFilters,
+        filterState,
+      );
+
       if (search) {
         setLoading(true);
         try {
-          const q: Record<string, unknown> = { page_size: 100, page: 0, filters: [{ col: "value", op: "ct", val: search }] };
+          const q: Record<string, unknown> = {
+            page_size: 100,
+            page: 0,
+            filters: [
+              ...siblingFilters,
+              { col: filter.column, op: "ct", val: search },
+            ],
+          };
           const path = isFederatedDataset(filter.datasetId)
             ? `/bi/filter-values/${filter.datasetId}/${encodeURIComponent(filter.column)}/?q=${rison.encode(q)}`
             : `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`;
@@ -167,7 +203,11 @@ function FilterSelect({
       setLoading(true);
       const fetchPromise = (async () => {
         try {
-          const q: Record<string, unknown> = { page_size: 100, page: 0 };
+          const q: Record<string, unknown> = {
+            page_size: 100,
+            page: 0,
+            filters: siblingFilters,
+          };
           const path = isFederatedDataset(filter.datasetId)
             ? `/bi/filter-values/${filter.datasetId}/${encodeURIComponent(filter.column)}/?q=${rison.encode(q)}`
             : `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`;
@@ -461,6 +501,8 @@ function renderFilterControl(
   filter: FilterConfig,
   value: unknown,
   onChange: (value: unknown) => void,
+  allFilters: FilterConfig[],
+  filterState: FilterState,
 ) {
   switch (filter.filterType) {
     case "text":
@@ -483,7 +525,15 @@ function renderFilterControl(
           <FilterDate label={filter.name} value={value} onChange={onChange} />
         );
       }
-      return <FilterSelect filter={filter} value={value} onChange={onChange} />;
+      return (
+        <FilterSelect
+          filter={filter}
+          value={value}
+          onChange={onChange}
+          allFilters={allFilters}
+          filterState={filterState}
+        />
+      );
   }
 }
 
@@ -599,6 +649,8 @@ export default function FilterPanel({
                 filter,
                 filterState[filter.id]?.value,
                 (value: unknown) => onFilterChange(filter.id, value),
+                filters,
+                filterState,
               )}
             </Box>
           ))}

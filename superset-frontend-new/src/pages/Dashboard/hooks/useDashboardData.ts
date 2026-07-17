@@ -126,8 +126,18 @@ export function useDashboardData() {
             ? totalRaw.data[0]
             : null;
 
-        // Client-side computed columns: sum from detail rows for accuracy
-        if (totalRow && first?.data && Array.isArray(first.data) && first.data.length > 0) {
+        // Client-side computed columns: sum from detail rows for accuracy.
+        // Skip for federated datasets — the backend already returns the
+        // correct cross-database grand total for these columns, and the
+        // detail rows here are paginated (first page only) which would
+        // otherwise undercount the total.
+        if (
+          !isFederatedDataset(dsId) &&
+          totalRow &&
+          first?.data &&
+          Array.isArray(first.data) &&
+          first.data.length > 0
+        ) {
           const computedCols = ["分成后流水"];
           for (const col of computedCols) {
             if (col in totalRow && first.data.some((r) => col in r)) {
