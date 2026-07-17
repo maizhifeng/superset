@@ -68,3 +68,67 @@ test("chart data can be set externally", () => {
   });
   expect(result.current.totalRows[1]).toEqual({ total_count: 15000 });
 });
+
+vi.mock("@/config/federatedDatasets", () => ({
+  isFederatedDataset: (id: number | undefined) => id === 7,
+  FEDERATED_DATASETS: new Set<number>([7]),
+  refreshFederatedDatasets: () => Promise.resolve(),
+}));
+
+const buildChart = (id: number, dsId: number) => ({
+  id,
+  slice_name: `chart-${id}`,
+  viz_type: "table",
+  datasource_id: dsId,
+  datasource_type: "table",
+  params: JSON.stringify({ metrics: ["sum__x"], groupby: ["dim"] }),
+  form_data: JSON.stringify({ metrics: ["sum__x"], groupby: ["dim"] }),
+});
+
+const mockPost = (api: any, detail: any[], total: any) => {
+  (api.post as any).mockResolvedValue({
+    data: { result: [{ data: detail }, { data: [total] }] },
+  });
+};
+
+test("federated dataset uses backend total row without client override", async () => {
+  const api = await import("@/api");
+  mockPost(
+    api.default,
+    [
+      { dim: "a", sum__x: 10, "分成后流水": 5 },
+      { dim: "b", sum__x: 20, "分成后流水": 6 },
+    ],
+    { "分成后流水": 999 }, // backend cross-DB grand total
+  );
+
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 7: buildChart(7, 7) as any };
+  let fetched: any;
+  await act(async () => {
+    fetched = await result.current.fetchChartWithTotal(7, meta);
+  });
+  // Client override must be skipped for federated datasets, so the backend
+  // grand-total value (999) is preserved, not summed from detail rows (11).
+  expect(fetched.totalRow["分成后流水"]).toBe(999);
+});
+
+test("non-federated dataset sums computed column from detail rows", async () => {
+  const api = await import("@/api");
+  mockPost(
+    api.default,
+    [
+      { dim: "a", sum__x: 10, "分成后流水": 5 },
+      { dim: "b", sum__x: 20, "分成后流水": 6 },
+    ],
+    { "分成后流水": 0 },
+  );
+
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+  let fetched: any;
+  await act(async () => {
+    fetched = await result.current.fetchChartWithTotal(8, meta);
+  });
+  expect(fetched.totalRow["分成后流水"]).toBe(11);
+});

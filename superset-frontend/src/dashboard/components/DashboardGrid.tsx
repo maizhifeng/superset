@@ -77,6 +77,7 @@ const GridContent = styled.div<{ editMode?: boolean }>`
   ${({ theme, editMode }) => css`
     display: flex;
     flex-direction: column;
+    padding-top: ${theme.sizeUnit * 4}px;
     /* gutters between rows */
     & > div:not(:last-child):not(.empty-droptarget) {
       ${!editMode && `margin-bottom: ${theme.sizeUnit * 4}px`};

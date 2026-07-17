@@ -10,6 +10,8 @@ import createCache from "@emotion/cache";
 import { getTheme } from "@/theme";
 import { useThemeStore } from "@/store/themeStore";
 import App from "@/views/App";
+import api from "@/api";
+import { refreshFederatedDatasets } from "@/config/federatedDatasets";
 import "./index.css";
 
 const emotionCache = createCache({
@@ -24,6 +26,10 @@ function Root() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", themeMode);
   }, [themeMode]);
+
+  useEffect(() => {
+    refreshFederatedDatasets(api);
+  }, []);
 
   return (
     <CacheProvider value={emotionCache}>

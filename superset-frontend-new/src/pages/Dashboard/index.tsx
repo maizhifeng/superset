@@ -44,7 +44,7 @@ export default function Dashboard() {
         pendingFilterIds={pendingFilterIds}
       />
 
-      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden", px: { xs: spacing.xs, md: spacing.md } }}>
+      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden", px: { xs: spacing.xs, md: spacing.md }, pt: { xs: spacing.sm, md: spacing.md } }}>
         <DashboardGrid
           containerWidth={layout.containerWidth}
           layoutItems={layoutItems}

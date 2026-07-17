@@ -104,6 +104,12 @@ export function useNavManager() {
         return;
       }
       if (mapped) {
+        const item = items.find((i) => i.id === id);
+        if (item && item.path.endsWith("/list")) {
+          navigate(item.path);
+          closeSidePanel();
+          return;
+        }
         const { sidePanelPinned, activeCategory } = useNavStore.getState();
         if (sidePanelPinned && activeCategory === mapped) return;
         await toggleCategory(mapped);
