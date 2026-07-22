@@ -20,33 +20,16 @@ export function autoSuggestChartType(
   const metricCount = metrics.length;
   if (metricCount === 0) return { vizType: "table", groupby: [] };
   if (metricCount >= 4) return { vizType: "table", groupby: [] };
-  if (groupby.length >= 3) return { vizType: "table", groupby: [groupby[0]] };
+  if (groupby.length >= 2) return { vizType: "table", groupby };
   if (groupby.length === 0) {
     if (metricCount === 1) return { vizType: "big_number", groupby: [] };
     if (metricCount >= 2) return { vizType: "line", groupby: [] };
   }
-  const numericTypes = /int|float|double|decimal|number|bigint|numeric|real/i;
   const timeTypes = /time|date|timestamp|year|month|quarter|week/i;
-  const idPattern2 = /_?id$/i;
-  const dimColumns = columnsList.filter((c) => {
-    if (!c.type) return true;
-    if (timeTypes.test(c.type) || timeTypes.test(c.column_name)) return false;
-    if (idPattern2.test(c.column_name)) return true;
-    return !numericTypes.test(c.type);
-  });
-  const timeCols = columnsList.filter((c) => (c.type && timeTypes.test(c.type)) || timeTypes.test(c.column_name));
-  if (metricCount === 1 && dimColumns.length === 1) {
-    const isTime = timeCols.some((c) => c.column_name === dimColumns[0].column_name);
-    return { vizType: isTime ? "line" : "bar", groupby: [dimColumns[0].column_name] };
-  }
-  if (metricCount === 1 && dimColumns.length > 1) {
-    const firstDim = timeCols.length > 0 ? timeCols[0].column_name : dimColumns[0].column_name;
-    return { vizType: "line", groupby: [firstDim] };
-  }
-  if (metricCount >= 2 && dimColumns.length >= 1) return { vizType: "bar", groupby: [dimColumns[0].column_name] };
-  if (metricCount === 1 && dimColumns.length === 0) return { vizType: "big_number", groupby: [] };
-  if (metricCount >= 2 && dimColumns.length === 0) return { vizType: "line", groupby: [] };
-  return { vizType: "bar", groupby: dimColumns.length > 0 ? [dimColumns[0].column_name] : [] };
+  const groupbyCol = columnsList.find((c) => c.column_name === groupby[0]);
+  const isTime = groupbyCol != null && (timeTypes.test(groupbyCol.type ?? "") || timeTypes.test(groupbyCol.column_name));
+  if (metricCount === 1) return { vizType: isTime ? "line" : "pie", groupby };
+  return { vizType: "bar", groupby };
 }
 
 interface ChartInitialData {
@@ -253,8 +236,8 @@ export function useChartEditor({ onChartSaved, initialData, compact, buildDashbo
   const option = useMemo(() => {
     if (!chartData || !resolvedType || resolvedType === "auto") return null;
     if (resolvedType === "table") return null;
-    return buildEChartsOption(resolvedType, chartData) as EChartsOption | null;
-  }, [chartData, resolvedType]);
+    return buildEChartsOption(resolvedType, chartData, undefined, undefined, compact) as EChartsOption | null;
+  }, [chartData, resolvedType, compact]);
 
   const bigNumberValue = useMemo(() => {
     if (!chartData?.data) return null;

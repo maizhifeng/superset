@@ -71,6 +71,7 @@
     "@types/react-transition-group": "^4.4.12",
     "@types/tinycolor2": "^1.4.3",
     "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.7.0",
     "jsdom": "^29.1.1",
     "lightningcss": "^1.32.0",

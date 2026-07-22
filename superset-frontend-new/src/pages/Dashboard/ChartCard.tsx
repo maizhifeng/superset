@@ -136,6 +136,7 @@ interface ChartCardProps {
   hasMore?: boolean;
   onPageChange?: (page: number) => void;
   sizeSelector?: ReactNode;
+  cardSize?: "small" | "medium" | "full";
 }
 
 function pctSplitIndex(
@@ -178,6 +179,7 @@ function ChartCard({
   hasMore,
   onPageChange,
   sizeSelector,
+  cardSize,
 }: ChartCardProps) {
   const theme = useTheme();
   const storageKey = `pct95_threshold_${chartId}`;
@@ -233,39 +235,67 @@ function ChartCard({
   const fullscreen = useFullscreenStore();
   const isActiveFullscreen = fullscreen.activeChartId === chartId;
 
+  const getTextContent = (source: ChartDataPayload | undefined) => {
+    const raw = source || data;
+    const colnames = raw?.colnames ?? [];
+    const rows = Array.isArray(raw?.data) ? raw.data : [];
+    if (colnames.length === 0) return null;
+    const header = colnames.join("\t");
+    const body = rows
+      .map((r) => colnames.map((c) => String(r[c] ?? "")).join("\t"))
+      .join("\n");
+    return `${header}\n${body}`;
+  };
+
+  const writeTextClipboard = async (text: string) => {
+    if (typeof navigator.clipboard?.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  };
+
+  const tryImageCopy = async (): Promise<boolean> => {
+    if (typeof ClipboardItem === "undefined") return false;
+    const instance = chartRef.current?.getEchartsInstance();
+    if (!instance) return false;
+    try {
+      const dataUrl = instance.getDataURL({
+        type: "png",
+        pixelRatio: 2,
+        backgroundColor: "#fff",
+      });
+      const blob = await fetch(dataUrl).then((r) => r.blob());
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const copyData = async () => {
     try {
-      if (vizType === "table") {
-        const raw = data;
-        const colnames = raw?.colnames ?? [];
-        const rows = Array.isArray(raw?.data)
-          ? raw.data
-          : [];
-        if (colnames.length === 0) return;
-        const header = colnames.join("\t");
-        const body = rows
-          .map((r) => colnames.map((c) => String(r[c] ?? "")).join("\t"))
-          .join("\n");
-        await navigator.clipboard.writeText(`${header}\n${body}`);
+      if (vizType !== "table" && (await tryImageCopy())) {
         notify({ severity: "success", message: "已复制到剪贴板" });
-      } else {
-        if (typeof ClipboardItem === "undefined") {
-          notify({ severity: "error", message: "此浏览器不支持复制图片" });
-          return;
-        }
-        const instance = chartRef.current?.getEchartsInstance();
-        if (!instance) return;
-        const dataUrl = instance.getDataURL({
-          type: "png",
-          pixelRatio: 2,
-          backgroundColor: "#fff",
-        });
-        const blob = await fetch(dataUrl).then((r) => r.blob());
-        await navigator.clipboard.write([
-          new ClipboardItem({ "image/png": blob }),
-        ]);
-        notify({ severity: "success", message: "已复制到剪贴板" });
+        return;
       }
+      const text = getTextContent(processedData);
+      if (!text) {
+        notify({ severity: "warning", message: "暂无数据可复制" });
+        return;
+      }
+      await writeTextClipboard(text);
+      notify({ severity: "success", message: "已复制到剪贴板" });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -392,9 +422,12 @@ function ChartCard({
     dimCols,
   ]);
 
-  const option = processedData
-    ? buildEChartsOption(vizType, processedData, metricFormatMap, theme.palette.chart)
-    : null;
+  const option = useMemo(
+    () => processedData
+      ? buildEChartsOption(vizType, processedData, metricFormatMap, theme.palette.chart, false, cardSize)
+      : null,
+    [vizType, processedData, metricFormatMap, theme.palette.chart, cardSize],
+  );
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);

@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import checker from "vite-plugin-checker";
 import compression from "vite-plugin-compression";
 import { resolve } from "path";
@@ -43,6 +44,7 @@ export default defineConfig({
             ext: ".br",
             threshold: 1024,
           }),
+          basicSsl(),
         ]),
 
   ],
@@ -97,13 +99,14 @@ export default defineConfig({
   server: {
     port: 9000,
     host: "0.0.0.0",
+    https: true,
     proxy: {
       "/api/v1": {
         target: process.env.SUPERSET_HOST || "http://localhost:8088",
         changeOrigin: true,
         headers: {
           "X-Forwarded-Host": "localhost:9000",
-          "X-Forwarded-Proto": "http",
+          "X-Forwarded-Proto": "https",
         },
       },
       "/llm": {
