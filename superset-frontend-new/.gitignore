@@ -3,3 +3,7 @@ dist/
 .vite/
 *.tsbuildinfo
 .playwright-mcp/
+
+# Local dev certificates - generate with mkcert or use @vitejs/plugin-basic-ssl
+certs/
+public/rootCA.pem

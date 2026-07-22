@@ -55,31 +55,62 @@ export function buildEChartsOption(
   data: ChartDataPayload,
   formatMap?: MetricFormatMap,
   chartColors?: string[],
+  compact?: boolean,
+  cardSize?: "small" | "medium" | "full",
 ) {
   const echartsType = chartTypeToECharts[vizType] || "bar";
 
   if (vizType === "pie") {
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const pieData = rows.slice(0, 10);
+    const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const metricKey = keys.length > 1 ? keys[1] : "";
     return {
       tooltip: {
         trigger: "item" as const,
+        appendToBody: true,
+        hideDelay: 500,
+        transitionDuration: 0,
         formatter: (params: { name: string; value: number; percent: number }) =>
-          `${params.name}: ${formatNumber(params.value)} (${params.percent}%)`,
+          `${params.name}<br/>${metricKey}: ${formatNumber(params.value)} (${params.percent}%)`,
+      },
+      title: {
+        text: metricKey || "",
+        left: "center",
+        textStyle: { fontSize: compact ? 12 : 16 },
+      },
+      legend: cardSize === "small" ? undefined : {
+        type: "scroll" as const,
+        ...(cardSize === "full" ? { bottom: 0 } : { right: 0, top: "middle" as const, orient: "vertical" as const }),
       },
       animation: true,
       animationDuration: 300,
       series: [
         {
           type: "pie",
-          radius: ["30%", "60%"],
-          center: ["50%", "50%"],
-          data: Array.isArray(data?.data)
-            ? data.data
-                .slice(0, 10)
-                .map((d) => ({
-                  name: String(Object.values(d)[0] || ""),
-                  value: Number(Object.values(d)[1] || 0),
-                }))
-            : [],
+          radius: cardSize === "medium" ? ["25%", "50%"] : ["30%", "60%"],
+          center: cardSize === "medium" ? ["35%", "50%"] : ["50%", "50%"],
+          data: (() => {
+            const items = pieData.map((d) => ({
+              name: String(Object.values(d)[0] || ""),
+              value: Number(Object.values(d)[1] || 0),
+            }));
+            const total = items.reduce((s, i) => s + i.value, 0);
+            return items.map((i) => {
+              const isSmall = total > 0 && i.value / total < 0.05;
+              return {
+                ...i,
+                labelLine: isSmall ? { show: false } : undefined,
+                emphasis: isSmall ? { label: { show: false }, labelLine: { show: false } } : undefined,
+              };
+            });
+          })(),
+          label: {
+            formatter: (params: { name: string; percent: number }) =>
+              params.percent < 5 ? "" : `${params.name}\n${Math.round(params.percent)}%`,
+            fontSize: 11,
+            fontWeight: "bold",
+          },
           emphasis: {
             itemStyle: {
               shadowBlur: 10,
@@ -158,6 +189,9 @@ export function buildEChartsOption(
   return {
     tooltip: {
       trigger: "axis" as const,
+      appendToBody: true,
+      hideDelay: 500,
+      transitionDuration: 0,
       formatter: (params: { seriesName: string; name: string; value: number }[]) => {
         if (!Array.isArray(params) || params.length === 0) return "";
         const axisName = params[0].name;

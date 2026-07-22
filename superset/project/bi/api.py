@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import Any
 
 import numpy as np
@@ -148,11 +149,9 @@ def _apply_global_order_and_pagination(
     except Exception:
         logger.warning("Federated global sort failed; keeping merge order")
 
-    offset = getattr(query_obj, "row_offset", 0) or 0
-    limit = getattr(query_obj, "row_limit", None)
-    if offset:
+    if offset := getattr(query_obj, "row_offset", 0) or 0:
         df = df.iloc[offset:]
-    if limit:
+    if limit := getattr(query_obj, "row_limit", None):
         df = df.head(int(limit))
     return df.reset_index(drop=True)
 
@@ -244,9 +243,7 @@ def _get_database(name: str) -> Any:
     from superset.models.core import Database
 
     return (
-        db.session.query(Database)
-        .filter(Database.database_name == name)
-        .one_or_none()
+        db.session.query(Database).filter(Database.database_name == name).one_or_none()
     )
 
 
@@ -279,6 +276,7 @@ def _get_partner_sql(
     using the identical query object so the GROUP BY / metric columns match.
     """
     from superset.utils import json as _json
+
     extra_raw = getattr(datasource, "extra", None) or "{}"
     try:
         extra = _json.loads(extra_raw) if isinstance(extra_raw, str) else extra_raw
@@ -289,10 +287,9 @@ def _get_partner_sql(
         return None
     from superset import db
     from superset.connectors.sqla.models import SqlaTable
+
     partner_ds = (
-        db.session.query(SqlaTable)
-        .filter(SqlaTable.id == partner_id)
-        .one_or_none()
+        db.session.query(SqlaTable).filter(SqlaTable.id == partner_id).one_or_none()
     )
     if not partner_ds:
         return None
@@ -302,7 +299,8 @@ def _get_partner_sql(
         partner_sql_str = partner_ext.sql
         logger.info(
             "Partner SQL (%d chars):\n%s\n---END---",
-            len(partner_sql_str), partner_sql_str,
+            len(partner_sql_str),
+            partner_sql_str,
         )
         return (partner_sql_str, partner_ds.catalog, partner_ds.schema)
     except Exception as ex:
@@ -347,7 +345,7 @@ def _run_federated_query(  # noqa: C901
         side_limit = max_side
 
     partner_sql = partner_catalog = partner_schema = None
-    if (partner_result := _get_partner_sql(datasource, query_obj, side_limit)):
+    if partner_result := _get_partner_sql(datasource, query_obj, side_limit):
         partner_sql, partner_catalog, partner_schema = partner_result
 
     # Generate SQL from the primary dataset for the primary database
@@ -358,27 +356,28 @@ def _run_federated_query(  # noqa: C901
     labels_expected = primary_ext.labels_expected
     logger.info("labels_expected: %s", labels_expected)
 
-    df_aliyun = _execute_federated_side(
-        aliyun_db, primary_sql, datasource, labels_expected, "aliyun"
-    )
-    if df_aliyun is None:
-        raise QueryObjectValidationError("aliyun federated query failed")
-
-    df_oversea = pd.DataFrame()
+    # Build side configurations for parallel execution.
+    # Each side is a (db_conn, sql, label, catalog, schema) tuple.
+    side_configs: list[tuple[Any, str, str, str | None, str | None]] = [
+        (aliyun_db, primary_sql, aliyun_db_name, datasource.catalog, datasource.schema),
+    ]
     if partner_sql:
-        df_oversea = _execute_federated_side(
-            oversea_db, partner_sql, datasource, labels_expected, "aliyun-oversea",
-            catalog_override=partner_catalog, schema_override=partner_schema,
+        side_configs.append(
+            (oversea_db, partner_sql, oversea_db_name, partner_catalog, partner_schema),
         )
 
-    if df_oversea is None or df_oversea.empty:
-        merged_df = df_aliyun
-    elif df_aliyun.empty:
-        merged_df = df_oversea
+    # Execute all sides with per-side error isolation.
+    side_results = _execute_federated_sides(side_configs, labels_expected)
+    if not side_results:
+        raise QueryObjectValidationError("All federated database sides failed")
+
+    # Merge all successful side results.
+    if len(side_results) == 1:
+        merged_df = side_results[0][1]
     else:
         merged_df = _merge_dataframes(
-            [df_aliyun, df_oversea],
-            [aliyun_db_name, oversea_db_name],
+            [df for _, df in side_results],
+            [label for label, _ in side_results],
         )
 
     if not merged_df.empty:
@@ -405,7 +404,7 @@ def _run_federated_query(  # noqa: C901
             # Group-by labels not found by name; fall back to positional split
             # to preserve the original behaviour for unusual schemas.
             dim_cols = labels_expected[: len(groupby_cols)]
-            metric_cols = labels_expected[len(groupby_cols):]
+            metric_cols = labels_expected[len(groupby_cols) :]
 
         # Per-metric aggregation semantics.  Additive metrics (SUM) are merged
         # by summation; non-additive metrics (AVG, COUNT DISTINCT, MIN/MAX,
@@ -441,7 +440,10 @@ def _run_federated_query(  # noqa: C901
         merged_df = merged_df[labels_expected]
         logger.info(
             "Re-aggregated %d rows → %d rows (groupby=%s, agg=%s)",
-            before_len, len(merged_df), dim_cols, agg_spec,
+            before_len,
+            len(merged_df),
+            dim_cols,
+            agg_spec,
         )
 
         try:
@@ -509,43 +511,113 @@ def _run_federated_query(  # noqa: C901
     return payload
 
 
-def _execute_federated_side(
-    db_conn: Any,
-    sql: str,
-    datasource: Any,
+def _assign_label(
+    df: pd.DataFrame,
     labels_expected: list[str],
-    db_label: str = "",
-    catalog_override: str | None = None,
-    schema_override: str | None = None,
 ) -> pd.DataFrame | None:
-    from superset.exceptions import QueryObjectValidationError
-    def assign_column_label(df: pd.DataFrame) -> pd.DataFrame:
-        if df is not None and not df.empty:
-            if len(df.columns) < len(labels_expected):
-                raise QueryObjectValidationError(
-                    "Db engine did not return all queried columns"
-                )
-            if len(df.columns) > len(labels_expected):
-                df = df.iloc[:, 0 : len(labels_expected)]
-            df.columns = labels_expected
+    if df is None or df.empty:
         return df
-
-    try:
-        cat = catalog_override if catalog_override is not None else datasource.catalog
-        sch = schema_override if schema_override is not None else datasource.schema
-        logger.info(
-            "Executing federated side (%s): SQL (%s chars) catalog=%s schema=%s",
-            db_label, len(sql), cat, sch,
-        )
-        return db_conn.get_df(
-            sql=sql,
-            catalog=cat,
-            schema=sch,
-            mutator=assign_column_label,
-        )
-    except Exception as ex:
-        logger.warning("Federated side query failed: %s", ex)
+    if len(df.columns) < len(labels_expected):
         return None
+    if len(df.columns) > len(labels_expected):
+        df = df.iloc[:, 0 : len(labels_expected)]
+    df.columns = labels_expected
+    return df
+
+
+def _run_federated_side(
+    side: tuple[Any, str, str, str | None, str | None],
+    labels_expected: list[str],
+    _app: Any,
+    _user: Any,
+) -> tuple[str, pd.DataFrame | None]:
+    from flask import g
+
+    db_conn, sql, db_label, catalog, schema = side
+    try:
+        with _app.app_context():
+            if _user is not None:
+                g.user = _user
+            logger.info(
+                "Federated side [%s] SQL (%s chars, catalog=%s, schema=%s):\n%s",
+                db_label,
+                len(sql),
+                catalog,
+                schema,
+                sql,
+            )
+            return db_label, db_conn.get_df(
+                sql=sql,
+                catalog=catalog,
+                schema=schema,
+                mutator=lambda df: _assign_label(df, labels_expected),
+            )
+    except Exception as ex:
+        logger.error(
+            "Federated side [%s] failed: %s",
+            db_label,
+            ex,
+            exc_info=True,
+        )
+        return db_label, None
+
+
+def _execute_federated_sides(
+    sides: list[tuple[Any, str, str, str | None, str | None]],
+    labels_expected: list[str],
+) -> list[tuple[str, pd.DataFrame]]:
+    """Execute multiple database sides with per-side error isolation.
+
+    Each side runs in its own thread.  A single side failure does not
+    affect other sides.  Returns (label, DataFrame) pairs for all
+    successful sides that produced data.  Raises only when every side
+    fails — partial success is accepted.
+    """
+    from flask import current_app, g
+
+    _app = current_app._get_current_object()
+    from werkzeug.local import LocalProxy
+
+    _user_raw = g.get("user", None)
+    _user = (
+        _user_raw._get_current_object()
+        if isinstance(_user_raw, LocalProxy)
+        else _user_raw
+    )
+
+    if not sides:
+        return []
+
+    with ThreadPoolExecutor(max_workers=min(len(sides), 5)) as pool:
+        futures = {
+            pool.submit(_run_federated_side, s, labels_expected, _app, _user): s
+            for s in sides
+        }
+        results: list[tuple[str, pd.DataFrame]] = []
+        for future in as_completed(futures):
+            label, df = future.result()
+            if df is not None and not df.empty:
+                results.append((label, df))
+            else:
+                logger.warning(
+                    "Federated side [%s] contributed no data",
+                    label,
+                )
+
+    succeeded = len(results)
+    total = len(sides)
+    if succeeded < total:
+        failed = [s[2] for s in sides if s[2] not in {r[0] for r in results}]
+        logger.warning(
+            "Federated query: %d/%d sides succeeded (failed: %s)",
+            succeeded,
+            total,
+            failed,
+        )
+    else:
+        logger.info("Federated query: all %d sides succeeded", total)
+
+    return results
 
 
 @bi_blueprint.route(
@@ -560,16 +632,13 @@ def filter_values(datasource_id: int, column_name: str) -> Any:
     from superset.utils.core import DatasourceType
 
     try:
-        datasource = DatasourceDAO.get_datasource(
-            DatasourceType.TABLE, datasource_id
-        )
+        datasource = DatasourceDAO.get_datasource(DatasourceType.TABLE, datasource_id)
     except DatasourceNotFound:
         return jsonify({"result": []}), 200
 
     default_limit = current_app.config.get("FILTER_SELECT_ROW_LIMIT", 10000)
-    q_str = request.args.get("q")
     query_params: dict[str, Any] = {}
-    if q_str:
+    if q_str := request.args.get("q"):
         try:
             query_params = rison.loads(q_str)
         except Exception:  # noqa: S110
@@ -593,8 +662,7 @@ def filter_values(datasource_id: int, column_name: str) -> Any:
         primary_vals = []
 
     # Check for federated partner and merge values
-    partner_id = _read_federated_extra(datasource).get("partner_dataset_id")
-    if partner_id:
+    if partner_id := _read_federated_extra(datasource).get("partner_dataset_id"):
         from superset import db
 
         try:
@@ -683,9 +751,11 @@ def chart_data() -> Any:
 
     federated_config = _get_federated_config(datasource)
     if not federated_config:
-        return jsonify({
-            "error": "Dataset is not configured for federated queries",
-        }), 400
+        return jsonify(
+            {
+                "error": "Dataset is not configured for federated queries",
+            }
+        ), 400
 
     aliyun_db_name, oversea_db_name = federated_config
     aliyun_db = _get_database(aliyun_db_name)
@@ -712,8 +782,13 @@ def chart_data() -> Any:
                 continue
 
             payload = _run_federated_query(
-                query_obj, query_context, datasource,
-                aliyun_db, oversea_db, aliyun_db_name, oversea_db_name,
+                query_obj,
+                query_context,
+                datasource,
+                aliyun_db,
+                oversea_db,
+                aliyun_db_name,
+                oversea_db_name,
             )
             query_results.append(payload)
     except QueryObjectValidationError as ex:

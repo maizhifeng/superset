@@ -209,6 +209,9 @@ export default function DashboardGrid({
           const pct = isMobile ? "100%" : itemPct(itemCols);
           const cardHeight = isMobile ? "auto" : `${(item.h || 14) * H_UNIT}px`;
 
+          const smallThreshold = sizeValue(colCount, 1/3);
+          const cardSize = itemCols <= smallThreshold ? "small" : itemCols >= colCount ? "full" : "medium";
+
           return (
             <Box
               key={item.i}
@@ -242,6 +245,7 @@ export default function DashboardGrid({
                 page={chartPages?.[item.chartId] ?? 0}
                 hasMore={chartHasMore?.[item.chartId] ?? false}
                 onPageChange={(p) => onChartPageChange?.(item.chartId, p)}
+                cardSize={cardSize}
                 sizeSelector={
                   !isMobile ? (
                     <SizeSelector
