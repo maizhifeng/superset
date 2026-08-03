@@ -39,9 +39,7 @@ export default function FilterToggleFab({
 
   return (
     <>
-      <Tooltip
-        title={activeCount > 0 ? `${activeCount} 个活跃筛选` : "筛选"}
-      >
+      <Tooltip title={activeCount > 0 ? `${activeCount} 个活跃筛选` : "筛选"}>
         <IconButton onClick={handleClick} size="small" sx={{ p: 0.5 }}>
           <Badge
             badgeContent={activeCount}

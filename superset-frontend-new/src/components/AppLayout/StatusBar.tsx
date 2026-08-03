@@ -29,9 +29,13 @@ export default function StatusBar({ tip }: StatusBarProps) {
         flexShrink: 0,
       }}
     >
-
       <TipsAndUpdatesIcon
-        sx={{ fontSize: 14, flexShrink: 0, color: "primary.main", opacity: 0.8 }}
+        sx={{
+          fontSize: 14,
+          flexShrink: 0,
+          color: "primary.main",
+          opacity: 0.8,
+        }}
       />
 
       <Box

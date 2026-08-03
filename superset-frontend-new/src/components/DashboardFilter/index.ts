@@ -1,6 +1,10 @@
 export { default as DashboardFilterDrawer } from "./DashboardFilterDrawer";
 export { default as FilterPanel } from "./FilterPanel";
-export { buildSiblingFilters, clearFilterValuesCache, refreshFilterValues } from "./FilterPanel";
+export {
+  buildSiblingFilters,
+  clearFilterValuesCache,
+  refreshFilterValues,
+} from "./filterValuesCache";
 export { default as FilterToggleFab } from "./FilterToggleFab";
 export { default as FilterToolbarButton } from "./FilterToolbarButton";
 export { default as useDashboardFilters } from "./useDashboardFilters";

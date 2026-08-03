@@ -51,7 +51,8 @@ export function useNavManager() {
           if (item.id === "home") return false;
           if (!enabled[item.id]) return false;
           if (!item.roles || item.roles.length === 0) return true;
-          if (item.roles.some((role) => userRoles?.[role] === true)) return true;
+          if (item.roles.some((role) => userRoles?.[role] === true))
+            return true;
           if (currentUsername) {
             const userOverrides = routeOverrides[currentUsername] ?? {};
             const override = userOverrides[item.path];
@@ -74,12 +75,13 @@ export function useNavManager() {
     if (!mapped) return;
     const navStore = useNavStore.getState();
     if (navStore.sidePanelPinned) {
-      if (navStore.activeCategory !== mapped) navStore.toggleCategory(mapped);
+      if (navStore.activeCategory !== mapped)
+        void navStore.toggleCategory(mapped);
       return;
     }
     openTimerRef.current = setTimeout(() => {
       if (!navStore.sidePanelOpen || navStore.activeCategory !== mapped) {
-        navStore.toggleCategory(mapped);
+        void navStore.toggleCategory(mapped);
       }
     }, 150);
   }, []);

@@ -40,21 +40,19 @@ test("renders all navigation sections", () => {
 test("renders description text for each section", () => {
   renderHome();
   expect(screen.getByText("创建和管理图表")).toBeInTheDocument();
-  expect(
-    screen.getByText("将图表组织到仪表板中"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("将图表组织到仪表板中")).toBeInTheDocument();
 });
 
-test("navigates to chart list on Charts click", async () => {
+test("navigates to chart list on Charts click", () => {
   renderHome();
 
-  await userEvent.click(screen.getByText("图表"));
+  userEvent.click(screen.getByText("图表"));
   expect(mockNavigate).toHaveBeenCalledWith("/chart/list");
 });
 
-test("navigates to dashboard list on Dashboards click", async () => {
+test("navigates to dashboard list on Dashboards click", () => {
   renderHome();
 
-  await userEvent.click(screen.getByText("仪表板"));
+  userEvent.click(screen.getByText("仪表板"));
   expect(mockNavigate).toHaveBeenCalledWith("/dashboard/list");
 });

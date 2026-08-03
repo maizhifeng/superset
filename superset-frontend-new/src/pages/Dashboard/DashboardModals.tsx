@@ -6,11 +6,12 @@ import DashboardNav from "@/pages/Dashboard/DashboardNav";
 import type { ChartData } from "@/types/api";
 
 const ChartEditor = lazy(() => import("@/pages/ChartCreation/ChartEditor"));
-const CompareConfigModal = lazy(() => import("@/pages/Dashboard/CompareConfigModal"));
+const CompareConfigModal = lazy(
+  () => import("@/pages/Dashboard/CompareConfigModal"),
+);
 const CompareModal = lazy(() => import("@/pages/Dashboard/CompareModal"));
 const AddChartDialog = lazy(() => import("@/pages/Dashboard/AddChartDialog"));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyCompare = any;
 
 interface DashboardModalsProps {
@@ -22,23 +23,39 @@ interface DashboardModalsProps {
   addChartDialogOpen: boolean;
   dashboardChartIds: Set<number>;
   pageKey: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   compare: AnyCompare;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   buildAdhocFilters: any;
   onChartSaved: (chartId: number) => void;
   onCloseDrawer: () => void;
   onNavClose: () => void;
-  onAddChartSelect: (chart: { id: number; slice_name: string; viz_type: string }) => void;
+  onAddChartSelect: (chart: {
+    id: number;
+    slice_name: string;
+    viz_type: string;
+  }) => void;
   onAddChartClose: () => void;
   onSaveLayout: () => Promise<void>;
 }
 
 export default function DashboardModals({
-  isDrawerOpen, editingSliceId, chartMeta,
-  navOpen, navItems, addChartDialogOpen, dashboardChartIds, pageKey,
-  compare, buildAdhocFilters,
-  onChartSaved, onCloseDrawer, onNavClose, onAddChartSelect, onAddChartClose, onSaveLayout,
+  isDrawerOpen,
+  editingSliceId,
+  chartMeta,
+  navOpen,
+  navItems,
+  addChartDialogOpen,
+  dashboardChartIds,
+  pageKey: _pageKey,
+  compare,
+  buildAdhocFilters,
+  onChartSaved,
+  onCloseDrawer,
+  onNavClose,
+  onAddChartSelect,
+  onAddChartClose,
+  onSaveLayout,
 }: DashboardModalsProps) {
   return (
     <>
@@ -49,7 +66,14 @@ export default function DashboardModals({
         onClose={onCloseDrawer}
         slotProps={{
           paper: {
-            sx: { width: { xs: "100vw", md: "50vw" }, top: 0, height: "100vh", borderRight: "none", borderTopLeftRadius: 12, borderBottomLeftRadius: 12 },
+            sx: {
+              width: { xs: "100vw", md: "50vw" },
+              top: 0,
+              height: "100vh",
+              borderRight: "none",
+              borderTopLeftRadius: 12,
+              borderBottomLeftRadius: 12,
+            },
           },
         }}
       >
@@ -59,7 +83,9 @@ export default function DashboardModals({
               <ChartEditor
                 compact
                 onChartSaved={onChartSaved}
-                initialData={editingSliceId ? chartMeta[Number(editingSliceId)] : null}
+                initialData={
+                  editingSliceId ? chartMeta[Number(editingSliceId)] : null
+                }
                 buildDashboardAdhocFilters={buildAdhocFilters}
               />
             </Suspense>
@@ -100,10 +126,13 @@ export default function DashboardModals({
       <UndoRedoKeyListeners
         onUndo={() => {}}
         onRedo={() => {}}
-        onSave={onSaveLayout}
+        onSave={() => void onSaveLayout()}
         onToggleFullScreen={() => {
-          if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-          else document.exitFullscreen();
+          if (!document.fullscreenElement) {
+            void document.documentElement.requestFullscreen();
+          } else {
+            void document.exitFullscreen();
+          }
         }}
       />
 

@@ -39,12 +39,12 @@ test("calls onChange after debounce delay", () => {
   expect(onChange).toHaveBeenCalledWith("chart");
 });
 
-test("clear button resets value", async () => {
+test("clear button resets value", () => {
   const onChange = vi.fn();
   render(<FilterBar value="searching" onChange={onChange} />);
 
   const clearButton = screen.getByRole("button");
-  await userEvent.click(clearButton);
+  userEvent.click(clearButton);
 
   expect(onChange).toHaveBeenCalledWith("");
 });

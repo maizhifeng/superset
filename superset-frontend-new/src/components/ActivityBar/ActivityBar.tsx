@@ -1,11 +1,6 @@
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import BarChartIcon from "@mui/icons-material/BarChart";
-import TableChartIcon from "@mui/icons-material/TableChart";
-import SaveIcon from "@mui/icons-material/Save";
-import CodeIcon from "@mui/icons-material/Code";
 
 export interface ActivityBarItem {
   id: string;
@@ -24,14 +19,6 @@ interface ActivityBarProps {
   aiButton?: React.ReactNode;
   userMenu?: React.ReactNode;
 }
-
-export const defaultItems: ActivityBarItem[] = [
-  { id: "dashboard", icon: <DashboardIcon sx={{ fontSize: 20 }} />, label: "仪表板" },
-  { id: "chart", icon: <BarChartIcon sx={{ fontSize: 20 }} />, label: "图表" },
-  { id: "dataset", icon: <TableChartIcon sx={{ fontSize: 20 }} />, label: "数据集" },
-  { id: "saved_query", icon: <SaveIcon sx={{ fontSize: 20 }} />, label: "已保存查询" },
-  { id: "sqllab", icon: <CodeIcon sx={{ fontSize: 20 }} />, label: "SQL 实验室" },
-];
 
 export default function ActivityBar({
   items,
@@ -60,12 +47,17 @@ export default function ActivityBar({
         pb: 1,
         gap: 0.5,
       }}
-      >
+    >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, flex: 1 }}>
         {items.map((item) => {
           const isActive = activeId === item.id;
           return (
-            <Tooltip key={item.id} title={item.label} placement="bottom" slotProps={{ popper: { sx: { pointerEvents: "none" } } }}>
+            <Tooltip
+              key={item.id}
+              title={item.label}
+              placement="bottom"
+              slotProps={{ popper: { sx: { pointerEvents: "none" } } }}
+            >
               <Box
                 sx={{ position: "relative" }}
                 onMouseEnter={() => onItemEnter?.(item.id)}
@@ -112,9 +104,7 @@ export default function ActivityBar({
           {aiButton}
         </Box>
       )}
-      {userMenu && (
-        <Box sx={{ mt: "auto", pt: 0.5 }}>{userMenu}</Box>
-      )}
+      {userMenu && <Box sx={{ mt: "auto", pt: 0.5 }}>{userMenu}</Box>}
       {searchDialog}
     </Box>
   );

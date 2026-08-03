@@ -1,4 +1,4 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, memo } from "react";
 import type { DataGridProps } from "@mui/x-data-grid";
 import { useMediaQuery, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
@@ -8,7 +8,7 @@ const DataGrid = lazy(() =>
   import("@mui/x-data-grid").then((m) => ({ default: m.DataGrid })),
 );
 
-export default function DataGridTable(props: DataGridProps) {
+function DataGridTable(props: DataGridProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   return (
@@ -47,15 +47,14 @@ export default function DataGridTable(props: DataGridProps) {
               },
               "& .MuiDataGrid-row": {
                 cursor: props.onRowClick ? "pointer" : "default",
-                transition: "background-color 150ms ease, box-shadow 150ms ease",
+                transition:
+                  "background-color 150ms ease, box-shadow 150ms ease",
                 "&:hover": {
                   backgroundColor: "action.hover",
-                  boxShadow:
-                    "var(--mui-palette-shadow-sm)",
+                  boxShadow: "var(--mui-palette-shadow-sm)",
                 },
                 "&:nth-of-type(even)": {
-                  backgroundColor:
-                    "var(--mui-palette-action-hover)",
+                  backgroundColor: "var(--mui-palette-action-hover)",
                 },
                 "&:nth-of-type(even):hover": {
                   backgroundColor: "action.hover",
@@ -107,3 +106,5 @@ export default function DataGridTable(props: DataGridProps) {
     </Box>
   );
 }
+
+export default memo(DataGridTable);

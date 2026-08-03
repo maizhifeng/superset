@@ -94,16 +94,16 @@ class ValidationError extends Error {
 
 function validateParams(p: QuerySupersetParams): void {
   for (const col of p.columns) {
-    if (!ALLOWED_COLUMNS.includes(col as AllowedColumn)) {
+    if (!ALLOWED_COLUMNS.includes(col)) {
       throw new ValidationError(`不允许的列: "${col}"`);
     }
   }
   for (const m of p.metrics) {
-    if (!ALLOWED_METRICS.includes(m as AllowedMetric)) {
+    if (!ALLOWED_METRICS.includes(m)) {
       throw new ValidationError(`不允许的指标: "${m}"`);
     }
   }
-  if (p.time_range && !ALLOWED_TIME_RANGES.includes(p.time_range as AllowedTimeRange)) {
+  if (p.time_range && !ALLOWED_TIME_RANGES.includes(p.time_range)) {
     throw new ValidationError(`不允许的时间范围: "${p.time_range}"`);
   }
   const limit = p.row_limit ?? 100;
@@ -131,7 +131,8 @@ function buildMetricEntry(m: AllowedMetric): unknown {
   if (m === "cpa") {
     return {
       expressionType: "SQL" as const,
-      sqlExpression: "CAST(SUM(\"返点后消耗\") AS NUMERIC) / NULLIF(SUM(\"新增进入\"), 0)",
+      sqlExpression:
+        'CAST(SUM("返点后消耗") AS NUMERIC) / NULLIF(SUM("新增进入"), 0)',
       label: "cpa",
     };
   }
@@ -144,7 +145,9 @@ function buildMetricEntry(m: AllowedMetric): unknown {
  * 将简单的 { column: value } 过滤条件转为 Superset 的 adhoc_filters 格式。
  * 目前只支持等值比较（==），后续可按需扩展。
  */
-function buildFilters(filters: Record<string, string | number> | undefined): unknown[] {
+function buildFilters(
+  filters: Record<string, string | number> | undefined,
+): unknown[] {
   if (!filters || Object.keys(filters).length === 0) return [];
   return Object.entries(filters).map(([col, val]) => ({
     expressionType: "SIMPLE" as const,
@@ -170,14 +173,16 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows: number): string {
   const sep = cols.map(() => "---").join(" | ");
   const display = rows.slice(0, maxRows);
   const body = display.map((r) =>
-    cols.map((c) => {
-      const v = r[c];
-      if (c === "日期" && typeof v === "number") {
-        const d = new Date(v);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
-      }
-      return fmt(v);
-    }).join(" | "),
+    cols
+      .map((c) => {
+        const v = r[c];
+        if (c === "日期" && typeof v === "number") {
+          const d = new Date(v);
+          return `${d.getMonth() + 1}/${d.getDate()}`;
+        }
+        return fmt(v);
+      })
+      .join(" | "),
   );
   return [header, sep, ...body].join("\n");
 }
@@ -199,7 +204,9 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows: number): string {
  * @returns Markdown 格式的表格字符串（含表头和分隔行）
  * @throws ValidationError 参数校验失败时抛出
  */
-export async function executeQuery(params: QuerySupersetParams): Promise<string> {
+export async function executeQuery(
+  params: QuerySupersetParams,
+): Promise<string> {
   validateParams(params);
 
   const rowLimit = params.row_limit ?? 100;
@@ -226,9 +233,10 @@ export async function executeQuery(params: QuerySupersetParams): Promise<string>
     });
   } catch (e: unknown) {
     const detail =
-      (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-      ?? (e as Error).message
-      ?? "未知错误";
+      (e as { response?: { data?: { message?: string } } })?.response?.data
+        ?.message ??
+      (e as Error).message ??
+      "未知错误";
     throw new Error(`Superset 查询失败: ${detail}`);
   }
 

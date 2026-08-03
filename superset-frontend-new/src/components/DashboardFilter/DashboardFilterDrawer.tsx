@@ -31,7 +31,7 @@ export default function DashboardFilterDrawer({
   filters,
   filterState,
   onFilterChange,
-  onClearAll,
+  onClearAll: _onClearAll,
   pendingFilterIds,
 }: DashboardFilterDrawerProps) {
   const touchStartY = useRef(0);
@@ -141,7 +141,11 @@ export default function DashboardFilterDrawer({
         ref={barRef}
         onClick={() => {
           setShowGuide(false);
-          open ? onClose() : onOpen();
+          if (open) {
+            onClose();
+          } else {
+            onOpen();
+          }
         }}
         sx={{
           display: "flex",

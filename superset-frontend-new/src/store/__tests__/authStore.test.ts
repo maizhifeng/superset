@@ -10,6 +10,15 @@ vi.mock("@/api", () => ({
   },
   getStoredToken: vi.fn(() => null),
   setStoredToken: vi.fn(),
+  setStoredRefreshToken: vi.fn(),
+  refreshAccessToken: vi.fn(),
+  setupTokenRefresh: vi.fn(),
+  cancelTokenRefresh: vi.fn(),
+  setStoredBackupToken: vi.fn(),
+  getStoredBackupToken: vi.fn(() => null),
+  fetchCsrfToken: vi.fn(),
+  clearAuthAndBackup: vi.fn(),
+  SWITCHED_FLAG_KEY: "superset_switched_user",
 }));
 
 beforeEach(() => {

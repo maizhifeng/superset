@@ -147,8 +147,7 @@ export default function DateColumnDetector({
       });
       onColumnCreated();
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "创建计算列失败";
+      const msg = err instanceof Error ? err.message : "创建计算列失败";
       notify({ severity: "error", message: msg });
     } finally {
       setCreating(false);
@@ -206,7 +205,7 @@ export default function DateColumnDetector({
                   size="small"
                   variant="contained"
                   disabled={creating}
-                  onClick={handleCreate}
+                  onClick={() => void handleCreate()}
                 >
                   {creating ? (
                     <CircularProgress size={14} sx={{ mr: 0.5 }} />

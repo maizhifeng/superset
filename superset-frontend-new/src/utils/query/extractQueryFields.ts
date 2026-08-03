@@ -75,15 +75,13 @@ export function buildQueryObject(
     columns,
   };
 
-  if (formData.granularity_sqla)
-    query.granularity = formData.granularity_sqla as string;
-  if (formData.time_range) query.time_range = formData.time_range as string;
+  if (formData.granularity_sqla) query.granularity = formData.granularity_sqla;
+  if (formData.time_range) query.time_range = formData.time_range;
   if (formData.adhoc_filters)
     query.adhoc_filters =
       formData.adhoc_filters as QueryObject["adhoc_filters"];
-  if (formData.row_limit) query.row_limit = formData.row_limit as number;
-  if (formData.row_offset != null)
-    query.row_offset = formData.row_offset as number;
+  if (formData.row_limit) query.row_limit = formData.row_limit;
+  if (formData.row_offset != null) query.row_offset = formData.row_offset;
 
   if (orderby.length > 0) {
     query.orderby = orderby;
@@ -109,9 +107,9 @@ export function buildChartQuery(
   queries: QueryObject[];
   form_data: FormData;
 } {
-  const datasourceStr = formData.datasource as string | undefined;
+  const datasourceStr = formData.datasource;
   let dsId = 0;
-  let dsType: "table" = "table";
+  let dsType = "table" as const;
   if (datasourceStr) {
     const parts = datasourceStr.split("__");
     dsId = Number(parts[0]) || 0;

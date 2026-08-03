@@ -7,7 +7,7 @@ export function buildQueryContext(
 ): QueryContext {
   const datasourceStr = formData.datasource as string | undefined;
   let dsId = 0;
-  let dsType: "table" = "table";
+  const dsType = "table" as const;
   if (datasourceStr) {
     const parts = datasourceStr.split("__");
     dsId = Number(parts[0]) || 0;

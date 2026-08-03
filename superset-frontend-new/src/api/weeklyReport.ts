@@ -3,7 +3,12 @@ import api from "@/api";
 const DATASOURCE = { id: 26, type: "table" as const };
 
 type SupersetMetric =
-  | { expressionType: "SIMPLE"; column: { column_name: string }; aggregate: string; label: string }
+  | {
+      expressionType: "SIMPLE";
+      column: { column_name: string };
+      aggregate: string;
+      label: string;
+    }
   | string;
 
 interface ReportRow {
@@ -44,9 +49,23 @@ const USER_METRIC: SupersetMetric = {
 const CPA_METRIC: SupersetMetric = "cpa";
 const ROI1_METRIC: SupersetMetric = "roi_1";
 const LTV1_METRIC: SupersetMetric = "ltv_1";
-const LTV_METRICS: SupersetMetric[] = ["ltv_1", "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7"];
+const LTV_METRICS: SupersetMetric[] = [
+  "ltv_1",
+  "ltv_2",
+  "ltv_3",
+  "ltv_4",
+  "ltv_5",
+  "ltv_6",
+  "ltv_7",
+];
 
-const BASE_METRICS: SupersetMetric[] = [COST_METRIC, USER_METRIC, CPA_METRIC, ROI1_METRIC, LTV1_METRIC];
+const BASE_METRICS: SupersetMetric[] = [
+  COST_METRIC,
+  USER_METRIC,
+  CPA_METRIC,
+  ROI1_METRIC,
+  LTV1_METRIC,
+];
 
 const COL = {
   MEDIA: "媒体",
@@ -61,7 +80,15 @@ const COL = {
 const MIN_DISPLAY_RATIO = 0.01;
 const DISPLAY_SAFEGUARD_MIN = 5;
 
-const LTV_KEYS = ["ltv_1", "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7"];
+const LTV_KEYS = [
+  "ltv_1",
+  "ltv_2",
+  "ltv_3",
+  "ltv_4",
+  "ltv_5",
+  "ltv_6",
+  "ltv_7",
+];
 const LTV_COLS = ["LTV1", "LTV2", "LTV3", "LTV4", "LTV5", "LTV6", "LTV7"];
 
 function fmt(v: unknown, decimals = 2): string {
@@ -149,24 +176,51 @@ function rankAndGroup(
   const totalW2 = [...w2Map.values()].reduce((s, v) => s + v.cost, 0);
   const threshold = totalW2 * MIN_DISPLAY_RATIO;
   const items = [...new Set([...w1Map.keys(), ...w2Map.keys()])]
-    .filter((n) => (w1Map.get(n)?.cost ?? 0) > 0 || (w2Map.get(n)?.cost ?? 0) > 0)
+    .filter(
+      (n) => (w1Map.get(n)?.cost ?? 0) > 0 || (w2Map.get(n)?.cost ?? 0) > 0,
+    )
     .map((n) => ({ name: n, w2Cost: w2Map.get(n)?.cost ?? 0 }))
     .sort((a, b) => b.w2Cost - a.w2Cost);
   const topNames: string[] = [];
   const otherItems: string[] = [];
   for (const item of items) {
-    if (topNames.length < maxItems && (item.w2Cost >= threshold || topNames.length < DISPLAY_SAFEGUARD_MIN)) {
+    if (
+      topNames.length < maxItems &&
+      (item.w2Cost >= threshold || topNames.length < DISPLAY_SAFEGUARD_MIN)
+    ) {
       topNames.push(item.name);
     } else {
       otherItems.push(item.name);
     }
   }
   if (otherItems.length > 0) {
-    const w1o: ProjAccum = { cost: 0, users: 0, roi1Weighted: 0, ltv1Weighted: 0 };
-    const w2o: ProjAccum = { cost: 0, users: 0, roi1Weighted: 0, ltv1Weighted: 0 };
+    const w1o: ProjAccum = {
+      cost: 0,
+      users: 0,
+      roi1Weighted: 0,
+      ltv1Weighted: 0,
+    };
+    const w2o: ProjAccum = {
+      cost: 0,
+      users: 0,
+      roi1Weighted: 0,
+      ltv1Weighted: 0,
+    };
     for (const n of otherItems) {
-      const d1 = w1Map.get(n); if (d1) { w1o.cost += d1.cost; w1o.users += d1.users; w1o.roi1Weighted += d1.roi1Weighted; w1o.ltv1Weighted += d1.ltv1Weighted; }
-      const d2 = w2Map.get(n); if (d2) { w2o.cost += d2.cost; w2o.users += d2.users; w2o.roi1Weighted += d2.roi1Weighted; w2o.ltv1Weighted += d2.ltv1Weighted; }
+      const d1 = w1Map.get(n);
+      if (d1) {
+        w1o.cost += d1.cost;
+        w1o.users += d1.users;
+        w1o.roi1Weighted += d1.roi1Weighted;
+        w1o.ltv1Weighted += d1.ltv1Weighted;
+      }
+      const d2 = w2Map.get(n);
+      if (d2) {
+        w2o.cost += d2.cost;
+        w2o.users += d2.users;
+        w2o.roi1Weighted += d2.roi1Weighted;
+        w2o.ltv1Weighted += d2.ltv1Weighted;
+      }
     }
     w1Map.set("其他", w1o);
     w2Map.set("其他", w2o);
@@ -178,7 +232,8 @@ function rankAndGroup(
 function fmtMetrics(d: ProjAccum | undefined): [string, string, string] {
   if (!d || d.cost === 0) return ["-", "-", "-"];
   const cpa = d.users > 0 ? fmt(d.cost / d.users) : "-";
-  const roi1 = d.cost > 0 ? `${(d.roi1Weighted / d.cost * 100).toFixed(1)}%` : "-";
+  const roi1 =
+    d.cost > 0 ? `${((d.roi1Weighted / d.cost) * 100).toFixed(1)}%` : "-";
   const ltv1 = d.users > 0 ? fmt(d.ltv1Weighted / d.users) : "-";
   return [cpa, roi1, ltv1];
 }
@@ -187,10 +242,24 @@ function buildWeekBlock(
   names: string[],
   getData: (n: string) => ProjAccum | undefined,
   extraGet: (n: string) => string[],
-  writeExtraSum: (cost: number, users: number, roi1W: number, ltv1W: number) => string,
-): { rows: string[]; cost: number; users: number; roi1W: number; ltv1W: number } {
+  writeExtraSum: (
+    cost: number,
+    users: number,
+    roi1W: number,
+    ltv1W: number,
+  ) => string,
+): {
+  rows: string[];
+  cost: number;
+  users: number;
+  roi1W: number;
+  ltv1W: number;
+} {
   const rows: string[] = [];
-  let cost = 0, users = 0, roi1W = 0, ltv1W = 0;
+  let cost = 0,
+    users = 0,
+    roi1W = 0,
+    ltv1W = 0;
 
   for (const n of names) {
     const d = getData(n);
@@ -199,9 +268,13 @@ function buildWeekBlock(
     users += d.users;
     roi1W += d.roi1Weighted;
     ltv1W += d.ltv1Weighted;
-    rows.push(`| | ${n} | ${fmt(d.cost, 0)} | ${fmt(d.users, 0)} | ${extraGet(n)} |`);
+    rows.push(
+      `| | ${n} | ${fmt(d.cost, 0)} | ${fmt(d.users, 0)} | ${extraGet(n)} |`,
+    );
   }
-  rows.push(`| | **合计** | **${fmt(cost, 0)}** | **${fmt(users, 0)}** | ${writeExtraSum(cost, users, roi1W, ltv1W)} |`);
+  rows.push(
+    `| | **合计** | **${fmt(cost, 0)}** | **${fmt(users, 0)}** | ${writeExtraSum(cost, users, roi1W, ltv1W)} |`,
+  );
 
   return { rows, cost, users, roi1W, ltv1W };
 }
@@ -222,20 +295,32 @@ function dimensionTable(
   lines.push(`| ${allCols.join(" | ")} |`);
   lines.push(`|${allCols.map(() => "------").join("|")}|`);
 
-  function writeExtraSum(cost: number, users: number, roi1W: number, ltv1W: number): string {
-    return extraCols.map((col) => {
-      if (col === "CPA" && users > 0) return fmt(cost / users, 2);
-      if (col === "ROI1" && cost > 0) return `${fmt(roi1W / cost * 100, 1)}%`;
-      if (col === "LTV1" && users > 0) return fmt(ltv1W / users, 2);
-      return "-";
-    }).join(" | ");
+  function writeExtraSum(
+    cost: number,
+    users: number,
+    roi1W: number,
+    ltv1W: number,
+  ): string {
+    return extraCols
+      .map((col) => {
+        if (col === "CPA" && users > 0) return fmt(cost / users, 2);
+        if (col === "ROI1" && cost > 0)
+          return `${fmt((roi1W / cost) * 100, 1)}%`;
+        if (col === "LTV1" && users > 0) return fmt(ltv1W / users, 2);
+        return "-";
+      })
+      .join(" | ");
   }
 
   lines.push(`| **${week1Label}** | | | | |`);
-  lines.push(...buildWeekBlock(names, getW1, (n) => extraW1(n), writeExtraSum).rows);
+  lines.push(
+    ...buildWeekBlock(names, getW1, (n) => extraW1(n), writeExtraSum).rows,
+  );
 
   lines.push(`| **${week2Label}** | | | | |`);
-  lines.push(...buildWeekBlock(names, getW2, (n) => extraW2(n), writeExtraSum).rows);
+  lines.push(
+    ...buildWeekBlock(names, getW2, (n) => extraW2(n), writeExtraSum).rows,
+  );
 
   return lines;
 }
@@ -254,7 +339,12 @@ function accumulateDimension(
     const name = String(r[nameField] ?? "");
     if (!name) continue;
     const map = wl === "W2" ? w2 : w1;
-    const prev = map.get(name) ?? { cost: 0, users: 0, roi1Weighted: 0, ltv1Weighted: 0 };
+    const prev = map.get(name) ?? {
+      cost: 0,
+      users: 0,
+      roi1Weighted: 0,
+      ltv1Weighted: 0,
+    };
     const cost = Number(r[COL.COST]) || 0;
     const users = Number(r[COL.USERS]) || 0;
     prev.cost += cost;
@@ -284,19 +374,50 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
 
   const orderDesc = [[COL.COST, false]];
 
-  const ltvQueryMetrics: SupersetMetric[] = [COST_METRIC, USER_METRIC, CPA_METRIC, ROI1_METRIC, ...LTV_METRICS];
+  const ltvQueryMetrics: SupersetMetric[] = [
+    COST_METRIC,
+    USER_METRIC,
+    CPA_METRIC,
+    ROI1_METRIC,
+    ...LTV_METRICS,
+  ];
 
   const resp = await api.post("/chart/data", {
     ...baseQuery,
     queries: [
-      { metrics: BASE_METRICS, columns: [COL.MEDIA, COL.DATE], ...twoWeekFilter, orderby: orderDesc, row_limit: 500 },
-      { metrics: BASE_METRICS, columns: [COL.CHANNEL, COL.DATE], ...twoWeekFilter, orderby: orderDesc, row_limit: 500 },
-      { metrics: BASE_METRICS, columns: [COL.PLATFORM, COL.DATE], ...twoWeekFilter, orderby: orderDesc, row_limit: 500 },
-      { metrics: ltvQueryMetrics, columns: [COL.PROJECT, COL.DATE], ...twoWeekFilter, orderby: orderDesc, row_limit: 1000 },
+      {
+        metrics: BASE_METRICS,
+        columns: [COL.MEDIA, COL.DATE],
+        ...twoWeekFilter,
+        orderby: orderDesc,
+        row_limit: 500,
+      },
+      {
+        metrics: BASE_METRICS,
+        columns: [COL.CHANNEL, COL.DATE],
+        ...twoWeekFilter,
+        orderby: orderDesc,
+        row_limit: 500,
+      },
+      {
+        metrics: BASE_METRICS,
+        columns: [COL.PLATFORM, COL.DATE],
+        ...twoWeekFilter,
+        orderby: orderDesc,
+        row_limit: 500,
+      },
+      {
+        metrics: ltvQueryMetrics,
+        columns: [COL.PROJECT, COL.DATE],
+        ...twoWeekFilter,
+        orderby: orderDesc,
+        row_limit: 1000,
+      },
     ],
   });
 
-  const results = ((resp as { data?: { result?: unknown[] } }).data?.result) ?? [];
+  const results =
+    (resp as { data?: { result?: unknown[] } }).data?.result ?? [];
   const parseAt = (idx: number) => parseBatchResult(results[idx]);
   const rMedia = parseAt(0);
   const rChannel = parseAt(1);
@@ -308,9 +429,24 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
 
   const sections: string[] = [];
 
-  const { w1Map: mediaW1, w2Map: mediaW2 } = accumulateDimension(rMedia.rows, COL.MEDIA, w1Start, w2Start);
-  const { w1Map: channelW1, w2Map: channelW2 } = accumulateDimension(rChannel.rows, COL.CHANNEL, w1Start, w2Start);
-  const { w1Map: platformW1, w2Map: platformW2 } = accumulateDimension(rPlatform.rows, COL.PLATFORM, w1Start, w2Start);
+  const { w1Map: mediaW1, w2Map: mediaW2 } = accumulateDimension(
+    rMedia.rows,
+    COL.MEDIA,
+    w1Start,
+    w2Start,
+  );
+  const { w1Map: channelW1, w2Map: channelW2 } = accumulateDimension(
+    rChannel.rows,
+    COL.CHANNEL,
+    w1Start,
+    w2Start,
+  );
+  const { w1Map: platformW1, w2Map: platformW2 } = accumulateDimension(
+    rPlatform.rows,
+    COL.PLATFORM,
+    w1Start,
+    w2Start,
+  );
 
   const allMediaNames = rankAndGroup(mediaW1, mediaW2, 12);
   const allChannelNames = rankAndGroup(channelW1, channelW2, 12);
@@ -319,12 +455,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   sections.push("## 核心指标概览", "");
   sections.push(
     ...dimensionTable(
-      "平台", allPlatformNames,
-      (n) => platformW1.get(n), (n) => platformW2.get(n),
+      "平台",
+      allPlatformNames,
+      (n) => platformW1.get(n),
+      (n) => platformW2.get(n),
       ["CPA", "ROI1", "LTV1"],
       (n) => fmtMetrics(platformW1.get(n)),
       (n) => fmtMetrics(platformW2.get(n)),
-      week1Label, week2Label,
+      week1Label,
+      week2Label,
     ),
   );
   sections.push("");
@@ -350,17 +489,21 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
     const users = Number(r[COL.USERS]) || 0;
     if (!pcDays.has(proj)) pcDays.set(proj, []);
     pcDays.get(proj)!.push({
-      wl, cost, users,
+      wl,
+      cost,
+      users,
       roi1Weighted: (Number(r.roi_1) || 0) * cost,
       ltvVals,
     });
   }
 
   interface PcAvg {
-    w1Cost: number; w1Users: number;
+    w1Cost: number;
+    w1Users: number;
     w1Roi1W: number;
     w1: number[];
-    w2Cost: number; w2Users: number;
+    w2Cost: number;
+    w2Users: number;
     w2Roi1W: number;
     w2: number[];
     totalCost: number;
@@ -370,7 +513,9 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
     const w1D = days.filter((d) => d.wl === "W1");
     const w2D = days.filter((d) => d.wl === "W2");
     const avg = (arr: number[][]) =>
-      arr.length > 0 ? arr[0].map((_, i) => arr.reduce((s, v) => s + v[i], 0) / arr.length) : [];
+      arr.length > 0
+        ? arr[0].map((_, i) => arr.reduce((s, v) => s + v[i], 0) / arr.length)
+        : [];
     pcAvg.set(key, {
       w1Cost: w1D.reduce((s, d) => s + d.cost, 0),
       w1Users: w1D.reduce((s, d) => s + d.users, 0),
@@ -390,7 +535,16 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
 
   if (pcSorted.length > 0) {
     sections.push("## 分项目数据", "");
-    const allCols = ["星期", "项目", "消耗", "新增用户", "CPA", "ROI1", ...LTV_COLS, "增长系数"];
+    const allCols = [
+      "星期",
+      "项目",
+      "消耗",
+      "新增用户",
+      "CPA",
+      "ROI1",
+      ...LTV_COLS,
+      "增长系数",
+    ];
     sections.push(`| ${allCols.join(" | ")} |`);
     sections.push(`|${allCols.map(() => "------").join("|")}|`);
 
@@ -399,17 +553,19 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
       const coef2 = d.w2[6] && d.w2[0] ? (d.w2[6] / d.w2[0]).toFixed(2) : "-";
       const cpa1 = d.w1Users > 0 ? fmt(d.w1Cost / d.w1Users) : "-";
       const cpa2 = d.w2Users > 0 ? fmt(d.w2Cost / d.w2Users) : "-";
-      const roi1_1 = d.w1Cost > 0 ? `${(d.w1Roi1W / d.w1Cost * 100).toFixed(1)}%` : "-";
-      const roi1_2 = d.w2Cost > 0 ? `${(d.w2Roi1W / d.w2Cost * 100).toFixed(1)}%` : "-";
+      const roi1_1 =
+        d.w1Cost > 0 ? `${((d.w1Roi1W / d.w1Cost) * 100).toFixed(1)}%` : "-";
+      const roi1_2 =
+        d.w2Cost > 0 ? `${((d.w2Roi1W / d.w2Cost) * 100).toFixed(1)}%` : "-";
       sections.push(
         `| **${week1Label}** | ${projName} ` +
-        `| ${fmt(d.w1Cost, 0)} | ${fmt(d.w1Users, 0)} | ${cpa1} | ${roi1_1} ` +
-        `| ${fmtLtvRow(d.w1)} | ${coef1} |`
+          `| ${fmt(d.w1Cost, 0)} | ${fmt(d.w1Users, 0)} | ${cpa1} | ${roi1_1} ` +
+          `| ${fmtLtvRow(d.w1)} | ${coef1} |`,
       );
       sections.push(
         `| **${week2Label}** | ${projName} ` +
-        `| ${fmt(d.w2Cost, 0)} | ${fmt(d.w2Users, 0)} | ${cpa2} | ${roi1_2} ` +
-        `| ${fmtLtvRow(d.w2)} | ${coef2} |`
+          `| ${fmt(d.w2Cost, 0)} | ${fmt(d.w2Users, 0)} | ${cpa2} | ${roi1_2} ` +
+          `| ${fmtLtvRow(d.w2)} | ${coef2} |`,
       );
     }
     sections.push("");
@@ -418,12 +574,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   sections.push("## 分渠道商数据", "");
   sections.push(
     ...dimensionTable(
-      "渠道商名称", allChannelNames,
-      (n) => channelW1.get(n), (n) => channelW2.get(n),
+      "渠道商名称",
+      allChannelNames,
+      (n) => channelW1.get(n),
+      (n) => channelW2.get(n),
       ["CPA", "ROI1", "LTV1"],
       (n) => fmtMetrics(channelW1.get(n)),
       (n) => fmtMetrics(channelW2.get(n)),
-      week1Label, week2Label,
+      week1Label,
+      week2Label,
     ),
   );
   sections.push("");
@@ -431,12 +590,15 @@ export async function fetchWeeklyReportData(): Promise<WeeklyReportData> {
   sections.push("## 分媒体数据", "");
   sections.push(
     ...dimensionTable(
-      "媒体名称", allMediaNames,
-      (n) => mediaW1.get(n), (n) => mediaW2.get(n),
+      "媒体名称",
+      allMediaNames,
+      (n) => mediaW1.get(n),
+      (n) => mediaW2.get(n),
       ["CPA", "ROI1", "LTV1"],
       (n) => fmtMetrics(mediaW1.get(n)),
       (n) => fmtMetrics(mediaW2.get(n)),
-      week1Label, week2Label,
+      week1Label,
+      week2Label,
     ),
   );
   sections.push("");

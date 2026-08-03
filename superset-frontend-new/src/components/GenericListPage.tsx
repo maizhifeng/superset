@@ -32,7 +32,10 @@ export function GenericListPage<T extends { id: number }>({
   renderCard,
 }: ListPageConfig<T>) {
   const { rows, rowCount, loading, error, searchText } = usePaginatedList<T>({
-    endpoint, filterColumn, pageSize: 50, errorMessage: `加载${title}失败`,
+    endpoint,
+    filterColumn,
+    pageSize: 50,
+    errorMessage: `加载${title}失败`,
   });
 
   return (
@@ -42,14 +45,25 @@ export function GenericListPage<T extends { id: number }>({
       hasData={rows.length > 0}
       emptyState={
         <>
-          <EmptyState title={emptyTitle} description={searchText ? "请调整搜索条件" : emptyDescription} />
+          <EmptyState
+            title={emptyTitle}
+            description={searchText ? "请调整搜索条件" : emptyDescription}
+          />
           <EmptyStateShortcutHint />
         </>
       }
     >
-      <ResponsiveDataGrid rows={rows} columns={columns} loading={loading}
-        paginationMode="server" rowCount={rowCount}
-        renderCard={renderCard as ((row: Record<string, unknown>) => ReactNode) | undefined} />
+      <ResponsiveDataGrid
+        rows={rows}
+        columns={columns}
+        loading={loading}
+        paginationMode="server"
+        rowCount={rowCount}
+        renderCard={
+          renderCard as
+            ((row: Record<string, unknown>) => ReactNode) | undefined
+        }
+      />
     </ListPageLayout>
   );
 }

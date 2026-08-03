@@ -25,7 +25,9 @@ interface DrawerState {
 export const useDrawerStore = create<DrawerState>()((set) => ({
   aiDrawerOpen: false,
   aiDrawerMode: "assistant",
-  drawerWidth: Math.round(typeof window !== "undefined" ? window.innerWidth * 0.4 : 640),
+  drawerWidth: Math.round(
+    typeof window !== "undefined" ? window.innerWidth * 0.4 : 640,
+  ),
 
   insightChartId: null,
   insightChartMeta: undefined,

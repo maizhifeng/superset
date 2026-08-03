@@ -42,8 +42,11 @@ function PresetForm({
     setLoadingModels(true);
     setModelsError("");
     try {
-      const useProxy = baseUrl.startsWith("/") ||
-        /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(baseUrl);
+      const useProxy =
+        baseUrl.startsWith("/") ||
+        /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(
+          baseUrl,
+        );
       const proxyPath = useProxy ? "/llm" : baseUrl;
       const res = await fetch(`${proxyPath}/models`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -146,7 +149,7 @@ function PresetForm({
         <Button
           size="small"
           variant="outlined"
-          onClick={handleLoadModels}
+          onClick={() => void handleLoadModels()}
           disabled={loadingModels || !baseUrl.trim()}
           sx={{ mt: 0.5, minWidth: 80, whiteSpace: "nowrap" }}
         >

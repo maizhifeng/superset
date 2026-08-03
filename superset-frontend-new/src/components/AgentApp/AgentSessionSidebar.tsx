@@ -82,78 +82,91 @@ export default function AgentSessionSidebar() {
             {sessions.map((session) => {
               const running = isSessionRunning(session.id);
               return (
-              <ListItemButton
-                key={session.id}
-                selected={session.id === activeSessionId}
-                onClick={() => switchSession(session.id)}
-                sx={{
-                  px: 1.5,
-                  py: 1,
-                  gap: 0.75,
-                  "&.Mui-selected": {
-                    bgcolor: "action.selected",
-                    borderRight: "3px solid",
-                    borderColor: "primary.main",
-                  },
-                }}
-              >
-                {session.summary ? (
-                  <CheckCircleIcon sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
-                ) : running ? (
-                  <Box
-                    sx={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: "50%",
-                      bgcolor: "primary.main",
-                      flexShrink: 0,
-                      animation: "pulse 1.5s ease-in-out infinite",
-                      "@keyframes pulse": {
-                        "0%, 100%": { opacity: 0.4 },
-                        "50%": { opacity: 1 },
-                      },
-                    }}
-                  />
-                ) : (
-                  <RadioButtonUncheckedIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
-                )}
-                <ListItemText
-                  primary={
-                    <Typography
-                      variant="body2"
+                <ListItemButton
+                  key={session.id}
+                  selected={session.id === activeSessionId}
+                  onClick={() => switchSession(session.id)}
+                  sx={{
+                    px: 1.5,
+                    py: 1,
+                    gap: 0.75,
+                    "&.Mui-selected": {
+                      bgcolor: "action.selected",
+                      borderRight: "3px solid",
+                      borderColor: "primary.main",
+                    },
+                  }}
+                >
+                  {session.summary ? (
+                    <CheckCircleIcon
                       sx={{
-                        fontWeight: session.id === activeSessionId ? 600 : 400,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        fontSize: 14,
+                        color: "success.main",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : running ? (
+                    <Box
+                      sx={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: "50%",
+                        bgcolor: "primary.main",
+                        flexShrink: 0,
+                        animation: "pulse 1.5s ease-in-out infinite",
+                        "@keyframes pulse": {
+                          "0%, 100%": { opacity: 0.4 },
+                          "50%": { opacity: 1 },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <RadioButtonUncheckedIcon
+                      sx={{
+                        fontSize: 14,
+                        color: "text.disabled",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  <ListItemText
+                    primary={
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight:
+                            session.id === activeSessionId ? 600 : 400,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {session.title}
+                      </Typography>
+                    }
+                    secondary={
+                      <Typography variant="caption" color="text.secondary">
+                        {`${session.messages.length} 条消息`}
+                      </Typography>
+                    }
+                  />
+                  <Tooltip title="删除" placement="left">
+                    <IconButton
+                      size="small"
+                      edge="end"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteSession(session.id);
+                      }}
+                      sx={{
+                        color: "text.disabled",
+                        "&:hover": { color: "error.main" },
                       }}
                     >
-                      {session.title}
-                    </Typography>
-                  }
-                  secondary={
-                    <Typography variant="caption" color="text.secondary">
-                      {`${session.messages.length} 条消息`}
-                    </Typography>
-                  }
-                />
-                <Tooltip title="删除" placement="left">
-                  <IconButton
-                    size="small"
-                    edge="end"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(session.id);
-                    }}
-                    sx={{
-                      color: "text.disabled",
-                      "&:hover": { color: "error.main" },
-                    }}
-                  >
-                    <DeleteIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-              </ListItemButton>
+                      <DeleteIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemButton>
               );
             })}
           </List>

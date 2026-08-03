@@ -122,7 +122,7 @@ export default function CompareConfigModal({
     } else {
       setRules([makeEmptyRule()]);
     }
-  }, [open, initialColumns]);
+  }, [open, initialColumns, fullData?.data]);
 
   const handleDimensionChange = useCallback(
     (index: number, value: ColumnOption | null) => {
@@ -161,7 +161,7 @@ export default function CompareConfigModal({
             ? (fullData.data as Record<string, unknown>[])
             : null;
         if (!allRows || allRows.length === 0 || !(value.column in allRows[0])) {
-          fetchColumnValues(value.datasetId, value.column).then((vals) => {
+          void fetchColumnValues(value.datasetId, value.column).then((vals) => {
             if (vals.length > 0) {
               setRules((prev) =>
                 prev.map((r, i) =>

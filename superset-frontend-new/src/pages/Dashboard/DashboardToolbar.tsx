@@ -25,8 +25,8 @@ interface DashboardToolbarProps {
 export default function DashboardToolbar({
   dashboard,
   nodeMap,
-  gridId,
-  chartMeta,
+  gridId: _gridId,
+  chartMeta: _chartMeta,
   refreshAllCharts,
   onFilterDrawerToggle,
   onPendingFilterIds,
@@ -129,7 +129,20 @@ export default function DashboardToolbar({
         : []),
     ]);
     return () => unregisterTools(pageKey);
-  }, [dashboard, activeCount, hiddenFilters, clearAll, pageKey]);
+  }, [
+    dashboard,
+    activeCount,
+    hiddenFilters,
+    clearAll,
+    pageKey,
+    setCustom,
+    registerTools,
+    unregisterTools,
+    onFilterDrawerToggle,
+    onPendingFilterIds,
+    refreshAllCharts,
+    layoutItems.length,
+  ]);
 
   return null;
 }

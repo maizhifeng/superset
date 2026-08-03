@@ -40,7 +40,9 @@ export default function OverlayContent({ type, id }: OverlayContentProps) {
       case "chart":
         if (id) {
           return (
-            <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            <Box
+              sx={{ height: "100%", display: "flex", flexDirection: "column" }}
+            >
               <Suspense fallback={<Loader />}>
                 <ChartEditor compact />
               </Suspense>
@@ -75,7 +77,9 @@ export default function OverlayContent({ type, id }: OverlayContentProps) {
         );
       case "sqllab":
         return (
-          <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <Box
+            sx={{ height: "100%", display: "flex", flexDirection: "column" }}
+          >
             <Suspense fallback={<Loader />}>
               <SqlLab />
             </Suspense>
@@ -96,9 +100,5 @@ export default function OverlayContent({ type, id }: OverlayContentProps) {
     }
   };
 
-  return (
-    <Box sx={{ height: "100%", overflow: "auto" }}>
-      {renderContent()}
-    </Box>
-  );
+  return <Box sx={{ height: "100%", overflow: "auto" }}>{renderContent()}</Box>;
 }

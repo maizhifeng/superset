@@ -38,7 +38,9 @@ test("handleSizeChange updates width in nodeMap", () => {
     useDashboardLayout({
       dashboardId: "d1",
       nodeMap,
-      chartMeta: { 1: { slice_name: "Test", datasource_id: 26, viz_type: "table" } as any },
+      chartMeta: {
+        1: { slice_name: "Test", datasource_id: 26, viz_type: "table" } as any,
+      },
       onNodeMapChange,
     }),
   );
@@ -76,7 +78,9 @@ test("setFullPosition stores data on the ref", () => {
       onNodeMapChange,
     }),
   );
-  const pos = { ROOT_ID: { id: "ROOT_ID", type: "ROOT", children: ["GRID_ID"] } };
+  const pos = {
+    ROOT_ID: { id: "ROOT_ID", type: "ROOT", children: ["GRID_ID"] },
+  };
   act(() => result.current.setFullPosition(pos));
   expect(result.current.fullPositionRef.current).toEqual(pos);
 });

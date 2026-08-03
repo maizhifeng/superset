@@ -33,14 +33,23 @@ export default function AgentStatusBar({
     const wsUrl =
       import.meta.env.VITE_PI_AGENT_WS_URL || "ws://localhost:9000/agent/ws";
     const ws = new WebSocket(wsUrl);
-    ws.onopen = () => { setWsConnected(true); ws.close(); };
+    ws.onopen = () => {
+      setWsConnected(true);
+      ws.close();
+    };
     ws.onerror = () => setWsConnected(false);
     const timer = setInterval(() => {
       const probe = new WebSocket(wsUrl);
-      probe.onopen = () => { setWsConnected(true); probe.close(); };
+      probe.onopen = () => {
+        setWsConnected(true);
+        probe.close();
+      };
       probe.onerror = () => setWsConnected(false);
     }, 30000);
-    return () => { ws.close(); clearInterval(timer); };
+    return () => {
+      ws.close();
+      clearInterval(timer);
+    };
   }, []);
 
   const handleLogout = useCallback(() => {

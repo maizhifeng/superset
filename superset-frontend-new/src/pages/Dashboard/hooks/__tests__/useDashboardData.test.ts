@@ -1,6 +1,9 @@
 import { test, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useDashboardData, parseChartConfig } from "@/pages/Dashboard/hooks/useDashboardData";
+import {
+  useDashboardData,
+  parseChartConfig,
+} from "@/pages/Dashboard/hooks/useDashboardData";
 
 vi.mock("@/api", () => ({
   default: {
@@ -24,7 +27,7 @@ test("parseChartConfig parses form_data string", () => {
     datasource_type: "table",
     form_data: JSON.stringify({ metrics: ["count"], groupby: ["platform"] }),
   };
-  const result = parseChartConfig(chart as any);
+  const result = parseChartConfig(chart);
   expect(result.metrics).toEqual(["count"]);
   expect(result.groupby).toEqual(["platform"]);
   expect(result.datasource).toBe("42__table");
@@ -39,7 +42,7 @@ test("parseChartConfig handles missing form_data gracefully", () => {
     datasource_type: "table",
     form_data: undefined,
   };
-  const result = parseChartConfig(chart as any);
+  const result = parseChartConfig(chart);
   expect(result.datasource).toBe("99__table");
 });
 
@@ -53,12 +56,14 @@ test("initial state has empty chart data", () => {
 test("chart data can be set externally", () => {
   const { result } = renderHook(() => useDashboardData());
   act(() => {
-    result.current.setChartMeta({ 1: { id: 1, slice_name: "c1", viz_type: "bar" } as any });
+    result.current.setChartMeta({
+      1: { id: 1, slice_name: "c1", viz_type: "bar" },
+    });
   });
   expect(result.current.chartMeta[1].slice_name).toBe("c1");
 
   act(() => {
-    result.current.setChartData({ 1: { data: [{ a: 1 }] } as any });
+    result.current.setChartData({ 1: { data: [{ a: 1 }] } });
   });
   expect(result.current.chartData[1]).toEqual({ data: [{ a: 1 }] });
 
@@ -86,7 +91,7 @@ const buildChart = (id: number, dsId: number) => ({
 });
 
 const mockPost = (api: any, detail: any[], total: any) => {
-  (api.post as any).mockResolvedValue({
+  api.post.mockResolvedValue({
     data: { result: [{ data: detail }, { data: [total] }] },
   });
 };
@@ -96,10 +101,10 @@ test("federated dataset uses backend total row without client override", async (
   mockPost(
     api.default,
     [
-      { dim: "a", sum__x: 10, "分成后流水": 5 },
-      { dim: "b", sum__x: 20, "分成后流水": 6 },
+      { dim: "a", sum__x: 10, 分成后流水: 5 },
+      { dim: "b", sum__x: 20, 分成后流水: 6 },
     ],
-    { "分成后流水": 999 }, // backend cross-DB grand total
+    { 分成后流水: 999 }, // backend cross-DB grand total
   );
 
   const { result } = renderHook(() => useDashboardData());
@@ -118,10 +123,10 @@ test("non-federated dataset sums computed column from detail rows", async () => 
   mockPost(
     api.default,
     [
-      { dim: "a", sum__x: 10, "分成后流水": 5 },
-      { dim: "b", sum__x: 20, "分成后流水": 6 },
+      { dim: "a", sum__x: 10, 分成后流水: 5 },
+      { dim: "b", sum__x: 20, 分成后流水: 6 },
     ],
-    { "分成后流水": 0 },
+    { 分成后流水: 0 },
   );
 
   const { result } = renderHook(() => useDashboardData());

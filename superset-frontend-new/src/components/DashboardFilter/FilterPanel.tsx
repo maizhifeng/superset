@@ -15,6 +15,14 @@ import rison from "rison";
 import api from "@/api";
 import { isFederatedDataset } from "@/config/federatedDatasets";
 import type { FilterConfig, FilterState } from "./types";
+import {
+  buildSiblingFilters,
+  lsLoad,
+  lsSave,
+  pendingFetches,
+  useRefreshNotify,
+  valuesCache,
+} from "./filterValuesCache";
 
 interface FilterPanelProps {
   filters: FilterConfig[];
@@ -38,84 +46,6 @@ function formatTimeLabel(v: unknown): string {
   return s;
 }
 
-const valuesCache = new Map<string, { label: string; value: string }[]>();
-const pendingFetches = new Map<string, Promise<void>>();
-
-let refreshVersion = 0;
-const refreshSubs = new Set<() => void>();
-
-const LS_PREFIX = "superset_fv_";
-const LS_TTL = 5 * 60 * 1000;
-
-function lsKey(datasetId: number, column: string): string {
-  return `${LS_PREFIX}${datasetId}:${column}`;
-}
-
-function lsLoad(datasetId: number, column: string): { label: string; value: string }[] | null {
-  try {
-    const raw = localStorage.getItem(lsKey(datasetId, column));
-    if (!raw) return null;
-    const entry = JSON.parse(raw) as { ts: number; data: { label: string; value: string }[] };
-    if (Date.now() - entry.ts > LS_TTL) {
-      localStorage.removeItem(lsKey(datasetId, column));
-      return null;
-    }
-    return entry.data;
-  } catch {
-    return null;
-  }
-}
-
-function lsSave(datasetId: number, column: string, data: { label: string; value: string }[]): void {
-  try {
-    localStorage.setItem(lsKey(datasetId, column), JSON.stringify({ ts: Date.now(), data }));
-  } catch {
-    /* storage full */
-  }
-}
-
-export function clearFilterValuesCache(clearStorage = true): void {
-  valuesCache.clear();
-  if (!clearStorage) return;
-  const prefix = LS_PREFIX;
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i);
-    if (key?.startsWith(prefix)) localStorage.removeItem(key);
-  }
-}
-
-export function refreshFilterValues(): void {
-  clearFilterValuesCache();
-  refreshVersion++;
-  for (const fn of refreshSubs) fn();
-}
-
-function useRefreshNotify(onRefresh: () => void): void {
-  useEffect(() => {
-    refreshSubs.add(onRefresh);
-    return () => { refreshSubs.delete(onRefresh); };
-  }, [onRefresh]);
-}
-
-export function buildSiblingFilters(
-  filter: FilterConfig,
-  allFilters: FilterConfig[],
-  filterState: FilterState,
-): { col: string; op: string; val: unknown }[] {
-  const result: { col: string; op: string; val: unknown }[] = [];
-  for (const f of allFilters) {
-    if (f.datasetId !== filter.datasetId) continue;
-    if (f.column === filter.column) continue;
-    if (f.filterType !== "value" && f.filterType !== "filter_select") continue;
-    const raw = filterState[f.id]?.value;
-    if (raw === undefined || raw === null || raw === "") continue;
-    const vals = Array.isArray(raw) ? (raw as unknown[]) : [raw];
-    if (vals.length === 0) continue;
-    result.push({ col: f.column, op: "in", val: vals });
-  }
-  return result;
-}
-
 function FilterSelect({
   filter,
   value,
@@ -136,16 +66,15 @@ function FilterSelect({
   const [searchTerm, setSearchTerm] = useState("");
   const [fetchKey, setFetchKey] = useState(0);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const latestRef = useRef({ filter, allFilters, filterState });
+  latestRef.current = { filter, allFilters, filterState };
 
   useRefreshNotify(useCallback(() => setFetchKey((k) => k + 1), []));
 
   const fetchValues = useCallback(
     async (search: string) => {
-      const siblingFilters = buildSiblingFilters(
-        filter,
-        allFilters,
-        filterState,
-      );
+      const { filter: f, allFilters: af, filterState: fs } = latestRef.current;
+      const siblingFilters = buildSiblingFilters(f, af, fs);
 
       if (search) {
         setLoading(true);
@@ -163,7 +92,13 @@ function FilterSelect({
             : `/datasource/table/${filter.datasetId}/column/${encodeURIComponent(filter.column)}/values/?q=${rison.encode(q)}`;
           const res = await api.get(path);
           const raw: unknown[] = res.data?.result || [];
-          const vals = raw.filter((v): v is string => v != null).map((v) => ({ value: String(v), label: filter.columnType === "time" ? formatTimeLabel(v) : String(v) }));
+          const vals = raw
+            .filter((v): v is string => v != null)
+            .map((v) => ({
+              value: String(v),
+              label:
+                filter.columnType === "time" ? formatTimeLabel(v) : String(v),
+            }));
           setOptions(vals);
         } catch {
           setOptions([]);
@@ -217,7 +152,8 @@ function FilterSelect({
             .filter((v): v is string => v != null)
             .map((v) => ({
               value: String(v),
-              label: filter.columnType === "time" ? formatTimeLabel(v) : String(v),
+              label:
+                filter.columnType === "time" ? formatTimeLabel(v) : String(v),
             }));
           valuesCache.set(cacheKey, vals);
           lsSave(filter.datasetId, filter.column, vals);
@@ -236,13 +172,13 @@ function FilterSelect({
   );
 
   useEffect(() => {
-    fetchValues("");
+    void fetchValues("");
   }, [fetchValues, fetchKey]);
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
-      fetchValues(searchTerm);
+      void fetchValues(searchTerm);
     }, 300);
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);

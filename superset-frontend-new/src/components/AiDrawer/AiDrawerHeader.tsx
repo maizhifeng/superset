@@ -58,7 +58,13 @@ export default function AiDrawerHeader({
         )}
       </Box>
       {showSettings && (
-        <IconButton size="small" onClick={onSettings} sx={{ mr: 0.25 }}>
+        <IconButton
+          size="small"
+          onClick={onSettings}
+          aria-label="设置"
+          data-testid="SettingsIcon"
+          sx={{ mr: 0.25 }}
+        >
           <SettingsIcon sx={{ fontSize: 20 }} />
         </IconButton>
       )}

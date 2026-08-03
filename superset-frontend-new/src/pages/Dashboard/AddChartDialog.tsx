@@ -116,9 +116,7 @@ export default function AddChartDialog({
         )}
         {!loading && !error && filtered.length === 0 && (
           <Box sx={{ textAlign: "center", py: 4, color: "text.secondary" }}>
-            {search
-              ? "没有匹配的图表"
-              : "没有可添加的图表"}
+            {search ? "没有匹配的图表" : "没有可添加的图表"}
           </Box>
         )}
         <List dense sx={{ maxHeight: 360, overflow: "auto" }}>

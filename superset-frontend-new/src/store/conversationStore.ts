@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { ConversationThread, ConversationMessage } from "@/components/AiDrawer/types";
+import type {
+  ConversationThread,
+  ConversationMessage,
+} from "@/components/AiDrawer/types";
 
 const MAX_THREADS = 20;
 const MAX_MESSAGES_PER_THREAD = 100;
@@ -20,7 +23,11 @@ interface ConversationState {
   createThread: (context?: ConversationThread["context"]) => string;
   deleteThread: (id: string) => void;
   switchThread: (id: string) => void;
-  addMessage: (threadId: string, role: "user" | "assistant", content: ConversationMessage["content"]) => void;
+  addMessage: (
+    threadId: string,
+    role: "user" | "assistant",
+    content: ConversationMessage["content"],
+  ) => void;
   getActiveThread: () => ConversationThread | undefined;
 }
 
@@ -51,7 +58,7 @@ export const useConversationStore = create<ConversationState>()(
           const threads = state.threads.filter((t) => t.id !== id);
           const activeThreadId =
             state.activeThreadId === id
-              ? threads[0]?.id ?? null
+              ? (threads[0]?.id ?? null)
               : state.activeThreadId;
           return { threads, activeThreadId };
         });
@@ -71,9 +78,13 @@ export const useConversationStore = create<ConversationState>()(
               content,
               timestamp: Date.now(),
             };
-            const messages = [...t.messages, msg].slice(-MAX_MESSAGES_PER_THREAD);
+            const messages = [...t.messages, msg].slice(
+              -MAX_MESSAGES_PER_THREAD,
+            );
             const title =
-              t.messages.length === 0 && role === "user" && content.type === "text"
+              t.messages.length === 0 &&
+              role === "user" &&
+              content.type === "text"
                 ? content.body.slice(0, 60)
                 : t.title;
             return { ...t, messages, title };

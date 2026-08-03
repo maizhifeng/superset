@@ -21,7 +21,11 @@ interface MessageBubbleProps {
   onRetry?: () => void;
 }
 
-export default function MessageBubble({ role, content, onRetry }: MessageBubbleProps) {
+export default function MessageBubble({
+  role,
+  content,
+  onRetry,
+}: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const isUser = role === "user";
 
@@ -74,7 +78,10 @@ export default function MessageBubble({ role, content, onRetry }: MessageBubbleP
             <TableHead>
               <TableRow>
                 {content.columns.map((col) => (
-                  <TableCell key={col} sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+                  <TableCell
+                    key={col}
+                    sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+                  >
                     {col}
                   </TableCell>
                 ))}
@@ -175,7 +182,7 @@ export default function MessageBubble({ role, content, onRetry }: MessageBubbleP
                     : content.type === "sql"
                       ? content.sql
                       : "";
-                handleCopy(text);
+                void handleCopy(text);
               }}
               sx={{ width: 24, height: 24 }}
             >

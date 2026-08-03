@@ -48,7 +48,8 @@ function loadPresets(): AiPreset[] {
       provider: p.provider,
       model: p.model,
       baseUrl: p.baseUrl,
-      agentModel: (p as unknown as Record<string, unknown>).agentModel as string | undefined,
+      agentModel: (p as unknown as Record<string, unknown>).agentModel as
+        string | undefined,
     }));
   const changed =
     cleaned.length !== presets.length ||

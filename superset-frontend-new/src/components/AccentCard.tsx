@@ -19,10 +19,7 @@ export default function AccentCard({
   children,
 }: AccentCardProps) {
   return (
-    <Card
-      onClick={onClick}
-      sx={{ p: 3, cursor: "pointer" }}
-    >
+    <Card onClick={onClick} sx={{ p: 3, cursor: "pointer" }}>
       {icon && (
         <Box
           sx={{

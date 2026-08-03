@@ -69,6 +69,7 @@ export function usePaginatedList<T>(
   const searchLoaded = useRef(false);
   const sortLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const abortRef = useRef<AbortController | null>(null);
 
   const configRef = useRef({
     endpoint,
@@ -81,6 +82,9 @@ export function usePaginatedList<T>(
   const fetchData = useCallback(() => {
     const { endpoint, filterColumn, errorMessage, sortFieldMap } =
       configRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
 
@@ -103,17 +107,28 @@ export function usePaginatedList<T>(
       }),
     });
     api
-      .get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`)
+      .get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`, {
+        signal: controller.signal,
+      })
       .then((res) => {
+        if (controller.signal.aborted) return;
         setRows(res.data.result);
         setRowCount(res.data.count);
         setLoading(false);
       })
       .catch((err) => {
+        if (controller.signal.aborted) return;
         setError(parseErrorMessage(err, errorMessage));
         setLoading(false);
       });
   }, [paginationModel, searchText, sortModel]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchData();

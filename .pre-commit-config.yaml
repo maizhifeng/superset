@@ -93,6 +93,27 @@ repos:
         language: system
         files: ^superset-frontend\/.*\.(js|jsx|ts|tsx)$
         exclude: ^superset-frontend/cypress-base\/
+  - repo: local
+    hooks:
+      - id: prettier-frontend-new
+        name: prettier (frontend-new)
+        entry: bash -c 'cd superset-frontend-new && for file in "$@"; do npx prettier --write "${file#superset-frontend-new/}"; done'
+        language: system
+        pass_filenames: true
+        files: ^superset-frontend-new/.*\.(js|jsx|ts|tsx|css|scss|sass|json)$
+      - id: eslint-frontend-new
+        name: eslint (frontend-new)
+        entry: bash -c 'cd superset-frontend-new && FILES=$(printf "%s\n" "$@" | sed "s|^superset-frontend-new/||" | tr "\n" " ") && npx eslint --fix $FILES'
+        language: system
+        pass_filenames: true
+        files: ^superset-frontend-new/.*\.(ts|tsx)$
+      - id: type-checking-frontend-new
+        name: Type-Checking (frontend-new)
+        entry: bash -c 'cd superset-frontend-new && npx tsc --noEmit'
+        language: system
+        pass_filenames: false
+        files: ^superset-frontend-new/.*\.(ts|tsx)$
+        exclude: ^superset-frontend/cypress-base\/
         require_serial: true
   # blacklist unsafe functions like make_url (see #19526)
   - repo: https://github.com/skorokithakis/blacklist-pre-commit-hook

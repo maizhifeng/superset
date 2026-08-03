@@ -95,16 +95,12 @@ export default function UserMenu({
           </ListItemIcon>
           设置
         </MenuItem>
-        <MenuItem
-          dense
-          onClick={toggleTheme}
-          sx={{ fontSize: "0.8125rem" }}
-        >
+        <MenuItem dense onClick={toggleTheme} sx={{ fontSize: "0.8125rem" }}>
           <ListItemIcon sx={{ minWidth: 28 }}>
             <PaletteIcon sx={{ fontSize: 18 }} />
           </ListItemIcon>
           <ListItemText>
-             切换至: {themeMode === "paper" ? "Notion" : "纸本"}
+            切换至: {themeMode === "paper" ? "Notion" : "纸本"}
           </ListItemText>
         </MenuItem>
         <Divider />

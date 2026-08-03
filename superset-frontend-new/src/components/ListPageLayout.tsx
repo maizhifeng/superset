@@ -25,7 +25,11 @@ export default function ListPageLayout({
   if (loading && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {skeleton ?? <Box sx={{ mt: 2 }}><TableSkeleton /></Box>}
+        {skeleton ?? (
+          <Box sx={{ mt: 2 }}>
+            <TableSkeleton />
+          </Box>
+        )}
       </Box>
     );
   }
@@ -33,7 +37,11 @@ export default function ListPageLayout({
   if (error && !hasData) {
     return (
       <Box sx={{ p: 3, pt: 2 }}>
-        {errorAlert ?? <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+        {errorAlert ?? (
+          <Alert severity="error" sx={{ borderRadius: 2 }}>
+            {error}
+          </Alert>
+        )}
       </Box>
     );
   }
@@ -50,7 +58,11 @@ export default function ListPageLayout({
         pt: { xs: 1.5, md: 2 },
       }}
     >
-      {error && <Alert severity="error" sx={{ mx: 3, mt: 2, borderRadius: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mx: 3, mt: 2, borderRadius: 2 }}>
+          {error}
+        </Alert>
+      )}
       {!hasData ? emptyState : children}
     </Box>
   );

@@ -130,13 +130,19 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     set({ token: accessToken, user: userData, isAuthenticated: true });
     setupTokenRefresh();
     await _get().fetchRoles();
-    fetchCsrfToken();
+    void fetchCsrfToken();
   },
 
   logout: () => {
     clearAuthAndBackup();
     cancelTokenRefresh();
-    set({ token: null, user: null, isAuthenticated: false, loading: false, isSwitchedUser: false });
+    set({
+      token: null,
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      isSwitchedUser: false,
+    });
   },
 
   setToken: (token: string | null) => {
@@ -150,9 +156,11 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     }
     cancelTokenRefresh();
     try {
-      const res = await api.get<
-        { access_token: string; refresh_token?: string; roles?: string[] }
-      >(`/me/impersonate/?username=${encodeURIComponent(username)}`);
+      const res = await api.get<{
+        access_token: string;
+        refresh_token?: string;
+        roles?: string[];
+      }>(`/me/impersonate/?username=${encodeURIComponent(username)}`);
       const accessToken = res.data?.access_token;
       if (!accessToken) {
         throw new Error("切换失败");
@@ -235,4 +243,4 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   },
 }));
 
-useAuthStore.getState().init();
+void useAuthStore.getState().init();

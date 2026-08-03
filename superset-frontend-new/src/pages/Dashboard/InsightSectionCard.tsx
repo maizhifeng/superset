@@ -13,7 +13,11 @@ interface InsightSectionCardProps {
   defaultCollapsed?: boolean;
 }
 
-export default function InsightSectionCard({ title, content, defaultCollapsed }: InsightSectionCardProps) {
+export default function InsightSectionCard({
+  title,
+  content,
+  defaultCollapsed,
+}: InsightSectionCardProps) {
   const [open, setOpen] = useState(!defaultCollapsed);
   const notify = useNotificationStore((s) => s.notify);
 
@@ -27,7 +31,14 @@ export default function InsightSectionCard({ title, content, defaultCollapsed }:
   };
 
   return (
-    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1.5, overflow: "hidden" }}>
+    <Box
+      sx={{
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1.5,
+        overflow: "hidden",
+      }}
+    >
       <Box
         onClick={() => setOpen((v) => !v)}
         sx={{
@@ -40,12 +51,19 @@ export default function InsightSectionCard({ title, content, defaultCollapsed }:
           userSelect: "none",
         }}
       >
-        <Typography variant="caption" color="text.secondary" sx={{ flex: 1, fontWeight: 600 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ flex: 1, fontWeight: 600 }}
+        >
           {title}
         </Typography>
         <IconButton
           size="small"
-          onClick={(e) => { e.stopPropagation(); handleCopy(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleCopy();
+          }}
           sx={{ mr: 0.5 }}
         >
           <ContentCopy sx={{ fontSize: 16 }} />
@@ -60,11 +78,22 @@ export default function InsightSectionCard({ title, content, defaultCollapsed }:
         />
       </Box>
       <Collapse in={open}>
-        <Box sx={{ px: 1.5, py: 1, borderTop: "1px solid", borderColor: "divider" }}>
+        <Box
+          sx={{
+            px: 1.5,
+            py: 1,
+            borderTop: "1px solid",
+            borderColor: "divider",
+          }}
+        >
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.6 }}
+            sx={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              lineHeight: 1.6,
+            }}
           >
             {content}
           </Typography>

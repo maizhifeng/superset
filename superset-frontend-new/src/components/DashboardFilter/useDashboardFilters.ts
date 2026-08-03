@@ -81,9 +81,7 @@ export default function useDashboardFilters(
     return autoDimensions.map((dim, idx) => ({
       id: `dim_${idx}`,
       name: dim.name,
-      filterType: (dim.columnType === "time"
-        ? "time_range"
-        : "value") as FilterConfig["filterType"],
+      filterType: dim.columnType === "time" ? "time_range" : "value",
       datasetId: dim.datasetId,
       column: dim.column,
       columnType: dim.columnType,

@@ -28,7 +28,7 @@ test("openAiDrawer opens with assistant mode", () => {
 test("openAiDrawer opens with insight mode and insight opts", () => {
   useDrawerStore.getState().openAiDrawer("insight", {
     chartId: 42,
-    chartMeta: { id: 42, slice_name: "test", viz_type: "bar" } as any,
+    chartMeta: { id: 42, slice_name: "test", viz_type: "bar" },
     filters: { f1: { value: "x", column: "c1", filterType: "==" } },
     dashboardId: "d1",
   });
@@ -46,7 +46,7 @@ test("closeAiDrawer resets insight state", () => {
   useDrawerStore.setState({
     aiDrawerOpen: true,
     insightChartId: 10,
-    insightChartMeta: { id: 10, slice_name: "x", viz_type: "line" } as any,
+    insightChartMeta: { id: 10, slice_name: "x", viz_type: "line" },
     insightFilters: { f: { value: 1, column: "c", filterType: ">" } },
   });
   useDrawerStore.getState().closeAiDrawer();

@@ -9,7 +9,10 @@ interface KnowledgeCardsProps {
   onClick: (card: KnowledgeCard) => void;
 }
 
-export default function KnowledgeCards({ cards, onClick }: KnowledgeCardsProps) {
+export default function KnowledgeCards({
+  cards,
+  onClick,
+}: KnowledgeCardsProps) {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <Typography
@@ -45,7 +48,14 @@ export default function KnowledgeCards({ cards, onClick }: KnowledgeCardsProps) 
             },
           }}
         >
-          <Box sx={{ color: "primary.main", display: "flex", alignItems: "flex-start", pt: 0.25 }}>
+          <Box
+            sx={{
+              color: "primary.main",
+              display: "flex",
+              alignItems: "flex-start",
+              pt: 0.25,
+            }}
+          >
             {card.icon}
           </Box>
           <Box sx={{ minWidth: 0 }}>

@@ -24,15 +24,17 @@ interface UsePiAgentReturn {
 // Module-level singleton state (no React hooks involved)
 let _client: PiAgentClient | null = null;
 let _sessionId: string | null = null;
-let _textBuffers = new Map<string, string>();
-let _thinkingBuffers = new Map<string, string>();
-type ReasoningState = 'streaming' | 'done';
-let _reasoningState = new Map<string, ReasoningState>();
-let _runningSessions = new Set<string>();
-let _completedThinking = new Map<string, string>();
+const _textBuffers = new Map<string, string>();
+const _thinkingBuffers = new Map<string, string>();
+type ReasoningState = "streaming" | "done";
+const _reasoningState = new Map<string, ReasoningState>();
+const _runningSessions = new Set<string>();
+const _completedThinking = new Map<string, string>();
 let _listenerInstalled = false;
 let _modelList: { id: string; name?: string }[] = [];
-let _modelListUpdaters = new Set<(models: { id: string; name?: string }[]) => void>();
+const _modelListUpdaters = new Set<
+  (models: { id: string; name?: string }[]) => void
+>();
 const _updaters = new Set<() => void>();
 
 function notifyUpdaters() {
@@ -55,50 +57,51 @@ function installListener(userId: string) {
       case "agent_start":
         _textBuffers.set(sid, "");
         _thinkingBuffers.set(sid, "");
-        _reasoningState.set(sid, 'streaming');
+        _reasoningState.set(sid, "streaming");
         _runningSessions.add(sid);
         break;
 
       case "message_update":
-          if (event.assistantMessageEvent.type === "text_delta") {
-            const delta = event.assistantMessageEvent.delta;
-            const buf = _textBuffers.get(sid) ?? "";
-            // first text_delta: transition reasoning streaming→done (idempotent)
-            if (!buf && _reasoningState.get(sid) === 'streaming') {
-              const thought = _thinkingBuffers.get(sid);
-              if (thought && thought.length > 0) {
-                _reasoningState.set(sid, 'done');
-              }
+        if (event.assistantMessageEvent.type === "text_delta") {
+          const delta = event.assistantMessageEvent.delta;
+          const buf = _textBuffers.get(sid) ?? "";
+          // first text_delta: transition reasoning streaming→done (idempotent)
+          if (!buf && _reasoningState.get(sid) === "streaming") {
+            const thought = _thinkingBuffers.get(sid);
+            if (thought && thought.length > 0) {
+              _reasoningState.set(sid, "done");
             }
-            _textBuffers.set(sid, buf + delta);
           }
-          break;
+          _textBuffers.set(sid, buf + delta);
+        }
+        break;
 
       case "thinking_delta":
-          if ((event as any).delta) {
-            const delta = (event as any).delta;
-            const buf = _thinkingBuffers.get(sid) ?? "";
-            _thinkingBuffers.set(sid, buf + delta);
-          }
-          break;
+        if ((event as any).delta) {
+          const delta = (event as any).delta;
+          const buf = _thinkingBuffers.get(sid) ?? "";
+          _thinkingBuffers.set(sid, buf + delta);
+        }
+        break;
 
       case "tool_execution_start": {
-        const toolName = (event.toolName as string) || "query_superset";
-        const stepType: StepType = toolName === "get_dataset_schema" ? "schema" : "query";
+        const toolName = event.toolName || "query_superset";
+        const stepType: StepType =
+          toolName === "get_dataset_schema" ? "schema" : "query";
         const args = event.args as Record<string, unknown> | undefined;
 
         // Generate human-readable description from tool args
-          let description = toolName;
-          if (toolName === "query_superset" && args) {
-            const c = args.columns as string[] | undefined;
-            const m = args.metrics as string[] | undefined;
-            const t = args.time_range as string | undefined;
-            const parts: string[] = [];
-            if (c && c.length > 0) parts.push(`维度:${c.join(",")}`);
-            if (m && m.length > 0) parts.push(`指标:${m.length}`);
-            if (t) parts.push(t);
-            description = parts.length > 0 ? parts.join(" | ") : toolName;
-          }
+        let description = toolName;
+        if (toolName === "query_superset" && args) {
+          const c = args.columns as string[] | undefined;
+          const m = args.metrics as string[] | undefined;
+          const t = args.time_range as string | undefined;
+          const parts: string[] = [];
+          if (c && c.length > 0) parts.push(`维度:${c.join(",")}`);
+          if (m && m.length > 0) parts.push(`指标:${m.length}`);
+          if (t) parts.push(t);
+          description = parts.length > 0 ? parts.join(" | ") : toolName;
+        }
 
         const step: AgentStep = {
           id: event.toolCallId,
@@ -116,7 +119,12 @@ function installListener(userId: string) {
         const stepTimestamp = Date.now();
         const rawResult = event.result as string | undefined;
 
-        const duration = stepTimestamp - (store.getActiveSession()?.steps.find((s) => s.id === event.toolCallId)?.timestamp ?? stepTimestamp);
+        const duration =
+          stepTimestamp -
+          (store
+            .getActiveSession()
+            ?.steps.find((s) => s.id === event.toolCallId)?.timestamp ??
+            stepTimestamp);
         store.updateStep(sid, event.toolCallId, {
           status: "done",
           result: rawResult?.slice(0, 500),
@@ -127,14 +135,15 @@ function installListener(userId: string) {
 
       case "agent_end": {
         _runningSessions.delete(sid);
-        _reasoningState.set(sid, 'done');
+        _reasoningState.set(sid, "done");
         const finishedThinking = _thinkingBuffers.get(sid) ?? "";
         if (finishedThinking) {
           _completedThinking.set(sid, finishedThinking);
         }
         // if text never arrived, use thinking content as the answer
         const textContent = _textBuffers.get(sid) ?? "";
-        const summary = (event as any).finalText || textContent || finishedThinking || "";
+        const summary =
+          (event as any).finalText || textContent || finishedThinking || "";
         store.addMessage(sid, "assistant", {
           type: "agent_done",
           steps: store.getActiveSession()?.steps ?? [],
@@ -171,9 +180,13 @@ export function usePiAgent(): UsePiAgentReturn {
   const [isRunning, setIsRunning] = useState(_runningSessions.size > 0);
   const [currentText, setCurrentText] = useState("");
   const [currentThinking, setCurrentThinking] = useState("");
-  const savedModel = typeof window !== "undefined" ? localStorage.getItem("pi_agent_model") || "gemma-4-e2b-it" : "gemma-4-e2b-it";
+  const savedModel =
+    typeof window !== "undefined"
+      ? localStorage.getItem("pi_agent_model") || "gemma-4-e2b-it"
+      : "gemma-4-e2b-it";
   const [currentModel, setCurrentModel] = useState(savedModel);
-  const [modelList, setModelList] = useState<{ id: string; name?: string }[]>(_modelList);
+  const [modelList, setModelList] =
+    useState<{ id: string; name?: string }[]>(_modelList);
   const [steps, setSteps] = useState<AgentStep[]>([]);
 
   // Stable hooks to avoid HMR reorder issues — always 4 useState + 1 callback ref
@@ -188,11 +201,13 @@ export function usePiAgent(): UsePiAgentReturn {
   });
 
   useEffect(() => {
-    _updaters.add(callbackRef.current);
-    const modelUpdater = (models: { id: string; name?: string }[]) => setModelList(models);
+    const cb = callbackRef.current;
+    _updaters.add(cb);
+    const modelUpdater = (models: { id: string; name?: string }[]) =>
+      setModelList(models);
     _modelListUpdaters.add(modelUpdater);
     return () => {
-      _updaters.delete(callbackRef.current);
+      _updaters.delete(cb);
       _modelListUpdaters.delete(modelUpdater);
     };
   }, []);
@@ -224,7 +239,10 @@ export function usePiAgent(): UsePiAgentReturn {
 
     const user = useAuthStore.getState().user;
     installListener(user?.username ?? "anonymous");
-    const restored = typeof window !== "undefined" ? localStorage.getItem("pi_agent_model") : null;
+    const restored =
+      typeof window !== "undefined"
+        ? localStorage.getItem("pi_agent_model")
+        : null;
     if (restored && restored !== "gemma-4-e2b-it") {
       _client?.setModel(restored);
     }
@@ -251,10 +269,17 @@ export function usePiAgent(): UsePiAgentReturn {
     setIsConnected(false);
   }, []);
 
-  const isSessionRunning = useCallback((sessionId: string) => _runningSessions.has(sessionId), []);
+  const isSessionRunning = useCallback(
+    (sessionId: string) => _runningSessions.has(sessionId),
+    [],
+  );
 
   const setModel = useCallback((model: string) => {
-    try { localStorage.setItem("pi_agent_model", model); } catch {}
+    try {
+      localStorage.setItem("pi_agent_model", model);
+    } catch {
+      /* storage unavailable */
+    }
     _client?.setModel(model);
     setCurrentModel(model);
   }, []);
@@ -262,7 +287,22 @@ export function usePiAgent(): UsePiAgentReturn {
   const sid = _sessionId;
   const completionThinking = sid ? _completedThinking.get(sid) : undefined;
   const displayThinking = currentThinking || completionThinking || "";
-  const isThinkingDone = sid ? _reasoningState.get(sid) === 'done' : false;
+  const isThinkingDone = sid ? _reasoningState.get(sid) === "done" : false;
 
-  return { isConnected, isRunning, currentText, currentThinking: displayThinking, isThinkingDone, currentModel, modelList, steps, sendMessage, setModel, abort, connect, disconnect, isSessionRunning };
+  return {
+    isConnected,
+    isRunning,
+    currentText,
+    currentThinking: displayThinking,
+    isThinkingDone,
+    currentModel,
+    modelList,
+    steps,
+    sendMessage,
+    setModel,
+    abort,
+    connect,
+    disconnect,
+    isSessionRunning,
+  };
 }

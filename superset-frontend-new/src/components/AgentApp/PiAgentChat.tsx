@@ -1,7 +1,17 @@
-import { forwardRef, useCallback, useRef, useState, useMemo, useEffect } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useRef,
+  useState,
+  useMemo,
+  useEffect,
+} from "react";
 import { useTheme } from "@mui/material/styles";
 import { ChatBox } from "@mui/x-chat";
-import type { ChatPartRendererProps, ChatPartRenderer } from "@mui/x-chat-headless";
+import type {
+  ChatPartRendererProps,
+  ChatPartRenderer,
+} from "@mui/x-chat-headless";
 import type {
   ChatReasoningMessagePart,
   ChatConversation,
@@ -28,154 +38,156 @@ import { useAuthStore } from "@/store/authStore";
 import { useAgentStore } from "@/store/agentStore";
 import { getAgentModel, setAgentModel } from "@/config/aiConfig";
 
-const reasoningRenderer: ChatPartRenderer<ChatReasoningMessagePart> =
-  ({ part }: ChatPartRendererProps<ChatReasoningMessagePart>) => {
-    const streaming = part.state === "streaming";
-    return (
+const reasoningRenderer: ChatPartRenderer<ChatReasoningMessagePart> = ({
+  part,
+}: ChatPartRendererProps<ChatReasoningMessagePart>) => {
+  const streaming = part.state === "streaming";
+  return (
+    <Box
+      component="details"
+      open={streaming}
+      sx={{
+        my: 1,
+        bgcolor: "grey.50",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 2,
+      }}
+    >
       <Box
-        component="details"
-        open={streaming}
+        component="summary"
         sx={{
-          my: 1,
-          bgcolor: "grey.50",
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 2,
+          fontWeight: 600,
+          color: streaming ? "text.secondary" : "success.main",
+          fontSize: "0.75rem",
+          py: 0.75,
+          px: 1.5,
+          cursor: "pointer",
         }}
       >
-        <Box
-          component="summary"
-          sx={{
-            fontWeight: 600,
-            color: streaming ? "text.secondary" : "success.main",
-            fontSize: "0.75rem",
-            py: 0.75,
-            px: 1.5,
-            cursor: "pointer",
-          }}
-        >
-          {streaming ? "🤔 思考中…" : "💡 思考完成"}
-        </Box>
-        <Box
-          sx={{
-            px: 1.5,
-            pb: 1.5,
-            maxHeight: 120,
-            overflow: "auto",
-          }}
-        >
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              fontSize: "0.75rem",
-              whiteSpace: "pre-wrap",
-              lineHeight: 1.5,
-            }}
-          >
-            {part.text}
-          </Typography>
-        </Box>
+        {streaming ? "🤔 思考中…" : "💡 思考完成"}
       </Box>
-    );
-  };
-
-const toolRenderer: ChatPartRenderer<ChatDynamicToolMessagePart> =
-  ({ part }: ChatPartRendererProps<ChatDynamicToolMessagePart>) => {
-    const ti = part.toolInvocation;
-    const stateLabel =
-      ti.state === "output-available"
-        ? "✅ 完成"
-        : ti.state === "input-available"
-          ? "🔧 调用中"
-          : ti.state === "approval-requested"
-            ? "⚠️ 需要确认"
-            : "⏳ 处理中";
-
-    const outputText =
-      typeof ti.output === "string"
-        ? ti.output
-        : ti.output && typeof ti.output === "object" && "result" in ti.output
-          ? (ti.output as { result: string }).result
-          : "";
-
-    return (
       <Box
-        component="details"
         sx={{
-          my: 0.5,
-          bgcolor: "grey.50",
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 1.5,
+          px: 1.5,
+          pb: 1.5,
+          maxHeight: 120,
+          overflow: "auto",
         }}
       >
-        <Box
-          component="summary"
+        <Typography
+          variant="body2"
           sx={{
-            fontWeight: 500,
-            fontSize: "0.75rem",
             color: "text.secondary",
-            py: 0.5,
-            px: 1.5,
-            cursor: "pointer",
+            fontSize: "0.75rem",
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.5,
           }}
         >
-          {stateLabel} {ti.title ?? ti.toolName}
-        </Box>
-        <Box sx={{ px: 1.5, pb: 1 }}>
-          {ti.input !== undefined && (
-            <>
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 600,
-                  display: "block",
-                  mt: 0.5,
-                  mb: 0.25,
-                  color: "text.secondary",
-                }}
-              >
-                调用参数
-              </Typography>
-              <Typography
-                variant="caption"
-                component="pre"
-                sx={{
-                  fontSize: "0.7rem",
-                  color: "text.secondary",
-                  bgcolor: "grey.100",
-                  p: 1,
-                  borderRadius: 1,
-                  overflow: "auto",
-                  my: 0.5,
-                }}
-              >
-                {JSON.stringify(ti.input, null, 2)}
-              </Typography>
-            </>
-          )}
-          {outputText && (
-            <>
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 600,
-                  display: "block",
-                  mt: ti.input !== undefined ? 1 : 0.5,
-                  mb: 0.25,
-                  color: "text.secondary",
-                }}
-              >
-                执行结果
-              </Typography>
-              {renderOutputContent(outputText)}
-            </>
-          )}
-        </Box>
+          {part.text}
+        </Typography>
       </Box>
-    );
-  };
+    </Box>
+  );
+};
+
+const toolRenderer: ChatPartRenderer<ChatDynamicToolMessagePart> = ({
+  part,
+}: ChatPartRendererProps<ChatDynamicToolMessagePart>) => {
+  const ti = part.toolInvocation;
+  const stateLabel =
+    ti.state === "output-available"
+      ? "✅ 完成"
+      : ti.state === "input-available"
+        ? "🔧 调用中"
+        : ti.state === "approval-requested"
+          ? "⚠️ 需要确认"
+          : "⏳ 处理中";
+
+  const outputText =
+    typeof ti.output === "string"
+      ? ti.output
+      : ti.output && typeof ti.output === "object" && "result" in ti.output
+        ? (ti.output as { result: string }).result
+        : "";
+
+  return (
+    <Box
+      component="details"
+      sx={{
+        my: 0.5,
+        bgcolor: "grey.50",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1.5,
+      }}
+    >
+      <Box
+        component="summary"
+        sx={{
+          fontWeight: 500,
+          fontSize: "0.75rem",
+          color: "text.secondary",
+          py: 0.5,
+          px: 1.5,
+          cursor: "pointer",
+        }}
+      >
+        {stateLabel} {ti.title ?? ti.toolName}
+      </Box>
+      <Box sx={{ px: 1.5, pb: 1 }}>
+        {ti.input !== undefined && (
+          <>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                display: "block",
+                mt: 0.5,
+                mb: 0.25,
+                color: "text.secondary",
+              }}
+            >
+              调用参数
+            </Typography>
+            <Typography
+              variant="caption"
+              component="pre"
+              sx={{
+                fontSize: "0.7rem",
+                color: "text.secondary",
+                bgcolor: "grey.100",
+                p: 1,
+                borderRadius: 1,
+                overflow: "auto",
+                my: 0.5,
+              }}
+            >
+              {JSON.stringify(ti.input, null, 2)}
+            </Typography>
+          </>
+        )}
+        {outputText && (
+          <>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                display: "block",
+                mt: ti.input !== undefined ? 1 : 0.5,
+                mb: 0.25,
+                color: "text.secondary",
+              }}
+            >
+              执行结果
+            </Typography>
+            {renderOutputContent(outputText)}
+          </>
+        )}
+      </Box>
+    </Box>
+  );
+};
 
 function renderOutputContent(text: string) {
   const lines = text.trim().split("\n");
@@ -184,7 +196,7 @@ function renderOutputContent(text: string) {
     lines.length >= 2 &&
     lines[0].trim().startsWith("|") &&
     lines[1].trim().startsWith("|") &&
-    /^[\s|:\-]+$/.test(lines[1].trim())
+    /^[\s|:]+$/.test(lines[1].trim())
   ) {
     const headers = lines[0]
       .split("|")
@@ -198,16 +210,15 @@ function renderOutputContent(text: string) {
     );
     if (headers.length > 0 && rows.length > 0) {
       return (
-        <TableContainer
-          component={Paper}
-          variant="outlined"
-          sx={{ my: 0.5 }}
-        >
+        <TableContainer component={Paper} variant="outlined" sx={{ my: 0.5 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 {headers.map((h, i) => (
-                  <TableCell key={i} sx={{ fontWeight: 600, fontSize: "0.75rem" }}>
+                  <TableCell
+                    key={i}
+                    sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                  >
                     {h}
                   </TableCell>
                 ))}
@@ -263,8 +274,7 @@ const suggestions = [
   },
   {
     label: "游戏分析",
-    value:
-      "对比各游戏的返点后消耗和ROI表现，列出Top 5高ROI和低ROI游戏",
+    value: "对比各游戏的返点后消耗和ROI表现，列出Top 5高ROI和低ROI游戏",
   },
   {
     label: "异常监测",
@@ -275,14 +285,17 @@ const suggestions = [
 
 function ModelSelector() {
   const [open, setOpen] = useState(false);
-  const [modelList, setModelList] = useState<{ id: string; name?: string }[]>([]);
+  const [modelList, setModelList] = useState<{ id: string; name?: string }[]>(
+    [],
+  );
   const [currentModel, setCurrentModel] = useState(getAgentModel());
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -299,7 +312,9 @@ function ModelSelector() {
           setModelList(msg.models);
           ws.close();
         }
-      } catch {}
+      } catch {
+        /* ws closed */
+      }
     };
     ws.onopen = () => {
       const token =
@@ -339,13 +354,17 @@ function ModelSelector() {
           cursor: "pointer",
           fontSize: "0.68rem",
           color: "primary.main",
-          bgcolor: "color-mix(in srgb, var(--mui-palette-accent-teal) 8%, transparent)",
+          bgcolor:
+            "color-mix(in srgb, var(--mui-palette-accent-teal) 8%, transparent)",
           border: "1px solid",
-          borderColor: "color-mix(in srgb, var(--mui-palette-accent-teal) 20%, transparent)",
+          borderColor:
+            "color-mix(in srgb, var(--mui-palette-accent-teal) 20%, transparent)",
           userSelect: "none",
           "&:hover": {
-            bgcolor: "color-mix(in srgb, var(--mui-palette-accent-teal) 12%, transparent)",
-            borderColor: "color-mix(in srgb, var(--mui-palette-accent-teal) 35%, transparent)",
+            bgcolor:
+              "color-mix(in srgb, var(--mui-palette-accent-teal) 12%, transparent)",
+            borderColor:
+              "color-mix(in srgb, var(--mui-palette-accent-teal) 35%, transparent)",
           },
         }}
       >
@@ -402,9 +421,7 @@ function ModelSelector() {
                     ? "color-mix(in srgb, var(--mui-palette-accent-teal) 8%, transparent)"
                     : "transparent",
                 borderLeft:
-                  m.id === currentModel
-                    ? "3px solid"
-                    : "3px solid transparent",
+                  m.id === currentModel ? "3px solid" : "3px solid transparent",
                 borderColor:
                   m.id === currentModel ? "primary.main" : "transparent",
               }}
@@ -453,15 +470,16 @@ function CustomConversationList(_props: Record<string, unknown>) {
   const user = useAuthStore((s) => s.user);
 
   const userAvatar = useMemo(
-    () => avatarDataUrl(((user?.username || "U")[0]).toUpperCase()),
+    () => avatarDataUrl((user?.username || "U")[0].toUpperCase()),
     [user?.username],
   );
 
   const items = useMemo(
-    () => sessions.map((s) => {
-      const conv = sessionToConversation(s, userAvatar);
-      return { ...conv, selected: s.id === activeSessionId };
-    }),
+    () =>
+      sessions.map((s) => {
+        const conv = sessionToConversation(s, userAvatar);
+        return { ...conv, selected: s.id === activeSessionId };
+      }),
     [sessions, activeSessionId, userAvatar],
   );
 
@@ -513,7 +531,13 @@ function CustomConversationList(_props: Record<string, unknown>) {
             {(item.title || "?")[0].toUpperCase()}
           </Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+              }}
+            >
               <Typography
                 variant="body2"
                 noWrap
@@ -602,7 +626,11 @@ function sessionToConversation(
     id: string;
     title?: string;
     createdAt: number;
-    messages: { role: string; timestamp?: number; content: { type: string; body?: string; summary?: string } }[];
+    messages: {
+      role: string;
+      timestamp?: number;
+      content: { type: string; body?: string; summary?: string };
+    }[];
   },
   userAvatar: string,
 ): ChatConversation {
@@ -648,7 +676,10 @@ export default function PiAgentChat() {
   const currentUser: ChatUser = {
     id: userName,
     displayName: userName,
-    avatarUrl: avatarDataUrl(userName[0].toUpperCase(), theme.palette.primary.main),
+    avatarUrl: avatarDataUrl(
+      userName[0].toUpperCase(),
+      theme.palette.primary.main,
+    ),
     role: "user",
   };
   const assistantUser: ChatUser = {
@@ -660,7 +691,11 @@ export default function PiAgentChat() {
   const members = [currentUser, assistantUser];
 
   const userAvatar = useMemo(
-    () => avatarDataUrl(((user?.username || "U")[0]).toUpperCase(), theme.palette.primary.main),
+    () =>
+      avatarDataUrl(
+        (user?.username || "U")[0].toUpperCase(),
+        theme.palette.primary.main,
+      ),
     [user?.username, theme.palette.primary.main],
   );
 
@@ -698,41 +733,52 @@ export default function PiAgentChat() {
               .map((p) => ("text" in p ? p.text : ""))
               .filter(Boolean)
               .join("");
-            const rawParts = m.parts.map((p) => {
-              if (p.type === "dynamic-tool") {
-                const ti = (p as any).toolInvocation;
-                return {
-                  type: "dynamic-tool",
-                  toolInvocation: {
-                    toolCallId: ti.toolCallId,
-                    toolName: ti.toolName,
-                    title: ti.title,
-                    state: ti.state === "output-available" ? "output-available" : "completed",
-                    input: ti.input,
-                    output: ti.output,
-                    args: ti.args,
-                  },
-                };
-              }
-              if (p.type === "reasoning") {
-                return {
-                  type: "reasoning",
-                  text: (p as any).text,
-                  state: (p as any).state === "streaming" ? "complete" : (p as any).state,
-                };
-              }
-              if ("text" in p) {
-                return { type: "text", text: p.text };
-              }
-              return null;
-            }).filter(Boolean);
+            const rawParts = m.parts
+              .map((p) => {
+                if (p.type === "dynamic-tool") {
+                  const ti = (p as any).toolInvocation;
+                  return {
+                    type: "dynamic-tool",
+                    toolInvocation: {
+                      toolCallId: ti.toolCallId,
+                      toolName: ti.toolName,
+                      title: ti.title,
+                      state:
+                        ti.state === "output-available"
+                          ? "output-available"
+                          : "completed",
+                      input: ti.input,
+                      output: ti.output,
+                      args: ti.args,
+                    },
+                  };
+                }
+                if (p.type === "reasoning") {
+                  return {
+                    type: "reasoning",
+                    text: (p as any).text,
+                    state:
+                      (p as any).state === "streaming"
+                        ? "complete"
+                        : (p as any).state,
+                  };
+                }
+                if ("text" in p) {
+                  return { type: "text", text: p.text };
+                }
+                return null;
+              })
+              .filter(Boolean);
             return {
               id: m.id,
               role: m.role as "user" | "assistant",
               content: text
                 ? ({ type: "text" as const, body: text } as const)
                 : ({ type: "text" as const, body: "" } as const),
-              rawParts: rawParts.length > 0 ? (rawParts as Record<string, unknown>[]) : undefined,
+              rawParts:
+                rawParts.length > 0
+                  ? (rawParts as Record<string, unknown>[])
+                  : undefined,
               timestamp: Date.now(),
             };
           }),
@@ -760,16 +806,16 @@ export default function PiAgentChat() {
       >
         <CustomConversationList />
       </Box>
-        <ChatBox
-          key={activeSessionId || "empty"}
-          adapter={adapter}
-          members={members}
-          currentUser={currentUser}
-          conversations={conversations}
-          initialActiveConversationId={activeSessionId ?? undefined}
-          onActiveConversationChange={handleActiveConversationChange}
-          onMessagesChange={handleMessagesChange}
-          suggestions={suggestions}
+      <ChatBox
+        key={activeSessionId || "empty"}
+        adapter={adapter}
+        members={members}
+        currentUser={currentUser}
+        conversations={conversations}
+        initialActiveConversationId={activeSessionId ?? undefined}
+        onActiveConversationChange={handleActiveConversationChange}
+        onMessagesChange={handleMessagesChange}
+        suggestions={suggestions}
         suggestionsAutoSubmit
         layoutMode="standard"
         features={{

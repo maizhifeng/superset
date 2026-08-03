@@ -23,7 +23,7 @@ export function usePermission() {
         required.every((role) => roles?.[role] === true),
 
       /** The raw roles map (roleName → true). */
-      roles: roles ?? ({} as Record<string, boolean>),
+      roles: roles ?? {},
     }),
     [roles],
   );

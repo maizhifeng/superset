@@ -140,16 +140,17 @@ export default function SmartInput({
           }}
           slotProps={{
             input: {
-              startAdornment: currentModel && onModelChange ? (
-                <InputAdornment position="start" sx={{ mr: 0.75 }}>
-                  <ModelSelector
-                    current={currentModel || ""}
-                    models={modelList || []}
-                    onSelect={onModelChange || (() => {})}
-                    compact
-                  />
-                </InputAdornment>
-              ) : undefined,
+              startAdornment:
+                currentModel && onModelChange ? (
+                  <InputAdornment position="start" sx={{ mr: 0.75 }}>
+                    <ModelSelector
+                      current={currentModel || ""}
+                      models={modelList || []}
+                      onSelect={onModelChange || (() => {})}
+                      compact
+                    />
+                  </InputAdornment>
+                ) : undefined,
             },
           }}
           sx={{

@@ -1,8 +1,14 @@
 import { useState, useCallback, useRef } from "react";
-import type { ChartData, ChartDataPayload, ChartDataRow, FormData } from "@/types/api";
+import type {
+  ChartData,
+  ChartDataPayload,
+  ChartDataRow,
+  FormData,
+} from "@/types/api";
 import api from "@/api";
+
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import type { SimpleFilter, ChartDataResponseResult } from "@/utils/query/types";
+import type { ChartDataResponseResult } from "@/utils/query/types";
 import { isFederatedDataset } from "@/config/federatedDatasets";
 
 function getChartDataUrl(dsId: number): string {
@@ -30,9 +36,9 @@ interface FetchResult {
 
 export function useDashboardData() {
   const [chartMeta, setChartMeta] = useState<Record<number, ChartData>>({});
-  const [chartData, setChartData] = useState<
-    Record<number, ChartDataPayload>
-  >({});
+  const [chartData, setChartData] = useState<Record<number, ChartDataPayload>>(
+    {},
+  );
   const [totalRows, setTotalRows] = useState<
     Record<number, ChartDataRow | null>
   >({});
@@ -79,7 +85,7 @@ export function useDashboardData() {
             col: f.subject,
             op: f.operator,
             val: f.comparator as string | string[],
-          })) as SimpleFilter[];
+          }));
         }
 
         const queries = [query];
@@ -94,7 +100,7 @@ export function useDashboardData() {
             col: f.subject,
             op: f.operator,
             val: f.comparator as string | string[],
-          })) as SimpleFilter[];
+          }));
         }
         queries.push(totalQuery);
 
@@ -233,7 +239,7 @@ export function useDashboardData() {
             col: f.subject,
             op: f.operator,
             val: f.comparator as string | string[],
-          })) as SimpleFilter[];
+          }));
         }
 
         const payload = {

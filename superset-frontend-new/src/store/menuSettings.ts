@@ -19,7 +19,7 @@ const defaultItems: NavItem[] = [
   },
   { id: "charts", path: "/chart/list", label: "图表", builtIn: true },
   { id: "sqllab", path: "/sqllab", label: "SQL 实验室", builtIn: true },
-  { id: "datasets", path: "/dataset/list",     label: "数据集", builtIn: true },
+  { id: "datasets", path: "/dataset/list", label: "数据集", builtIn: true },
   {
     id: "database/list",
     path: "/database/list",
@@ -32,7 +32,7 @@ const defaultItems: NavItem[] = [
     label: "已保存查询",
     builtIn: true,
   },
-  { id: "alert/list", path: "/alert/list",     label: "告警", builtIn: true },
+  { id: "alert/list", path: "/alert/list", label: "告警", builtIn: true },
   {
     id: "query_history",
     path: "/query_history",
@@ -161,8 +161,7 @@ export const useMenuSettings = create<MenuSettingsState>()(
         ...current,
         ...mergeDefaults(
           persisted as
-            | { items: NavItem[]; enabled: Record<string, boolean> }
-            | undefined,
+            { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
         ),
       }),
     },

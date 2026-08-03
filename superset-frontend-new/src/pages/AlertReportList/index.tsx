@@ -184,9 +184,11 @@ export default function AlertReportList() {
         pageSizeOptions={[25, 50, 100]}
         toolbarPageKey="alert_report_list"
         onDelete={(row) => setDeleteTarget({ id: row.id, name: row.name })}
-        onBatchDelete={async (ids) => {
-          await Promise.all(ids.map((id) => api.delete(`/report/${id}`)));
-          fetchData();
+        onBatchDelete={(ids) => {
+          void (async () => {
+            await Promise.all(ids.map((id) => api.delete(`/report/${id}`)));
+            fetchData();
+          })();
         }}
         renderCard={(row) => (
           <>
@@ -275,7 +277,7 @@ export default function AlertReportList() {
         cancelText="取消"
         confirmLoading={deleteLoading}
         danger
-        onConfirm={handleDelete}
+        onConfirm={() => void handleDelete()}
         onCancel={() => setDeleteTarget(null)}
       />
     </ListPageLayout>

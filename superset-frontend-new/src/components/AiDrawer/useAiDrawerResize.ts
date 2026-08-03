@@ -1,17 +1,23 @@
 import { useRef, useCallback, useEffect } from "react";
 
-export function useAiDrawerResize(drawerWidth: number, onWidthChange: (w: number) => void) {
+export function useAiDrawerResize(
+  drawerWidth: number,
+  onWidthChange: (w: number) => void,
+) {
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    draggingRef.current = true;
-    startXRef.current = e.clientX;
-    startWidthRef.current = drawerWidth;
-    document.body.style.cursor = "ew-resize";
-    document.body.style.userSelect = "none";
-  }, [drawerWidth]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      draggingRef.current = true;
+      startXRef.current = e.clientX;
+      startWidthRef.current = drawerWidth;
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+    },
+    [drawerWidth],
+  );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {

@@ -1,12 +1,23 @@
 import type { ChartDataPayload } from "@/types/api";
-import { formatNumber, formatPctValue, isRatioMetric, type MetricFormatMap } from "./formatNumber";
+import {
+  formatNumber,
+  formatPctValue,
+  isRatioMetric,
+  type MetricFormatMap,
+} from "./formatNumber";
 
-function formatEChartsValue(key: string, value: number, formatMap?: MetricFormatMap): string {
+function formatEChartsValue(
+  key: string,
+  value: number,
+  formatMap?: MetricFormatMap,
+): string {
   if (isRatioMetric(key, formatMap)) return formatPctValue(value);
   return formatNumber(value);
 }
 
-type EChartsModule = typeof import("echarts/core");
+import type * as EChartsCore from "echarts/core";
+
+type EChartsModule = typeof EChartsCore;
 
 let echartsModule: EChartsModule | null = null;
 let loadPromise: Promise<void> | null = null;
@@ -79,10 +90,19 @@ export function buildEChartsOption(
         left: "center",
         textStyle: { fontSize: compact ? 12 : 16 },
       },
-      legend: cardSize === "small" ? undefined : {
-        type: "scroll" as const,
-        ...(cardSize === "full" ? { bottom: 0 } : { right: 0, top: "middle" as const, orient: "vertical" as const }),
-      },
+      legend:
+        cardSize === "small"
+          ? undefined
+          : {
+              type: "scroll" as const,
+              ...(cardSize === "full"
+                ? { bottom: 0 }
+                : {
+                    right: 0,
+                    top: "middle" as const,
+                    orient: "vertical" as const,
+                  }),
+            },
       animation: true,
       animationDuration: 300,
       series: [
@@ -101,13 +121,17 @@ export function buildEChartsOption(
               return {
                 ...i,
                 labelLine: isSmall ? { show: false } : undefined,
-                emphasis: isSmall ? { label: { show: false }, labelLine: { show: false } } : undefined,
+                emphasis: isSmall
+                  ? { label: { show: false }, labelLine: { show: false } }
+                  : undefined,
               };
             });
           })(),
           label: {
             formatter: (params: { name: string; percent: number }) =>
-              params.percent < 5 ? "" : `${params.name}\n${Math.round(params.percent)}%`,
+              params.percent < 5
+                ? ""
+                : `${params.name}\n${Math.round(params.percent)}%`,
             fontSize: 11,
             fontWeight: "bold",
           },
@@ -123,9 +147,7 @@ export function buildEChartsOption(
     };
   }
 
-  const rows = Array.isArray(data?.data)
-    ? data.data
-    : [];
+  const rows = Array.isArray(data?.data) ? data.data : [];
   const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
   const categoryKey = keys[0] || "category";
   const valueKeys = keys
@@ -157,18 +179,19 @@ export function buildEChartsOption(
   const yLabelChars = Math.max(String(Math.round(yMax)).length, 1);
   const yLabelWidth = yLabelChars * 7;
 
-  const palette = chartColors && chartColors.length > 0
-    ? chartColors
-    : [
-        "#20a7c9",
-        "#ff7f50",
-        "#5ab1ef",
-        "#ffb980",
-        "#d87a80",
-        "#8d98b3",
-        "#e5cf0d",
-        "#97b552",
-      ];
+  const palette =
+    chartColors && chartColors.length > 0
+      ? chartColors
+      : [
+          "#20a7c9",
+          "#ff7f50",
+          "#5ab1ef",
+          "#ffb980",
+          "#d87a80",
+          "#8d98b3",
+          "#e5cf0d",
+          "#97b552",
+        ];
   const series =
     valueKeys.length > 0
       ? valueKeys.map((key, i) => ({
@@ -192,11 +215,14 @@ export function buildEChartsOption(
       appendToBody: true,
       hideDelay: 500,
       transitionDuration: 0,
-      formatter: (params: { seriesName: string; name: string; value: number }[]) => {
+      formatter: (
+        params: { seriesName: string; name: string; value: number }[],
+      ) => {
         if (!Array.isArray(params) || params.length === 0) return "";
         const axisName = params[0].name;
         const lines = params.map(
-          (p) => `${p.seriesName}: ${formatEChartsValue(p.seriesName, p.value, formatMap)}`
+          (p) =>
+            `${p.seriesName}: ${formatEChartsValue(p.seriesName, p.value, formatMap)}`,
         );
         return `${axisName}<br/>${lines.join("<br/>")}`;
       },

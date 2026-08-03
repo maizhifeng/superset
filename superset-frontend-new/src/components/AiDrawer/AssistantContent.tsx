@@ -19,7 +19,15 @@ interface AssistantContentProps {
 
 const AssistantContent = forwardRef<HTMLDivElement, AssistantContentProps>(
   function AssistantContent(
-    { activeThread, knowledgeCards, streaming, streamingText, dataLoading, onCardClick, onRetry },
+    {
+      activeThread,
+      knowledgeCards,
+      streaming,
+      streamingText,
+      dataLoading,
+      onCardClick,
+      onRetry,
+    },
     ref,
   ) {
     return (
@@ -49,9 +57,10 @@ const AssistantContent = forwardRef<HTMLDivElement, AssistantContentProps>(
           </Box>
         )}
 
-        {(!activeThread || activeThread.messages.length === 0) && !streaming && (
-          <KnowledgeCards cards={knowledgeCards} onClick={onCardClick} />
-        )}
+        {(!activeThread || activeThread.messages.length === 0) &&
+          !streaming && (
+            <KnowledgeCards cards={knowledgeCards} onClick={onCardClick} />
+          )}
 
         {activeThread?.messages.map((msg) => (
           <MessageBubble
@@ -62,17 +71,25 @@ const AssistantContent = forwardRef<HTMLDivElement, AssistantContentProps>(
           />
         ))}
 
-        {streaming && streamingText && <StreamingMessage text={streamingText} />}
+        {streaming && streamingText && (
+          <StreamingMessage text={streamingText} />
+        )}
 
         {dataLoading && !streaming && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 0.5 }}>
+          <Box
+            sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 0.5 }}
+          >
             <CircularProgress size={16} sx={{ color: "primary.main" }} />
           </Box>
         )}
 
         {streaming && !streamingText && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 0.5 }}>
-            <SmartToyIcon sx={{ fontSize: 20, color: "primary.main", flexShrink: 0 }} />
+          <Box
+            sx={{ display: "flex", alignItems: "center", gap: 1.5, pl: 0.5 }}
+          >
+            <SmartToyIcon
+              sx={{ fontSize: 20, color: "primary.main", flexShrink: 0 }}
+            />
             <CircularProgress size={16} sx={{ color: "primary.main" }} />
           </Box>
         )}

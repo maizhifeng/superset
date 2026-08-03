@@ -16,7 +16,7 @@ import Pagination from "@mui/material/Pagination";
 import Typography from "@mui/material/Typography";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useMediaQuery, useTheme } from "@mui/material";
-import type { DataGridProps, GridPaginationModel } from "@mui/x-data-grid";
+import type { DataGridProps } from "@mui/x-data-grid";
 import DataGridTable from "./DataGridTable";
 
 const SWIPE_THRESHOLD = 40;
@@ -348,19 +348,14 @@ export default function ResponsiveDataGrid<R = any>({
   }
 
   const rows = gridProps.rows as R[];
-  const paginationModel = gridProps.paginationModel as
-    | GridPaginationModel
-    | undefined;
+  const paginationModel = gridProps.paginationModel;
   const rowCount = gridProps.rowCount ?? rows.length;
   const pageSize = paginationModel?.pageSize ?? 25;
   const page = paginationModel?.page ?? 0;
   const totalPages = Math.ceil(rowCount / pageSize);
 
   const handlePageChange = (_: React.ChangeEvent<unknown>, p: number) => {
-    gridProps.onPaginationModelChange?.(
-      { page: p - 1, pageSize } as GridPaginationModel,
-      {} as any,
-    );
+    gridProps.onPaginationModelChange?.({ page: p - 1, pageSize }, {} as any);
   };
 
   return (

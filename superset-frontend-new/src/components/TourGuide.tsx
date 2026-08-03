@@ -101,7 +101,9 @@ const STEPS: StepDef[] = [
               minWidth: 90,
             }}
           >
-            <Box sx={{ color: paletteVar(item.key), fontSize: 24, lineHeight: 1 }}>
+            <Box
+              sx={{ color: paletteVar(item.key), fontSize: 24, lineHeight: 1 }}
+            >
               {item.icon}
             </Box>
             <Typography
@@ -118,8 +120,7 @@ const STEPS: StepDef[] = [
   {
     icon: <SearchIcon sx={{ fontSize: 48 }} />,
     title: "搜索与导航",
-    description:
-      "按 / 搜索任何内容。使用快捷键在页面间快速跳转。",
+    description: "按 / 搜索任何内容。使用快捷键在页面间快速跳转。",
     graphic: (
       <Box sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 1 }}>
         <Box
@@ -188,8 +189,7 @@ const STEPS: StepDef[] = [
   {
     icon: <KeyboardIcon sx={{ fontSize: 48 }} />,
     title: "快捷键",
-    description:
-      "Shift+? 打开完整快捷键参考。常用组合键加速工作流。",
+    description: "Shift+? 打开完整快捷键参考。常用组合键加速工作流。",
     graphic: (
       <Box
         sx={{
@@ -244,8 +244,7 @@ const STEPS: StepDef[] = [
   {
     icon: <AccountTreeIcon sx={{ fontSize: 48 }} />,
     title: "架构概览",
-    description:
-      "Starfly 将您的数据组织为四层。从数据源到洞察，层层递进。",
+    description: "Starfly 将您的数据组织为四层。从数据源到洞察，层层递进。",
     graphic: (
       <Box
         sx={{

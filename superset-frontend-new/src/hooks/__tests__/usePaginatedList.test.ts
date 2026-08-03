@@ -90,7 +90,7 @@ test("search text change resets page to 0", async () => {
     result.current.handleSearchChange("sales");
   });
 
-  expect(result.current.searchText).toBe("sales");
+  await waitFor(() => expect(result.current.searchText).toBe("sales"));
   expect(result.current.paginationModel.page).toBe(0);
 });
 

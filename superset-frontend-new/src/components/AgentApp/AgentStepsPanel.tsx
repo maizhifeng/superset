@@ -9,7 +9,10 @@ interface AgentStepsPanelProps {
   isRunning: boolean;
 }
 
-export default function AgentStepsPanel({ steps, isRunning }: AgentStepsPanelProps) {
+export default function AgentStepsPanel({
+  steps,
+  isRunning,
+}: AgentStepsPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -21,7 +24,16 @@ export default function AgentStepsPanel({ steps, isRunning }: AgentStepsPanelPro
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
-        <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: 0.5 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 600,
+            color: "text.secondary",
+            fontSize: "0.72rem",
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
           {isRunning ? "执行中" : `执行步骤 (${steps.length})`}
         </Typography>
         {isRunning && (
@@ -39,7 +51,10 @@ export default function AgentStepsPanel({ steps, isRunning }: AgentStepsPanelPro
                 },
               }}
             />
-            <Typography variant="caption" sx={{ fontSize: "0.68rem", color: "text.disabled" }}>
+            <Typography
+              variant="caption"
+              sx={{ fontSize: "0.68rem", color: "text.disabled" }}
+            >
               处理中…
             </Typography>
           </Box>
@@ -47,7 +62,12 @@ export default function AgentStepsPanel({ steps, isRunning }: AgentStepsPanelPro
       </Box>
 
       {steps.map((step, idx) => (
-        <AgentStepCard key={step.id} step={step} compact isLast={idx === steps.length - 1} />
+        <AgentStepCard
+          key={step.id}
+          step={step}
+          compact
+          isLast={idx === steps.length - 1}
+        />
       ))}
       <div ref={bottomRef} />
     </Box>

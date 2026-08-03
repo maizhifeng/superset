@@ -216,11 +216,39 @@ export default function ChartList() {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, p: { xs: 1.5, md: 3 }, pt: { xs: 1.5, md: 2 } }}>
-      <Card variant="outlined" sx={{ borderRadius: 2, display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-        <CardHeader title={<Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>图表</Typography>}
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        p: { xs: 1.5, md: 3 },
+        pt: { xs: 1.5, md: 2 },
+      }}
+    >
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <CardHeader
+          title={
+            <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+              图表
+            </Typography>
+          }
           action={
-            <Button variant="contained" size="small" startIcon={<BarChartIcon />} onClick={() => navigate("/explore")}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<BarChartIcon />}
+              onClick={() => navigate("/explore")}
+            >
               新建图表
             </Button>
           }
@@ -228,141 +256,148 @@ export default function ChartList() {
         />
         <Divider />
         <ListPageLayout
-        loading={loading}
-        error={error}
-        hasData={rows.length > 0}
-        emptyState={
-          <>
-            <EmptyState
-              icon={<BarChartIcon />}
-              title="未找到图表"
-              description={
-                searchText
-                  ? "请调整搜索条件"
-                  : "创建第一个图表开始数据可视化"
-              }
-              action={
-                !searchText ? (
-                  <Button
-                    variant="contained"
-                    size="small"
-                    onClick={() => navigate("/explore")}
-                  >
-                    创建图表
-                  </Button>
-                ) : undefined
-              }
-            />
-            <EmptyStateShortcutHint />
-          </>
-        }
-      >
-        <ResponsiveDataGrid
-          rows={rows}
-          columns={columns}
           loading={loading}
-          autoHeight
-          paginationModel={paginationModel}
-          rowCount={rowCount}
-          paginationMode="server"
-          sortingMode="server"
-          sortModel={sortModel}
-          onSortModelChange={(model: GridSortModel) =>
-            setSortModel(model.filter((s) => s.sort != null) as SortModel[])
-          }
-          onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[25, 50, 100]}
-          onRowClick={handleRowClick}
-          onEdit={(row) => navigate(`/explore?slice_id=${row.id}`)}
-          toolbarPageKey="chart_list"
-          onDelete={(row) =>
-            setDeleteTarget({ id: row.id, name: row.slice_name })
-          }
-          onBatchDelete={async (ids) => {
-            await Promise.all(ids.map((id) => api.delete(`/chart/${id}`)));
-            fetchData();
-          }}
-          renderCard={(row) => (
+          error={error}
+          hasData={rows.length > 0}
+          emptyState={
             <>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 600,
-                    lineHeight: 1.3,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                  }}
-                >
-                  {row.slice_name}
-                </Typography>
-                <Chip
-                  label={vizTypeLabels[row.viz_type] || row.viz_type}
-                  size="small"
-                  variant="outlined"
-                  sx={{
-                    fontWeight: 500,
-                    fontSize: "0.75rem",
-                    height: 16,
-                    flexShrink: 0,
-                    "& .MuiChip-label": { px: 0.5 },
-                  }}
-                />
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.25 }}>
-                <TableChartOutlinedIcon
-                  sx={{ fontSize: 10, color: "primary.main" }}
-                />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontSize: "0.75rem", lineHeight: 1 }}
-                >
-                  {row.datasource_name_text ||
-                    row.table?.table_name ||
-                    "未知"}
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  mt: 0.25,
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  color="text.disabled"
-                  sx={{ fontSize: "0.75rem" }}
-                >
-                  {row.created_by?.username ?? "无"}
-                  {row.changed_on_delta_humanized
-                    ? ` · ${row.changed_on_delta_humanized}`
-                    : ""}
-                </Typography>
-              </Box>
+              <EmptyState
+                icon={<BarChartIcon />}
+                title="未找到图表"
+                description={
+                  searchText ? "请调整搜索条件" : "创建第一个图表开始数据可视化"
+                }
+                action={
+                  !searchText ? (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => navigate("/explore")}
+                    >
+                      创建图表
+                    </Button>
+                  ) : undefined
+                }
+              />
+              <EmptyStateShortcutHint />
             </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={rows}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            sortingMode="server"
+            sortModel={sortModel}
+            onSortModelChange={(model: GridSortModel) =>
+              setSortModel(model.filter((s) => s.sort != null) as SortModel[])
+            }
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            onRowClick={handleRowClick}
+            onEdit={(row) => navigate(`/explore?slice_id=${row.id}`)}
+            toolbarPageKey="chart_list"
+            onDelete={(row) =>
+              setDeleteTarget({ id: row.id, name: row.slice_name })
+            }
+            onBatchDelete={(ids) => {
+              void (async () => {
+                await Promise.all(ids.map((id) => api.delete(`/chart/${id}`)));
+                fetchData();
+              })();
+            }}
+            renderCard={(row) => (
+              <>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.3,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flex: 1,
+                    }}
+                  >
+                    {row.slice_name}
+                  </Typography>
+                  <Chip
+                    label={vizTypeLabels[row.viz_type] || row.viz_type}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      fontWeight: 500,
+                      fontSize: "0.75rem",
+                      height: 16,
+                      flexShrink: 0,
+                      "& .MuiChip-label": { px: 0.5 },
+                    }}
+                  />
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.25,
+                    mt: 0.25,
+                  }}
+                >
+                  <TableChartOutlinedIcon
+                    sx={{ fontSize: 10, color: "primary.main" }}
+                  />
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontSize: "0.75rem", lineHeight: 1 }}
+                  >
+                    {row.datasource_name_text ||
+                      row.table?.table_name ||
+                      "未知"}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    mt: 0.25,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{ fontSize: "0.75rem" }}
+                  >
+                    {row.created_by?.username ?? "无"}
+                    {row.changed_on_delta_humanized
+                      ? ` · ${row.changed_on_delta_humanized}`
+                      : ""}
+                  </Typography>
+                </Box>
+              </>
+            )}
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {deleteError}
+            </Alert>
           )}
-        />
-        {deleteError && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            {deleteError}
-          </Alert>
-        )}
-        <ConfirmModal
-          open={!!deleteTarget}
-          title="删除图表"
-          description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
-          confirmText="删除"
-          cancelText="取消"
-          confirmLoading={deleteLoading}
-          danger
-          onConfirm={handleDelete}
-          onCancel={() => setDeleteTarget(null)}
-        />
-      </ListPageLayout>
+          <ConfirmModal
+            open={!!deleteTarget}
+            title="删除图表"
+            description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+            confirmLoading={deleteLoading}
+            danger
+            onConfirm={() => void handleDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        </ListPageLayout>
       </Card>
     </Box>
   );

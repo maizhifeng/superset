@@ -32,7 +32,8 @@ export function useDashboardLayout({
   const saveLayoutRef = useRef<() => Promise<void>>();
 
   const nodeCount = useMemo(
-    () => Object.keys(nodeMap).filter((k) => nodeMap[k].type === "CHART").length,
+    () =>
+      Object.keys(nodeMap).filter((k) => nodeMap[k].type === "CHART").length,
     [nodeMap],
   );
 
@@ -81,8 +82,7 @@ export function useDashboardLayout({
             Array.isArray(n.children)
           ) {
             n.children = n.children.filter(
-              (childId: string) =>
-                d[childId] && typeof d[childId] === "object",
+              (childId: string) => d[childId] && typeof d[childId] === "object",
             );
           }
         }
@@ -109,7 +109,7 @@ export function useDashboardLayout({
             d["ROOT_ID"] = { ...rootVal, id: "ROOT_ID" };
             delete d[rootKey];
             const children = d["ROOT_ID"];
-            const gridId = (children?.children as string[] | undefined)?.[0];
+            const gridId = children?.children?.[0];
             if (gridId && gridId !== "GRID_ID" && d[gridId]) {
               const gridVal = d[gridId];
               if (gridVal) {
@@ -123,13 +123,13 @@ export function useDashboardLayout({
                     );
                   }
                 };
-                replaceChildRef(d["ROOT_ID"] as Record<string, unknown>);
-                replaceChildRef(d["GRID_ID"] as Record<string, unknown>);
+                replaceChildRef(d["ROOT_ID"]);
+                replaceChildRef(d["GRID_ID"]);
               }
             }
           }
         }
-      }) as DashboardPosition;
+      });
       const saved = JSON.stringify(updatedPosition);
       await api.put(`/dashboard/${dashboardId}`, {
         position_json: saved,
@@ -156,7 +156,7 @@ export function useDashboardLayout({
       });
       nodeMapRef.current = updated;
       onNodeMapChange(updated);
-      setTimeout(() => saveLayoutRef.current?.(), 300);
+      setTimeout(() => void saveLayoutRef.current?.(), 300);
     },
     [onNodeMapChange],
   );

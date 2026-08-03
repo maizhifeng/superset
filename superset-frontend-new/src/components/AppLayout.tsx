@@ -48,7 +48,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const activeOverlay = useNavStore((s) => s.activeOverlay);
   const closeOverlay = useNavStore((s) => s.closeOverlay);
 
-  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(
+    null,
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const pageTip = usePageTip();
@@ -70,20 +72,41 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     handleSidePanelSelect,
   } = useNavManager();
 
-  useShortcutWithHelp("/", (e) => { e.preventDefault(); setSearchOpen((prev) => !prev); }, {
-    label: "搜索",
-    category: "global",
-    description: "按 / 搜索仪表板、图表、数据集等",
-  });
+  useShortcutWithHelp(
+    "/",
+    (e) => {
+      e.preventDefault();
+      setSearchOpen((prev) => !prev);
+    },
+    {
+      label: "搜索",
+      category: "global",
+      description: "按 / 搜索仪表板、图表、数据集等",
+    },
+  );
 
-  const handleLogout = useCallback(() => { logout(); navigate("/login"); }, [logout, navigate]);
+  const handleLogout = useCallback(() => {
+    logout();
+    navigate("/login");
+  }, [logout, navigate]);
 
   const sidePanelTitle =
     categoryLabels[activeCategory ?? ""] ??
-    activityBarItems.find((i) => i.id === (hoverCat ?? activeCategory))?.label ?? "";
+    activityBarItems.find((i) => i.id === (hoverCat ?? activeCategory))
+      ?.label ??
+    "";
 
   return (
-    <Box sx={{ position: "relative", display: "flex", flexDirection: "row", height: "100vh", bgcolor: "background.default", overflow: "hidden" }}>
+    <Box
+      sx={{
+        position: "relative",
+        display: "flex",
+        flexDirection: "row",
+        height: "100vh",
+        bgcolor: "background.default",
+        overflow: "hidden",
+      }}
+    >
       <Box
         onMouseEnter={() => clearTimeout(closeTimerRef.current)}
         onMouseLeave={() => clearTimeout(openTimerRef.current)}
@@ -92,12 +115,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <ActivityBar
           items={activityBarItems}
           activeId={hoverCat ?? activeCategory}
-          onSelect={handleActivitySelect}
+          onSelect={(id) => void handleActivitySelect(id)}
           onItemEnter={handleNavEnter}
           onItemLeave={() => clearTimeout(openTimerRef.current)}
           searchButton={
             <Tooltip title="搜索" placement="right">
-              <IconButton size="small" onClick={() => setSearchOpen(true)} sx={{ color: "text.secondary" }}>
+              <IconButton
+                size="small"
+                onClick={() => setSearchOpen(true)}
+                sx={{ color: "text.secondary" }}
+              >
                 <SearchIcon sx={{ fontSize: 20 }} />
               </IconButton>
             </Tooltip>
@@ -107,7 +134,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <SearchOverlay
               open={searchOpen}
               query={searchQuery}
-              onClose={() => { setSearchOpen(false); setSearchQuery(""); }}
+              onClose={() => {
+                setSearchOpen(false);
+                setSearchQuery("");
+              }}
               onQueryChange={setSearchQuery}
             />
           }
@@ -119,14 +149,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onClose={() => setUserMenuAnchor(null)}
               onLogout={handleLogout}
               isSwitchedUser={isSwitchedUser}
-              onSwitchBack={async () => { await switchBackToAdmin(); navigate("/"); }}
+              onSwitchBack={() => {
+                void switchBackToAdmin().then(() => navigate("/"));
+              }}
             />
           }
         />
       </Box>
 
       <SidePanel
-        open={sidePanelOpen && (sidePanelPinned || activeCategory != null || hoverCat != null)}
+        open={
+          sidePanelOpen &&
+          (sidePanelPinned || activeCategory != null || hoverCat != null)
+        }
         title={sidePanelTitle}
         items={sidePanelItems}
         loading={sidePanelLoading}
@@ -139,21 +174,61 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
       <Box
         sx={{
-          display: "flex", flexDirection: "column", flex: 1, minWidth: 0, overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
           ml: sidePanelOpen && sidePanelPinned ? "180px" : 0,
-          transition: (t) => t.transitions.create("margin", { easing: t.transitions.easing.sharp, duration: t.transitions.duration.leavingScreen }),
+          transition: (t) =>
+            t.transitions.create("margin", {
+              easing: t.transitions.easing.sharp,
+              duration: t.transitions.duration.leavingScreen,
+            }),
         }}
       >
         <StatusBar tip={pageTip} />
-        <Box sx={{ display: "flex", flexDirection: "row", flex: 1, overflow: "hidden", minHeight: 0 }}>
-          <Box component="main" sx={{ flex: 1, overflow: "hidden", minWidth: 0, display: "flex", flexDirection: "column", position: "relative" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "row",
+            flex: 1,
+            overflow: "hidden",
+            minHeight: 0,
+          }}
+        >
+          <Box
+            component="main"
+            sx={{
+              flex: 1,
+              overflow: "hidden",
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              position: "relative",
+            }}
+          >
             {children}
           </Box>
-          <AiDrawer variant={aiDrawerMode} open={aiDrawerOpen} chartId={insightChartId} chartMeta={insightChartMeta} filters={insightFilters} onClose={closeAiDrawer} />
+          <AiDrawer
+            variant={aiDrawerMode}
+            open={aiDrawerOpen}
+            chartId={insightChartId}
+            chartMeta={insightChartMeta}
+            filters={insightFilters}
+            onClose={closeAiDrawer}
+          />
         </Box>
       </Box>
 
-      {activeOverlay && <DetailOverlay open type={activeOverlay.type} id={activeOverlay.id} onClose={closeOverlay} />}
+      {activeOverlay && (
+        <DetailOverlay
+          open
+          type={activeOverlay.type}
+          id={activeOverlay.id}
+          onClose={closeOverlay}
+        />
+      )}
       <TourGuide />
       <GlobalSnackbar />
     </Box>

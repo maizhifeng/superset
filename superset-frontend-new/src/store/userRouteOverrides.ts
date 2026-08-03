@@ -11,11 +11,7 @@ import { persist } from "zustand/middleware";
  */
 interface UserRouteOverridesState {
   overrides: Record<string, Record<string, boolean>>;
-  setOverride: (
-    username: string,
-    path: string,
-    granted: boolean,
-  ) => void;
+  setOverride: (username: string, path: string, granted: boolean) => void;
   clearOverrides: (username: string) => void;
   getOverrides: (username: string) => Record<string, boolean>;
 }

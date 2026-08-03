@@ -3,14 +3,16 @@ import { renderHook, act } from "@testing-library/react";
 import { useShortcut } from "@/hooks/useShortcut";
 
 const { boundCallbacks, mockBind, mockUnbind } = vi.hoisted(() => {
-  const cbs: Record<string, Function> = {};
+  const cbs: Record<string, (...args: unknown[]) => unknown> = {};
   return {
     boundCallbacks: cbs,
-    mockBind: vi.fn((keys: string | string[], handler: Function) => {
-      (Array.isArray(keys) ? keys : [keys]).forEach((k) => {
-        cbs[k] = handler;
-      });
-    }),
+    mockBind: vi.fn(
+      (keys: string | string[], handler: (...args: unknown[]) => unknown) => {
+        (Array.isArray(keys) ? keys : [keys]).forEach((k) => {
+          cbs[k] = handler;
+        });
+      },
+    ),
     mockUnbind: vi.fn((keys: string | string[]) => {
       (Array.isArray(keys) ? keys : [keys]).forEach((k) => {
         delete cbs[k];

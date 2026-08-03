@@ -10,7 +10,7 @@ import PinIcon from "@mui/icons-material/Pin";
 import BlockIcon from "@mui/icons-material/Block";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 
-const CHART_TYPES = [
+export const CHART_TYPES = [
   "auto",
   "line",
   "bar",

@@ -21,7 +21,12 @@ const typeLabels: Record<string, string> = {
   settings: "设置",
 };
 
-export default function DetailOverlay({ open, type, id, onClose }: DetailOverlayProps) {
+export default function DetailOverlay({
+  open,
+  type,
+  id,
+  onClose,
+}: DetailOverlayProps) {
   const title = id
     ? `${typeLabels[type] || type} 详情`
     : typeLabels[type] || type;

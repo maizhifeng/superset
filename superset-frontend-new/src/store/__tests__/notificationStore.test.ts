@@ -45,17 +45,17 @@ test("dismiss removes notification by id", () => {
   expect(useNotificationStore.getState().notifications).toHaveLength(0);
 });
 
-test("notification auto-dismisses after 4 seconds", () => {
-  useNotificationStore.getState().notify({
-    severity: "warning",
-    message: "Auto dismiss",
-  });
+test("notify caps the notification list at 5", () => {
+  for (let i = 0; i < 6; i++) {
+    useNotificationStore.getState().notify({
+      severity: "info",
+      message: `Msg ${i}`,
+    });
+  }
 
-  expect(useNotificationStore.getState().notifications).toHaveLength(1);
-
-  vi.advanceTimersByTime(4000);
-
-  expect(useNotificationStore.getState().notifications).toHaveLength(0);
+  const notifs = useNotificationStore.getState().notifications;
+  expect(notifs).toHaveLength(5);
+  expect(notifs[0].message).toBe("Msg 1");
 });
 
 test("multiple notifications are queued", () => {
