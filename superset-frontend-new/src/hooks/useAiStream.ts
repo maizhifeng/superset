@@ -18,7 +18,9 @@ interface UseAiStreamReturn {
   streaming: boolean;
 }
 
-export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn {
+export function useAiStream(
+  options: UseAiStreamOptions = {},
+): UseAiStreamReturn {
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -42,14 +44,14 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
       let full = "";
       let errored = false;
 
-      const { streamDirectChat, streamWithTools } = await import("@/api/aiInsight");
+      const { streamDirectChat, streamWithTools } =
+        await import("@/api/aiInsight");
       const { getActivePreset } = await import("@/config/aiConfig");
       const preset = getActivePreset();
 
-      const systemPrompt =
-        options.systemPrompt ?? DEFAULT_CHAT_SYSTEM_PROMPT;
+      const systemPrompt = options.systemPrompt ?? DEFAULT_CHAT_SYSTEM_PROMPT;
 
-      const notify = (onToken ?? options.onToken);
+      const notify = onToken ?? options.onToken;
 
       const onText = (token: string) => {
         full += token;
@@ -61,7 +63,12 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
           await streamWithTools(
             systemPrompt,
             text,
-            { onText, onError: () => { errored = true; } },
+            {
+              onText,
+              onError: () => {
+                errored = true;
+              },
+            },
             abort.signal,
             {
               provider: preset.provider,
@@ -74,7 +81,12 @@ export function useAiStream(options: UseAiStreamOptions = {}): UseAiStreamReturn
           await streamDirectChat(
             text,
             systemPrompt,
-            { onText, onError: () => { errored = true; } },
+            {
+              onText,
+              onError: () => {
+                errored = true;
+              },
+            },
             abort.signal,
             {
               provider: preset.provider,

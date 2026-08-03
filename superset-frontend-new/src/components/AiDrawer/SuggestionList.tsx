@@ -2,7 +2,7 @@ import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow"
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { DrillDownSuggestion } from "@/types/ai";
 
 interface SuggestionListProps {
@@ -11,7 +11,11 @@ interface SuggestionListProps {
   onSelect: (suggestion: DrillDownSuggestion) => void;
 }
 
-export default function SuggestionList({ suggestions, disabled, onSelect }: SuggestionListProps) {
+export default function SuggestionList({
+  suggestions,
+  disabled,
+  onSelect,
+}: SuggestionListProps) {
   if (suggestions.length === 0) return null;
 
   return (

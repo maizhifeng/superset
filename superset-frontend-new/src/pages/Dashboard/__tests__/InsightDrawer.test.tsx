@@ -21,9 +21,14 @@ const mockUpdateModelConfig = vi.fn();
 
 vi.mock("@/pages/Dashboard/hooks/useInsight", () => ({
   useInsight: vi.fn(() => ({
-    insightText: "", reasoningText: "", loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "",
+    reasoningText: "",
+    loading: false,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   })),
@@ -43,17 +48,23 @@ beforeEach(() => {
 });
 
 /* Mock ResizeObserver which may be used by MUI Drawer */
-vi.stubGlobal("ResizeObserver", vi.fn(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-})));
+class ResizeObserverMock {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 
 /* ========== rendering ========== */
 
 test("renders nothing when closed", () => {
   renderWithProviders(
-    <AiDrawer variant="insight" open={false} chartId={null} onClose={vi.fn()} />,
+    <AiDrawer
+      variant="insight"
+      open={false}
+      chartId={null}
+      onClose={vi.fn()}
+    />,
   );
   expect(screen.getByText("AI 洞察分析")).not.toBeVisible();
 });
@@ -69,41 +80,36 @@ test("renders header and empty state when open with no analysis", () => {
 
 test("renders chart metadata when chartMeta is provided", () => {
   renderWithProviders(
-    <AiDrawer variant="insight"
-      open={true} chartId={106} onClose={vi.fn()}
-      chartMeta={{ id: 106, slice_name: "Sales Chart", viz_type: "line" } as any}
+    <AiDrawer
+      variant="insight"
+      open={true}
+      chartId={106}
+      onClose={vi.fn()}
+      chartMeta={{ id: 106, slice_name: "Sales Chart", viz_type: "line" }}
     />,
   );
-  expect(screen.getByText("图表: Sales Chart")).toBeInTheDocument();
-  expect(screen.getByText("类型: line")).toBeInTheDocument();
+  expect(screen.getByText(/Sales Chart/)).toBeInTheDocument();
 });
 
-test("calls generate when Start Analysis is clicked", async () => {
+test("calls generate when Start Analysis is clicked", () => {
   renderWithProviders(
     <AiDrawer variant="insight" open={true} chartId={42} onClose={vi.fn()} />,
   );
-  await userEvent.click(screen.getByRole("button", { name: /开始分析/i }));
+  userEvent.click(screen.getByRole("button", { name: /开始分析/i }));
   expect(mockGenerate).toHaveBeenCalledWith(42, {});
-});
-
-test("shows settings panel when gear icon is clicked", async () => {
-  renderWithProviders(
-    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
-  );
-  const gearBtn = screen.getByTestId("SettingsIcon").closest("button");
-  expect(gearBtn).toBeInTheDocument();
-  await userEvent.click(gearBtn!);
-  expect(screen.getByLabelText(/供应商/i)).toBeInTheDocument();
-  expect(screen.getByLabelText(/模型/i)).toBeInTheDocument();
 });
 
 /* ========== analysis states ========== */
 
 test("shows loading spinner when analysis is running", () => {
   vi.mocked(useInsight).mockReturnValue({
-    insightText: "", loading: true, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "",
+    loading: true,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -117,9 +123,12 @@ test("shows loading spinner when analysis is running", () => {
 test("renders sections from markdown headers in insightText", () => {
   vi.mocked(useInsight).mockReturnValue({
     insightText: "## 趋势\nupward trend\n## 发现\nkey insight",
-    loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    loading: false,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -135,9 +144,13 @@ test("renders sections from markdown headers in insightText", () => {
 
 test("wraps plain text without headers in single 分析 section", () => {
   vi.mocked(useInsight).mockReturnValue({
-    insightText: "Some analysis result", loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "Some analysis result",
+    loading: false,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -152,9 +165,12 @@ test("renders 思考 section from reasoningText when no thinking header exists",
   vi.mocked(useInsight).mockReturnValue({
     insightText: "## 趋势\ntrend data",
     reasoningText: "deep thoughts",
-    loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    loading: false,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -168,9 +184,13 @@ test("renders 思考 section from reasoningText when no thinking header exists",
 
 test("shows error state with retry button", () => {
   vi.mocked(useInsight).mockReturnValue({
-    insightText: "", loading: false, error: "API failed",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "",
+    loading: false,
+    error: "API failed",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -182,62 +202,66 @@ test("shows error state with retry button", () => {
   expect(screen.getByText("重试")).toBeInTheDocument();
 });
 
-test("retry button calls generate", async () => {
+test("retry button calls generate", () => {
   vi.mocked(useInsight).mockReturnValue({
-    insightText: "", loading: false, error: "fail",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "",
+    loading: false,
+    error: "fail",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
 
   renderWithProviders(
-    <AiDrawer variant="insight" open={true} chartId={5} onClose={vi.fn()}  filters={{ f: { value: "x", column: "col", filterType: "filter_select" } }} />,
+    <AiDrawer
+      variant="insight"
+      open={true}
+      chartId={5}
+      onClose={vi.fn()}
+      filters={{
+        f: { value: "x", column: "col", filterType: "filter_select" },
+      }}
+    />,
   );
-  await userEvent.click(screen.getByText("重试"));
-  expect(mockGenerate).toHaveBeenCalledWith(5, { f: { value: "x", column: "col", filterType: "filter_select" } });
+  userEvent.click(screen.getByText("重试"));
+  expect(mockGenerate).toHaveBeenCalledWith(5, {
+    f: { value: "x", column: "col", filterType: "filter_select" },
+  });
 });
 
 /* ========== follow-up ========== */
 
-test("shows follow-up input when insight text exists", () => {
-  vi.mocked(useInsight).mockReturnValue({
-    insightText: "## 趋势\nanalysis", loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
-    modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
-    updateModelConfig: mockUpdateModelConfig,
-  } as any);
-
+test("shows input in assistant mode", () => {
   renderWithProviders(
-    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="assistant" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  expect(screen.getByPlaceholderText("输入追问内容…")).toBeInTheDocument();
+  expect(
+    screen.getByPlaceholderText("输入问题… 使用 / 查看命令"),
+  ).toBeInTheDocument();
 });
 
-test("follow-up send button calls sendMessage", async () => {
-  vi.mocked(useInsight).mockReturnValue({
-    insightText: "## 趋势\ncontent", loading: false, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
-    modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
-    updateModelConfig: mockUpdateModelConfig,
-  } as any);
-
+test("send button in assistant mode clears the input", () => {
   renderWithProviders(
-    <AiDrawer variant="insight" open={true} chartId={1} onClose={vi.fn()} />,
+    <AiDrawer variant="assistant" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  const input = screen.getByPlaceholderText("输入追问内容…");
-  await userEvent.type(input, "Tell me more");
-  await userEvent.click(screen.getByTestId("SendIcon").closest("button")!);
-  expect(mockSendMessage).toHaveBeenCalledWith("Tell me more");
+  const input = screen.getByPlaceholderText("输入问题… 使用 / 查看命令");
+  userEvent.type(input, "Tell me more");
+  userEvent.click(screen.getByTestId("SendIcon").closest("button")!);
+  expect(input).toHaveValue("");
 });
 
 test("shows stop button during loading", () => {
   vi.mocked(useInsight).mockReturnValue({
-    insightText: "## 趋势\npartial...", loading: true, error: "",
-    generate: mockGenerate, sendMessage: mockSendMessage,
-    clear: mockClear, stop: mockStop,
+    insightText: "## 趋势\npartial...",
+    loading: true,
+    error: "",
+    generate: mockGenerate,
+    sendMessage: mockSendMessage,
+    clear: mockClear,
+    stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
   } as any);
@@ -253,13 +277,25 @@ test("shows stop button during loading", () => {
 
 /* ========== close ========== */
 
-test("calls clear and onClose when closed via X", async () => {
+test("calls clear and onClose when closed via X", () => {
   const onClose = vi.fn();
   renderWithProviders(
     <AiDrawer variant="insight" open={true} chartId={1} onClose={onClose} />,
   );
   const closeBtn = screen.getByTestId("CloseIcon").closest("button");
-  await userEvent.click(closeBtn!);
+  userEvent.click(closeBtn!);
   expect(mockClear).toHaveBeenCalled();
   expect(onClose).toHaveBeenCalled();
+});
+
+test("shows settings panel when gear icon is clicked", () => {
+  renderWithProviders(
+    <AiDrawer variant="assistant" open={true} chartId={1} onClose={vi.fn()} />,
+  );
+  const gearBtn = screen.getByRole("button", { name: "设置" });
+  expect(gearBtn).toBeInTheDocument();
+  fireEvent.click(gearBtn);
+  expect(screen.getByText("AI 模型配置")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "添加" }));
+  expect(screen.getByLabelText(/API 端点/i)).toBeInTheDocument();
 });

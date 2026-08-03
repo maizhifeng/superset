@@ -59,7 +59,15 @@ export default function Login() {
       >
         <Box
           component="span"
-          sx={{ width: 32, height: 32, borderRadius: "50%", border: "2px solid", borderColor: "primary.main", borderTopColor: "transparent", animation: "spin 600ms linear infinite" }}
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: "50%",
+            border: "2px solid",
+            borderColor: "primary.main",
+            borderTopColor: "transparent",
+            animation: "spin 600ms linear infinite",
+          }}
         />
       </Box>
     );
@@ -95,7 +103,8 @@ export default function Login() {
             width: 200,
             height: 200,
             borderRadius: "50%",
-            background: "radial-gradient(circle, color-mix(in srgb, var(--mui-palette-secondary-main) 7%, transparent) 0%, transparent 70%)",
+            background:
+              "radial-gradient(circle, color-mix(in srgb, var(--mui-palette-secondary-main) 7%, transparent) 0%, transparent 70%)",
             top: "-5%",
             right: "-5%",
             pointerEvents: "none",
@@ -108,7 +117,8 @@ export default function Login() {
             height: 140,
             borderRadius: "50%",
             border: "1px solid",
-            borderColor: "color-mix(in srgb, var(--mui-palette-secondary-main) 10%, transparent)",
+            borderColor:
+              "color-mix(in srgb, var(--mui-palette-secondary-main) 10%, transparent)",
             bottom: "10%",
             left: "5%",
             pointerEvents: "none",
@@ -122,7 +132,8 @@ export default function Login() {
             borderRadius: "20%",
             transform: "rotate(45deg)",
             border: "1px solid",
-            borderColor: "color-mix(in srgb, var(--mui-palette-primary-main) 8%, transparent)",
+            borderColor:
+              "color-mix(in srgb, var(--mui-palette-primary-main) 8%, transparent)",
             top: "40%",
             left: "20%",
             pointerEvents: "none",
@@ -196,7 +207,13 @@ export default function Login() {
               {error}
             </Alert>
           )}
-          <Box component="form" onSubmit={handleSubmit}>
+          <Box
+            component="form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmit(e);
+            }}
+          >
             <TextField
               fullWidth
               label="用户名"

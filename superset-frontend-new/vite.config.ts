@@ -2,8 +2,14 @@ import react from "@vitejs/plugin-react";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import checker from "vite-plugin-checker";
 import compression from "vite-plugin-compression";
+import { existsSync } from "fs";
 import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+const CERT_DIR = resolve(__dirname, "certs");
+const TLS_KEY = resolve(CERT_DIR, "192.168.23.34+3-key.pem");
+const TLS_CERT = resolve(CERT_DIR, "192.168.23.34+3.pem");
+const USE_MKCERT = existsSync(TLS_KEY) && existsSync(TLS_CERT);
 
 export default defineConfig({
   optimizeDeps: {
@@ -44,9 +50,8 @@ export default defineConfig({
             ext: ".br",
             threshold: 1024,
           }),
-          basicSsl(),
+          ...(USE_MKCERT ? [] : [basicSsl()]),
         ]),
-
   ],
   resolve: {
     alias: {
@@ -66,7 +71,7 @@ export default defineConfig({
   },
   define: {
     "process.env": "{}",
-    "process": "{}",
+    process: "{}",
     global: "globalThis",
   },
   css: {
@@ -82,15 +87,29 @@ export default defineConfig({
       output: {
         manualChunks(id: string): string | undefined {
           if (id.includes("node_modules/echarts/core")) return "echarts-core";
-          if (id.includes("node_modules/echarts/charts")) return "echarts-charts";
-          if (id.includes("node_modules/echarts/components")) return "echarts-components";
-          if (id.includes("node_modules/echarts/renderers")) return "echarts-renderers";
+          if (id.includes("node_modules/echarts/charts"))
+            return "echarts-charts";
+          if (id.includes("node_modules/echarts/components"))
+            return "echarts-components";
+          if (id.includes("node_modules/echarts/renderers"))
+            return "echarts-renderers";
           if (id.includes("node_modules/@mui/x-data-grid")) return "mui-x-grid";
-          if (id.includes("node_modules/@mui/x-date-pickers")) return "mui-x-pickers";
-          if (id.includes("node_modules/@mui/x-tree-view")) return "mui-x-tree-view";
-          if (id.includes("node_modules/@codemirror") || id.includes("node_modules/@uiw/react-codemirror")) return "codemirror";
+          if (id.includes("node_modules/@mui/x-date-pickers"))
+            return "mui-x-pickers";
+          if (id.includes("node_modules/@mui/x-tree-view"))
+            return "mui-x-tree-view";
+          if (
+            id.includes("node_modules/@codemirror") ||
+            id.includes("node_modules/@uiw/react-codemirror")
+          )
+            return "codemirror";
           if (id.includes("node_modules/@dnd-kit")) return "dnd-kit";
-          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/") || id.includes("node_modules/react-router")) return "react-vendor";
+          if (
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-router")
+          )
+            return "react-vendor";
           return undefined;
         },
       },
@@ -99,7 +118,7 @@ export default defineConfig({
   server: {
     port: 9000,
     host: "0.0.0.0",
-    https: true,
+    ...(USE_MKCERT ? { https: { key: TLS_KEY, cert: TLS_CERT } } : {}),
     proxy: {
       "/api/v1": {
         target: process.env.SUPERSET_HOST || "http://localhost:8088",

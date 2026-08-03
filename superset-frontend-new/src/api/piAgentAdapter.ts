@@ -42,6 +42,7 @@ class PiAgentChatAdapter implements ChatAdapter {
     };
   }
 
+  /* eslint-disable @typescript-eslint/require-await -- async signatures required by the ChatAdapter interface */
   async listConversations() {
     return { conversations: [], hasMore: false };
   }
@@ -64,25 +65,27 @@ class PiAgentChatAdapter implements ChatAdapter {
                     : undefined;
             return {
               id: m.id,
-              role: m.role as "user" | "assistant",
-              parts: m.rawParts && m.rawParts.length > 0
-                ? m.rawParts.map((rp: any) => {
-                    if (rp.type === "dynamic-tool") {
-                      return {
-                        type: "dynamic-tool",
-                        toolInvocation: {
-                          ...rp.toolInvocation,
-                          approveTool: async () => {},
-                          rejectTool: async () => {},
-                        },
-                      };
-                    }
-                    return rp;
-                  })
-                : text
-                  ? [{ type: "text" as const, text }]
-                  : [],
-              author: m.role === "user" ? this.userAuthor : this.assistantAuthor,
+              role: m.role,
+              parts:
+                m.rawParts && m.rawParts.length > 0
+                  ? m.rawParts.map((rp: any) => {
+                      if (rp.type === "dynamic-tool") {
+                        return {
+                          type: "dynamic-tool",
+                          toolInvocation: {
+                            ...rp.toolInvocation,
+                            approveTool: async () => {},
+                            rejectTool: async () => {},
+                          },
+                        };
+                      }
+                      return rp;
+                    })
+                  : text
+                    ? [{ type: "text" as const, text }]
+                    : [],
+              author:
+                m.role === "user" ? this.userAuthor : this.assistantAuthor,
             };
           }),
           hasMore: false,
@@ -117,7 +120,7 @@ class PiAgentChatAdapter implements ChatAdapter {
     const storeSessionId = input.conversationId || "session-" + messageId;
 
     return new ReadableStream({
-      start: async (controller) => {
+      start: (controller) => {
         const reasoningId = uid();
         let hasReasoning = false;
         let reasoningClosed = false;
@@ -149,7 +152,8 @@ class PiAgentChatAdapter implements ChatAdapter {
         }
 
         const wsUrl =
-          import.meta.env.VITE_PI_AGENT_WS_URL || "ws://localhost:9000/agent/ws";
+          import.meta.env.VITE_PI_AGENT_WS_URL ||
+          "ws://localhost:9000/agent/ws";
 
         const ws = new WebSocket(wsUrl);
 
@@ -178,10 +182,12 @@ class PiAgentChatAdapter implements ChatAdapter {
         ws.onmessage = (event: MessageEvent) => {
           if (input.signal.aborted) {
             try {
-              controller.enqueue({ type: "abort" as any, messageId });
+              controller.enqueue({ type: "abort", messageId });
               controller.close();
               ws.close();
-            } catch {}
+            } catch {
+              /* stream already closed */
+            }
             return;
           }
 
@@ -191,7 +197,13 @@ class PiAgentChatAdapter implements ChatAdapter {
 
             switch (msg.type) {
               case "session_created":
-                ws.send(JSON.stringify({ type: "prompt", message: text, storeSessionId: msg.sessionId }));
+                ws.send(
+                  JSON.stringify({
+                    type: "prompt",
+                    message: text,
+                    storeSessionId: msg.sessionId,
+                  }),
+                );
                 break;
 
               case "agent_start":
@@ -199,7 +211,7 @@ class PiAgentChatAdapter implements ChatAdapter {
                 break;
 
               case "thinking_delta": {
-                const delta = (msg as any).delta;
+                const delta = msg.delta;
                 if (!delta) break;
                 if (!hasReasoning) {
                   hasReasoning = true;
@@ -217,10 +229,8 @@ class PiAgentChatAdapter implements ChatAdapter {
               }
 
               case "message_update": {
-                if (
-                  (msg as any).assistantMessageEvent?.type === "text_delta"
-                ) {
-                  const delta = (msg as any).assistantMessageEvent.delta;
+                if (msg.assistantMessageEvent?.type === "text_delta") {
+                  const delta = msg.assistantMessageEvent.delta;
                   if (!delta) break;
                   // close reasoning when text starts
                   closeReasoning();
@@ -239,9 +249,9 @@ class PiAgentChatAdapter implements ChatAdapter {
                 closeText();
                 closeReasoning();
                 toolCounter++;
-                const toolCallId = (msg as any).toolCallId || `tool-${toolCounter}`;
-                const toolName = (msg as any).toolName || "unknown";
-                const args = (msg as any).args || {};
+                const toolCallId = msg.toolCallId || `tool-${toolCounter}`;
+                const toolName = msg.toolName || "unknown";
+                const args = msg.args || {};
                 controller.enqueue({
                   type: "tool-input-start",
                   toolCallId,
@@ -267,8 +277,8 @@ class PiAgentChatAdapter implements ChatAdapter {
               }
 
               case "tool_execution_end": {
-                const toolCallId = (msg as any).toolCallId || `tool-${toolCounter}`;
-                const result = (msg as any).result || "";
+                const toolCallId = msg.toolCallId || `tool-${toolCounter}`;
+                const result = msg.result || "";
                 controller.enqueue({
                   type: "tool-output-available",
                   toolCallId,
@@ -283,7 +293,7 @@ class PiAgentChatAdapter implements ChatAdapter {
                   closeText();
                 } else if (hasReasoning && !textOpen) {
                   // only-reasoning fallback
-                  const finalText = (msg as any).finalText || "";
+                  const finalText = msg.finalText || "";
                   openText();
                   if (finalText) {
                     controller.enqueue({
@@ -312,7 +322,9 @@ class PiAgentChatAdapter implements ChatAdapter {
                 ws.close();
                 break;
             }
-          } catch {}
+          } catch {
+            /* stream already closed */
+          }
         };
 
         ws.onerror = () => {
@@ -323,13 +335,17 @@ class PiAgentChatAdapter implements ChatAdapter {
               finishReason: "error",
             });
             controller.close();
-          } catch {}
+          } catch {
+            /* stream already closed */
+          }
         };
 
         ws.onclose = () => {
           try {
             controller.close();
-          } catch {}
+          } catch {
+            /* stream already closed */
+          }
         };
 
         input.signal.addEventListener("abort", () => {

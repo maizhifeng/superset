@@ -8,10 +8,8 @@ import {
 const baseIds = [...FEDERATED_DATASETS];
 
 test("refreshFederatedDatasets merges server list into the Set", async () => {
-  const apiGet = vi.fn(() =>
-    Promise.resolve({ data: { result: [100, 200] } }),
-  );
-  await refreshFederatedDatasets(apiGet as any);
+  const apiGet = vi.fn(() => Promise.resolve({ data: { result: [100, 200] } }));
+  await refreshFederatedDatasets(apiGet);
   expect(apiGet).toHaveBeenCalledWith("/bi/federated-datasets");
   expect(isFederatedDataset(100)).toBe(true);
   expect(isFederatedDataset(200)).toBe(true);
@@ -21,5 +19,7 @@ test("refreshFederatedDatasets merges server list into the Set", async () => {
 
 test("refreshFederatedDatasets falls back silently on error", async () => {
   const apiGet = vi.fn(() => Promise.reject(new Error("boom")));
-  await expect(refreshFederatedDatasets(apiGet as any)).resolves.toBeUndefined();
+  await expect(
+    refreshFederatedDatasets(apiGet as any),
+  ).resolves.toBeUndefined();
 });

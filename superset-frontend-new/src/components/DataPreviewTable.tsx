@@ -73,9 +73,10 @@ export default function DataPreviewTable({
   const [page, setPage] = useState(0);
   const pageSize = 50;
 
-  const rows = Array.isArray(data?.data)
-    ? (data.data as ChartDataRow[])
-    : [];
+  const rows = useMemo(
+    () => (Array.isArray(data?.data) ? (data.data as ChartDataRow[]) : []),
+    [data?.data],
+  );
   const keys =
     rows.length > 0
       ? Object.keys(rows[0]).filter((k) => k !== "__isSummary")

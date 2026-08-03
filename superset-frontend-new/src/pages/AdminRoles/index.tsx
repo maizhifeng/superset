@@ -123,7 +123,10 @@ export default function AdminRoles() {
           <IconButton
             size="small"
             onClick={() =>
-              setDeleteTarget({ id: params.id as number, name: params.row.name })
+              setDeleteTarget({
+                id: params.id as number,
+                name: params.row.name,
+              })
             }
           >
             <DeleteIcon sx={{ fontSize: 16 }} />
@@ -135,11 +138,19 @@ export default function AdminRoles() {
 
   return (
     <>
-      <PageHeader title="角色管理" actions={
-        <Button variant="contained" size="small" startIcon={<SecurityIcon />} onClick={() => setCreateOpen(true)}>
-          新建角色
-        </Button>
-      } />
+      <PageHeader
+        title="角色管理"
+        actions={
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<SecurityIcon />}
+            onClick={() => setCreateOpen(true)}
+          >
+            新建角色
+          </Button>
+        }
+      />
       <ListPageLayout
         loading={loading}
         error={error}
@@ -191,7 +202,7 @@ export default function AdminRoles() {
           cancelText="取消"
           confirmLoading={deleteLoading}
           danger
-          onConfirm={handleDelete}
+          onConfirm={() => void handleDelete()}
           onCancel={() => setDeleteTarget(null)}
         />
         <Dialog
@@ -218,19 +229,21 @@ export default function AdminRoles() {
             <Button
               variant="contained"
               disabled={creating || !createName.trim()}
-              onClick={async () => {
-                setCreating(true);
-                try {
-                  await api.post("/security/roles/", {
-                    name: createName.trim(),
-                  });
-                  setCreateOpen(false);
-                  setCreateName("");
-                  fetchData();
-                } catch {
-                  /* ignore */
-                }
-                setCreating(false);
+              onClick={() => {
+                void (async () => {
+                  setCreating(true);
+                  try {
+                    await api.post("/security/roles/", {
+                      name: createName.trim(),
+                    });
+                    setCreateOpen(false);
+                    setCreateName("");
+                    fetchData();
+                  } catch {
+                    /* ignore */
+                  }
+                  setCreating(false);
+                })();
               }}
             >
               {creating ? "创建中..." : "创建"}

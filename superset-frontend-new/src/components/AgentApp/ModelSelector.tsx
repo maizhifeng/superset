@@ -15,14 +15,20 @@ interface ModelSelectorProps {
   compact?: boolean;
 }
 
-export default function ModelSelector({ current, models, onSelect, compact }: ModelSelectorProps) {
+export default function ModelSelector({
+  current,
+  models,
+  onSelect,
+  compact,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -36,7 +42,10 @@ export default function ModelSelector({ current, models, onSelect, compact }: Mo
     <Box ref={ref} sx={{ position: "relative", display: "inline-flex" }}>
       <Tooltip title="切换模型" placement="top">
         <Box
-          onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          }}
           sx={{
             display: "inline-flex",
             alignItems: "center",
@@ -64,7 +73,7 @@ export default function ModelSelector({ current, models, onSelect, compact }: Mo
             sx={{
               fontSize: "0.68rem",
               fontWeight: 500,
-            whiteSpace: "nowrap",
+              whiteSpace: "nowrap",
             }}
           >
             {displayLabel}
@@ -106,14 +115,19 @@ export default function ModelSelector({ current, models, onSelect, compact }: Mo
           {models.map((m) => (
             <Box
               key={m.id}
-              onClick={() => { onSelect(m.id); setOpen(false); }}
+              onClick={() => {
+                onSelect(m.id);
+                setOpen(false);
+              }}
               sx={{
                 px: 1.5,
                 py: 0.75,
                 cursor: "pointer",
                 "&:hover": { bgcolor: "action.hover" },
-                bgcolor: m.id === current ? "rgba(0, 122, 115, 0.08)" : "transparent",
-                borderLeft: m.id === current ? "3px solid" : "3px solid transparent",
+                bgcolor:
+                  m.id === current ? "rgba(0, 122, 115, 0.08)" : "transparent",
+                borderLeft:
+                  m.id === current ? "3px solid" : "3px solid transparent",
                 borderColor: m.id === current ? "primary.main" : "transparent",
               }}
             >
@@ -127,7 +141,10 @@ export default function ModelSelector({ current, models, onSelect, compact }: Mo
               >
                 {m.name || m.id}
               </Typography>
-              <Typography variant="caption" sx={{ color: "text.secondary", fontSize: "0.65rem" }}>
+              <Typography
+                variant="caption"
+                sx={{ color: "text.secondary", fontSize: "0.65rem" }}
+              >
                 {m.id}
               </Typography>
             </Box>

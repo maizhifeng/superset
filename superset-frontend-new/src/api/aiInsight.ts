@@ -92,8 +92,12 @@ async function _streamLlmDirect(
   callbacks.onStatus?.("正在获取回答…");
 
   const rawBaseUrl = modelCfg?.baseUrl || "";
-  const useProxy = !rawBaseUrl || rawBaseUrl.startsWith("/") ||
-    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(rawBaseUrl);
+  const useProxy =
+    !rawBaseUrl ||
+    rawBaseUrl.startsWith("/") ||
+    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(
+      rawBaseUrl,
+    );
   const baseUrl = useProxy ? "/llm" : rawBaseUrl;
   const model = modelCfg?.model || "gemma-4-e2b-it";
 
@@ -210,13 +214,15 @@ export async function streamChartInsight(
   const shortNames = colnames.map((c: string) =>
     c.replace(/^SUM\(/, "").replace(/\)$/, ""),
   );
-  const sorted = [...data].sort((a, b) => {
-    const va =
-      Number(Object.values(a).find((v) => typeof v === "number")) || 0;
-    const vb =
-      Number(Object.values(b).find((v) => typeof v === "number")) || 0;
-    return vb - va;
-  }).slice(0, ROW_LIMIT);
+  const sorted = [...data]
+    .sort((a, b) => {
+      const va =
+        Number(Object.values(a).find((v) => typeof v === "number")) || 0;
+      const vb =
+        Number(Object.values(b).find((v) => typeof v === "number")) || 0;
+      return vb - va;
+    })
+    .slice(0, ROW_LIMIT);
   const tableStr = [
     shortNames.join("\t"),
     ...sorted.map((r) =>
@@ -283,7 +289,14 @@ export async function streamDirectChat(
   modelCfg?: ModelConfig,
   history?: { role: string; content: string }[],
 ): Promise<string> {
-  await _streamLlmDirect(systemPrompt, prompt, callbacks, signal, modelCfg, history);
+  await _streamLlmDirect(
+    systemPrompt,
+    prompt,
+    callbacks,
+    signal,
+    modelCfg,
+    history,
+  );
   return "";
 }
 
@@ -316,16 +329,23 @@ export async function streamWithTools(
   history?: { role: string; content: string }[],
 ): Promise<string> {
   const rawBaseUrl = modelCfg?.baseUrl || "";
-  const useProxy = !rawBaseUrl || rawBaseUrl.startsWith("/") ||
-    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(rawBaseUrl);
+  const useProxy =
+    !rawBaseUrl ||
+    rawBaseUrl.startsWith("/") ||
+    /(?:172\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.0\.0\.1|localhost|0\.0\.0\.0|host\.docker\.internal)/.test(
+      rawBaseUrl,
+    );
   const baseUrl = useProxy ? "/llm" : rawBaseUrl;
   const model = modelCfg?.model || "gemma-4-e2b-it";
 
-  const effectiveSystem = system ? `${system}\n\n${DATA_ANALYST_SYSTEM_PROMPT}` : DATA_ANALYST_SYSTEM_PROMPT;
+  const effectiveSystem = system
+    ? `${system}\n\n${DATA_ANALYST_SYSTEM_PROMPT}`
+    : DATA_ANALYST_SYSTEM_PROMPT;
 
   type Msg = Record<string, unknown>;
   const messages: Msg[] = [];
-  if (effectiveSystem) messages.push({ role: "system", content: effectiveSystem });
+  if (effectiveSystem)
+    messages.push({ role: "system", content: effectiveSystem });
   if (history) messages.push(...history);
   messages.push({ role: "user", content: prompt });
 
@@ -390,13 +410,20 @@ export async function streamWithTools(
               for (const tc of delta.tool_calls as ToolCallDelta[]) {
                 const idx = tc.index;
                 if (!toolCallMap.has(idx)) {
-                  toolCallMap.set(idx, { index: idx, id: "", type: "function", name: "", arguments: "" });
+                  toolCallMap.set(idx, {
+                    index: idx,
+                    id: "",
+                    type: "function",
+                    name: "",
+                    arguments: "",
+                  });
                 }
                 const acc = toolCallMap.get(idx)!;
                 if (tc.id) acc.id = tc.id;
                 if (tc.type) acc.type = tc.type;
                 if (tc.function?.name) acc.name = tc.function.name;
-                if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+                if (tc.function?.arguments)
+                  acc.arguments += tc.function.arguments;
               }
             }
           } catch {

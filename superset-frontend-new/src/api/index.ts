@@ -1,4 +1,5 @@
-import axios, { InternalAxiosRequestConfig } from "axios";
+import type { InternalAxiosRequestConfig } from "axios";
+import axios from "axios";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -99,7 +100,7 @@ export function getDataset<T = unknown>(id: number | string): Promise<T> {
     .get<{ result: T }>(`/dataset/${key}`)
     .then((res) => {
       setTimeout(() => datasetCache.delete(key), DATASET_CACHE_TTL);
-      return res.data.result as T;
+      return res.data.result;
     })
     .catch((err) => {
       datasetCache.delete(key);
@@ -109,7 +110,9 @@ export function getDataset<T = unknown>(id: number | string): Promise<T> {
   return promise;
 }
 
-export async function getMetricFormatMap(dsId: number): Promise<Record<string, string>> {
+export async function getMetricFormatMap(
+  dsId: number,
+): Promise<Record<string, string>> {
   const dataset = await getDataset<{
     metrics: { metric_name: string; d3format: string | null }[];
   }>(dsId);
@@ -223,14 +226,18 @@ api.interceptors.response.use(
         if (!window.location.pathname.includes("/login")) {
           window.location.href = "/login";
         }
-        return Promise.reject(error);
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
       }
 
       clearAuth();
       if (!window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }
-      return Promise.reject(error);
+      return Promise.reject(
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
 
     // Retry with fresh CSRF token if session token was missing
@@ -249,7 +256,9 @@ api.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error);
+    return Promise.reject(
+      error instanceof Error ? error : new Error(String(error)),
+    );
   },
 );
 
@@ -289,11 +298,13 @@ export function setupTokenRefresh(): void {
     return;
   }
 
-  refreshTimer = setTimeout(async () => {
-    const newToken = await refreshAccessToken();
-    if (newToken) {
-      setupTokenRefresh();
-    }
+  refreshTimer = setTimeout(() => {
+    void (async () => {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        setupTokenRefresh();
+      }
+    })();
   }, refreshAt);
 }
 

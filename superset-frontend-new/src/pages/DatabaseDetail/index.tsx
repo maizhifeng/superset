@@ -51,7 +51,14 @@ export default function DatabaseDetailPage() {
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 300 }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: 300,
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -96,7 +103,9 @@ export default function DatabaseDetailPage() {
         </Box>
         <Box sx={{ display: "flex", gap: 1 }}>
           <Chip
-            label={db.expose_in_sqllab ? "SQL 实验室已启用" : "SQL 实验室已禁用"}
+            label={
+              db.expose_in_sqllab ? "SQL 实验室已启用" : "SQL 实验室已禁用"
+            }
             color={db.expose_in_sqllab ? "success" : "default"}
             size="small"
           />
@@ -114,11 +123,16 @@ export default function DatabaseDetailPage() {
       </Tabs>
 
       {tab === 0 && (
-        <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}>
+        <TableContainer
+          component={Paper}
+          sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}
+        >
           <Table size="small">
             <TableBody>
               <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary", width: 220 }}>
+                <TableCell
+                  sx={{ fontWeight: 600, color: "text.secondary", width: 220 }}
+                >
                   数据库名称
                 </TableCell>
                 <TableCell>{db.database_name}</TableCell>
@@ -139,7 +153,9 @@ export default function DatabaseDetailPage() {
                 <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
                   UUID
                 </TableCell>
-                <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}>
+                <TableCell
+                  sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}
+                >
                   {db.uuid}
                 </TableCell>
               </TableRow>
@@ -225,7 +241,9 @@ export default function DatabaseDetailPage() {
                 <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
                   缓存超时
                 </TableCell>
-                <TableCell>{db.cache_timeout != null ? `${db.cache_timeout}s` : "未设置"}</TableCell>
+                <TableCell>
+                  {db.cache_timeout != null ? `${db.cache_timeout}s` : "未设置"}
+                </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
@@ -257,8 +275,16 @@ export default function DatabaseDetailPage() {
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={db.engine_information.disable_ssh_tunneling ? "已禁用" : "可用"}
-                    color={db.engine_information.disable_ssh_tunneling ? "default" : "success"}
+                    label={
+                      db.engine_information.disable_ssh_tunneling
+                        ? "已禁用"
+                        : "可用"
+                    }
+                    color={
+                      db.engine_information.disable_ssh_tunneling
+                        ? "default"
+                        : "success"
+                    }
                     size="small"
                   />
                 </TableCell>
@@ -269,8 +295,16 @@ export default function DatabaseDetailPage() {
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={db.engine_information.supports_dynamic_catalog ? "支持" : "不支持"}
-                    color={db.engine_information.supports_dynamic_catalog ? "success" : "default"}
+                    label={
+                      db.engine_information.supports_dynamic_catalog
+                        ? "支持"
+                        : "不支持"
+                    }
+                    color={
+                      db.engine_information.supports_dynamic_catalog
+                        ? "success"
+                        : "default"
+                    }
                     size="small"
                   />
                 </TableCell>
@@ -281,7 +315,9 @@ export default function DatabaseDetailPage() {
       )}
 
       {tab === 1 && (
-        <Paper sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}>
+        <Paper
+          sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}
+        >
           {schemas.length === 0 ? (
             <Box sx={{ p: 4, textAlign: "center" }}>
               <Typography variant="body2" color="text.secondary">
@@ -299,7 +335,9 @@ export default function DatabaseDetailPage() {
                 <TableBody>
                   {schemas.map((s) => (
                     <TableRow key={s} hover>
-                      <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}>
+                      <TableCell
+                        sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}
+                      >
                         {s}
                       </TableCell>
                     </TableRow>

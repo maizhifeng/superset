@@ -36,8 +36,20 @@ export interface DrillDownSuggestion {
 }
 
 export type KnowledgeCard =
-  | { kind: "prompt"; title: string; description: string; icon: ReactNode; prompt: string }
-  | { kind: "doc"; title: string; description: string; icon: ReactNode; docKey: string };
+  | {
+      kind: "prompt";
+      title: string;
+      description: string;
+      icon: ReactNode;
+      prompt: string;
+    }
+  | {
+      kind: "doc";
+      title: string;
+      description: string;
+      icon: ReactNode;
+      docKey: string;
+    };
 
 export interface InsightState {
   loading: boolean;
@@ -53,13 +65,7 @@ export interface InsightState {
 export type AppMode = "traditional" | "agent";
 
 export type StepType =
-  | "query"
-  | "analyze"
-  | "chart"
-  | "report"
-  | "drilldown"
-  | "compare"
-  | "schema";
+  "query" | "analyze" | "chart" | "report" | "drilldown" | "compare" | "schema";
 
 export type StepStatus = "pending" | "running" | "done" | "error";
 

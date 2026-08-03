@@ -3,7 +3,11 @@ import { renderHook, act } from "@testing-library/react";
 import { useDashboardCompare } from "@/pages/Dashboard/hooks/useDashboardCompare";
 
 vi.mock("@/api", () => ({
-  default: { get: vi.fn(), post: vi.fn(), defaults: { headers: { common: {} } } },
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    defaults: { headers: { common: {} } },
+  },
   getDataset: vi.fn(() => Promise.resolve({ columns: [] })),
 }));
 
@@ -26,9 +30,10 @@ function makeChartMeta() {
 test("initial compare state is empty", () => {
   const chartDataRef = { current: {} };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: {},
       chartDataRef,
       buildAdhocFiltersRef: buildRef,
@@ -44,9 +49,10 @@ test("initial compare state is empty", () => {
 test("handleToggleCompare opens modal with chart id", () => {
   const chartDataRef = { current: {} };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: {},
       chartDataRef,
       buildAdhocFiltersRef: buildRef,
@@ -60,9 +66,10 @@ test("handleToggleCompare opens modal with chart id", () => {
 test("handleToggleCompare toggles off when same chart", () => {
   const chartDataRef = { current: {} };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: {},
       chartDataRef,
       buildAdhocFiltersRef: buildRef,
@@ -84,9 +91,10 @@ test("handleToggleCompare toggles off when same chart", () => {
 test("handleApplyCompare sets compareConfig and closes modal", () => {
   const chartDataRef = { current: { 1: { data: [] } } };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: { 1: { data: [] } },
       chartDataRef,
       buildAdhocFiltersRef: buildRef,
@@ -111,9 +119,10 @@ test("handleApplyCompare sets compareConfig and closes modal", () => {
 test("closeCompareModal resets modal state", () => {
   const chartDataRef = { current: {} };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: {},
       chartDataRef,
       buildAdhocFiltersRef: buildRef,
@@ -132,9 +141,10 @@ test("closeCompareModal resets modal state", () => {
 test("openPeriodModal and closePeriodModal manage period state", () => {
   const chartDataRef = { current: {} };
   const buildRef = { current: vi.fn(() => []) };
+  const meta = makeChartMeta();
   const { result } = renderHook(() =>
     useDashboardCompare({
-      chartMeta: makeChartMeta(),
+      chartMeta: meta,
       chartData: {},
       chartDataRef,
       buildAdhocFiltersRef: buildRef,

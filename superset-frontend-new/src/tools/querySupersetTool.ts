@@ -6,7 +6,7 @@ export const QUERY_SUPERSET_TOOL = {
   function: {
     name: "query_superset",
     description:
-      "从广告投放数据集（数据集 26）查询按维度聚合的数据，返回 markdown 表格。columns 必须包含「日期」以展示分天趋势，可附加其他维度。各维度含义：日期=数据日期，媒体=广告投放平台（微信/抖音/华为等），平台=操作系统（iOS/Android），渠道商=具体合作渠道，主游戏=游戏项目名，团队=运营团队。metrics 指定聚合指标（如 SUM(消耗)）。示例：columns=[\"日期\", \"媒体\"], metrics=[\"SUM(消耗)\", \"cpa\"], time_range=\"Last 7 days\"",
+      '从广告投放数据集（数据集 26）查询按维度聚合的数据，返回 markdown 表格。columns 必须包含「日期」以展示分天趋势，可附加其他维度。各维度含义：日期=数据日期，媒体=广告投放平台（微信/抖音/华为等），平台=操作系统（iOS/Android），渠道商=具体合作渠道，主游戏=游戏项目名，团队=运营团队。metrics 指定聚合指标（如 SUM(消耗)）。示例：columns=["日期", "媒体"], metrics=["SUM(消耗)", "cpa"], time_range="Last 7 days"',
     parameters: {
       type: "object",
       properties: {

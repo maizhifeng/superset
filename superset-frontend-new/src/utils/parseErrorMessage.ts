@@ -5,8 +5,7 @@ export function parseErrorMessage(
   if (err instanceof Error) return err.message;
 
   const apiErr = err as
-    | { response?: { data?: { message?: string } } }
-    | undefined;
+    { response?: { data?: { message?: string } } } | undefined;
 
   return apiErr?.response?.data?.message ?? fallback;
 }

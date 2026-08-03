@@ -25,7 +25,7 @@ test("renders notification alert", () => {
   expect(screen.getByText("Chart saved")).toBeInTheDocument();
 });
 
-test("dismisses notification on close", async () => {
+test("dismisses notification on close", () => {
   act(() => {
     useNotificationStore.getState().notify({
       severity: "error",
@@ -37,8 +37,8 @@ test("dismisses notification on close", async () => {
   expect(screen.getByText("Something failed")).toBeInTheDocument();
 
   const closeButton = screen.getByRole("button");
-  await act(async () => {
-    await userEvent.click(closeButton);
+  act(() => {
+    userEvent.click(closeButton);
   });
 
   expect(useNotificationStore.getState().notifications).toHaveLength(0);

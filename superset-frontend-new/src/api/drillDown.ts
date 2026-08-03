@@ -72,9 +72,7 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows = 50): string {
   const header = cols.join(" | ");
   const sep = cols.map(() => "---").join(" | ");
   const display = rows.slice(0, maxRows);
-  const body = display.map((r) =>
-    cols.map((c) => fmt(r[c])).join(" | "),
-  );
+  const body = display.map((r) => cols.map((c) => fmt(r[c])).join(" | "));
   return [header, sep, ...body].join("\n");
 }
 
@@ -85,8 +83,7 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows = 50): string {
  */
 function parseResult(resp: unknown) {
   const r = (resp as { data?: { result?: unknown[] } })?.data?.result?.[0] as
-    | { data?: Row[]; colnames?: string[] }
-    | undefined;
+    { data?: Row[]; colnames?: string[] } | undefined;
   return { rows: r?.data ?? [], cols: r?.colnames ?? [] };
 }
 
@@ -108,29 +105,37 @@ const USER_METRIC = {
 
 /** 所有查询共享的指标列表：消耗 + 新增用户 + CPA + ROI1 + LTV1~LTV7 */
 const BASE_METRICS = [
-  COST_METRIC, USER_METRIC,
-  "cpa", "roi_1", "ltv_1",
-  "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7",
+  COST_METRIC,
+  USER_METRIC,
+  "cpa",
+  "roi_1",
+  "ltv_1",
+  "ltv_2",
+  "ltv_3",
+  "ltv_4",
+  "ltv_5",
+  "ltv_6",
+  "ltv_7",
 ] as unknown[];
 
 /** 指标名 → Superset 指标映射 */
 const METRIC_MAP: Record<string, unknown> = {
-  "消耗": COST_METRIC,
-  "新增": USER_METRIC,
-  "cpa": "cpa",
-  "roi1": "roi_1",
-  "ltv1": "ltv_1",
-  "ltv2": "ltv_2",
-  "ltv3": "ltv_3",
-  "ltv4": "ltv_4",
-  "ltv5": "ltv_5",
-  "ltv6": "ltv_6",
-  "ltv7": "ltv_7",
+  消耗: COST_METRIC,
+  新增: USER_METRIC,
+  cpa: "cpa",
+  roi1: "roi_1",
+  ltv1: "ltv_1",
+  ltv2: "ltv_2",
+  ltv3: "ltv_3",
+  ltv4: "ltv_4",
+  ltv5: "ltv_5",
+  ltv6: "ltv_6",
+  ltv7: "ltv_7",
 };
 
 /** 列名映射：AI/用户常用别名 → 数据集实际列名 */
 const COLUMN_MAP: Record<string, string> = {
-  "项目": "主游戏",
+  项目: "主游戏",
 };
 
 /** 钻取数据导出接口 */
@@ -166,49 +171,57 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
   const [q1, q2, q3, qTeam] = await Promise.all([
     api.post("/chart/data", {
       datasource: DATASOURCE,
-      queries: [{
-        metrics: BASE_METRICS,
-        columns: ["主游戏", "渠道商", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 500,
-      }],
+      queries: [
+        {
+          metrics: BASE_METRICS,
+          columns: ["主游戏", "渠道商", "日期"],
+          ...dayFilter,
+          orderby: orderDesc,
+          row_limit: 500,
+        },
+      ],
       result_format: "json",
       result_type: "full",
     }),
     api.post("/chart/data", {
       datasource: DATASOURCE,
-      queries: [{
-        metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["媒体", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 200,
-      }],
+      queries: [
+        {
+          metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
+          columns: ["媒体", "日期"],
+          ...dayFilter,
+          orderby: orderDesc,
+          row_limit: 200,
+        },
+      ],
       result_format: "json",
       result_type: "full",
     }),
     api.post("/chart/data", {
       datasource: DATASOURCE,
-      queries: [{
-        metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["平台", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 200,
-      }],
+      queries: [
+        {
+          metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
+          columns: ["平台", "日期"],
+          ...dayFilter,
+          orderby: orderDesc,
+          row_limit: 200,
+        },
+      ],
       result_format: "json",
       result_type: "full",
     }),
     api.post("/chart/data", {
       datasource: DATASOURCE,
-      queries: [{
-        metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
-        columns: ["团队", "渠道商", "日期"],
-        ...dayFilter,
-        orderby: orderDesc,
-        row_limit: 200,
-      }],
+      queries: [
+        {
+          metrics: [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"],
+          columns: ["团队", "渠道商", "日期"],
+          ...dayFilter,
+          orderby: orderDesc,
+          row_limit: 200,
+        },
+      ],
       result_format: "json",
       result_type: "full",
     }),
@@ -222,9 +235,7 @@ export async function fetchDrillDownData(): Promise<DrillDownData> {
   // 将团队数据中的时间戳转为可读日期
   normalizeDates(rTeam.rows);
 
-  const sections: string[] = [
-    "数据范围: 近7天 | 数据中的 日期 列即为日期", "",
-  ];
+  const sections: string[] = ["数据范围: 近7天 | 数据中的 日期 列即为日期", ""];
 
   sections.push("#### 1. 项目+渠道维度明细", "");
   sections.push(toMarkdownTable(r1.cols, r1.rows, 500));
@@ -285,7 +296,9 @@ export async function queryDrillDown(
   const { rows, cols } = parseResult(resp);
   normalizeDates(rows);
 
-  const dates = [...new Set(rows.map((r) => String(r.日期)).filter(Boolean))].sort();
+  const dates = [
+    ...new Set(rows.map((r) => String(r.日期)).filter(Boolean)),
+  ].sort();
   const dateRange = dates.length
     ? `${dates[0]} ~ ${dates[dates.length - 1]}`
     : "近7天";

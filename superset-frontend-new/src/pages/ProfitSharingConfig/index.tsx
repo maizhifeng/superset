@@ -45,11 +45,26 @@ interface WhitelistRow {
 
 const SPLIT_TYPES = ["流水分成", "利润后分成"];
 
-const COLUMNS = ["papp_id", "papp_name", "channel_id", "channel_name", "商户分成", "ios虚拟支付分成", "渠道商分成", "研发分成", "IP分成", "分成比例", "分成方式", "上线时间"];
+const COLUMNS = [
+  "papp_id",
+  "papp_name",
+  "channel_id",
+  "channel_name",
+  "商户分成",
+  "ios虚拟支付分成",
+  "渠道商分成",
+  "研发分成",
+  "IP分成",
+  "分成比例",
+  "分成方式",
+  "上线时间",
+];
 
 const COL_DESCS: Record<string, string> = {
-  "分成比例": "最终净比例 流水分成: 1-渠道商%-研发%-IP%\n利润后分成: (1-渠道商%-IP%)×(1-研发%)\n渠道商%=(商户占比×商户分成)+(虚拟占比×ios虚拟支付分成)+(渠道商占比×渠道商分成)",
-  "分成方式": "流水分成：各比例基于流水X\n利润后分成：研发分成基于扣除渠道商和IP后的剩余部分",
+  分成比例:
+    "最终净比例 流水分成: 1-渠道商%-研发%-IP%\n利润后分成: (1-渠道商%-IP%)×(1-研发%)\n渠道商%=(商户占比×商户分成)+(虚拟占比×ios虚拟支付分成)+(渠道商占比×渠道商分成)",
+  分成方式:
+    "流水分成：各比例基于流水X\n利润后分成：研发分成基于扣除渠道商和IP后的剩余部分",
 };
 
 const cardHeaderSx = {
@@ -79,7 +94,9 @@ export default function ProfitSharingConfig() {
 
   useEffect(() => {
     setLoading(true);
-    fetchRows().catch(() => {}).finally(() => setLoading(false));
+    fetchRows()
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [fetchRows]);
 
   const handleSync = useCallback(async () => {
@@ -147,15 +164,32 @@ export default function ProfitSharingConfig() {
     }
   }, []);
 
-  const updateField = useCallback((id: number, field: "上线时间" | "渠道商分成" | "研发分成" | "IP分成" | "分成方式" | "商户分成" | "ios虚拟支付分成", value: string) => {
-    setRows((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
-    );
-  }, []);
+  const updateField = useCallback(
+    (
+      id: number,
+      field:
+        | "上线时间"
+        | "渠道商分成"
+        | "研发分成"
+        | "IP分成"
+        | "分成方式"
+        | "商户分成"
+        | "ios虚拟支付分成",
+      value: string,
+    ) => {
+      setRows((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+      );
+    },
+    [],
+  );
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const handleChangePage = useCallback((_: unknown, p: number) => setPage(p), []);
+  const handleChangePage = useCallback(
+    (_: unknown, p: number) => setPage(p),
+    [],
+  );
   const handleChangeRowsPerPage = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setRowsPerPage(parseInt(e.target.value, 10));
@@ -198,7 +232,12 @@ export default function ProfitSharingConfig() {
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           onClose={() => setSuccess(null)}
         >
-          <Alert severity="success" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setSuccess(null)}>
+          <Alert
+            severity="success"
+            variant="filled"
+            sx={{ borderRadius: 2 }}
+            onClose={() => setSuccess(null)}
+          >
             {success}
           </Alert>
         </Snackbar>
@@ -210,7 +249,12 @@ export default function ProfitSharingConfig() {
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           onClose={() => setError(null)}
         >
-          <Alert severity="error" variant="filled" sx={{ borderRadius: 2 }} onClose={() => setError(null)}>
+          <Alert
+            severity="error"
+            variant="filled"
+            sx={{ borderRadius: 2 }}
+            onClose={() => setError(null)}
+          >
             {error}
           </Alert>
         </Snackbar>
@@ -229,12 +273,17 @@ export default function ProfitSharingConfig() {
           title={`分成配置 (${filteredRows.length})`}
           sx={cardHeaderSx}
           action={
-            <Box sx={{ display: "flex", gap: 1, pr: 0.5, alignItems: "center" }}>
+            <Box
+              sx={{ display: "flex", gap: 1, pr: 0.5, alignItems: "center" }}
+            >
               <Autocomplete
                 size="small"
                 options={gameOptions}
                 value={filterGame}
-                onChange={(_, v) => { setFilterGame(v); setPage(0); }}
+                onChange={(_, v) => {
+                  setFilterGame(v);
+                  setPage(0);
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -248,7 +297,10 @@ export default function ProfitSharingConfig() {
                 size="small"
                 options={channelOptions}
                 value={filterChannel}
-                onChange={(_, v) => { setFilterChannel(v); setPage(0); }}
+                onChange={(_, v) => {
+                  setFilterChannel(v);
+                  setPage(0);
+                }}
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -261,15 +313,17 @@ export default function ProfitSharingConfig() {
               <Button
                 size="small"
                 variant="contained"
-                onClick={handleSaveAll}
+                onClick={() => void handleSaveAll()}
               >
                 全部保存
               </Button>
               <Button
                 size="small"
                 variant="outlined"
-                startIcon={syncing ? <CircularProgress size={14} /> : <SyncIcon />}
-                onClick={handleSync}
+                startIcon={
+                  syncing ? <CircularProgress size={14} /> : <SyncIcon />
+                }
+                onClick={() => void handleSync()}
                 disabled={syncing}
               >
                 {syncing ? "同步中..." : "同步"}
@@ -285,8 +339,10 @@ export default function ProfitSharingConfig() {
               </Typography>
               <Button
                 variant="outlined"
-                startIcon={syncing ? <CircularProgress size={14} /> : <SyncIcon />}
-                onClick={handleSync}
+                startIcon={
+                  syncing ? <CircularProgress size={14} /> : <SyncIcon />
+                }
+                onClick={() => void handleSync()}
                 disabled={syncing}
               >
                 {syncing ? "同步中..." : "同步"}
@@ -315,12 +371,45 @@ export default function ProfitSharingConfig() {
                             bgcolor: "grey.50",
                             fontSize: "0.75rem",
                             py: 1,
-                            minWidth: col === "上线时间" ? 70 : col === "分成比例" ? 100 : col === "渠道商分成" || col === "研发分成" || col === "IP分成" ? 90 : col === "分成方式" ? 120 : col === "channel_id" || col === "papp_id" || col === "id" ? 70 : 90,
+                            minWidth:
+                              col === "上线时间"
+                                ? 70
+                                : col === "分成比例"
+                                  ? 100
+                                  : col === "渠道商分成" ||
+                                      col === "研发分成" ||
+                                      col === "IP分成"
+                                    ? 90
+                                    : col === "分成方式"
+                                      ? 120
+                                      : col === "channel_id" ||
+                                          col === "papp_id" ||
+                                          col === "id"
+                                        ? 70
+                                        : 90,
                             textAlign: "center",
                           }}
                         >
-                          <Tooltip title={COL_DESCS[col] || ""} placement="top" arrow slotProps={{ tooltip: { sx: { whiteSpace: "pre-line", maxWidth: "none" } } }}>
-                            <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25 }}>
+                          <Tooltip
+                            title={COL_DESCS[col] || ""}
+                            placement="top"
+                            arrow
+                            slotProps={{
+                              tooltip: {
+                                sx: {
+                                  whiteSpace: "pre-line",
+                                  maxWidth: "none",
+                                },
+                              },
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 0.25,
+                              }}
+                            >
                               <Typography
                                 sx={{
                                   fontSize: "0.75rem",
@@ -332,39 +421,68 @@ export default function ProfitSharingConfig() {
                                 {col}
                               </Typography>
                               {COL_DESCS[col] && (
-                                <Typography component="span" sx={{ fontSize: "0.7rem", color: "info.main", fontWeight: 700, cursor: "help" }}>?</Typography>
+                                <Typography
+                                  component="span"
+                                  sx={{
+                                    fontSize: "0.7rem",
+                                    color: "info.main",
+                                    fontWeight: 700,
+                                    cursor: "help",
+                                  }}
+                                >
+                                  ?
+                                </Typography>
                               )}
                             </Box>
                           </Tooltip>
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 700, bgcolor: "grey.50", fontSize: "0.75rem", py: 1, width: 60, textAlign: "center" }} />
+                      <TableCell
+                        sx={{
+                          fontWeight: 700,
+                          bgcolor: "grey.50",
+                          fontSize: "0.75rem",
+                          py: 1,
+                          width: 60,
+                          textAlign: "center",
+                        }}
+                      />
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {visibleRows.map((row) => (
                       <TableRow key={row.id}>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
                             {row.papp_id}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
                             {row.papp_name}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
                             {row.channel_id}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
                             {row.channel_name}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -377,14 +495,31 @@ export default function ProfitSharingConfig() {
                             }}
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                },
+                                endAdornment: (
+                                  <InputAdornment
+                                    position="end"
+                                    sx={{
+                                      "& .MuiTypography-root": {
+                                        fontSize: "0.75rem",
+                                      },
+                                    }}
+                                  >
+                                    %
+                                  </InputAdornment>
+                                ),
                               },
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -397,14 +532,31 @@ export default function ProfitSharingConfig() {
                             }}
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                },
+                                endAdornment: (
+                                  <InputAdornment
+                                    position="end"
+                                    sx={{
+                                      "& .MuiTypography-root": {
+                                        fontSize: "0.75rem",
+                                      },
+                                    }}
+                                  >
+                                    %
+                                  </InputAdornment>
+                                ),
                               },
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -417,14 +569,31 @@ export default function ProfitSharingConfig() {
                             }}
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                },
+                                endAdornment: (
+                                  <InputAdornment
+                                    position="end"
+                                    sx={{
+                                      "& .MuiTypography-root": {
+                                        fontSize: "0.75rem",
+                                      },
+                                    }}
+                                  >
+                                    %
+                                  </InputAdornment>
+                                ),
                               },
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -437,14 +606,31 @@ export default function ProfitSharingConfig() {
                             }}
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                },
+                                endAdornment: (
+                                  <InputAdornment
+                                    position="end"
+                                    sx={{
+                                      "& .MuiTypography-root": {
+                                        fontSize: "0.75rem",
+                                      },
+                                    }}
+                                  >
+                                    %
+                                  </InputAdornment>
+                                ),
                               },
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -457,39 +643,83 @@ export default function ProfitSharingConfig() {
                             }}
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5 },
-                                endAdornment: <InputAdornment position="end" sx={{ "& .MuiTypography-root": { fontSize: "0.75rem" } }}>%</InputAdornment>,
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                },
+                                endAdornment: (
+                                  <InputAdornment
+                                    position="end"
+                                    sx={{
+                                      "& .MuiTypography-root": {
+                                        fontSize: "0.75rem",
+                                      },
+                                    }}
+                                  >
+                                    %
+                                  </InputAdornment>
+                                ),
                               },
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}>
-                          <Typography sx={{ fontSize: "0.75rem", px: 1, py: 0.5, fontWeight: 600, color: "text.secondary" }}>
-                            {row.分成比例 || `${(() => {
-                              const qd = parseFloat(row.渠道商分成 || '0');
-                              const yf = parseFloat(row.研发分成 || '0');
-                              const ip = parseFloat(row.IP分成 || '0');
-                              return row.分成方式 === "利润后分成"
-                                ? ((100 - qd - ip) * (100 - yf) / 100).toFixed(1)
-                                : (100 - qd - yf - ip).toFixed(1);
-                            })()}%`}
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: "0.75rem",
+                              px: 1,
+                              py: 0.5,
+                              fontWeight: 600,
+                              color: "text.secondary",
+                            }}
+                          >
+                            {row.分成比例 ||
+                              `${(() => {
+                                const qd = parseFloat(row.渠道商分成 || "0");
+                                const yf = parseFloat(row.研发分成 || "0");
+                                const ip = parseFloat(row.IP分成 || "0");
+                                return row.分成方式 === "利润后分成"
+                                  ? (
+                                      ((100 - qd - ip) * (100 - yf)) /
+                                      100
+                                    ).toFixed(1)
+                                  : (100 - qd - yf - ip).toFixed(1);
+                              })()}%`}
                           </Typography>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
+                        >
                           <Select
                             size="small"
                             variant="standard"
                             value={row.分成方式}
-                            onChange={(e) => updateField(row.id, "分成方式", e.target.value)}
-                            sx={{ fontSize: "0.75rem", "& .MuiSelect-select": { py: 0.5 } }}
+                            onChange={(e) =>
+                              updateField(row.id, "分成方式", e.target.value)
+                            }
+                            sx={{
+                              fontSize: "0.75rem",
+                              "& .MuiSelect-select": { py: 0.5 },
+                            }}
                           >
                             {SPLIT_TYPES.map((t) => (
-                              <MenuItem key={t} value={t} sx={{ fontSize: "0.75rem" }}>{t}</MenuItem>
+                              <MenuItem
+                                key={t}
+                                value={t}
+                                sx={{ fontSize: "0.75rem" }}
+                              >
+                                {t}
+                              </MenuItem>
                             ))}
                           </Select>
                         </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center", minWidth: 70 }}>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 70 }}
+                        >
                           <TextField
                             size="small"
                             variant="standard"
@@ -500,16 +730,23 @@ export default function ProfitSharingConfig() {
                             }
                             slotProps={{
                               input: {
-                                sx: { fontSize: "0.75rem", textAlign: "center", py: 0.5, px: 0.25 },
+                                sx: {
+                                  fontSize: "0.75rem",
+                                  textAlign: "center",
+                                  py: 0.5,
+                                  px: 0.25,
+                                },
                               },
                             }}
-                            sx={{ "& input": { textAlign: "center", minWidth: 0 } }}
+                            sx={{
+                              "& input": { textAlign: "center", minWidth: 0 },
+                            }}
                           />
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <IconButton
                             size="small"
-                            onClick={() => handleSave(row)}
+                            onClick={() => void handleSave(row)}
                             disabled={saving[row.id]}
                             color="primary"
                           >
@@ -545,9 +782,10 @@ export default function ProfitSharingConfig() {
                 rowsPerPageOptions={[10, 25, 50, 100]}
                 sx={{
                   ".MuiTablePagination-toolbar": { minHeight: 36, pl: 1 },
-                  ".MuiTablePagination-selectLabel, .MuiTablePagination-input": {
-                    fontSize: "0.75rem",
-                  },
+                  ".MuiTablePagination-selectLabel, .MuiTablePagination-input":
+                    {
+                      fontSize: "0.75rem",
+                    },
                   ".MuiTablePagination-displayedRows": { fontSize: "0.75rem" },
                 }}
               />

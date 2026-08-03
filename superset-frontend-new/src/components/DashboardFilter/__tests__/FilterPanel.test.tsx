@@ -1,8 +1,15 @@
 import { test, expect } from "vitest";
-import { buildSiblingFilters } from "@/components/DashboardFilter/FilterPanel";
-import type { FilterConfig, FilterState } from "@/components/DashboardFilter/types";
+import { buildSiblingFilters } from "@/components/DashboardFilter/filterValuesCache";
+import type {
+  FilterConfig,
+  FilterState,
+} from "@/components/DashboardFilter/types";
 
-const mkFilter = (id: string, datasetId: number, column: string): FilterConfig => ({
+const mkFilter = (
+  id: string,
+  datasetId: number,
+  column: string,
+): FilterConfig => ({
   id,
   name: column,
   filterType: "filter_select",

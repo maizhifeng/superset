@@ -45,7 +45,7 @@ export default function ExploreWelcome() {
           fontSize: "0.75rem",
         }}
       >
-          <Typography variant="caption">选择数据集</Typography>
+        <Typography variant="caption">选择数据集</Typography>
         <ArrowDownwardIcon sx={{ fontSize: 14 }} />
       </Box>
     </Box>

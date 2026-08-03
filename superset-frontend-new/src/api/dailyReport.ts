@@ -3,7 +3,12 @@ import api from "@/api";
 const DATASOURCE = { id: 26, type: "table" as const };
 
 type SupersetMetric =
-  | { expressionType: "SIMPLE"; column: { column_name: string }; aggregate: string; label: string }
+  | {
+      expressionType: "SIMPLE";
+      column: { column_name: string };
+      aggregate: string;
+      label: string;
+    }
   | string;
 
 interface Row {
@@ -24,7 +29,13 @@ const USER_METRIC: SupersetMetric = {
   label: "SUM(n_unum)",
 };
 
-const BASE_METRICS: SupersetMetric[] = [COST_METRIC, USER_METRIC, "cpa", "roi_1", "ltv_1"];
+const BASE_METRICS: SupersetMetric[] = [
+  COST_METRIC,
+  USER_METRIC,
+  "cpa",
+  "roi_1",
+  "ltv_1",
+];
 
 function fmt(v: unknown, decimals = 2): string {
   if (v == null) return "-";
@@ -39,9 +50,7 @@ function toMarkdownTable(cols: string[], rows: Row[], maxRows = 40): string {
   const header = cols.join(" | ");
   const sep = cols.map(() => "---").join(" | ");
   const display = rows.slice(0, maxRows);
-  const body = display.map((r) =>
-    cols.map((c) => fmt(r[c])).join(" | "),
-  );
+  const body = display.map((r) => cols.map((c) => fmt(r[c])).join(" | "));
   return [header, sep, ...body].join("\n");
 }
 
@@ -65,8 +74,9 @@ function normalizeDates(rows: Row[]): void {
 
 /** Get unique dates sorted descending */
 function uniqueDates(rows: Row[], field = "日期"): number[] {
-  return [...new Set(rows.map((r) => Number(r[field])).filter(Boolean))]
-    .sort((a, b) => b - a);
+  return [...new Set(rows.map((r) => Number(r[field])).filter(Boolean))].sort(
+    (a, b) => b - a,
+  );
 }
 
 export interface DailyReportData {
@@ -92,21 +102,57 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   const orderDesc = [["SUM(ad_real_cost)", false]];
 
-  const mediaMetrics: SupersetMetric[] = [COST_METRIC, USER_METRIC, "cpa", "roi_1"];
+  const mediaMetrics: SupersetMetric[] = [
+    COST_METRIC,
+    USER_METRIC,
+    "cpa",
+    "roi_1",
+  ];
   const trendMetrics: SupersetMetric[] = [COST_METRIC];
 
   const resp = await api.post("/chart/data", {
     ...baseQuery,
     queries: [
-      { metrics: BASE_METRICS, columns: ["主游戏", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
-      { metrics: BASE_METRICS, columns: ["主游戏", "渠道商", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 500 },
-      { metrics: mediaMetrics, columns: ["媒体", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
-      { metrics: trendMetrics, columns: ["日期"], ...trendFilter, orderby: orderDesc, row_limit: 10 },
-      { metrics: BASE_METRICS, columns: ["团队", "渠道商", "日期"], ...dayFilter, orderby: orderDesc, row_limit: 100 },
+      {
+        metrics: BASE_METRICS,
+        columns: ["主游戏", "日期"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 100,
+      },
+      {
+        metrics: BASE_METRICS,
+        columns: ["主游戏", "渠道商", "日期"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 500,
+      },
+      {
+        metrics: mediaMetrics,
+        columns: ["媒体", "日期"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 100,
+      },
+      {
+        metrics: trendMetrics,
+        columns: ["日期"],
+        ...trendFilter,
+        orderby: orderDesc,
+        row_limit: 10,
+      },
+      {
+        metrics: BASE_METRICS,
+        columns: ["团队", "渠道商", "日期"],
+        ...dayFilter,
+        orderby: orderDesc,
+        row_limit: 100,
+      },
     ],
   });
 
-  const results = ((resp as { data?: { result?: unknown[] } }).data?.result) ?? [];
+  const results =
+    (resp as { data?: { result?: unknown[] } }).data?.result ?? [];
   const parseAt = (idx: number) => parseBatchResult(results[idx]);
   const r1 = parseAt(0);
   const r2 = parseAt(1);
@@ -132,12 +178,20 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   const sortCost = (rows: Row[]) =>
     [...rows].sort(
-      (a, b) => (Number(b["SUM(ad_real_cost)"]) || 0) - (Number(a["SUM(ad_real_cost)"]) || 0),
+      (a, b) =>
+        (Number(b["SUM(ad_real_cost)"]) || 0) -
+        (Number(a["SUM(ad_real_cost)"]) || 0),
     );
 
-  function truncNote(label: string, count: number, limit: number): string | null {
-    if (count > limit) return `⚠️ ${label}: 共 ${count} 行，仅展示消耗最高的 ${limit} 行，缺失 ${count - limit} 行`;
-    if (count >= limit) return `⚠️ ${label}: 达到查询上限 ${limit} 行，可能存在截断`;
+  function truncNote(
+    label: string,
+    count: number,
+    limit: number,
+  ): string | null {
+    if (count > limit)
+      return `⚠️ ${label}: 共 ${count} 行，仅展示消耗最高的 ${limit} 行，缺失 ${count - limit} 行`;
+    if (count >= limit)
+      return `⚠️ ${label}: 达到查询上限 ${limit} 行，可能存在截断`;
     return null;
   }
 
@@ -150,25 +204,33 @@ export async function fetchDailyReportData(): Promise<DailyReportData> {
 
   // Section 2
   const yesDate2 = yesLabel;
-  const allYesRows2 = sortCost(r2.rows.filter((r) => String(r.日期) === yesDate2));
+  const allYesRows2 = sortCost(
+    r2.rows.filter((r) => String(r.日期) === yesDate2),
+  );
   const n2 = truncNote("项目+渠道（昨日）", allYesRows2.length, 200);
   if (n2) notes.push(n2);
 
   // Section 3
   const rawTotal3 = r3.rows.length;
-  const dates3 = [...new Set(r3.rows.map((r) => String(r.日期)).filter(Boolean))]
-    .sort((a, b) => b.localeCompare(a));
+  const dates3 = [
+    ...new Set(r3.rows.map((r) => String(r.日期)).filter(Boolean)),
+  ].sort((a, b) => b.localeCompare(a));
   let mediaTruncated = false;
   for (const d of dates3) {
     const dayRows = sortCost(r3.rows.filter((r) => String(r.日期) === d));
     if (dayRows.length > 40) mediaTruncated = true;
   }
-  if (rawTotal3 >= 100) notes.push(`⚠️ 媒体维度: 查询返回 ${rawTotal3} 行（达到上限 100），可能存在截断`);
+  if (rawTotal3 >= 100)
+    notes.push(
+      `⚠️ 媒体维度: 查询返回 ${rawTotal3} 行（达到上限 100），可能存在截断`,
+    );
   if (mediaTruncated) notes.push("⚠️ 媒体维度: 部分日期仅展示消耗最高的 40 行");
 
   // Team section
   const yesDateTeam = yesLabel;
-  const allYesTeamRows = sortCost(rTeam.rows.filter((r) => String(r.日期) === yesDateTeam));
+  const allYesTeamRows = sortCost(
+    rTeam.rows.filter((r) => String(r.日期) === yesDateTeam),
+  );
   const nTeam = truncNote("团队维度（昨日）", allYesTeamRows.length, 60);
   if (nTeam) notes.push(nTeam);
 

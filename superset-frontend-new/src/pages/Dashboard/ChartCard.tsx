@@ -1,4 +1,11 @@
-import { memo, useRef, useMemo, useState, useEffect, type ReactNode } from "react";
+import {
+  memo,
+  useRef,
+  useMemo,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
@@ -106,7 +113,42 @@ export interface CompareConfig {
   dimensions: CompareDimension[];
 }
 
-export const PRESET_INTERVALS = [600, 300, 60, 0];
+function formatDateValue(value: unknown): string | null {
+  if (typeof value === "number") {
+    if (value > 1e12 && value < 1e16) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+    if (value > 19000000 && value <= 22000000 && value < 1e9) {
+      const s = String(Math.floor(value));
+      if (s.length === 8) {
+        return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+      }
+    }
+    if (value > 1e8 && value < 1e12) {
+      const d = new Date(value * 1000);
+      if (
+        !isNaN(d.getTime()) &&
+        d.getFullYear() > 1900 &&
+        d.getFullYear() < 2200
+      ) {
+        return d.toLocaleDateString();
+      }
+    }
+  }
+  if (typeof value === "string") {
+    if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    }
+    const num = Number(value);
+    if (!isNaN(num) && num > 19000000) {
+      return formatDateValue(num);
+    }
+  }
+  return null;
+}
+
 const LONG_PRESS_MS = 500;
 
 interface ChartCardProps {
@@ -233,6 +275,7 @@ function ChartCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const notify = useNotificationStore((s) => s.notify);
   const fullscreen = useFullscreenStore();
+  const setForceLandscape = useFullscreenStore((st) => st.setForceLandscape);
   const isActiveFullscreen = fullscreen.activeChartId === chartId;
 
   const getTextContent = (source: ChartDataPayload | undefined) => {
@@ -301,42 +344,6 @@ function ChartCard({
     }
   };
 
-  function formatDateValue(value: unknown): string | null {
-    if (typeof value === "number") {
-      if (value > 1e12 && value < 1e16) {
-        const d = new Date(value);
-        if (!isNaN(d.getTime())) return d.toLocaleDateString();
-      }
-      if (value > 19000000 && value <= 22000000 && value < 1e9) {
-        const s = String(Math.floor(value));
-        if (s.length === 8) {
-          return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-        }
-      }
-      if (value > 1e8 && value < 1e12) {
-        const d = new Date(value * 1000);
-        if (
-          !isNaN(d.getTime()) &&
-          d.getFullYear() > 1900 &&
-          d.getFullYear() < 2200
-        ) {
-          return d.toLocaleDateString();
-        }
-      }
-    }
-    if (typeof value === "string") {
-      if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)) {
-        const d = new Date(value);
-        if (!isNaN(d.getTime())) return d.toLocaleDateString();
-      }
-      const num = Number(value);
-      if (!isNaN(num) && num > 19000000) {
-        return formatDateValue(num);
-      }
-    }
-    return null;
-  }
-
   const tableFormatCell: CellFormatter | undefined = useMemo(() => {
     if (!data) return undefined;
     const colnames = data.colnames;
@@ -366,9 +373,10 @@ function ChartCard({
     return { sortMetricCol: smCol, dimCols: dCols };
   }, [data]);
 
-  const rows = Array.isArray(data?.data)
-    ? (data.data as ChartDataRow[])
-    : [];
+  const rows = useMemo(
+    () => (Array.isArray(data?.data) ? data.data : []),
+    [data?.data],
+  );
 
   const sorted = useMemo(
     () =>
@@ -385,7 +393,7 @@ function ChartCard({
       pct95Active && sortMetricCol
         ? pctSplitIndex(sorted, sortMetricCol, pct95Threshold)
         : rows.length,
-    [sorted, pct95Active, sortMetricCol, pct95Threshold],
+    [sorted, pct95Active, sortMetricCol, pct95Threshold, rows.length],
   );
 
   const processedData = useMemo(() => {
@@ -404,13 +412,17 @@ function ChartCard({
     if (totalRow && dimCols.length > 0 && vizType === "table") {
       resultRows = [
         ...resultRows,
-        { ...totalRow, [dimCols[0]]: "合计", __isSummary: true } as ChartDataRow,
+        {
+          ...totalRow,
+          [dimCols[0]]: "合计",
+          __isSummary: true,
+        } as ChartDataRow,
       ];
       hasMods = true;
     }
 
     if (!hasMods) return data;
-    return { ...data, data: resultRows } as ChartDataPayload;
+    return { ...data, data: resultRows };
   }, [
     data,
     rows,
@@ -420,12 +432,21 @@ function ChartCard({
     splitIdx,
     totalRow,
     dimCols,
+    vizType,
   ]);
 
   const option = useMemo(
-    () => processedData
-      ? buildEChartsOption(vizType, processedData, metricFormatMap, theme.palette.chart, false, cardSize)
-      : null,
+    () =>
+      processedData
+        ? buildEChartsOption(
+            vizType,
+            processedData,
+            metricFormatMap,
+            theme.palette.chart,
+            false,
+            cardSize,
+          )
+        : null,
     [vizType, processedData, metricFormatMap, theme.palette.chart, cardSize],
   );
 
@@ -456,12 +477,12 @@ function ChartCard({
     if (!isActiveFullscreen || !fullscreen.forceLandscape) return;
     const mql = window.matchMedia("(orientation: landscape)");
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
-      if (e.matches) fullscreen.setForceLandscape(false);
+      if (e.matches) setForceLandscape(false);
     };
     handler(mql);
     mql.addEventListener("change", handler);
     return () => mql.removeEventListener("change", handler);
-  }, [isActiveFullscreen, fullscreen.forceLandscape]);
+  }, [isActiveFullscreen, fullscreen.forceLandscape, setForceLandscape]);
 
   const touchStart = () => {
     if (containerWidth >= 600) return;
@@ -497,8 +518,7 @@ function ChartCard({
             "box-shadow 250ms cubic-bezier(0, 0, 0.2, 1), transform 250ms cubic-bezier(0, 0, 0.2, 1)",
           "&:hover": {
             transform: "translateY(-2px)",
-            boxShadow:
-              "var(--mui-palette-shadow-cardHover)",
+            boxShadow: "var(--mui-palette-shadow-cardHover)",
           },
         }}
       >
@@ -638,7 +658,7 @@ function ChartCard({
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                copyData();
+                void copyData();
               }}
               sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
             >
@@ -675,7 +695,7 @@ function ChartCard({
             <Tooltip title={isActiveFullscreen ? "退出全屏" : "全屏"}>
               <IconButton
                 size="small"
-                onClick={() => toggleFullScreen()}
+                onClick={() => void toggleFullScreen()}
                 sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
               >
                 <FullscreenOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />

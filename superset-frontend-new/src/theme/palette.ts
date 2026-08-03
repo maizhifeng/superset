@@ -83,7 +83,8 @@ export const supersetPalette = {
     md: "0 2px 4px rgba(44,36,22,0.03), 0 6px 16px rgba(44,36,22,0.06)",
     lg: "0 4px 8px rgba(44,36,22,0.03), 0 12px 32px rgba(44,36,22,0.06)",
     card: "0 1px 2px rgba(44,36,22,0.02), 0 1px 4px rgba(44,36,22,0.03), 0 2px 8px rgba(44,36,22,0.02)",
-    cardHover: "0 2px 4px rgba(44,36,22,0.03), 0 4px 12px rgba(44,36,22,0.05), 0 8px 24px rgba(184,101,58,0.04)",
+    cardHover:
+      "0 2px 4px rgba(44,36,22,0.03), 0 4px 12px rgba(44,36,22,0.05), 0 8px 24px rgba(184,101,58,0.04)",
     focus: "0 0 0 3px rgba(184, 101, 58, 0.2)",
     glow: "0 0 0 2px rgba(184, 101, 58, 0.12), 0 0 16px rgba(184, 101, 58, 0.06)",
     drawer: "2px 0 8px rgba(44,36,22,0.06)",

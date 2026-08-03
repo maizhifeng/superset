@@ -9,7 +9,10 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import type { AgentStep } from "@/types/ai";
 
-const stepTypeConfig: Record<string, { label: string; color: string; bg: string }> = {
+const stepTypeConfig: Record<
+  string,
+  { label: string; color: string; bg: string }
+> = {
   query: { label: "查询", color: "info.main", bg: "status.infoBg" },
   analyze: { label: "分析", color: "success.main", bg: "status.successBg" },
   chart: { label: "图表", color: "secondary.main", bg: "secondary.container" },
@@ -25,10 +28,17 @@ interface AgentStepCardProps {
   isLast?: boolean;
 }
 
-export default function AgentStepCard({ step, compact, isLast }: AgentStepCardProps) {
+export default function AgentStepCard({
+  step,
+  compact,
+  isLast,
+}: AgentStepCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const cfg = stepTypeConfig[step.type] ?? { label: step.type, color: "text.secondary", bg: "action.hover" };
-
+  const cfg = stepTypeConfig[step.type] ?? {
+    label: step.type,
+    color: "text.secondary",
+    bg: "action.hover",
+  };
 
   const statusIcon = () => {
     switch (step.status) {
@@ -36,20 +46,62 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
         return <CircularProgress size={16} sx={{ color: cfg.color }} />;
       case "done":
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "success.main", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>✓</Typography>
+          <Box
+            sx={{
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              bgcolor: "success.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography
+              sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}
+            >
+              ✓
+            </Typography>
           </Box>
         );
       case "error":
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "error.main", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>✗</Typography>
+          <Box
+            sx={{
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              bgcolor: "error.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography
+              sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}
+            >
+              ✗
+            </Typography>
           </Box>
         );
       default:
         return (
-          <Box sx={{ width: 20, height: 20, borderRadius: "50%", bgcolor: "divider", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Typography sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}>○</Typography>
+          <Box
+            sx={{
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              bgcolor: "divider",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Typography
+              sx={{ color: "common.white", fontSize: 12, lineHeight: 1 }}
+            >
+              ○
+            </Typography>
           </Box>
         );
     }
@@ -58,10 +110,26 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
   return (
     <Box sx={{ display: "flex", gap: 1.5, position: "relative" }}>
       {/* Timeline connector */}
-      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", width: 20, flexShrink: 0 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          width: 20,
+          flexShrink: 0,
+        }}
+      >
         {statusIcon()}
         {!isLast && (
-          <Box sx={{ width: 2, flex: 1, bgcolor: step.status === "error" ? "error.main" : "divider", mt: 0.5, minHeight: 16 }} />
+          <Box
+            sx={{
+              width: 2,
+              flex: 1,
+              bgcolor: step.status === "error" ? "error.main" : "divider",
+              mt: 0.5,
+              minHeight: 16,
+            }}
+          />
         )}
       </Box>
 
@@ -85,11 +153,21 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
               gap: 1,
               p: compact ? 0.75 : 1,
               cursor: "pointer",
-              bgcolor: step.status === "error" ? "rgba(239, 83, 80, 0.04)" : "background.paper",
+              bgcolor:
+                step.status === "error"
+                  ? "rgba(239, 83, 80, 0.04)"
+                  : "background.paper",
             }}
           >
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.25 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  mb: 0.25,
+                }}
+              >
                 <Typography
                   variant={compact ? "caption" : "body2"}
                   sx={{
@@ -104,28 +182,68 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
                   {step.description}
                 </Typography>
                 {step.duration && (
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.3, flexShrink: 0 }}>
-                    <ScheduleIcon sx={{ fontSize: 11, color: "text.disabled" }} />
-                    <Typography variant="caption" sx={{ fontSize: "0.68rem", color: "text.disabled", fontWeight: 500 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.3,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <ScheduleIcon
+                      sx={{ fontSize: 11, color: "text.disabled" }}
+                    />
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        fontSize: "0.68rem",
+                        color: "text.disabled",
+                        fontWeight: 500,
+                      }}
+                    >
                       {(step.duration / 1000).toFixed(1)}s
                     </Typography>
                   </Box>
                 )}
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <Box sx={{ px: 0.6, py: 0.15, borderRadius: 0.5, bgcolor: cfg.bg }}>
-                  <Typography sx={{ fontSize: "0.62rem", fontWeight: 600, color: cfg.color, lineHeight: 1.4 }}>
+                <Box
+                  sx={{ px: 0.6, py: 0.15, borderRadius: 0.5, bgcolor: cfg.bg }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: "0.62rem",
+                      fontWeight: 600,
+                      color: cfg.color,
+                      lineHeight: 1.4,
+                    }}
+                  >
                     {cfg.label}
                   </Typography>
                 </Box>
                 {step.status === "error" && (
-                  <Typography sx={{ fontSize: "0.65rem", color: "error.main", fontWeight: 500 }}>失败</Typography>
+                  <Typography
+                    sx={{
+                      fontSize: "0.65rem",
+                      color: "error.main",
+                      fontWeight: 500,
+                    }}
+                  >
+                    失败
+                  </Typography>
                 )}
               </Box>
             </Box>
 
-            <IconButton size="small" sx={{ p: 0.3, color: "text.disabled", flexShrink: 0 }}>
-              {expanded ? <ExpandMoreIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />}
+            <IconButton
+              size="small"
+              sx={{ p: 0.3, color: "text.disabled", flexShrink: 0 }}
+            >
+              {expanded ? (
+                <ExpandMoreIcon sx={{ fontSize: 16 }} />
+              ) : (
+                <ChevronRightIcon sx={{ fontSize: 16 }} />
+              )}
             </IconButton>
           </Box>
 
@@ -134,28 +252,52 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
               {step.args && (
                 <Box sx={{ mb: 1 }}>
                   {Object.entries(step.args).map(([k, v]) => {
-                    if (v == null || (Array.isArray(v) && v.length === 0)) return null;
+                    if (v == null || (Array.isArray(v) && v.length === 0))
+                      return null;
                     let displayVal = "";
                     if (k === "metrics" && Array.isArray(v)) {
-                      displayVal = v.map((x: any) => {
-                        if (typeof x === "string") return x;
-                        if (x?.label) return x.label;
-                        if (x?.column?.column_name) return x.column.column_name;
-                        return JSON.stringify(x);
-                      }).join(", ");
+                      displayVal = v
+                        .map((x: any) => {
+                          if (typeof x === "string") return x;
+                          if (x?.label) return x.label;
+                          if (x?.column?.column_name)
+                            return x.column.column_name;
+                          return JSON.stringify(x);
+                        })
+                        .join(", ");
                     } else if (k === "columns" && Array.isArray(v)) {
                       displayVal = v.join(", ");
                     } else if (k === "orderby" && Array.isArray(v)) {
-                      displayVal = v.map((o: any) => (Array.isArray(o) ? `${o[0]}↓` : JSON.stringify(o))).join(", ");
+                      displayVal = v
+                        .map((o: any) =>
+                          Array.isArray(o) ? `${o[0]}↓` : JSON.stringify(o),
+                        )
+                        .join(", ");
                     } else {
-                      displayVal = typeof v === "string" ? v : JSON.stringify(v);
+                      displayVal =
+                        typeof v === "string" ? v : JSON.stringify(v);
                     }
                     return (
                       <Box key={k} sx={{ display: "flex", gap: 0.5, py: 0.15 }}>
-                        <Typography sx={{ fontSize: "0.7rem", fontWeight: 600, color: "primary.main", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                        <Typography
+                          sx={{
+                            fontSize: "0.7rem",
+                            fontWeight: 600,
+                            color: "primary.main",
+                            fontFamily: "monospace",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {k}:
                         </Typography>
-                        <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", fontFamily: "monospace", wordBreak: "break-all" }}>
+                        <Typography
+                          sx={{
+                            fontSize: "0.7rem",
+                            color: "text.secondary",
+                            fontFamily: "monospace",
+                            wordBreak: "break-all",
+                          }}
+                        >
                           {displayVal}
                         </Typography>
                       </Box>
@@ -183,14 +325,21 @@ export default function AgentStepCard({ step, compact, isLast }: AgentStepCardPr
                     fontFamily: "monospace",
                   }}
                 >
-                  {step.result.length > 800 ? step.result.slice(0, 800) + "\n..." : step.result}
+                  {step.result.length > 800
+                    ? step.result.slice(0, 800) + "\n..."
+                    : step.result}
                 </Box>
               )}
 
               {step.subSteps && step.subSteps.length > 0 && (
                 <Box sx={{ mt: 1 }}>
                   {step.subSteps.map((sub, idx) => (
-                    <AgentStepCard key={sub.id} step={sub} compact isLast={idx === step.subSteps!.length - 1} />
+                    <AgentStepCard
+                      key={sub.id}
+                      step={sub}
+                      compact
+                      isLast={idx === step.subSteps!.length - 1}
+                    />
                   ))}
                 </Box>
               )}

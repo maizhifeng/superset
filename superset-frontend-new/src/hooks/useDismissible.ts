@@ -14,7 +14,9 @@ function getDismissed(key: string): boolean {
 function setDismissed(key: string) {
   try {
     localStorage.setItem(STORAGE_PREFIX + key, "1");
-  } catch {}
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 function subscribe(key: string, callback: () => void) {
@@ -33,7 +35,9 @@ function notify(key: string) {
 export function resetDismissible(key: string) {
   try {
     localStorage.removeItem(STORAGE_PREFIX + key);
-  } catch {}
+  } catch {
+    /* storage unavailable */
+  }
   notify(key);
 }
 
@@ -45,7 +49,9 @@ export function resetAllOnboarding() {
       if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
-  } catch {}
+  } catch {
+    /* storage unavailable */
+  }
   listeners.forEach((set) => set.forEach((fn) => fn()));
 }
 

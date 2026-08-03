@@ -40,16 +40,32 @@ export default function Settings() {
           }}
         >
           <Box />
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600 }}
+          >
             标签
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600 }}
+          >
             路径
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textAlign: "center" }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, textAlign: "center" }}
+          >
             排序
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textAlign: "center" }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 600, textAlign: "center" }}
+          >
             可见
           </Typography>
         </Box>
@@ -69,7 +85,13 @@ export default function Settings() {
               "&:hover": { bgcolor: "action.hover" },
             }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", color: "text.disabled" }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                color: "text.disabled",
+              }}
+            >
               <DragIndicatorIcon sx={{ fontSize: 18 }} />
             </Box>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -79,7 +101,8 @@ export default function Settings() {
               variant="body2"
               color="text.secondary"
               sx={{
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                 fontSize: "0.8125rem",
               }}
             >

@@ -1,4 +1,5 @@
-import { useState, ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";

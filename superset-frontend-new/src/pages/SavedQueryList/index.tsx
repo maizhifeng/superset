@@ -210,9 +210,13 @@ export default function SavedQueryList() {
         pageSizeOptions={[25, 50, 100]}
         toolbarPageKey="saved_query_list"
         onDelete={(row) => setDeleteTarget({ id: row.id, name: row.label })}
-        onBatchDelete={async (ids) => {
-          await Promise.all(ids.map((id) => api.delete(`/saved_query/${id}`)));
-          fetchData();
+        onBatchDelete={(ids) => {
+          void (async () => {
+            await Promise.all(
+              ids.map((id) => api.delete(`/saved_query/${id}`)),
+            );
+            fetchData();
+          })();
         }}
         renderCard={(row) => (
           <>
@@ -276,7 +280,7 @@ export default function SavedQueryList() {
         cancelText="取消"
         confirmLoading={deleteLoading}
         danger
-        onConfirm={handleDelete}
+        onConfirm={() => void handleDelete()}
         onCancel={() => setDeleteTarget(null)}
       />
     </ListPageLayout>

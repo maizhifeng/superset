@@ -41,9 +41,9 @@ test("shows error on failed login", async () => {
   mockLogin.mockRejectedValue(new Error("Invalid credentials"));
   renderLogin();
 
-  await userEvent.type(screen.getByLabelText("用户名"), "admin");
-  await userEvent.type(screen.getByLabelText("密码"), "wrong");
-  await userEvent.click(screen.getByRole("button", { name: "登录" }));
+  userEvent.type(screen.getByLabelText("用户名"), "admin");
+  userEvent.type(screen.getByLabelText("密码"), "wrong");
+  userEvent.click(screen.getByRole("button", { name: "登录" }));
 
   expect(await screen.findByText("Invalid credentials")).toBeInTheDocument();
 });
@@ -52,9 +52,9 @@ test("navigates to home on successful login", async () => {
   mockLogin.mockResolvedValue(undefined);
   renderLogin();
 
-  await userEvent.type(screen.getByLabelText("用户名"), "admin");
-  await userEvent.type(screen.getByLabelText("密码"), "pass");
-  await userEvent.click(screen.getByRole("button", { name: "登录" }));
+  userEvent.type(screen.getByLabelText("用户名"), "admin");
+  userEvent.type(screen.getByLabelText("密码"), "pass");
+  userEvent.click(screen.getByRole("button", { name: "登录" }));
 
   await screen.findByText("登录");
   expect(window.location.href).toBe("http://localhost:3000/");

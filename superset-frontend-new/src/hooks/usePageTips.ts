@@ -18,14 +18,12 @@ const PAGE_TIPS: Record<string, PageTip> = {
   dashboard_list: {
     id: "dashboard_list",
     title: "仪表板",
-    message:
-      "按 / 快速搜索，或点击 + 新建仪表板。随时按 G+B 跳转至此。",
+    message: "按 / 快速搜索，或点击 + 新建仪表板。随时按 G+B 跳转至此。",
   },
   chart_list: {
     id: "chart_list",
     title: "图表",
-    message:
-      "浏览和管理已保存的图表。按 G+C 跳转至此。点击图表在探索中打开。",
+    message: "浏览和管理已保存的图表。按 G+C 跳转至此。点击图表在探索中打开。",
   },
   explore: {
     id: "explore",
@@ -54,32 +52,27 @@ const PAGE_TIPS: Record<string, PageTip> = {
   dashboard: {
     id: "dashboard",
     title: "仪表板",
-    message:
-      "使用 + 按钮添加图表、应用交叉筛选和对比维度。Ctrl+S 保存更改。",
+    message: "使用 + 按钮添加图表、应用交叉筛选和对比维度。Ctrl+S 保存更改。",
   },
   saved_query_list: {
     id: "saved_query_list",
     title: "已保存查询",
-    message:
-      "已保存的 SQL 查询列于此，方便快速复用。可再次运行或转为数据集。",
+    message: "已保存的 SQL 查询列于此，方便快速复用。可再次运行或转为数据集。",
   },
   alert_list: {
     id: "alert_list",
     title: "告警与报告",
-    message:
-      "为您的数据设置告警和定时报告。当指标超出阈值时收到通知。",
+    message: "为您的数据设置告警和定时报告。当指标超出阈值时收到通知。",
   },
   query_history: {
     id: "query_history",
     title: "查询历史",
-    message:
-      "查看在 SQL 实验室中执行的过往查询。有助于调试和重新运行分析。",
+    message: "查看在 SQL 实验室中执行的过往查询。有助于调试和重新运行分析。",
   },
   dataset_create: {
     id: "dataset_create",
     title: "创建数据集",
-    message:
-      "选择数据库，然后选择模式和表。Starfly 将自动检测列类型。",
+    message: "选择数据库，然后选择模式和表。Starfly 将自动检测列类型。",
   },
   dataset_edit: {
     id: "dataset_edit",
@@ -90,8 +83,7 @@ const PAGE_TIPS: Record<string, PageTip> = {
   settings: {
     id: "settings",
     title: "设置",
-    message:
-      "自定义导航菜单 — 重新排序项、切换可见性或添加自定义路由。",
+    message: "自定义导航菜单 — 重新排序项、切换可见性或添加自定义路由。",
   },
 };
 

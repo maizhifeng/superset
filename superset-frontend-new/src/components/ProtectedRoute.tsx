@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -20,6 +20,10 @@ export default function ProtectedRoute({
   const loading = useAuthStore((s) => s.loading);
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
+  const loginState = useMemo(
+    () => ({ from: location.pathname }),
+    [location.pathname],
+  );
   const getOverrides = useUserRouteOverrides((s) => s.getOverrides);
 
   if (loading) {
@@ -38,7 +42,7 @@ export default function ProtectedRoute({
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return <Navigate to="/login" state={loginState} replace />;
   }
 
   if (requiredRoles && requiredRoles.length > 0) {

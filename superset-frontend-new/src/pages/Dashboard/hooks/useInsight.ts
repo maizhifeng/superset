@@ -56,7 +56,7 @@ export function useInsight() {
           {
             onText: (token) => setInsightText((prev) => prev + token),
             onReasoning: (token) => setReasoningText((prev) => prev + token),
-            onStatus: (status) => {
+            onStatus: (_status) => {
               /* status updates handled internally */
             },
           },

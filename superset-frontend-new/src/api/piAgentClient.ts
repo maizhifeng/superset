@@ -2,12 +2,32 @@ type ModelInfo = { id: string; name?: string };
 type ServerMessage =
   | { type: "session_created"; sessionId: string }
   | { type: "agent_start"; storeSessionId?: string }
-  | { type: "message_update"; storeSessionId?: string; assistantMessageEvent: { type: "text_delta"; delta: string } }
+  | {
+      type: "message_update";
+      storeSessionId?: string;
+      assistantMessageEvent: { type: "text_delta"; delta: string };
+    }
   | { type: "thinking_delta"; storeSessionId?: string; delta: string }
-  | { type: "tool_execution_start"; storeSessionId?: string; toolCallId: string; toolName: string; args: unknown }
+  | {
+      type: "tool_execution_start";
+      storeSessionId?: string;
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }
   | { type: "tool_execution_update"; toolCallId: string; partialResult: string }
-  | { type: "tool_execution_end"; storeSessionId?: string; toolCallId: string; result: string }
-  | { type: "agent_end"; storeSessionId?: string; messages: unknown[]; finalText?: string }
+  | {
+      type: "tool_execution_end";
+      storeSessionId?: string;
+      toolCallId: string;
+      result: string;
+    }
+  | {
+      type: "agent_end";
+      storeSessionId?: string;
+      messages: unknown[];
+      finalText?: string;
+    }
   | { type: "model_list"; models: ModelInfo[] }
   | { type: "error"; message: string; retryable: boolean };
 
@@ -128,9 +148,11 @@ export class PiAgentClient {
     if (this.pendingTimer) return;
     this.pendingTimer = setTimeout(() => {
       this.pendingTimer = null;
-      this.pendingMessages.unshift(
-        { type: "new_session", user_id: this.userId, storeSessionId: this.storeSessionId || "reconnect" }
-      );
+      this.pendingMessages.unshift({
+        type: "new_session",
+        user_id: this.userId,
+        storeSessionId: this.storeSessionId || "reconnect",
+      });
       this.reconnect();
     }, PENDING_TIMEOUT_MS);
   }

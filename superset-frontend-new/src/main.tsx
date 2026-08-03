@@ -19,7 +19,7 @@ const emotionCache = createCache({
   prepend: false,
 });
 
-function Root() {
+export function Root() {
   const themeMode = useThemeStore((s) => s.theme);
   const theme = useMemo(() => getTheme(themeMode), [themeMode]);
 
@@ -28,7 +28,7 @@ function Root() {
   }, [themeMode]);
 
   useEffect(() => {
-    refreshFederatedDatasets(api);
+    void refreshFederatedDatasets(api);
   }, []);
 
   return (

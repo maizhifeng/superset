@@ -267,7 +267,11 @@ export interface AdminRole {
   permission_ids?: number[];
   group_ids?: number[];
   users?: { id: number; username: string }[];
-  permissions?: { id: number; permission: { name: string }; view_menu: { name: string } }[];
+  permissions?: {
+    id: number;
+    permission: { name: string };
+    view_menu: { name: string };
+  }[];
 }
 
 export interface AdminPermission {

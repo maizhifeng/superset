@@ -11,7 +11,12 @@ interface SearchOverlayProps {
   onQueryChange: (q: string) => void;
 }
 
-export default function SearchOverlay({ open, query, onClose, onQueryChange }: SearchOverlayProps) {
+export default function SearchOverlay({
+  open,
+  query,
+  onClose,
+  onQueryChange,
+}: SearchOverlayProps) {
   return (
     <Dialog
       open={open}

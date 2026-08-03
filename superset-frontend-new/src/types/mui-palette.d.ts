@@ -1,7 +1,4 @@
-import type {
-  PaletteColor,
-  TypeBackground,
-} from "@mui/material/styles";
+export {};
 
 declare module "@mui/material/styles" {
   interface Palette {
@@ -84,21 +81,4 @@ interface PaletteAccent {
   orange: string;
   teal: string;
   green: string;
-}
-
-declare module "@mui/material/styles/createPalette" {
-  interface Palette {
-    surface: PaletteSurface;
-    bg: PaletteBg;
-    border: PaletteBorder;
-    shadow: PaletteShadow;
-    status: PaletteStatus;
-    chart: string[];
-    accent: PaletteAccent;
-  }
-
-  interface PaletteColor {
-    container?: string;
-    onContainer?: string;
-  }
 }

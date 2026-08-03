@@ -59,9 +59,7 @@ export default function useDashboardToolbar({
         id: "search",
         priority: 0,
         showOnMobile: false,
-        render: (
-          <ChatInput placeholder="询问关于此仪表板的问题..." />
-        ),
+        render: <ChatInput placeholder="询问关于此仪表板的问题..." />,
       },
       {
         id: "filter",
@@ -119,5 +117,9 @@ export default function useDashboardToolbar({
     onAddFilter,
     onRefreshAll,
     onOpenNav,
+    layoutItems.length,
+    registerTools,
+    setCustom,
+    unregisterTools,
   ]);
 }

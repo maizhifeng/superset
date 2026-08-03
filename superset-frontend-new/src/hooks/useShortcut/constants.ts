@@ -1,10 +1,5 @@
 export type ShortcutCategory =
-  | "global"
-  | "navigation"
-  | "sql_lab"
-  | "explore"
-  | "dashboard"
-  | "list_view";
+  "global" | "navigation" | "sql_lab" | "explore" | "dashboard" | "list_view";
 
 export interface ShortcutEntry {
   key: string;

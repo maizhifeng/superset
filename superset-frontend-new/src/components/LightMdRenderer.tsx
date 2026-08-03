@@ -18,53 +18,128 @@ interface LightMdRendererProps {
  */
 const LATEX_REPLACE: Record<string, string> = {
   // Greek letters
-  "\\alpha": "α", "\\beta": "β", "\\gamma": "γ", "\\delta": "δ",
-  "\\epsilon": "ε", "\\zeta": "ζ", "\\eta": "η", "\\theta": "θ",
-  "\\iota": "ι", "\\kappa": "κ", "\\lambda": "λ", "\\mu": "μ",
-  "\\nu": "ν", "\\xi": "ξ", "\\omicron": "ο", "\\pi": "π",
-  "\\rho": "ρ", "\\sigma": "σ", "\\tau": "τ", "\\upsilon": "υ",
-  "\\phi": "φ", "\\chi": "χ", "\\psi": "ψ", "\\omega": "ω",
+  "\\alpha": "α",
+  "\\beta": "β",
+  "\\gamma": "γ",
+  "\\delta": "δ",
+  "\\epsilon": "ε",
+  "\\zeta": "ζ",
+  "\\eta": "η",
+  "\\theta": "θ",
+  "\\iota": "ι",
+  "\\kappa": "κ",
+  "\\lambda": "λ",
+  "\\mu": "μ",
+  "\\nu": "ν",
+  "\\xi": "ξ",
+  "\\omicron": "ο",
+  "\\pi": "π",
+  "\\rho": "ρ",
+  "\\sigma": "σ",
+  "\\tau": "τ",
+  "\\upsilon": "υ",
+  "\\phi": "φ",
+  "\\chi": "χ",
+  "\\psi": "ψ",
+  "\\omega": "ω",
   // Capital Greek
-  "\\Gamma": "Γ", "\\Delta": "Δ", "\\Theta": "Θ", "\\Lambda": "Λ",
-  "\\Xi": "Ξ", "\\Pi": "Π", "\\Sigma": "Σ", "\\Phi": "Φ",
-  "\\Psi": "Ψ", "\\Omega": "Ω",
+  "\\Gamma": "Γ",
+  "\\Delta": "Δ",
+  "\\Theta": "Θ",
+  "\\Lambda": "Λ",
+  "\\Xi": "Ξ",
+  "\\Pi": "Π",
+  "\\Sigma": "Σ",
+  "\\Phi": "Φ",
+  "\\Psi": "Ψ",
+  "\\Omega": "Ω",
   // Arrows (longest first to avoid prefix matches)
-  "\\longleftrightarrow": "↔", "\\longleftarrow": "⟵", "\\longrightarrow": "⟶",
-  "\\Leftrightarrow": "⇔", "\\leftrightarrow": "↔",
-  "\\Rightarrow": "⇒", "\\Leftarrow": "⇐",
-  "\\rightarrow": "→", "\\leftarrow": "←",
-  "\\downarrow": "↓", "\\uparrow": "↑",
-  "\\updownarrow": "↕", "\\Downarrow": "⇓", "\\Uparrow": "⇑",
-  "\\nearrow": "↗", "\\searrow": "↘",
-  "\\swarrow": "↙", "\\nwarrow": "↖",
-  "\\mapsto": "↦", "\\hookrightarrow": "↪", "\\hookleftarrow": "↩",
+  "\\longleftrightarrow": "↔",
+  "\\longleftarrow": "⟵",
+  "\\longrightarrow": "⟶",
+  "\\Leftrightarrow": "⇔",
+  "\\leftrightarrow": "↔",
+  "\\Rightarrow": "⇒",
+  "\\Leftarrow": "⇐",
+  "\\rightarrow": "→",
+  "\\leftarrow": "←",
+  "\\downarrow": "↓",
+  "\\uparrow": "↑",
+  "\\updownarrow": "↕",
+  "\\Downarrow": "⇓",
+  "\\Uparrow": "⇑",
+  "\\nearrow": "↗",
+  "\\searrow": "↘",
+  "\\swarrow": "↙",
+  "\\nwarrow": "↖",
+  "\\mapsto": "↦",
+  "\\hookrightarrow": "↪",
+  "\\hookleftarrow": "↩",
   "\\to": "→",
   // Relations
-  "\\approx": "≈", "\\neq": "≠", "\\leq": "≤", "\\ge": "≥",
-  "\\geq": "≥", "\\leqslant": "≤", "\\geqslant": "≥",
-  "\\equiv": "≡", "\\sim": "∼", "\\simeq": "≃", "\\cong": "≅",
-  "\\propto": "∝", "\\prec": "≺", "\\succ": "≻",
-  "\\preceq": "⪯", "\\succeq": "⪰",
-  "\\subset": "⊂", "\\supset": "⊃",
-  "\\subseteq": "⊆", "\\supseteq": "⊇",
-  "\\ll": "≪", "\\gg": "≫",
+  "\\approx": "≈",
+  "\\neq": "≠",
+  "\\leq": "≤",
+  "\\ge": "≥",
+  "\\geq": "≥",
+  "\\leqslant": "≤",
+  "\\geqslant": "≥",
+  "\\equiv": "≡",
+  "\\sim": "∼",
+  "\\simeq": "≃",
+  "\\cong": "≅",
+  "\\propto": "∝",
+  "\\prec": "≺",
+  "\\succ": "≻",
+  "\\preceq": "⪯",
+  "\\succeq": "⪰",
+  "\\subset": "⊂",
+  "\\supset": "⊃",
+  "\\subseteq": "⊆",
+  "\\supseteq": "⊇",
+  "\\ll": "≪",
+  "\\gg": "≫",
   // Operators
-  "\\times": "×", "\\pm": "±", "\\mp": "∓",
-  "\\cdot": "·", "\\div": "÷", "\\ast": "∗",
-  "\\star": "⋆", "\\circ": "∘", "\\bullet": "•",
-  "\\oplus": "⊕", "\\ominus": "⊖", "\\otimes": "⊗",
-  "\\odot": "⊙", "\\sum": "∑", "\\prod": "∏",
-  "\\coprod": "∐", "\\int": "∫", "\\oint": "∮",
-  "\\nabla": "∇", "\\partial": "∂",
+  "\\times": "×",
+  "\\pm": "±",
+  "\\mp": "∓",
+  "\\cdot": "·",
+  "\\div": "÷",
+  "\\ast": "∗",
+  "\\star": "⋆",
+  "\\circ": "∘",
+  "\\bullet": "•",
+  "\\oplus": "⊕",
+  "\\ominus": "⊖",
+  "\\otimes": "⊗",
+  "\\odot": "⊙",
+  "\\sum": "∑",
+  "\\prod": "∏",
+  "\\coprod": "∐",
+  "\\int": "∫",
+  "\\oint": "∮",
+  "\\nabla": "∇",
+  "\\partial": "∂",
   // Set / Logic
-  "\\emptyset": "∅", "\\varnothing": "∅",
-  "\\forall": "∀", "\\exists": "∃", "\\nexists": "∄",
-  "\\neg": "¬", "\\wedge": "∧", "\\vee": "∨",
+  "\\emptyset": "∅",
+  "\\varnothing": "∅",
+  "\\forall": "∀",
+  "\\exists": "∃",
+  "\\nexists": "∄",
+  "\\neg": "¬",
+  "\\wedge": "∧",
+  "\\vee": "∨",
   // Dots
-  "\\dots": "…", "\\cdots": "⋯", "\\vdots": "⋮", "\\ddots": "⋱",
+  "\\dots": "…",
+  "\\cdots": "⋯",
+  "\\vdots": "⋮",
+  "\\ddots": "⋱",
   // Misc
-  "\\infty": "∞", "\\angle": "∠", "\\perp": "⊥",
-  "\\triangle": "△", "\\square": "□",
+  "\\infty": "∞",
+  "\\angle": "∠",
+  "\\perp": "⊥",
+  "\\triangle": "△",
+  "\\square": "□",
   "\\degree": "°",
   // Escaped
   "\\%": "%",
@@ -100,7 +175,7 @@ function resolveFrac(s: string): string {
     if (s.slice(i, i + 5) === "\\frac" && s[i + 5] === "{") {
       const numStart = i + 6;
       const numEnd = matchBrace(s, numStart - 1);
-        const num = stripBraces(s.slice(numStart, numEnd));
+      const num = stripBraces(s.slice(numStart, numEnd));
       if (s[numEnd + 1] === "{") {
         const denStart = numEnd + 2;
         const denEnd = matchBrace(s, denStart - 1);
@@ -118,8 +193,8 @@ function resolveFrac(s: string): string {
 
 function resolveLatex(text: string): string {
   let result = text;
-  result = stripText(result);      // \text{...} → {...}
-  result = resolveFrac(result);    // \frac{a}{b} → a/b
+  result = stripText(result); // \text{...} → {...}
+  result = resolveFrac(result); // \frac{a}{b} → a/b
   for (const [cmd, char] of Object.entries(LATEX_REPLACE)) {
     result = result.replaceAll(cmd, char);
   }
@@ -137,7 +212,9 @@ function processInline(text: string): React.ReactNode[] {
     // Inline LaTeX math $...$
     const latexMatch = remaining.match(/^\$([^$]+)\$/);
     if (latexMatch) {
-      parts.push(<Fragment key={key++}>{resolveLatex(latexMatch[1])}</Fragment>);
+      parts.push(
+        <Fragment key={key++}>{resolveLatex(latexMatch[1])}</Fragment>,
+      );
       remaining = remaining.slice(latexMatch[0].length);
       continue;
     }
@@ -206,7 +283,7 @@ function processInline(text: string): React.ReactNode[] {
 }
 
 export default function LightMdRenderer({ content }: LightMdRendererProps) {
-  const lines = content.split("\n");
+  const lines = (content ?? "").split("\n");
   const elements: React.ReactNode[] = [];
   let key = 0;
   let i = 0;
@@ -300,11 +377,12 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
       const listItems: React.ReactNode[] = [];
       while (i < lines.length && lines[i].match(/^[-*]\s/)) {
         listItems.push(
-          <Box
-            key={key++}
-            sx={{ display: "flex", gap: 1, pl: 1, mb: 0.25 }}
-          >
-            <Typography variant="body2" color="text.disabled" sx={{ lineHeight: 1.6 }}>
+          <Box key={key++} sx={{ display: "flex", gap: 1, pl: 1, mb: 0.25 }}>
+            <Typography
+              variant="body2"
+              color="text.disabled"
+              sx={{ lineHeight: 1.6 }}
+            >
               •
             </Typography>
             <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
@@ -325,7 +403,11 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
     // Table (| ... | syntax)
     if (line.startsWith("|") && line.endsWith("|")) {
       const tableLines: string[] = [];
-      while (i < lines.length && lines[i].startsWith("|") && lines[i].endsWith("|")) {
+      while (
+        i < lines.length &&
+        lines[i].startsWith("|") &&
+        lines[i].endsWith("|")
+      ) {
         tableLines.push(lines[i].trim());
         i++;
       }
@@ -341,16 +423,16 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
         const dataRows = tableLines.slice(2);
 
         elements.push(
-            <Box
-              key={key++}
-              sx={{
-                overflowX: "auto",
-                my: 1,
-                border: "1px solid",
-                borderColor: "divider",
-                borderRadius: 1,
-                transition: "opacity 0.15s ease",
-              }}
+          <Box
+            key={key++}
+            sx={{
+              overflowX: "auto",
+              my: 1,
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 1,
+              transition: "opacity 0.15s ease",
+            }}
           >
             <Table size="small" sx={{ borderCollapse: "collapse" }}>
               <TableHead>
@@ -361,7 +443,8 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
                       sx={{
                         fontWeight: 700,
                         fontSize: "0.75rem",
-                        borderRight: ci < headerCells.length - 1 ? "1px solid" : "none",
+                        borderRight:
+                          ci < headerCells.length - 1 ? "1px solid" : "none",
                         borderColor: "divider",
                         bgcolor: "action.hover",
                         whiteSpace: "nowrap",
@@ -387,7 +470,8 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
                         key={ci}
                         sx={{
                           fontSize: "0.75rem",
-                          borderRight: ci < headerCells.length - 1 ? "1px solid" : "none",
+                          borderRight:
+                            ci < headerCells.length - 1 ? "1px solid" : "none",
                           borderColor: "divider",
                           whiteSpace: "nowrap",
                           py: 0.5,
@@ -406,7 +490,11 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
       } else {
         // Fewer than 2 lines isn't a valid table; render as text
         elements.push(
-          <Typography key={key++} variant="body2" sx={{ mb: 0.5, lineHeight: 1.7 }}>
+          <Typography
+            key={key++}
+            variant="body2"
+            sx={{ mb: 0.5, lineHeight: 1.7 }}
+          >
             {tableLines.join("\n")}
           </Typography>,
         );

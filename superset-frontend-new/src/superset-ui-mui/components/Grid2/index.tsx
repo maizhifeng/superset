@@ -28,7 +28,7 @@ const SupersetGrid2 = forwardRef<HTMLDivElement, Grid2Props>(
     <MuiGrid
       ref={ref}
       container={container}
-      size={size as any}
+      size={size}
       spacing={spacing}
       columns={columns}
       direction={direction}

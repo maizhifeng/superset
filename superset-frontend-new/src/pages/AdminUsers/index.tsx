@@ -78,9 +78,11 @@ export default function AdminUsers() {
   const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
-    api.get<{ result: AdminRole[] }>("/security/roles/?q=(page_size:200)").then((res) => {
-      if (res.data?.result) setRoles(res.data.result);
-    });
+    void api
+      .get<{ result: AdminRole[] }>("/security/roles/?q=(page_size:200)")
+      .then((res) => {
+        if (res.data?.result) setRoles(res.data.result);
+      });
   }, []);
 
   useEffect(() => {
@@ -174,7 +176,9 @@ export default function AdminUsers() {
             onClick={(e) => {
               e.stopPropagation();
               setEditTarget(params.row);
-              setEditRoles(params.row.roles?.map((r: { id: number }) => r.id) ?? []);
+              setEditRoles(
+                params.row.roles?.map((r: { id: number }) => r.id) ?? [],
+              );
             }}
           >
             编辑角色
@@ -185,10 +189,10 @@ export default function AdminUsers() {
             color="warning"
             startIcon={<SwapHorizIcon sx={{ fontSize: 14 }} />}
             sx={{ whiteSpace: "nowrap", minWidth: 0, fontSize: "0.75rem" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSwitchTarget(params.row);
-              }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSwitchTarget(params.row);
+            }}
           >
             切换
           </Button>
@@ -208,7 +212,10 @@ export default function AdminUsers() {
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                setDeleteTarget({ id: params.id as number, name: params.row.username });
+                setDeleteTarget({
+                  id: params.id as number,
+                  name: params.row.username,
+                });
               }}
             >
               <DeleteIcon sx={{ fontSize: 16 }} />
@@ -260,7 +267,7 @@ export default function AdminUsers() {
         cancelText="取消"
         confirmLoading={deleteLoading}
         danger
-        onConfirm={handleDelete}
+        onConfirm={() => void handleDelete()}
         onCancel={() => setDeleteTarget(null)}
       />
       <Dialog
@@ -303,19 +310,21 @@ export default function AdminUsers() {
           <Button
             variant="contained"
             disabled={saving}
-            onClick={async () => {
-              if (!editTarget) return;
-              setSaving(true);
-              try {
-                await api.put(`/security/users/${editTarget.id}`, {
-                  roles: editRoles.map((id) => id),
-                });
-                setEditTarget(null);
-                fetchData();
-              } catch {
-                /* ignore */
-              }
-              setSaving(false);
+            onClick={() => {
+              void (async () => {
+                if (!editTarget) return;
+                setSaving(true);
+                try {
+                  await api.put(`/security/users/${editTarget.id}`, {
+                    roles: editRoles.map((id) => id),
+                  });
+                  setEditTarget(null);
+                  fetchData();
+                } catch {
+                  /* ignore */
+                }
+                setSaving(false);
+              })();
             }}
           >
             {saving ? "保存中..." : "保存"}
@@ -346,16 +355,18 @@ export default function AdminUsers() {
             variant="contained"
             color="warning"
             disabled={switching}
-            onClick={async () => {
-              if (!switchTarget) return;
-              setSwitching(true);
-              try {
-                await switchToUser(switchTarget.username);
-                setSwitchTarget(null);
-                navigate("/");
-              } catch {
-                setSwitching(false);
-              }
+            onClick={() => {
+              void (async () => {
+                if (!switchTarget) return;
+                setSwitching(true);
+                try {
+                  await switchToUser(switchTarget.username);
+                  setSwitchTarget(null);
+                  navigate("/");
+                } catch {
+                  setSwitching(false);
+                }
+              })();
             }}
           >
             {switching ? "切换中..." : "切换"}
@@ -382,7 +393,7 @@ export default function AdminUsers() {
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {protectedRoutePaths.map((path) => {
               const userOverrides = routeTarget
-                ? routeOverrides[routeTarget.username] ?? {}
+                ? (routeOverrides[routeTarget.username] ?? {})
                 : {};
               const isOverridden = userOverrides[path] !== undefined;
               const isGranted = userOverrides[path] === true;
@@ -397,9 +408,7 @@ export default function AdminUsers() {
                     py: 1,
                     px: 1.5,
                     borderRadius: 1,
-                    bgcolor: isOverridden
-                      ? "action.selected"
-                      : "transparent",
+                    bgcolor: isOverridden ? "action.selected" : "transparent",
                   }}
                 >
                   <Box sx={{ flex: 1 }}>

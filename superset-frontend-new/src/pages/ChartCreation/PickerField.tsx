@@ -114,7 +114,11 @@ function OptionRow({
         {opt.group && (
           <Typography
             variant="caption"
-            sx={{ color: "text.disabled", display: "block", fontSize: "0.75rem" }}
+            sx={{
+              color: "text.disabled",
+              display: "block",
+              fontSize: "0.75rem",
+            }}
           >
             {opt.group}
           </Typography>
@@ -134,11 +138,19 @@ function SortableSelectedItem({
   onRemove: () => void;
   compact?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: opt.value });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: opt.value });
 
   const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transform: transform
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+      : undefined,
     transition,
   };
 
@@ -233,14 +245,22 @@ function AvailableOption({
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography
           variant={compact ? "caption" : "body2"}
-          sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          sx={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
         >
           {opt.label}
         </Typography>
         {opt.group && (
           <Typography
             variant="caption"
-            sx={{ color: "text.disabled", display: "block", fontSize: "0.75rem" }}
+            sx={{
+              color: "text.disabled",
+              display: "block",
+              fontSize: "0.75rem",
+            }}
           >
             {opt.group}
           </Typography>
@@ -265,7 +285,7 @@ export default function PickerField({
   loading,
   placeholder = "选择...",
   singleSelect,
-  hideGroups,
+  hideGroups: _hideGroups,
   hideHeader,
   compact,
 }: PickerFieldProps) {
@@ -347,7 +367,9 @@ export default function PickerField({
     [anchorEl, draftSelected, selected, onChange],
   );
 
-  const activeOption = activeId ? options.find((o) => o.value === activeId) : null;
+  const activeOption = activeId
+    ? options.find((o) => o.value === activeId)
+    : null;
 
   return (
     <>
@@ -377,7 +399,15 @@ export default function PickerField({
         {loading ? (
           <CircularProgress size={16} sx={{ mx: "auto" }} />
         ) : selected.length === 0 ? (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, color: "text.disabled", width: "100%" }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              color: "text.disabled",
+              width: "100%",
+            }}
+          >
             <AddIcon sx={{ fontSize: 16 }} />
             <Typography variant="body2">{placeholder}</Typography>
           </Box>
@@ -430,8 +460,7 @@ export default function PickerField({
                   borderRadius: 2,
                   border: "1px solid",
                   borderColor: "primary.light",
-                  boxShadow:
-                    "var(--mui-palette-shadow-modal)",
+                  boxShadow: "var(--mui-palette-shadow-modal)",
                   display: "flex",
                   flexDirection: "column",
                   overflow: "hidden",
@@ -440,7 +469,18 @@ export default function PickerField({
         }}
       >
         {!hideHeader && (
-          <Box sx={{ px: 2, py: 1, borderBottom: "1px solid", borderColor: "divider", bgcolor: "grey.50", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              bgcolor: "grey.50",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
               {label}
             </Typography>
@@ -467,7 +507,11 @@ export default function PickerField({
                   <InputAdornment
                     position="end"
                     onClick={() => setSearchQuery("")}
-                    sx={{ cursor: "pointer", color: "text.disabled", "&:hover": { color: "text.primary" } }}
+                    sx={{
+                      cursor: "pointer",
+                      color: "text.disabled",
+                      "&:hover": { color: "text.primary" },
+                    }}
                   >
                     <CloseIcon sx={{ fontSize: 16 }} />
                   </InputAdornment>
@@ -476,7 +520,10 @@ export default function PickerField({
             }}
             sx={{
               width: "100%",
-              "& .MuiOutlinedInput-root": { borderRadius: 2, fontSize: "0.8125rem" },
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 2,
+                fontSize: "0.8125rem",
+              },
             }}
           />
         </Box>
@@ -514,7 +561,14 @@ export default function PickerField({
             </Box>
             <Box sx={{ overflowY: "auto", flex: 1 }}>
               {unselectedOptions.length === 0 ? (
-                <Box sx={{ px: 2, py: 3, textAlign: "center", color: "text.secondary" }}>
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 3,
+                    textAlign: "center",
+                    color: "text.secondary",
+                  }}
+                >
                   <Typography variant="body2">无可用选项</Typography>
                 </Box>
               ) : (
@@ -561,7 +615,14 @@ export default function PickerField({
             </Box>
             <Box sx={{ overflowY: "auto", flex: 1 }}>
               {selectedOptions.length === 0 ? (
-                <Box sx={{ px: 2, py: 3, textAlign: "center", color: "text.disabled" }}>
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 3,
+                    textAlign: "center",
+                    color: "text.disabled",
+                  }}
+                >
                   <Typography variant="body2">暂无选择</Typography>
                 </Box>
               ) : (
@@ -591,8 +652,7 @@ export default function PickerField({
                         sx={{
                           bgcolor: "background.paper",
                           borderRadius: 1,
-                          boxShadow:
-                            "var(--mui-palette-shadow-modal)",
+                          boxShadow: "var(--mui-palette-shadow-modal)",
                           border: "1px solid",
                           borderColor: "primary.light",
                           width: (containerRef.current?.offsetWidth || 320) / 2,
@@ -612,7 +672,17 @@ export default function PickerField({
           </Box>
         </Box>
 
-        <Box sx={{ px: 2, py: 1, borderTop: "1px solid", borderColor: "divider", display: "flex", justifyContent: "flex-end", bgcolor: "grey.50" }}>
+        <Box
+          sx={{
+            px: 2,
+            py: 1,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            display: "flex",
+            justifyContent: "flex-end",
+            bgcolor: "grey.50",
+          }}
+        >
           <Chip
             label="完成"
             size="small"

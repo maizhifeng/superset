@@ -31,8 +31,7 @@ export default function PageLoading() {
             sx={{
               borderRadius: 2,
               p: 3,
-              boxShadow:
-                "var(--mui-palette-shadow-card)",
+              boxShadow: "var(--mui-palette-shadow-card)",
             }}
           >
             <Skeleton

@@ -31,9 +31,7 @@ function filterDataLocal(
 interface UseDashboardCompareParams {
   chartMeta: Record<number, ChartData>;
   chartData: Record<number, ChartDataPayload>;
-  chartDataRef: React.MutableRefObject<
-    Record<number, ChartDataPayload>
-  >;
+  chartDataRef: React.MutableRefObject<Record<number, ChartDataPayload>>;
   buildAdhocFiltersRef: React.MutableRefObject<
     (
       dsId: number,
@@ -81,8 +79,7 @@ export function useDashboardCompare({
       if (!chart) return;
 
       if (!forceServerQuery) {
-        const existing =
-          existingDataOverride ?? chartDataRef.current[chartId];
+        const existing = existingDataOverride ?? chartDataRef.current[chartId];
         if (existing?.data && Array.isArray(existing.data)) {
           setMirrorData(filterDataLocal(existing, dimensions));
           return;
@@ -130,8 +127,7 @@ export function useDashboardCompare({
           : postResult || {};
         setMirrorData(rawData);
       } catch {
-        const existing =
-          existingDataOverride ?? chartDataRef.current[chartId];
+        const existing = existingDataOverride ?? chartDataRef.current[chartId];
         if (existing?.data && Array.isArray(existing.data)) {
           setMirrorData(filterDataLocal(existing, dimensions));
         }
@@ -220,7 +216,7 @@ export function useDashboardCompare({
       };
       setCompareConfig(cc);
       setCompareModalOpen(false);
-      fetchMirrorData(compareChartId, dimensions, undefined, true);
+      void fetchMirrorData(compareChartId, dimensions, undefined, true);
     },
     [compareChartId, fetchMirrorData],
   );

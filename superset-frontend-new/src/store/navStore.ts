@@ -90,11 +90,18 @@ export const useNavStore = create<NavStore>()((set, get) => ({
     } else if (sidePanelOpen) {
       set({ sidePanelPinned: true });
     } else {
-      const cat = (activeCategory ?? "dashboard") as NavCategory;
-      set({ sidePanelPinned: true, activeCategory: cat, sidePanelOpen: true, sidePanelLoading: true });
+      const cat = activeCategory ?? "dashboard";
+      set({
+        sidePanelPinned: true,
+        activeCategory: cat,
+        sidePanelOpen: true,
+        sidePanelLoading: true,
+      });
       import("@/utils/fetchNavItems")
         .then(({ fetchNavItems }) => fetchNavItems(cat))
-        .then((items) => set({ sidePanelItems: items, sidePanelLoading: false }))
+        .then((items) =>
+          set({ sidePanelItems: items, sidePanelLoading: false }),
+        )
         .catch(() => set({ sidePanelItems: [], sidePanelLoading: false }));
     }
   },

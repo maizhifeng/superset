@@ -1,8 +1,9 @@
+import { useCallback } from "react";
+import { useDrawerStore } from "@/store/drawerState";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import TableSkeleton from "@/components/TableSkeleton";
 import { EmptyState } from "@/superset-ui-mui/components";
-import { useDrawerStore } from "@/store/drawerState";
 import { spacing } from "@/theme/spacing";
 import { useDashboardState } from "@/pages/Dashboard/hooks/useDashboardState";
 import DashboardGrid from "@/pages/Dashboard/DashboardGrid";
@@ -11,23 +12,86 @@ import DashboardModals from "@/pages/Dashboard/DashboardModals";
 
 export default function Dashboard() {
   const {
-    dashboard, loading, error, isDrawerOpen, editingSliceId, buildDashboardAdhocFilters,
-    chartMeta, chartData, totalRows, chartLoading, chartPages, chartHasMore, metricFormatMaps,
-    layoutItems, layout,
-    filters, filterState, pendingFilterIds, filterDrawerOpen,
-    navOpen, navItems, addChartDialogOpen,
-    intervalSeconds, pageKey,
-    compare, dashboardChartIds,
-    setFilterDrawerOpen, setNavOpen, setAddChartDialogOpen,
-    handleFilterChange, handleClearAll, handleChartPageChange, refreshChart, cycleInterval,
-    handleChartSaved, handleCloseDrawer, handleOpenInsight, handleAddChartSelect, handleDeleteChart,
+    dashboard,
+    loading,
+    error,
+    isDrawerOpen,
+    editingSliceId,
+    buildDashboardAdhocFilters,
+    chartMeta,
+    chartData,
+    totalRows,
+    chartLoading,
+    chartPages,
+    chartHasMore,
+    metricFormatMaps,
+    layoutItems,
+    layout,
+    filters,
+    filterState,
+    pendingFilterIds,
+    filterDrawerOpen,
+    navOpen,
+    navItems,
+    addChartDialogOpen,
+    intervalSeconds,
+    pageKey,
+    compare,
+    dashboardChartIds,
+    setFilterDrawerOpen,
+    setNavOpen,
+    setAddChartDialogOpen,
+    handleFilterChange,
+    handleClearAll,
+    handleChartPageChange,
+    refreshChart,
+    cycleInterval,
+    handleChartSaved,
+    handleCloseDrawer,
+    handleOpenInsight,
+    handleAddChartSelect,
+    handleDeleteChart,
   } = useDashboardState();
 
+  const handleEditChart = useCallback((chartId: number) => {
+    useDrawerStore.getState().closeAiDrawer();
+    const [sp, setSp] = [
+      new URLSearchParams(window.location.search),
+      (p: URLSearchParams) => window.history.replaceState({}, "", `?${p}`),
+    ];
+    sp.set("slice_id", String(chartId));
+    setSp(sp);
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
+  const handleAddChartOpen = useCallback(
+    () => setAddChartDialogOpen(true),
+    [setAddChartDialogOpen],
+  );
+
+  const handleRefreshChart = useCallback(
+    (chartId: number) => void refreshChart(chartId),
+    [refreshChart],
+  );
+
+  const handleDeleteChartClick = useCallback(
+    (chartId: number) => void handleDeleteChart(chartId),
+    [handleDeleteChart],
+  );
+
   if (loading) {
-    return <Box sx={{ p: 3 }}><TableSkeleton rows={6} /></Box>;
+    return (
+      <Box sx={{ p: 3 }}>
+        <TableSkeleton rows={6} />
+      </Box>
+    );
   }
   if (error) {
-    return <Box sx={{ p: 3 }}><Alert severity="error">{error}</Alert></Box>;
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
   }
   if (!dashboard) return <EmptyState title="未找到仪表板" />;
 
@@ -44,7 +108,16 @@ export default function Dashboard() {
         pendingFilterIds={pendingFilterIds}
       />
 
-      <Box sx={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden", px: { xs: spacing.xs, md: spacing.md }, pt: { xs: spacing.sm, md: spacing.md } }}>
+      <Box
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "hidden",
+          px: { xs: spacing.xs, md: spacing.md },
+          pt: { xs: spacing.sm, md: spacing.md },
+        }}
+      >
         <DashboardGrid
           containerWidth={layout.containerWidth}
           layoutItems={layoutItems}
@@ -54,17 +127,11 @@ export default function Dashboard() {
           saving={layout.saving}
           containerRef={layout.containerRef}
           onSizeChange={layout.handleSizeChange}
-          onRefresh={refreshChart}
-          onEdit={(chartId: number) => {
-            useDrawerStore.getState().closeAiDrawer();
-            const [sp, setSp] = [new URLSearchParams(window.location.search), (p: URLSearchParams) => window.history.replaceState({}, "", `?${p}`)];
-            sp.set("slice_id", String(chartId));
-            setSp(sp);
-            window.dispatchEvent(new Event("popstate"));
-          }}
-          onDelete={handleDeleteChart}
+          onRefresh={handleRefreshChart}
+          onEdit={handleEditChart}
+          onDelete={handleDeleteChartClick}
           onInsight={handleOpenInsight}
-          onAddChart={() => setAddChartDialogOpen(true)}
+          onAddChart={handleAddChartOpen}
           compareConfig={compare.compareConfig}
           mirrorData={compare.mirrorData}
           onToggleCompare={compare.handleToggleCompare}
@@ -90,10 +157,10 @@ export default function Dashboard() {
         pageKey={pageKey}
         compare={compare}
         buildAdhocFilters={buildDashboardAdhocFilters}
-        onChartSaved={handleChartSaved}
+        onChartSaved={(id) => void handleChartSaved(id)}
         onCloseDrawer={handleCloseDrawer}
         onNavClose={() => setNavOpen(false)}
-        onAddChartSelect={handleAddChartSelect}
+        onAddChartSelect={(c) => void handleAddChartSelect(c)}
         onAddChartClose={() => setAddChartDialogOpen(false)}
         onSaveLayout={layout.saveLayout}
       />

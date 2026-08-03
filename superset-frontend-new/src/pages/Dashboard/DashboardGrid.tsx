@@ -1,4 +1,4 @@
-import { type RefObject } from "react";
+import { memo, type RefObject } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -21,8 +21,8 @@ function sizeValue(cols: number, fraction: number): number {
 
 function buildSizeOptions(colCount: number) {
   const options = [
-    { label: "小", value: sizeValue(colCount, 1/3), height: 10 },
-    { label: "中", value: sizeValue(colCount, 2/3), height: 14 },
+    { label: "小", value: sizeValue(colCount, 1 / 3), height: 10 },
+    { label: "中", value: sizeValue(colCount, 2 / 3), height: 14 },
     { label: "全宽", value: colCount, height: 18 },
   ];
   const seen = new Set<number>();
@@ -59,7 +59,11 @@ function SizeSelector({
       }}
     >
       {options.map((o) => (
-        <ToggleButton key={o.label} value={o.value} sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}>
+        <ToggleButton
+          key={o.label}
+          value={o.value}
+          sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+        >
           {o.label}
         </ToggleButton>
       ))}
@@ -97,7 +101,7 @@ interface DashboardGridProps {
   onChartPageChange?: (chartId: number, page: number) => void;
 }
 
-export default function DashboardGrid({
+function DashboardGrid({
   containerWidth,
   layoutItems,
   chartMeta,
@@ -163,8 +167,8 @@ export default function DashboardGrid({
 
   function itemPct(w: number): string {
     if (w >= colCount) return "100%";
-    if (w <= sizeValue(colCount, 1/3)) return `${(1 / 3) * 100}%`;
-    if (w <= sizeValue(colCount, 2/3)) return `${(2 / 3) * 100}%`;
+    if (w <= sizeValue(colCount, 1 / 3)) return `${(1 / 3) * 100}%`;
+    if (w <= sizeValue(colCount, 2 / 3)) return `${(2 / 3) * 100}%`;
     return `${(w / colCount) * 100}%`;
   }
 
@@ -209,8 +213,13 @@ export default function DashboardGrid({
           const pct = isMobile ? "100%" : itemPct(itemCols);
           const cardHeight = isMobile ? "auto" : `${(item.h || 14) * H_UNIT}px`;
 
-          const smallThreshold = sizeValue(colCount, 1/3);
-          const cardSize = itemCols <= smallThreshold ? "small" : itemCols >= colCount ? "full" : "medium";
+          const smallThreshold = sizeValue(colCount, 1 / 3);
+          const cardSize =
+            itemCols <= smallThreshold
+              ? "small"
+              : itemCols >= colCount
+                ? "full"
+                : "medium";
 
           return (
             <Box
@@ -264,3 +273,5 @@ export default function DashboardGrid({
     </Box>
   );
 }
+
+export default memo(DashboardGrid);

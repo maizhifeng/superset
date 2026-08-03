@@ -141,7 +141,10 @@ export const useAgentStore = create<AgentStoreState>()(
         set((state) => {
           const sessions = state.sessions.map((s) => {
             if (s.id !== sessionId) return s;
-            return { ...s, messages: messages.slice(-MAX_MESSAGES_PER_SESSION) };
+            return {
+              ...s,
+              messages: messages.slice(-MAX_MESSAGES_PER_SESSION),
+            };
           });
           return { sessions };
         });

@@ -69,7 +69,11 @@ export default function InsightContent({
             gap: 2,
           }}
         >
-          <Typography color="error" variant="body2" sx={{ textAlign: "center" }}>
+          <Typography
+            color="error"
+            variant="body2"
+            sx={{ textAlign: "center" }}
+          >
             {insight.error}
           </Typography>
           <Button
@@ -147,7 +151,12 @@ export default function InsightContent({
           )}
           <Box sx={{ display: "flex", gap: 1 }}>
             <SmartToyIcon
-              sx={{ fontSize: 20, mt: 0.5, color: "primary.main", flexShrink: 0 }}
+              sx={{
+                fontSize: 20,
+                mt: 0.5,
+                color: "primary.main",
+                flexShrink: 0,
+              }}
             />
             <Box
               sx={{
@@ -182,7 +191,12 @@ export default function InsightContent({
             </Box>
           </Box>
           <Box sx={{ display: "flex", gap: 1 }}>
-            <Button variant="outlined" size="small" startIcon={<ContentCopy />} onClick={onCopy}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ContentCopy />}
+              onClick={onCopy}
+            >
               复制全部
             </Button>
             {!insight.loading && (
@@ -234,11 +248,17 @@ export default function InsightContent({
             gap: 2,
           }}
         >
-          <AutoAwesome sx={{ fontSize: 40, color: "text.disabled", opacity: 0.5 }} />
+          <AutoAwesome
+            sx={{ fontSize: 40, color: "text.disabled", opacity: 0.5 }}
+          />
           <Typography color="text.secondary" variant="body2" sx={{ mb: 1 }}>
             AI 可基于图表数据进行分析
           </Typography>
-          <Button variant="contained" startIcon={<AutoAwesome />} onClick={onRefresh}>
+          <Button
+            variant="contained"
+            startIcon={<AutoAwesome />}
+            onClick={onRefresh}
+          >
             开始分析
           </Button>
         </Box>

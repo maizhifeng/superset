@@ -22,9 +22,12 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-vi.stubGlobal("ResizeObserver", vi.fn(() => ({
-  observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn(),
-})));
+class ResizeObserverMock {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 
 const baseProps = {
   containerWidth: 1200,
@@ -64,7 +67,11 @@ test("renders grid with chart cards when items exist", () => {
   };
 
   renderWithProviders(
-    <DashboardGrid {...baseProps} layoutItems={layoutItems} chartMeta={chartMeta} />,
+    <DashboardGrid
+      {...baseProps}
+      layoutItems={layoutItems}
+      chartMeta={chartMeta}
+    />,
   );
 
   expect(screen.getByTestId("chart-card-1")).toBeInTheDocument();
@@ -78,23 +85,21 @@ test("shows saving indicator when saving is true", () => {
       {...baseProps}
       saving={true}
       layoutItems={layoutItems}
-      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } as any }}
+      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } }}
     />,
   );
   expect(screen.getByText("保存中...")).toBeInTheDocument();
 });
 
 test("renders single column on mobile", () => {
-  const layoutItems = [
-    { i: "CHART-1", chartId: 1, w: 6, h: 14 },
-  ];
+  const layoutItems = [{ i: "CHART-1", chartId: 1, w: 6, h: 14 }];
 
   renderWithProviders(
     <DashboardGrid
       {...baseProps}
       containerWidth={500}
       layoutItems={layoutItems}
-      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } as any }}
+      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } }}
     />,
   );
 
@@ -109,7 +114,7 @@ test("passes onInsight callback to ChartCard", () => {
     <DashboardGrid
       {...baseProps}
       layoutItems={layoutItems}
-      chartMeta={{ 10: { id: 10, slice_name: "X", viz_type: "table" } as any }}
+      chartMeta={{ 10: { id: 10, slice_name: "X", viz_type: "table" } }}
       onInsight={onInsight}
     />,
   );

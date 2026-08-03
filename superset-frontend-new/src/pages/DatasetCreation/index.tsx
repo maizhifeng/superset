@@ -209,7 +209,7 @@ export default function DatasetCreation() {
         )}
         <Button
           variant="contained"
-          onClick={handleSubmit}
+          onClick={() => void handleSubmit()}
           disabled={submitting || !databaseId || !tableName}
         >
           {submitting ? <CircularProgress size={24} /> : "创建数据集"}

@@ -4,17 +4,17 @@ import { test, expect } from "vitest";
 
 test('renders "No data" when data is null', () => {
   render(<DataPreviewTable data={null} />);
-  expect(screen.getByText("No data")).toBeInTheDocument();
+  expect(screen.getByText("无数据")).toBeInTheDocument();
 });
 
 test('renders "No data" when data is undefined', () => {
   render(<DataPreviewTable data={undefined} />);
-  expect(screen.getByText("No data")).toBeInTheDocument();
+  expect(screen.getByText("无数据")).toBeInTheDocument();
 });
 
 test('renders "No data" when data array is empty', () => {
   render(<DataPreviewTable data={{ data: [] }} />);
-  expect(screen.getByText("No data")).toBeInTheDocument();
+  expect(screen.getByText("无数据")).toBeInTheDocument();
 });
 
 test("renders table rows from data", () => {

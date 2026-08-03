@@ -31,8 +31,7 @@ export default function DashboardNav({
           sx: {
             maxHeight: 500,
             borderRadius: 2,
-            boxShadow:
-              "var(--mui-palette-shadow-modal)",
+            boxShadow: "var(--mui-palette-shadow-modal)",
             "& .MuiBackdrop-root": {
               backgroundColor: "var(--mui-palette-shadow-backdrop)",
               backdropFilter: "blur(2px)",

@@ -113,18 +113,76 @@ def _build_predicate(col: Any, op: str | None, val: Any) -> Any | None:  # noqa:
     return None
 
 
+_DATE_LIKE_COLUMNS: tuple[str, ...] = (
+    "date",
+    "ds",
+    "day",
+    "month",
+    "year",
+    "timestamp",
+    "日期",
+    "时间",
+    "年月",
+    "年",
+    "月",
+    "日",
+)
+
+
+def _find_date_column(columns: list[str]) -> str | None:
+    """Return the first date-like column from *columns*, or ``None``."""
+    col_lower_map = {c.lower(): c for c in columns}
+    for keyword in _DATE_LIKE_COLUMNS:
+        if keyword in col_lower_map:
+            return col_lower_map[keyword]
+    return None
+
+
 def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
     """Build a query dict for a single database side.
 
     Pagination (``row_offset``) is stripped so each side returns a recall-oriented
     window; the final global ordering and pagination are applied once on the
     merged result (see ``_apply_global_order_and_pagination``).
+
+    Superset's ``get_sqla_query`` collapses ``columns`` into ``groupby`` whenever a
+    GROUP BY is present (``columns = groupby or columns``), so column-level
+    dimensions (pivot "columns") would otherwise be dropped from the generated SQL.
+    Fold them into ``groupby`` here so the query groups by both row and column
+    dimensions and the response carries the column dimension back to the renderer.
     """
     qdict = query_obj.to_dict()
     qdict.pop("row_offset", None)
     if side_limit is not None:
         qdict["row_limit"] = side_limit
+
+    row_dims: list[str] = list(getattr(query_obj, "groupby", None) or [])
+    col_dims: list[str] = list(getattr(query_obj, "columns", None) or [])
+    if col_dims:
+        qdict["groupby"] = row_dims + col_dims
+        qdict.pop("columns", None)
+
+    # Leave ``orderby`` untouched: ``get_sqla_query`` resolves dimension,
+    # metric-label and adhoc-metric orderby entries itself, and dropping
+    # metric orderbys here would break the per-side recall window for
+    # metric-ordered Top-N queries.
     return qdict
+
+
+def _resolve_orderby_label(entry: Any) -> str | None:
+    """Resolve an orderby column to a merged-result column label.
+
+    Orderby columns may be plain labels, ``[metric_label]`` lists or adhoc
+    metric dicts; anything unresolvable returns ``None``.
+    """
+    if not entry:
+        return None
+    col = entry[0]
+    if isinstance(col, list):
+        col = col[0] if col and isinstance(col[0], str) else None
+    elif isinstance(col, dict):
+        col = col.get("label")
+    return col if isinstance(col, str) else None
 
 
 def _apply_global_order_and_pagination(
@@ -139,13 +197,32 @@ def _apply_global_order_and_pagination(
     """
     orderby = getattr(query_obj, "orderby", None) or []
     try:
-        sort_cols = [o[0] for o in orderby if o and o[0] in df.columns]
-        ascending = [bool(o[1]) for o in orderby if o and o[0] in df.columns]
+        sort_cols = [c for c in map(_resolve_orderby_label, orderby) if c in df.columns]
+        ascending = [bool(o[1]) for o in orderby if o]
         if sort_cols:
-            df = df.sort_values(sort_cols, ascending=ascending)
-        elif len(labels_expected) > 1 and labels_expected[-1] in df.columns:
-            # Default: first metric column, descending.
-            df = df.sort_values(labels_expected[-1], ascending=False)
+            df = df.sort_values(sort_cols, ascending=ascending[: len(sort_cols)])
+        elif len(labels_expected) > 1:
+            groupby_cols = (
+                list(getattr(query_obj, "columns", None) or [])
+                or list(getattr(query_obj, "groupby", None) or [])
+                or []
+            )
+            # Default to date ascending when a date dimension is in GROUP BY
+            date_col = _find_date_column(groupby_cols)
+            if date_col and date_col in df.columns:
+                df = df.sort_values(date_col, ascending=True)
+            else:
+                groupby_set = set(groupby_cols)
+                first_metric = next(
+                    (
+                        c
+                        for c in labels_expected
+                        if c not in groupby_set and c in df.columns
+                    ),
+                    labels_expected[-1] if labels_expected[-1] in df.columns else None,
+                )
+                if first_metric is not None:
+                    df = df.sort_values(first_metric, ascending=False)
     except Exception:
         logger.warning("Federated global sort failed; keeping merge order")
 
@@ -294,14 +371,12 @@ def _get_partner_sql(
     if not partner_ds:
         return None
     try:
+        # Keep the user's orderby so the partner side's recall window retains
+        # the top rows (merged Top-N stays correct across both databases).
         qdict = _side_query_dict(query_obj, side_limit)
         partner_ext = partner_ds.get_query_str_extended(qdict)
         partner_sql_str = partner_ext.sql
-        logger.info(
-            "Partner SQL (%d chars):\n%s\n---END---",
-            len(partner_sql_str),
-            partner_sql_str,
-        )
+        logger.info("Partner SQL (%d chars)", len(partner_sql_str))
         return (partner_sql_str, partner_ds.catalog, partner_ds.schema)
     except Exception as ex:
         logger.warning(
@@ -354,7 +429,6 @@ def _run_federated_query(  # noqa: C901
     )
     primary_sql = primary_ext.sql
     labels_expected = primary_ext.labels_expected
-    logger.info("labels_expected: %s", labels_expected)
 
     # Build side configurations for parallel execution.
     # Each side is a (db_conn, sql, label, catalog, schema) tuple.
@@ -392,10 +466,11 @@ def _run_federated_query(  # noqa: C901
         # logic stays correct even when columns are interleaved (e.g. time
         # grains or pivot columns).  Everything not in the group-by set is
         # treated as a metric column.
-        groupby_cols = (
-            list(getattr(query_obj, "columns", None) or [])
-            or list(getattr(query_obj, "groupby", None) or [])
-            or []
+        # Group by ALL dimensions (row + column) so the cross-database merge
+        # re-aggregates each (row, column) tuple together instead of collapsing
+        # the column dimension into a single group.
+        groupby_cols = list(getattr(query_obj, "groupby", None) or []) + list(
+            getattr(query_obj, "columns", None) or []
         )
         groupby_set = set(groupby_cols)
         dim_cols = [c for c in labels_expected if c in groupby_set]
@@ -715,7 +790,7 @@ def federated_datasets() -> Any:
 
 
 @bi_blueprint.route("/chart/data", methods=["POST"])
-def chart_data() -> Any:
+def chart_data() -> Any:  # noqa: C901
     """
     Federated chart data endpoint.
 
@@ -764,6 +839,20 @@ def chart_data() -> Any:
     oversea_db = _get_database(oversea_db_name)
     if oversea_db is None:
         return jsonify({"error": f"database '{oversea_db_name}' not found"}), 404
+
+    # Superset's ``QueryObject`` folds the deprecated ``groupby`` field into
+    # ``columns`` (see ``QueryObject._rename_deprecated_fields``) and discards the
+    # genuine ``columns`` field (the pivot column dimension).  Recover the full
+    # dimension set (row + column dimensions) from the raw request so the generated
+    # SQL groups by both row and column dimensions and the pivot renderer receives
+    # the column dimension back in the response.
+    raw_queries = json_body.get("queries") or []
+    for query_obj, raw_q in zip(query_context.queries, raw_queries, strict=False):
+        row_dims = list((raw_q or {}).get("groupby") or [])
+        col_dims = list((raw_q or {}).get("columns") or [])
+        all_dims = row_dims + col_dims
+        if all_dims:
+            query_obj.columns = all_dims
 
     query_results: list[dict[str, Any]] = []
     try:

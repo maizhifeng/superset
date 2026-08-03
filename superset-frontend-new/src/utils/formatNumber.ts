@@ -31,13 +31,22 @@ export function formatPctValue(value: number, decimals = 1): string {
 export type MetricFormatMap = Record<string, string>;
 
 /** Detect if a column name refers to a ratio/percentage metric */
-export function isRatioMetric(key: string, formatMap?: MetricFormatMap): boolean {
+export function isRatioMetric(
+  key: string,
+  formatMap?: MetricFormatMap,
+): boolean {
   if (formatMap && formatMap[key]?.endsWith("%")) return true;
-  return /^(?:roi_|pay_rate_|retention_)/i.test(key) || /付费率|留存率/.test(key);
+  return (
+    /^(?:roi_|pay_rate_|retention_)/i.test(key) || /付费率|留存率/.test(key)
+  );
 }
 
 /** Format a metric value by column name: ratios get ×100 + %, others use formatNumber */
-export function formatMetricValue(key: string, value: unknown, formatMap?: MetricFormatMap): string {
+export function formatMetricValue(
+  key: string,
+  value: unknown,
+  formatMap?: MetricFormatMap,
+): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") {
     if (isRatioMetric(key, formatMap)) return formatPctValue(value);

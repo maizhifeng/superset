@@ -24,9 +24,16 @@ export default {
         borderRadius: 9999,
         padding: "10px 20px",
         borderColor: "var(--mui-palette-divider)",
-        "&:hover": { backgroundColor: "var(--mui-palette-action-hover)", borderColor: "var(--mui-palette-text-secondary)" },
+        "&:hover": {
+          backgroundColor: "var(--mui-palette-action-hover)",
+          borderColor: "var(--mui-palette-text-secondary)",
+        },
       },
-      text: { "&:hover": { backgroundColor: "var(--mui-palette-action-hover)" }, borderRadius: 9999, padding: "10px 20px" },
+      text: {
+        "&:hover": { backgroundColor: "var(--mui-palette-action-hover)" },
+        borderRadius: 9999,
+        padding: "10px 20px",
+      },
       sizeSmall: { padding: "4px 10px", fontSize: "0.875rem" },
       sizeMedium: { padding: "10px 18px", fontSize: "1rem" },
       sizeLarge: { padding: "12px 24px", fontSize: "1.125rem" },
@@ -40,13 +47,19 @@ export default {
         backgroundColor: "var(--mui-palette-surface-main)",
         boxShadow: "var(--mui-palette-shadow-card)",
         transition: `${transitions.boxShadow}, ${t("transform", timing.quick)}`,
-        "&:hover": { transform: "translateY(-1px)", boxShadow: "var(--mui-palette-shadow-cardHover)" },
+        "&:hover": {
+          transform: "translateY(-1px)",
+          boxShadow: "var(--mui-palette-shadow-cardHover)",
+        },
       },
     },
   },
   MuiPaper: {
     defaultProps: { elevation: 0 },
-    styleOverrides: { root: { backgroundImage: "none" }, rounded: { borderRadius: 8 } },
+    styleOverrides: {
+      root: { backgroundImage: "none" },
+      rounded: { borderRadius: 8 },
+    },
   },
   MuiOutlinedInput: {
     styleOverrides: {
@@ -54,25 +67,43 @@ export default {
         borderRadius: 4,
         height: 44,
         transition: `${transitions.borderColor}, ${t("box-shadow", timing.quick)}`,
-        "&:hover": { "& .MuiOutlinedInput-notchedOutline": { borderColor: "var(--mui-palette-text-secondary)" } },
+        "&:hover": {
+          "& .MuiOutlinedInput-notchedOutline": {
+            borderColor: "var(--mui-palette-text-secondary)",
+          },
+        },
         "&.Mui-focused": {
           boxShadow: "var(--mui-palette-shadow-focus)",
-          "& .MuiOutlinedInput-notchedOutline": { borderWidth: 2, borderColor: "var(--mui-palette-primary-main)" },
+          "& .MuiOutlinedInput-notchedOutline": {
+            borderWidth: 2,
+            borderColor: "var(--mui-palette-primary-main)",
+          },
         },
       },
-      input: { padding: "10px 16px", height: 44, boxSizing: "border-box" as const },
+      input: {
+        padding: "10px 16px",
+        height: 44,
+        boxSizing: "border-box" as const,
+      },
     },
   },
   MuiChip: {
-    styleOverrides: { root: { fontWeight: 600, borderRadius: 9999, fontSize: "0.75rem" } },
+    styleOverrides: {
+      root: { fontWeight: 600, borderRadius: 9999, fontSize: "0.75rem" },
+    },
   },
   MuiTableRow: {
     styleOverrides: {
-      root: { transition: transitions.backgroundColor, "&:hover": { backgroundColor: "var(--mui-palette-action-hover)" } },
+      root: {
+        transition: transitions.backgroundColor,
+        "&:hover": { backgroundColor: "var(--mui-palette-action-hover)" },
+      },
     },
   },
   MuiDialog: {
-    styleOverrides: { paper: { borderRadius: 12, boxShadow: "var(--mui-palette-shadow-modal)" } },
+    styleOverrides: {
+      paper: { borderRadius: 12, boxShadow: "var(--mui-palette-shadow-modal)" },
+    },
   },
   MuiBackdrop: {
     styleOverrides: {
@@ -87,14 +118,29 @@ export default {
   MuiDialogActions: { styleOverrides: { root: { padding: "8px 24px 24px" } } },
   MuiTableCell: {
     styleOverrides: {
-      head: { fontWeight: 600, fontSize: "0.75rem", borderBottom: "1px solid var(--mui-palette-divider)" },
-      body: { fontSize: "0.875rem", borderBottom: "1px solid var(--mui-palette-border-light)" },
+      head: {
+        fontWeight: 600,
+        fontSize: "0.75rem",
+        borderBottom: "1px solid var(--mui-palette-divider)",
+      },
+      body: {
+        fontSize: "0.875rem",
+        borderBottom: "1px solid var(--mui-palette-border-light)",
+      },
     },
   },
   MuiTableHead: {
-    styleOverrides: { root: { "& .MuiTableCell-head": { backgroundColor: "var(--mui-palette-surface-variant)" } } },
+    styleOverrides: {
+      root: {
+        "& .MuiTableCell-head": {
+          backgroundColor: "var(--mui-palette-surface-variant)",
+        },
+      },
+    },
   },
-  MuiTooltip: { styleOverrides: { tooltip: { fontSize: "0.75rem", borderRadius: 6 } } },
+  MuiTooltip: {
+    styleOverrides: { tooltip: { fontSize: "0.75rem", borderRadius: 6 } },
+  },
   MuiAppBar: {
     styleOverrides: {
       root: {
@@ -109,7 +155,10 @@ export default {
     styleOverrides: {
       root: {
         transition: `${transitions.backgroundColor}, ${t("transform", timing.quick)}`,
-        "&:hover": { backgroundColor: "var(--mui-palette-action-hover)", transform: "scale(1.08)" },
+        "&:hover": {
+          backgroundColor: "var(--mui-palette-action-hover)",
+          transform: "scale(1.08)",
+        },
         "&:active": { transform: "scale(0.95)" },
       },
     },
@@ -135,11 +184,25 @@ export default {
       },
     },
   },
-  MuiSwitch: { styleOverrides: { switchBase: { transition: t("transform", timing.quick) } } },
-  MuiDivider: { styleOverrides: { root: { borderColor: "var(--mui-palette-divider)" } } },
+  MuiSwitch: {
+    styleOverrides: {
+      switchBase: { transition: t("transform", timing.quick) },
+    },
+  },
+  MuiDivider: {
+    styleOverrides: { root: { borderColor: "var(--mui-palette-divider)" } },
+  },
   MuiSkeleton: { styleOverrides: { root: { borderRadius: 6 } } },
-  MuiMenuItem: { styleOverrides: { root: { fontSize: "0.8125rem", transition: transitions.backgroundColor } } },
-  MuiListItemButton: { styleOverrides: { root: { borderRadius: 8, transition: transitions.backgroundColor } } },
+  MuiMenuItem: {
+    styleOverrides: {
+      root: { fontSize: "0.8125rem", transition: transitions.backgroundColor },
+    },
+  },
+  MuiListItemButton: {
+    styleOverrides: {
+      root: { borderRadius: 8, transition: transitions.backgroundColor },
+    },
+  },
   MuiCheckbox: { styleOverrides: { root: { transition: transitions.color } } },
   MuiBreadcrumbs: { styleOverrides: { root: { fontSize: "0.8125rem" } } },
 };

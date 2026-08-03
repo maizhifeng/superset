@@ -6,7 +6,7 @@ export function useEChartsType(_vizType: string): boolean {
 
   useEffect(() => {
     let cancelled = false;
-    loadECharts().then(() => {
+    void loadECharts().then(() => {
       if (!cancelled) setReady(true);
     });
     return () => {
