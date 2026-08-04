@@ -39,9 +39,13 @@ export function useDashboardState() {
     chartMeta,
     chartData,
     totalRows,
+    pivotTotalRows,
+    pivotSubtotalRows,
     setChartMeta,
     setChartData,
     setTotalRows,
+    setPivotTotalRows,
+    setPivotSubtotalRows,
     buildAdhocFiltersRef,
     getChartDataWithFilters,
     refreshChart: refreshChartData,
@@ -123,6 +127,7 @@ export function useDashboardState() {
         "pie",
         "table",
         "big_number",
+        "pivot_table_v2",
         "echarts_timeseries_line",
       ]),
     [],
@@ -276,7 +281,12 @@ export function useDashboardState() {
         }
         setMetricFormatMaps(fmtMaps);
         await new Promise((resolve) => setTimeout(resolve, 20));
-        const { dataMap, totalRowMap } = await getChartDataWithFilters(
+        const {
+          dataMap,
+          totalRowMap,
+          pivotTotalRowsMap,
+          pivotSubtotalRowsMap,
+        } = await getChartDataWithFilters(
           chartIds,
           metaMap,
           buildAdhocFiltersRef.current,
@@ -284,6 +294,8 @@ export function useDashboardState() {
         );
         setChartData(dataMap);
         setTotalRows(totalRowMap);
+        setPivotTotalRows(pivotTotalRowsMap);
+        setPivotSubtotalRows(pivotSubtotalRowsMap);
       }
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "加载仪表板失败"));
@@ -297,6 +309,8 @@ export function useDashboardState() {
     setChartData,
     setChartMeta,
     setTotalRows,
+    setPivotTotalRows,
+    setPivotSubtotalRows,
   ]);
 
   useEffect(() => {
@@ -417,14 +431,11 @@ export function useDashboardState() {
         ),
       );
       try {
-        const { dataMap, totalRowMap } = await getChartDataWithFilters(
-          ids,
-          meta,
-          undefined,
-          true,
-        );
+        const { dataMap, totalRowMap, pivotTotalRowsMap } =
+          await getChartDataWithFilters(ids, meta, undefined, true);
         setChartData((prev) => ({ ...prev, ...dataMap }));
         setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
+        setPivotTotalRows((prev) => ({ ...prev, ...pivotTotalRowsMap }));
         const cc = compareConfigRef.current;
         if (cc?.enabled) {
           const freshData = dataMap[cc.chartId];
@@ -438,7 +449,7 @@ export function useDashboardState() {
         });
       }
     },
-    [getChartDataWithFilters, setChartData, setTotalRows],
+    [getChartDataWithFilters, setChartData, setTotalRows, setPivotTotalRows],
   );
 
   refreshChartsRef.current = (...args) =>
@@ -618,18 +629,35 @@ export function useDashboardState() {
       await layout.saveLayout();
       if (chartMetaData) {
         try {
-          const { dataMap, totalRowMap } = await getChartDataWithFilters(
-            [chart.id],
-            { [chart.id]: chartMetaData },
-          );
+          const {
+            dataMap,
+            totalRowMap,
+            pivotTotalRowsMap,
+            pivotSubtotalRowsMap,
+          } = await getChartDataWithFilters([chart.id], {
+            [chart.id]: chartMetaData,
+          });
           setChartData((prev) => ({ ...prev, ...dataMap }));
           setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
+          setPivotTotalRows((prev) => ({ ...prev, ...pivotTotalRowsMap }));
+          setPivotSubtotalRows((prev) => ({
+            ...prev,
+            ...pivotSubtotalRowsMap,
+          }));
         } catch {
           /* ignore */
         }
       }
     },
-    [layout, getChartDataWithFilters, setChartMeta, setChartData, setTotalRows],
+    [
+      layout,
+      getChartDataWithFilters,
+      setChartMeta,
+      setChartData,
+      setTotalRows,
+      setPivotTotalRows,
+      setPivotSubtotalRows,
+    ],
   );
 
   const handleDeleteChart = useCallback(
@@ -687,6 +715,8 @@ export function useDashboardState() {
     chartMeta,
     chartData,
     totalRows,
+    pivotTotalRows,
+    pivotSubtotalRows,
     chartLoading,
     chartPages,
     chartHasMore,

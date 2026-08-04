@@ -3,8 +3,18 @@ import type { FormData } from "@/types/api";
 
 const NO_GROUPBY_VIZ: VizType[] = ["big_number"];
 
+const PIVOT_VIZ: VizType[] = ["pivot_table_v2"];
+
 function isVizType(v: string): v is VizType {
-  return ["line", "bar", "pie", "table", "big_number", "auto"].includes(v);
+  return [
+    "line",
+    "bar",
+    "pie",
+    "table",
+    "big_number",
+    "pivot_table_v2",
+    "auto",
+  ].includes(v);
 }
 
 export function extractQueryFields(
@@ -19,17 +29,44 @@ export function extractQueryFields(
   timeseries_limit_metric: string | AdhocMetric | undefined;
 } {
   const vt = vizType && isVizType(vizType) ? vizType : undefined;
+  const isPivot = vt ? PIVOT_VIZ.includes(vt) : false;
 
   const rawMetrics = formData.metrics ?? formData.metric ?? [];
   const metrics = Array.isArray(rawMetrics) ? rawMetrics : [rawMetrics];
 
-  const rawGroupby = formData.groupby ?? formData.columns ?? [];
-  let groupby = Array.isArray(rawGroupby) ? rawGroupby : [];
+  const pivotRows = isPivot
+    ? Array.isArray(formData.groupbyRows)
+      ? formData.groupbyRows
+      : Array.isArray(formData.groupby)
+        ? formData.groupby
+        : []
+    : [];
 
-  const rawColumns = formData.columns ?? [];
-  const columns = Array.isArray(rawColumns) ? rawColumns : [];
+  let groupby = isPivot
+    ? pivotRows
+    : Array.isArray(formData.groupby)
+      ? formData.groupby
+      : [];
+
+  const columns = isPivot
+    ? Array.isArray(formData.groupbyColumns)
+      ? formData.groupbyColumns
+      : Array.isArray(formData.columns)
+        ? formData.columns
+        : []
+    : Array.isArray(formData.columns)
+      ? formData.columns
+      : [];
 
   if (vt && NO_GROUPBY_VIZ.includes(vt)) {
+    groupby = [];
+  }
+
+  if (isPivot) {
+    // Superset's query builder collapses `columns = groupby or columns` when a
+    // GROUP BY is present (models/helpers.py), which would drop the pivot
+    // column dimensions from the generated SQL. Keep `groupby` empty and carry
+    // every dimension in `columns` so both row and column dims are grouped on.
     groupby = [];
   }
 
@@ -48,7 +85,10 @@ export function extractQueryFields(
   return {
     metrics: metrics.filter(Boolean),
     groupby: groupby.filter(Boolean),
-    columns: columns.filter(Boolean),
+    columns: (isPivot
+      ? Array.from(new Set([...pivotRows, ...columns]))
+      : columns
+    ).filter(Boolean),
     orderby,
     order_desc,
     timeseries_limit_metric,

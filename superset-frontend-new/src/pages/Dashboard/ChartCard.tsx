@@ -100,7 +100,9 @@ import {
 } from "@/utils/formatNumber";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
-import type { ChartDataPayload, ChartDataRow } from "@/types/api";
+import type { ChartDataPayload, ChartDataRow, ChartData } from "@/types/api";
+import PivotTable, { type PivotTableProps } from "@/components/PivotTable";
+import { DEFAULT_PIVOT_CONFIG } from "@/pages/ChartCreation/useChartEditor";
 
 export interface CompareDimension {
   dimension: string;
@@ -157,7 +159,7 @@ interface ChartCardProps {
   vizType: string;
   data?: ChartDataPayload;
   loading?: boolean;
-  meta?: { slice_name?: string };
+  meta?: ChartData | { slice_name?: string };
   containerWidth: number;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
@@ -171,6 +173,8 @@ interface ChartCardProps {
     chartData?: ChartDataPayload,
   ) => void;
   totalRow?: ChartDataRow | null;
+  pivotTotalRows?: ChartDataRow[];
+  pivotSubtotalRows?: ChartDataRow[][];
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMap?: MetricFormatMap;
@@ -214,6 +218,8 @@ function ChartCard({
   onToggleCompare,
   onOpenCompareBigScreen,
   totalRow,
+  pivotTotalRows,
+  pivotSubtotalRows,
   intervalSeconds,
   onCycleInterval,
   metricFormatMap,
@@ -402,7 +408,12 @@ function ChartCard({
     let resultRows: ChartDataRow[];
     let hasMods = false;
 
-    if (pct95Active && sortMetricCol && splitIdx < rows.length) {
+    if (
+      pct95Active &&
+      sortMetricCol &&
+      splitIdx < rows.length &&
+      vizType !== "pivot_table_v2"
+    ) {
       resultRows = sorted.slice(0, splitIdx);
       hasMods = true;
     } else {
@@ -449,6 +460,49 @@ function ChartCard({
         : null,
     [vizType, processedData, metricFormatMap, theme.palette.chart, cardSize],
   );
+
+  const pivotProps: PivotTableProps | null = useMemo(() => {
+    if (vizType !== "pivot_table_v2") return null;
+    const rawMeta = meta as ChartData | undefined;
+    const raw = rawMeta?.params || rawMeta?.form_data || "{}";
+    let fd: Record<string, unknown> = {};
+    try {
+      fd =
+        typeof raw === "string"
+          ? JSON.parse(raw)
+          : raw ?? {};
+    } catch {
+      return null;
+    }
+    const metricsList = Array.isArray(fd.metrics)
+      ? (fd.metrics as unknown[]).map((m) => {
+          if (typeof m === "string") return m;
+          const obj = m as {
+            label?: string;
+            column?: { column_name?: string };
+          };
+          return obj.label || obj.column?.column_name || "";
+        })
+      : [];
+    return {
+      groupbyRows: Array.isArray(fd.groupbyRows)
+        ? (fd.groupbyRows as string[])
+        : [],
+      groupbyColumns: Array.isArray(fd.groupbyColumns)
+        ? (fd.groupbyColumns as string[])
+        : [],
+      metrics: metricsList.filter(Boolean),
+      totalRows: pivotTotalRows,
+      subtotalRows: pivotSubtotalRows,
+      aggregateFunction: DEFAULT_PIVOT_CONFIG.aggregateFunction,
+      transposePivot: DEFAULT_PIVOT_CONFIG.transposePivot,
+      combineMetric: DEFAULT_PIVOT_CONFIG.combineMetric,
+      rowTotals: DEFAULT_PIVOT_CONFIG.rowTotals,
+      colTotals: DEFAULT_PIVOT_CONFIG.colTotals,
+      metricsLayout: DEFAULT_PIVOT_CONFIG.metricsLayout,
+      formatCell: tableFormatCell,
+    };
+  }, [vizType, meta, tableFormatCell, pivotTotalRows, pivotSubtotalRows]);
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);
@@ -747,6 +801,8 @@ function ChartCard({
                 onPageChange={onPageChange}
               />
             )
+          ) : vizType === "pivot_table_v2" && data?.data && pivotProps ? (
+            <PivotTable data={data.data} {...pivotProps} />
           ) : option && chartLibReady ? (
             <ReactEChartsCore
               ref={chartRef}
@@ -855,6 +911,8 @@ function ChartCard({
                       hasMore={hasMore}
                       onPageChange={onPageChange}
                     />
+                  ) : vizType === "pivot_table_v2" && data?.data && pivotProps ? (
+                    <PivotTable data={data.data} {...pivotProps} />
                   ) : option && chartLibReady ? (
                     <ReactEChartsCore
                       echarts={getECharts()}

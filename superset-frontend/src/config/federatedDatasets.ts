@@ -30,7 +30,7 @@
  * To add a new federated dataset, add its dataset ID to this Set in BOTH files.
  */
 export const FEDERATED_DATASETS: Set<number> = new Set([
-  26,  // ad_combined_report <-> ad_operate_data_report
+  26, // ad_combined_report <-> ad_operate_data_report
 ]);
 
 export function isFederatedDataset(datasetId: number | undefined): boolean {

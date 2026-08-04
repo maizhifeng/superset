@@ -1,6 +1,7 @@
 import type { ChartDataRow, FormData } from "@/types/api";
 
-export type VizType = "line" | "bar" | "pie" | "table" | "big_number" | "auto";
+export type VizType =
+  "line" | "bar" | "pie" | "table" | "big_number" | "pivot_table_v2" | "auto";
 
 export interface DatasourceKey {
   id: number;

@@ -12,10 +12,29 @@ import type {
   FormData,
   ChartDataPayload,
   ChartData,
+  ChartDataRow,
 } from "@/types/api";
 import type { AdhocMetric, QueryOrderBy } from "@/utils/query/types";
 import { formatNumber } from "@/utils/formatNumber";
 import { isFederatedDataset } from "@/config/federatedDatasets";
+
+export interface PivotConfig {
+  aggregateFunction: string;
+  transposePivot: boolean;
+  combineMetric: boolean;
+  rowTotals: boolean;
+  colTotals: boolean;
+  metricsLayout: "ROWS" | "COLUMNS";
+}
+
+export const DEFAULT_PIVOT_CONFIG: PivotConfig = {
+  aggregateFunction: "Sum",
+  transposePivot: false,
+  combineMetric: true,
+  rowTotals: false,
+  colTotals: true,
+  metricsLayout: "COLUMNS",
+};
 
 export function autoSuggestChartType(
   metrics: string[],
@@ -85,6 +104,7 @@ export function useChartEditor({
   const [vizType, setVizType] = useState("auto");
   const [metrics, setMetrics] = useState<string[]>([]);
   const [groupby, setGroupby] = useState<string[]>([]);
+  const [groupbyColumns, setGroupbyColumns] = useState<string[]>([]);
   const [sliceName, setSliceName] = useState("");
   const [metricsList, setMetricsList] = useState<
     { metric_name: string; verbose_name: string | null; expression: string }[]
@@ -113,6 +133,12 @@ export function useChartEditor({
     direction: "asc" | "desc";
   } | null>(null);
   const [chartData, setChartData] = useState<ChartDataPayload | null>(null);
+  const [chartTotalsRows, setChartTotalsRows] = useState<
+    ChartDataRow[] | null
+  >(null);
+  const [chartSubtotalRows, setChartSubtotalRows] = useState<
+    ChartDataRow[][] | null
+  >(null);
   const [loadingData, setLoadingData] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -131,6 +157,12 @@ export function useChartEditor({
     [metricsList],
   );
   const isEditing = Boolean(sliceId || initialData?.datasource_id);
+
+  const pivotMetricKeys = useMemo(
+    () =>
+      metrics.map((m) => (metricNames.has(m) ? m : `SUM(${m})`)),
+    [metrics, metricNames],
+  );
 
   const fieldOptions = useMemo(() => {
     const items: FieldOption[] = [];
@@ -251,6 +283,10 @@ export function useChartEditor({
     }
     const g = parsed.groupby;
     if (Array.isArray(g)) setGroupby(g);
+    const gr = parsed.groupbyRows;
+    if (Array.isArray(gr)) setGroupby(gr);
+    const gc = parsed.groupbyColumns;
+    if (Array.isArray(gc)) setGroupbyColumns(gc);
     const m = parsed.metrics ?? parsed.metric;
     if (Array.isArray(m))
       setMetrics(
@@ -371,9 +407,14 @@ export function useChartEditor({
   const resolvedType =
     vizType === "auto" && suggested ? suggested.vizType : vizType;
   const hasValidType = Boolean(resolvedType && resolvedType !== "auto");
+  const isPivot = resolvedType === "pivot_table_v2";
 
   const [chartLibReady, setChartLibReady] = useState(false);
   useEffect(() => {
+    if (resolvedType === "table" || isPivot) {
+      setChartLibReady(true);
+      return;
+    }
     let cancelled = false;
     setChartLibReady(false);
     void loadECharts().then(() => {
@@ -382,7 +423,7 @@ export function useChartEditor({
     return () => {
       cancelled = true;
     };
-  }, [resolvedType]);
+  }, [resolvedType, isPivot]);
 
   const previewParams = useMemo(() => {
     if (!datasourceId || !hasValidType) return null;
@@ -391,8 +432,18 @@ export function useChartEditor({
       viz_type: resolvedType,
       metrics,
       groupby,
+      groupbyColumns: isPivot ? groupbyColumns : [],
+      pivotConfig: isPivot ? DEFAULT_PIVOT_CONFIG : null,
     };
-  }, [datasourceId, resolvedType, metrics, groupby, hasValidType]);
+  }, [
+    datasourceId,
+    resolvedType,
+    metrics,
+    groupby,
+    groupbyColumns,
+    isPivot,
+    hasValidType,
+  ]);
 
   const prevParamsRef = useRef(previewParams);
   useEffect(() => {
@@ -410,6 +461,8 @@ export function useChartEditor({
       metricNames.size === 0
     ) {
       setChartData(null);
+      setChartTotalsRows(null);
+      setChartSubtotalRows(null);
       setLoadingData(false);
       return;
     }
@@ -423,8 +476,19 @@ export function useChartEditor({
       const queryFormData: FormData = {
         metrics: buildMetricsPayload(previewParams.metrics),
         groupby: previewParams.groupby,
+        groupbyRows: previewParams.groupby,
+        groupbyColumns: previewParams.groupbyColumns,
         viz_type: previewParams.viz_type,
       };
+      if (previewParams.pivotConfig) {
+        queryFormData.aggregateFunction =
+          previewParams.pivotConfig.aggregateFunction;
+        queryFormData.transposePivot = previewParams.pivotConfig.transposePivot;
+        queryFormData.combineMetric = previewParams.pivotConfig.combineMetric;
+        queryFormData.rowTotals = previewParams.pivotConfig.rowTotals;
+        queryFormData.colTotals = previewParams.pivotConfig.colTotals;
+        queryFormData.metricsLayout = previewParams.pivotConfig.metricsLayout;
+      }
       if (savedFormData) {
         if (savedFormData.time_range)
           queryFormData.time_range = savedFormData.time_range;
@@ -439,51 +503,138 @@ export function useChartEditor({
         queryFormData.orderby = [
           [sortEntry.column, sortEntry.direction === "asc"],
         ];
-      queryFormData.row_limit = pageSize + 1;
-      queryFormData.row_offset = page * pageSize;
+      const isPivotQuery = previewParams.viz_type === "pivot_table_v2";
+      if (isPivotQuery) {
+        queryFormData.row_limit = 10000;
+        delete queryFormData.row_offset;
+      } else {
+        queryFormData.row_limit = pageSize + 1;
+        queryFormData.row_offset = page * pageSize;
+      }
       const query = buildQueryObject(queryFormData, previewParams.viz_type);
+      const totalsQuery = isPivotQuery
+        ? buildQueryObject(
+            {
+              ...queryFormData,
+              groupby: [],
+              groupbyRows: [],
+              groupbyColumns: [],
+              columns: [],
+            },
+            previewParams.viz_type,
+          )
+        : null;
+      const subtotalQueries: ReturnType<typeof buildQueryObject>[] = [];
+      if (isPivotQuery) {
+        for (
+          let level = 0;
+          level < previewParams.groupby.length - 1;
+          level += 1
+        ) {
+          const dims = [
+            ...previewParams.groupby.slice(0, level + 1),
+            ...previewParams.groupbyColumns,
+          ];
+          subtotalQueries.push(
+            buildQueryObject(
+              {
+                ...queryFormData,
+                groupby: dims,
+                groupbyRows: dims,
+                groupbyColumns: [],
+                columns: [],
+              },
+              previewParams.viz_type,
+            ),
+          );
+        }
+      }
       const dashboardFilters = buildDashboardAdhocFilters?.(
         previewParams.datasource_id,
       );
-      if (dashboardFilters && dashboardFilters.length > 0)
+      if (dashboardFilters && dashboardFilters.length > 0) {
         query.filters = dashboardFilters.map((f) => ({
           col: f.subject,
           op: f.operator,
           val: f.comparator,
         }));
+        if (totalsQuery) {
+          totalsQuery.filters = dashboardFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          }));
+        }
+        for (const q of subtotalQueries) {
+          q.filters = dashboardFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          }));
+        }
+      }
       const chartUrl = isFederatedDataset(Number(previewParams.datasource_id))
         ? "/bi/chart/data"
         : "/chart/data";
+      const queries = [query];
+      if (totalsQuery) queries.push(totalsQuery);
+      queries.push(...subtotalQueries);
       api
         .post(
           chartUrl,
           {
             datasource: { id: previewParams.datasource_id, type: "table" },
-            queries: [query],
+            queries,
             form_data: {
               viz_type: previewParams.viz_type,
               metrics: previewParams.metrics,
               groupby: previewParams.groupby,
+              groupbyRows: previewParams.groupby,
+              groupbyColumns: previewParams.groupbyColumns,
+              aggregateFunction: previewParams.pivotConfig?.aggregateFunction,
+              transposePivot: previewParams.pivotConfig?.transposePivot,
+              combineMetric: previewParams.pivotConfig?.combineMetric,
+              rowTotals: previewParams.pivotConfig?.rowTotals,
+              colTotals: previewParams.pivotConfig?.colTotals,
+              metricsLayout: previewParams.pivotConfig?.metricsLayout,
             },
           },
           { signal: controller.signal },
         )
         .then((res) => {
           if (controller.signal.aborted) return;
-          const result = res.data?.result;
-          const rowData = Array.isArray(result)
-            ? result[0] || {}
-            : result || {};
+          const results = (
+            Array.isArray(res.data?.result) ? res.data.result : []
+          ) as { data?: unknown }[];
+          const rowData = (results[0] || {}) as ChartDataPayload;
+          const totalsData = results[1]?.data;
+          setChartTotalsRows(
+            Array.isArray(totalsData) ? totalsData : null,
+          );
+          setChartSubtotalRows(
+            results
+              .slice(2)
+              .map((r) =>
+                Array.isArray(r?.data) ? (r.data as ChartDataRow[]) : null,
+              )
+              .filter((v): v is ChartDataRow[] => v !== null),
+          );
           if (rowData && Array.isArray(rowData.data)) {
-            const hasNext = rowData.data.length > pageSize;
-            setHasMore(hasNext);
-            if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
+            if (isPivotQuery) {
+              setHasMore(false);
+            } else {
+              const hasNext = rowData.data.length > pageSize;
+              setHasMore(hasNext);
+              if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
+            }
           }
           setChartData(rowData);
         })
         .catch(() => {
           if (controller.signal.aborted) return;
           setChartData({});
+          setChartTotalsRows(null);
+          setChartSubtotalRows(null);
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoadingData(false);
@@ -504,7 +655,8 @@ export function useChartEditor({
 
   const option = useMemo(() => {
     if (!chartData || !resolvedType || resolvedType === "auto") return null;
-    if (resolvedType === "table") return null;
+    if (resolvedType === "table" || resolvedType === "pivot_table_v2")
+      return null;
     return buildEChartsOption(
       resolvedType,
       chartData,
@@ -559,6 +711,7 @@ export function useChartEditor({
       reasons["bar"] = "未选择指标";
       reasons["pie"] = "未选择指标";
       reasons["big_number"] = "未选择指标";
+      reasons["pivot_table_v2"] = "未选择指标";
     }
     if (pieDisabled) {
       const parts: string[] = [];
@@ -596,6 +749,16 @@ export function useChartEditor({
         metrics: buildMetricsPayload(metrics),
         groupby,
       };
+      if (isPivot) {
+        formData.groupbyRows = groupby;
+        formData.groupbyColumns = groupbyColumns;
+        formData.aggregateFunction = DEFAULT_PIVOT_CONFIG.aggregateFunction;
+        formData.transposePivot = DEFAULT_PIVOT_CONFIG.transposePivot;
+        formData.combineMetric = DEFAULT_PIVOT_CONFIG.combineMetric;
+        formData.rowTotals = DEFAULT_PIVOT_CONFIG.rowTotals;
+        formData.colTotals = DEFAULT_PIVOT_CONFIG.colTotals;
+        formData.metricsLayout = DEFAULT_PIVOT_CONFIG.metricsLayout;
+      }
       if (sortEntry)
         formData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
       const queryContext = buildQueryObject(formData, effectiveType);
@@ -643,6 +806,8 @@ export function useChartEditor({
     sliceName,
     metrics,
     groupby,
+    groupbyColumns,
+    isPivot,
     isEditing,
     sliceId,
     sortEntry,
@@ -658,10 +823,20 @@ export function useChartEditor({
     const queryFormData: FormData = {
       metrics: buildMetricsPayload(metrics),
       groupby,
+      groupbyRows: groupby,
+      groupbyColumns: groupbyColumns,
       viz_type: resolvedType === "auto" ? "line" : resolvedType,
-      row_limit: pageSize + 1,
-      row_offset: 0,
+      row_limit: isPivot ? 10000 : pageSize + 1,
+      row_offset: isPivot ? undefined : 0,
     };
+    if (isPivot) {
+      queryFormData.aggregateFunction = DEFAULT_PIVOT_CONFIG.aggregateFunction;
+      queryFormData.transposePivot = DEFAULT_PIVOT_CONFIG.transposePivot;
+      queryFormData.combineMetric = DEFAULT_PIVOT_CONFIG.combineMetric;
+      queryFormData.rowTotals = DEFAULT_PIVOT_CONFIG.rowTotals;
+      queryFormData.colTotals = DEFAULT_PIVOT_CONFIG.colTotals;
+      queryFormData.metricsLayout = DEFAULT_PIVOT_CONFIG.metricsLayout;
+    }
     if (savedFormData) {
       if (savedFormData.time_range)
         queryFormData.time_range = savedFormData.time_range;
@@ -678,39 +853,124 @@ export function useChartEditor({
       queryFormData,
       resolvedType === "auto" ? "line" : resolvedType,
     );
+    const totalsQuery = isPivot
+      ? buildQueryObject(
+          {
+            ...queryFormData,
+            groupby: [],
+            groupbyRows: [],
+            groupbyColumns: [],
+            columns: [],
+          },
+          resolvedType,
+        )
+      : null;
+    const subtotalQueries: ReturnType<typeof buildQueryObject>[] = [];
+    if (isPivot) {
+      for (let level = 0; level < groupby.length - 1; level += 1) {
+        const dims = [
+          ...groupby.slice(0, level + 1),
+          ...groupbyColumns,
+        ];
+        subtotalQueries.push(
+          buildQueryObject(
+            {
+              ...queryFormData,
+              groupby: dims,
+              groupbyRows: dims,
+              groupbyColumns: [],
+              columns: [],
+            },
+            resolvedType,
+          ),
+        );
+      }
+    }
     const dashboardFilters = buildDashboardAdhocFilters?.(Number(datasourceId));
-    if (dashboardFilters && dashboardFilters.length > 0)
+    if (dashboardFilters && dashboardFilters.length > 0) {
       query.filters = dashboardFilters.map((f) => ({
         col: f.subject,
         op: f.operator,
         val: f.comparator,
       }));
+      if (totalsQuery) {
+        totalsQuery.filters = dashboardFilters.map((f) => ({
+          col: f.subject,
+          op: f.operator,
+          val: f.comparator,
+        }));
+      }
+      for (const q of subtotalQueries) {
+        q.filters = dashboardFilters.map((f) => ({
+          col: f.subject,
+          op: f.operator,
+          val: f.comparator,
+        }));
+      }
+    }
     const chartUrl = isFederatedDataset(Number(datasourceId))
       ? "/bi/chart/data"
       : "/chart/data";
+    const queries = [query];
+    if (totalsQuery) queries.push(totalsQuery);
+    queries.push(...subtotalQueries);
     api
       .post(chartUrl, {
         datasource: { id: Number(datasourceId), type: "table" },
-        queries: [query],
-        form_data: { viz_type: resolvedType, metrics, groupby },
+        queries,
+        form_data: {
+          viz_type: resolvedType,
+          metrics,
+          groupby,
+          groupbyRows: groupby,
+          groupbyColumns: groupbyColumns,
+          aggregateFunction: isPivot ? DEFAULT_PIVOT_CONFIG.aggregateFunction : undefined,
+          transposePivot: isPivot ? DEFAULT_PIVOT_CONFIG.transposePivot : undefined,
+          combineMetric: isPivot ? DEFAULT_PIVOT_CONFIG.combineMetric : undefined,
+          rowTotals: isPivot ? DEFAULT_PIVOT_CONFIG.rowTotals : undefined,
+          colTotals: isPivot ? DEFAULT_PIVOT_CONFIG.colTotals : undefined,
+          metricsLayout: isPivot ? DEFAULT_PIVOT_CONFIG.metricsLayout : undefined,
+        },
       })
       .then((res) => {
-        const result = res.data?.result;
-        const rowData = Array.isArray(result) ? result[0] || {} : result || {};
+        const results = (
+          Array.isArray(res.data?.result) ? res.data.result : []
+        ) as { data?: unknown }[];
+        const rowData = (results[0] || {}) as ChartDataPayload;
+        const totalsData = results[1]?.data;
+        setChartTotalsRows(Array.isArray(totalsData) ? totalsData : null);
+        setChartSubtotalRows(
+          results
+            .slice(2)
+            .map((r) =>
+              Array.isArray(r?.data) ? (r.data as ChartDataRow[]) : null,
+            )
+            .filter((v): v is ChartDataRow[] => v !== null),
+        );
         if (rowData && Array.isArray(rowData.data)) {
-          const hasNext = rowData.data.length > pageSize;
-          setHasMore(hasNext);
-          if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
+          if (isPivot) {
+            setHasMore(false);
+          } else {
+            const hasNext = rowData.data.length > pageSize;
+            setHasMore(hasNext);
+            if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
+          }
         }
         setChartData(rowData);
       })
-      .catch(() => setChartData({}))
+      .catch(() => {
+        setChartData({});
+        setChartTotalsRows(null);
+        setChartSubtotalRows(null);
+      })
       .finally(() => setLoadingData(false));
   }, [
     datasourceId,
     resolvedType,
     metrics,
     groupby,
+    groupbyColumns,
+    isPivot,
     savedFormData,
     sortEntry,
     buildDashboardAdhocFilters,
@@ -739,6 +999,7 @@ export function useChartEditor({
     vizType,
     metrics,
     groupby,
+    groupbyColumns,
     sliceName,
     metricsList,
     columnsList,
@@ -746,6 +1007,8 @@ export function useChartEditor({
     loadingDatasets,
     loadingChart,
     chartData,
+    chartTotalsRows,
+    chartSubtotalRows,
     loadingData,
     page,
     hasMore,
@@ -757,6 +1020,7 @@ export function useChartEditor({
     fieldOptions,
     metricsOptions,
     dimensionOptions,
+    pivotMetricKeys,
     resolvedType,
     hasValidType,
     chartLibReady,
@@ -769,6 +1033,7 @@ export function useChartEditor({
     setDatasourceId,
     setMetrics,
     setGroupby,
+    setGroupbyColumns,
     setSliceName,
     setVizType,
     setPage,
