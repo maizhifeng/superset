@@ -32,6 +32,8 @@ interface FetchResult {
   id: number;
   data: ChartDataPayload;
   totalRow: ChartDataRow | null;
+  pivotTotalRows?: ChartDataRow[];
+  pivotSubtotalRows?: ChartDataRow[][];
 }
 
 export function useDashboardData() {
@@ -41,6 +43,12 @@ export function useDashboardData() {
   );
   const [totalRows, setTotalRows] = useState<
     Record<number, ChartDataRow | null>
+  >({});
+  const [pivotTotalRows, setPivotTotalRows] = useState<
+    Record<number, ChartDataRow[]>
+  >({});
+  const [pivotSubtotalRows, setPivotSubtotalRows] = useState<
+    Record<number, ChartDataRow[][]>
   >({});
 
   const buildAdhocFiltersRef = useRef<
@@ -72,8 +80,11 @@ export function useDashboardData() {
         if (!query.metrics || (query.metrics as unknown[]).length === 0)
           return { id: cid, data: {}, totalRow: null };
 
+        const isPivot = chart.viz_type === "pivot_table_v2";
         const pageSize = 50;
-        if (page != null) {
+        if (isPivot) {
+          query.row_limit = 10000;
+        } else if (page != null) {
           query.row_limit = pageSize + 1;
           query.row_offset = page * pageSize;
         }
@@ -90,8 +101,17 @@ export function useDashboardData() {
 
         const queries = [query];
         const totalQuery = buildQueryObject(fd, chart.viz_type);
-        totalQuery.groupby = [];
-        totalQuery.columns = [];
+        if (isPivot) {
+          // Group by the column dimensions only, so dataset-defined metrics
+          // (e.g. ratios) are recomputed per their definition for the totals
+          // row instead of summing the displayed cells.
+          totalQuery.columns = Array.isArray(fd.groupbyColumns)
+            ? [...fd.groupbyColumns]
+            : [];
+        } else {
+          totalQuery.groupby = [];
+          totalQuery.columns = [];
+        }
         delete totalQuery.row_limit;
         delete totalQuery.orderby;
         delete totalQuery.timeseries_limit_metric;
@@ -103,6 +123,31 @@ export function useDashboardData() {
           }));
         }
         queries.push(totalQuery);
+
+        const rowDims = Array.isArray(fd.groupbyRows)
+          ? fd.groupbyRows
+          : Array.isArray(fd.groupby)
+            ? fd.groupby
+            : [];
+        const colDims = Array.isArray(fd.groupbyColumns)
+          ? fd.groupbyColumns
+          : [];
+        for (let level = 0; level < rowDims.length - 1; level += 1) {
+          const subtotalQuery = buildQueryObject(fd, chart.viz_type);
+          subtotalQuery.groupby = [];
+          subtotalQuery.columns = [...rowDims.slice(0, level + 1), ...colDims];
+          delete subtotalQuery.row_limit;
+          delete subtotalQuery.orderby;
+          delete subtotalQuery.timeseries_limit_metric;
+          if (adhocFilters.length > 0) {
+            subtotalQuery.filters = adhocFilters.map((f) => ({
+              col: f.subject,
+              op: f.operator,
+              val: f.comparator as string | string[],
+            }));
+          }
+          queries.push(subtotalQuery);
+        }
 
         const body: {
           datasource: { id: number; type: string };
@@ -157,14 +202,34 @@ export function useDashboardData() {
         }
 
         let hasMore: boolean | undefined;
-        if (page != null && first && Array.isArray(first.data)) {
+        if (isPivot) {
+          hasMore = false;
+        } else if (page != null && first && Array.isArray(first.data)) {
           hasMore = first.data.length > pageSize;
           if (hasMore) {
             first.data = first.data.slice(0, pageSize);
           }
         }
 
-        return { id: cid, data: first, totalRow, hasMore };
+        const pivotTotalRows: ChartDataRow[] | undefined =
+          isPivot && totalRaw?.data && Array.isArray(totalRaw.data)
+            ? totalRaw.data
+            : undefined;
+        const pivotSubtotalRows: ChartDataRow[][] | undefined = isPivot
+          ? results
+              .slice(2)
+              .map((r) => (r?.data && Array.isArray(r.data) ? r.data : null))
+              .filter((v): v is ChartDataRow[] => v !== null)
+          : undefined;
+
+        return {
+          id: cid,
+          data: first,
+          totalRow,
+          pivotTotalRows,
+          pivotSubtotalRows,
+          hasMore,
+        };
       } catch {
         return { id: cid, data: {}, totalRow: null };
       }
@@ -184,6 +249,8 @@ export function useDashboardData() {
     ) => {
       const dataMap: Record<number, ChartDataPayload> = {};
       const totalRowMap: Record<number, ChartDataRow | null> = {};
+      const pivotTotalRowsMap: Record<number, ChartDataRow[]> = {};
+      const pivotSubtotalRowsMap: Record<number, ChartDataRow[][]> = {};
       const hasMoreMap: Record<number, boolean> = {};
       const CONCURRENCY = 3;
       for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
@@ -196,12 +263,21 @@ export function useDashboardData() {
         results.forEach((r) => {
           dataMap[r.id] = r.data;
           totalRowMap[r.id] = r.totalRow;
+          if (r.pivotTotalRows) pivotTotalRowsMap[r.id] = r.pivotTotalRows;
+          if (r.pivotSubtotalRows)
+            pivotSubtotalRowsMap[r.id] = r.pivotSubtotalRows;
           if (r.hasMore !== undefined) {
             hasMoreMap[r.id] = r.hasMore;
           }
         });
       }
-      return { dataMap, totalRowMap, hasMoreMap };
+      return {
+        dataMap,
+        totalRowMap,
+        pivotTotalRowsMap,
+        pivotSubtotalRowsMap,
+        hasMoreMap,
+      };
     },
     [fetchChartWithTotal],
   );
@@ -214,7 +290,12 @@ export function useDashboardData() {
         dsId: number,
       ) => { subject: string; operator: string; comparator: unknown }[],
       page?: number,
-    ): Promise<{ data: ChartDataPayload; hasMore?: boolean } | null> => {
+    ): Promise<{
+      data: ChartDataPayload;
+      hasMore?: boolean;
+      pivotTotalRows?: ChartDataRow[];
+      pivotSubtotalRows?: ChartDataRow[][];
+    } | null> => {
       const chart = metaMap[chartId];
       if (!chart) return null;
       try {
@@ -226,8 +307,11 @@ export function useDashboardData() {
         const query = buildQueryObject(fd, chart.viz_type);
         if (!query.metrics || query.metrics.length === 0) return null;
 
+        const isPivot = chart.viz_type === "pivot_table_v2";
         const pageSize = 50;
-        if (page != null) {
+        if (isPivot) {
+          query.row_limit = 10000;
+        } else if (page != null) {
           query.row_limit = pageSize + 1;
           query.row_offset = page * pageSize;
         }
@@ -242,9 +326,62 @@ export function useDashboardData() {
           }));
         }
 
+        const totalsQuery = isPivot
+          ? buildQueryObject(fd, chart.viz_type)
+          : null;
+        if (totalsQuery) {
+          totalsQuery.groupby = [];
+          totalsQuery.columns = Array.isArray(fd.groupbyColumns)
+            ? [...fd.groupbyColumns]
+            : [];
+          delete totalsQuery.row_limit;
+          delete totalsQuery.orderby;
+          delete totalsQuery.timeseries_limit_metric;
+          if (adhocFilters.length > 0) {
+            totalsQuery.filters = adhocFilters.map((f) => ({
+              col: f.subject,
+              op: f.operator,
+              val: f.comparator as string | string[],
+            }));
+          }
+        }
+        const refreshRowDims = Array.isArray(fd.groupbyRows)
+          ? fd.groupbyRows
+          : Array.isArray(fd.groupby)
+            ? fd.groupby
+            : [];
+        const refreshColDims = Array.isArray(fd.groupbyColumns)
+          ? fd.groupbyColumns
+          : [];
+        const subtotalQueries: (typeof query)[] = [];
+        if (isPivot) {
+          for (let level = 0; level < refreshRowDims.length - 1; level += 1) {
+            const subtotalQuery = buildQueryObject(fd, chart.viz_type);
+            subtotalQuery.groupby = [];
+            subtotalQuery.columns = [
+              ...refreshRowDims.slice(0, level + 1),
+              ...refreshColDims,
+            ];
+            delete subtotalQuery.row_limit;
+            delete subtotalQuery.orderby;
+            delete subtotalQuery.timeseries_limit_metric;
+            if (adhocFilters.length > 0) {
+              subtotalQuery.filters = adhocFilters.map((f) => ({
+                col: f.subject,
+                op: f.operator,
+                val: f.comparator as string | string[],
+              }));
+            }
+            subtotalQueries.push(subtotalQuery);
+          }
+        }
+        const queries: (typeof query)[] = [query];
+        if (totalsQuery) queries.push(totalsQuery);
+        queries.push(...subtotalQueries);
+
         const payload = {
           datasource: { id: dsId, type: chart.datasource_type || "table" },
-          queries: [query],
+          queries,
           form_data: fd,
           result_format: "json",
           result_type: "full" as const,
@@ -253,18 +390,30 @@ export function useDashboardData() {
         const chartDataUrl = getChartDataUrl(dsId);
         const postRes = await api.post(chartDataUrl, payload);
         const postResult = postRes.data?.result;
-        const data: ChartDataPayload = Array.isArray(postResult)
-          ? postResult[0] || {}
-          : postResult || {};
+        const results = Array.isArray(postResult) ? postResult : [];
+        const data: ChartDataPayload = results[0] || {};
+        const totalsRaw = results[1] as ChartDataResponseResult | undefined;
+        const pivotTotalRows: ChartDataRow[] | undefined =
+          isPivot && totalsRaw?.data && Array.isArray(totalsRaw.data)
+            ? totalsRaw.data
+            : undefined;
+        const pivotSubtotalRows: ChartDataRow[][] | undefined = isPivot
+          ? results
+              .slice(2)
+              .map((r) => (r?.data && Array.isArray(r.data) ? r.data : null))
+              .filter((v): v is ChartDataRow[] => v !== null)
+          : undefined;
 
         let hasMore: boolean | undefined;
-        if (page != null && data && Array.isArray(data.data)) {
+        if (isPivot) {
+          hasMore = false;
+        } else if (page != null && data && Array.isArray(data.data)) {
           hasMore = data.data.length > pageSize;
           if (hasMore) {
             data.data = data.data.slice(0, pageSize);
           }
         }
-        return { data, hasMore };
+        return { data, hasMore, pivotTotalRows, pivotSubtotalRows };
       } catch {
         return null;
       }
@@ -276,9 +425,13 @@ export function useDashboardData() {
     chartMeta,
     chartData,
     totalRows,
+    pivotTotalRows,
+    pivotSubtotalRows,
     setChartMeta,
     setChartData,
     setTotalRows,
+    setPivotTotalRows,
+    setPivotSubtotalRows,
     buildAdhocFiltersRef,
     getChartDataWithFilters,
     fetchChartWithTotal,

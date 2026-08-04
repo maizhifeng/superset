@@ -6,6 +6,7 @@ import ShowChartIcon from "@mui/icons-material/ShowChart";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import DonutSmallIcon from "@mui/icons-material/DonutSmall";
 import TableChartIcon from "@mui/icons-material/TableChart";
+import GridOnIcon from "@mui/icons-material/GridOn";
 import PinIcon from "@mui/icons-material/Pin";
 import BlockIcon from "@mui/icons-material/Block";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
@@ -17,6 +18,7 @@ export const CHART_TYPES = [
   "pie",
   "table",
   "big_number",
+  "pivot_table_v2",
 ] as const;
 export type ChartType = (typeof CHART_TYPES)[number];
 
@@ -33,6 +35,7 @@ const chartTypeMeta: ChartTypeMeta[] = [
   { value: "pie", icon: <DonutSmallIcon />, label: "饼图" },
   { value: "table", icon: <TableChartIcon />, label: "表格" },
   { value: "big_number", icon: <PinIcon />, label: "大数字" },
+  { value: "pivot_table_v2", icon: <GridOnIcon />, label: "数据透视" },
 ];
 
 interface ChartTypeSelectorProps {

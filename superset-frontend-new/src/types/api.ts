@@ -35,6 +35,14 @@ export interface FormData {
   row_limit?: number;
   row_offset?: number;
   extra?: string;
+  groupbyRows?: string[];
+  groupbyColumns?: string[];
+  aggregateFunction?: string;
+  transposePivot?: boolean;
+  combineMetric?: boolean;
+  rowTotals?: boolean;
+  colTotals?: boolean;
+  metricsLayout?: "ROWS" | "COLUMNS";
   [key: string]: unknown;
 }
 

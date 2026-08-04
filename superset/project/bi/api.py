@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import Any
 
@@ -167,6 +168,95 @@ def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
     # metric orderbys here would break the per-side recall window for
     # metric-ordered Top-N queries.
     return qdict
+
+
+# Ratio metrics follow the canonical ``CAST(SUM(num) AS NUMERIC) /
+# NULLIF(SUM(den), 0)`` pattern (roi, ltv, cpa, natural-rate metrics, ...).
+# Their per-side values cannot be merged by summation or averaging — the
+# correct cross-database value is ``SUM(num)/SUM(den)`` over both sides, so
+# the per-side SQL selects the component aggregates instead.
+_RATIO_METRIC_RE = re.compile(
+    r"^CAST\(\s*SUM\((?P<num>.*)\)\s+AS\s+(?:NUMERIC|DOUBLE|DECIMAL(?:\s*\(\s*\d+\s*(?:,\s*\d+\s*)?\))?)\s*\)"
+    r"\s*/\s*NULLIF\(\s*SUM\((?P<den>.*)\)\s*,\s*0\s*\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _split_ratio_metrics(
+    datasource: Any, metric_entries: list[Any]
+) -> tuple[dict[str, tuple[str, str]], list[Any]]:
+    """Replace ratio metrics with their ``__num``/``__den`` component metrics.
+
+    Returns a map of ``label -> (numerator_expr, denominator_expr)`` for the
+    metrics that were split, plus the transformed metric entries to run on
+    each database side.
+    """
+    metrics_by_name = {m.metric_name: m for m in datasource.metrics}
+    components: dict[str, tuple[str, str]] = {}
+    out: list[Any] = []
+    for entry in metric_entries:
+        if isinstance(entry, str):
+            metric = metrics_by_name.get(entry)
+            expression = getattr(metric, "expression", None) if metric else None
+            if expression:
+                match = _RATIO_METRIC_RE.match(expression)
+                if match:
+                    num, den = match.group("num"), match.group("den")
+                    components[entry] = (num, den)
+                    out.extend(
+                        [
+                            {
+                                "expressionType": "SQL",
+                                "sqlExpression": f"SUM({num})",
+                                "label": f"{entry}__num",
+                            },
+                            {
+                                "expressionType": "SQL",
+                                "sqlExpression": f"SUM({den})",
+                                "label": f"{entry}__den",
+                            },
+                        ]
+                    )
+                    continue
+        out.append(entry)
+    return components, out
+
+
+def _recompute_ratio_columns(
+    df: pd.DataFrame, components: dict[str, tuple[str, str]]
+) -> pd.DataFrame:
+    """Recompute ratio metrics from merged ``__num``/``__den`` components."""
+    for label, (_num, _den) in components.items():
+        num_col, den_col = f"{label}__num", f"{label}__den"
+        if num_col in df.columns and den_col in df.columns:
+            denom = df[den_col].astype(float).replace(0, np.nan)
+            df[label] = df[num_col].astype(float) / denom
+    drop_cols = [
+        col
+        for label in components
+        for col in (f"{label}__num", f"{label}__den")
+        if col in df.columns
+    ]
+    return df.drop(columns=drop_cols)
+
+
+def _restore_metric_labels(
+    labels: list[str], components: dict[str, tuple[str, str]]
+) -> list[str]:
+    """Map component labels back to their original ratio labels in order."""
+    component_to_parent: dict[str, str] = {}
+    for label in components:
+        component_to_parent[f"{label}__num"] = label
+        component_to_parent[f"{label}__den"] = label
+    result: list[str] = []
+    seen: set[str] = set()
+    for label in labels:
+        target = component_to_parent.get(label, label)
+        if target in seen:
+            continue
+        seen.add(target)
+        result.append(target)
+    return result
 
 
 def _resolve_orderby_label(entry: Any) -> str | None:
@@ -344,7 +434,10 @@ def _merge_dataframes(
 
 
 def _get_partner_sql(
-    datasource: Any, query_obj: Any, side_limit: int | None = None
+    datasource: Any,
+    query_obj: Any,
+    side_limit: int | None = None,
+    metrics_override: list[Any] | None = None,
 ) -> tuple[str, str | None, str | None] | None:
     """Generate SQL for the partner (oversea) dataset side.
 
@@ -374,6 +467,8 @@ def _get_partner_sql(
         # Keep the user's orderby so the partner side's recall window retains
         # the top rows (merged Top-N stays correct across both databases).
         qdict = _side_query_dict(query_obj, side_limit)
+        if metrics_override is not None:
+            qdict["metrics"] = metrics_override
         partner_ext = partner_ds.get_query_str_extended(qdict)
         partner_sql_str = partner_ext.sql
         logger.info("Partner SQL (%d chars)", len(partner_sql_str))
@@ -420,15 +515,25 @@ def _run_federated_query(  # noqa: C901
         side_limit = max_side
 
     partner_sql = partner_catalog = partner_schema = None
-    if partner_result := _get_partner_sql(datasource, query_obj, side_limit):
+    metric_entries = list(getattr(query_obj, "metrics", None) or [])
+    ratio_components, metric_entries_split = _split_ratio_metrics(
+        datasource, metric_entries
+    )
+    use_components = bool(ratio_components)
+    metrics_override = metric_entries_split if use_components else None
+    if partner_result := _get_partner_sql(
+        datasource, query_obj, side_limit, metrics_override
+    ):
         partner_sql, partner_catalog, partner_schema = partner_result
 
     # Generate SQL from the primary dataset for the primary database
-    primary_ext = datasource.get_query_str_extended(
-        _side_query_dict(query_obj, side_limit)
-    )
+    primary_qdict = _side_query_dict(query_obj, side_limit)
+    if metrics_override is not None:
+        primary_qdict["metrics"] = metrics_override
+    primary_ext = datasource.get_query_str_extended(primary_qdict)
     primary_sql = primary_ext.sql
     labels_expected = primary_ext.labels_expected
+    final_labels = _restore_metric_labels(labels_expected, ratio_components)
 
     # Build side configurations for parallel execution.
     # Each side is a (db_conn, sql, label, catalog, schema) tuple.
@@ -494,6 +599,10 @@ def _run_federated_query(  # noqa: C901
             if method not in _VALID_AGGREGATIONS:
                 method = "sum"
             agg_spec[m] = method
+        # Ratio-metric components are plain SUMs and always merge additively.
+        for label in ratio_components:
+            agg_spec[f"{label}__num"] = "sum"
+            agg_spec[f"{label}__den"] = "sum"
         _warn_non_additive_metrics(metric_cols, agg_map)
 
         before_len = len(merged_df)
@@ -511,8 +620,10 @@ def _run_federated_query(  # noqa: C901
         else:
             merged_df = merged_df.drop_duplicates()
 
-        # Restore canonical column order (dimensions then metrics as declared).
-        merged_df = merged_df[labels_expected]
+        # Recompute ratio metrics from the merged components, then drop the
+        # component columns and restore the canonical column order.
+        merged_df = _recompute_ratio_columns(merged_df, ratio_components)
+        merged_df = merged_df[final_labels]
         logger.info(
             "Re-aggregated %d rows → %d rows (groupby=%s, agg=%s)",
             before_len,
@@ -525,7 +636,7 @@ def _run_federated_query(  # noqa: C901
             result_df = datasource.normalize_df(merged_df, query_obj)
             result_df = query_obj.exec_post_processing(result_df)
             # Restore column order after post-processing (which may reorder)
-            result_df = result_df[labels_expected]
+            result_df = result_df[final_labels]
         except Exception:
             result_df = merged_df
 
@@ -533,7 +644,7 @@ def _run_federated_query(  # noqa: C901
         # result so the cross-database Top-N and offsets are consistent (each
         # side was fetched with a recall-oriented limit instead).
         result_df = _apply_global_order_and_pagination(
-            result_df, query_obj, labels_expected
+            result_df, query_obj, final_labels
         )
     else:
         result_df = merged_df

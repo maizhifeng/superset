@@ -21,6 +21,8 @@ export default function Dashboard() {
     chartMeta,
     chartData,
     totalRows,
+    pivotTotalRows,
+    pivotSubtotalRows,
     chartLoading,
     chartPages,
     chartHasMore,
@@ -137,6 +139,8 @@ export default function Dashboard() {
           onToggleCompare={compare.handleToggleCompare}
           onOpenCompareBigScreen={compare.openPeriodModal}
           totalRows={totalRows}
+          pivotTotalRows={pivotTotalRows}
+          pivotSubtotalRows={pivotSubtotalRows}
           intervalSeconds={intervalSeconds}
           onCycleInterval={cycleInterval}
           metricFormatMaps={metricFormatMaps}

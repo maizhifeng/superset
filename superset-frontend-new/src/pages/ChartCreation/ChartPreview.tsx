@@ -5,15 +5,22 @@ import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsOption } from "echarts";
 import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
-import type { ChartDataPayload } from "@/types/api";
+import PivotTable from "@/components/PivotTable";
+import type { ChartDataPayload, ChartDataRow } from "@/types/api";
 import { formatMetricValue, type MetricFormatMap } from "@/utils/formatNumber";
+import { DEFAULT_PIVOT_CONFIG } from "./useChartEditor";
 
 interface ChartPreviewProps {
   datasourceId: string;
   resolvedType: string;
   hasValidType: boolean;
   metrics: string[];
+  pivotMetricKeys: string[];
+  groupby: string[];
+  groupbyColumns: string[];
   chartData: ChartDataPayload | null;
+  chartTotalsRows?: ChartDataRow[] | null;
+  chartSubtotalRows?: ChartDataRow[][] | null;
   loadingData: boolean;
   chartLibReady: boolean;
   option: EChartsOption | null;
@@ -32,7 +39,12 @@ export default function ChartPreview({
   resolvedType,
   hasValidType,
   metrics,
+  pivotMetricKeys,
+  groupby,
+  groupbyColumns,
   chartData,
+  chartTotalsRows,
+  chartSubtotalRows,
   loadingData,
   chartLibReady,
   option,
@@ -94,6 +106,34 @@ export default function ChartPreview({
             hasMore={hasMore}
             onPageChange={onPageChange}
           />
+        ) : resolvedType === "pivot_table_v2" && chartData?.data ? (
+          <Box
+            sx={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <PivotTable
+              data={chartData.data}
+              groupbyRows={groupby}
+              groupbyColumns={groupbyColumns}
+              metrics={pivotMetricKeys}
+              totalRows={chartTotalsRows ?? undefined}
+              subtotalRows={chartSubtotalRows ?? undefined}
+              aggregateFunction={DEFAULT_PIVOT_CONFIG.aggregateFunction}
+              transposePivot={DEFAULT_PIVOT_CONFIG.transposePivot}
+              combineMetric={DEFAULT_PIVOT_CONFIG.combineMetric}
+              rowTotals={DEFAULT_PIVOT_CONFIG.rowTotals}
+              colTotals={DEFAULT_PIVOT_CONFIG.colTotals}
+              metricsLayout={DEFAULT_PIVOT_CONFIG.metricsLayout}
+              formatCell={(key, val) => {
+                if (val === null || val === undefined) return "";
+                return formatMetricValue(key, val, metricFormatMap);
+              }}
+            />
+          </Box>
         ) : bigNumberValue && resolvedType === "big_number" ? (
           <Typography
             variant="h2"

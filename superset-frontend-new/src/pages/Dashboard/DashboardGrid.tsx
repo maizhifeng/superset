@@ -93,6 +93,8 @@ interface DashboardGridProps {
     chartData?: ChartDataPayload,
   ) => void;
   totalRows?: Record<number, ChartDataRow | null>;
+  pivotTotalRows?: Record<number, ChartDataRow[]>;
+  pivotSubtotalRows?: Record<number, ChartDataRow[][]>;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
   metricFormatMaps?: Record<number, Record<string, string>>;
@@ -120,6 +122,8 @@ function DashboardGrid({
   onToggleCompare,
   onOpenCompareBigScreen,
   totalRows,
+  pivotTotalRows,
+  pivotSubtotalRows,
   intervalSeconds,
   onCycleInterval,
   metricFormatMaps,
@@ -248,6 +252,8 @@ function DashboardGrid({
                 onToggleCompare={onToggleCompare}
                 onOpenCompareBigScreen={onOpenCompareBigScreen}
                 totalRow={totalRows?.[item.chartId]}
+                pivotTotalRows={pivotTotalRows?.[item.chartId]}
+                pivotSubtotalRows={pivotSubtotalRows?.[item.chartId]}
                 intervalSeconds={intervalSeconds}
                 onCycleInterval={onCycleInterval}
                 metricFormatMap={metricFormatMap}

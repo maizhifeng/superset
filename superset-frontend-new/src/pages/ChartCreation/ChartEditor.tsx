@@ -44,11 +44,14 @@ export default function ChartEditor({
     vizType,
     metrics,
     groupby,
+    groupbyColumns,
     sliceName,
     loadingColumns,
     loadingDatasets,
     loadingChart,
     chartData,
+    chartTotalsRows,
+    chartSubtotalRows,
     loadingData,
     page,
     hasMore,
@@ -61,12 +64,14 @@ export default function ChartEditor({
     chartLibReady,
     option,
     bigNumberValue,
+    pivotMetricKeys,
     disabledReasons,
     error,
     isEditing,
     setDatasourceId,
     setMetrics,
     setGroupby,
+    setGroupbyColumns,
     setSliceName,
     setPage,
     setSortEntry,
@@ -177,6 +182,8 @@ export default function ChartEditor({
         datasourceId={datasourceId}
         metrics={metrics}
         groupby={groupby}
+        groupbyColumns={groupbyColumns}
+        vizType={vizType}
         metricsOptions={metricsOptions}
         dimensionOptions={dimensionOptions}
         loadingDatasets={loadingDatasets}
@@ -186,11 +193,13 @@ export default function ChartEditor({
           setDatasourceId(id);
           setMetrics([]);
           setGroupby([]);
+          setGroupbyColumns([]);
           setUserChangedType(false);
           setSavedFormData(null);
         }}
         onMetricsChange={handleMetricsChange}
         onGroupbyChange={setGroupby}
+        onGroupbyColumnsChange={setGroupbyColumns}
       />
       <Box
         sx={{
@@ -209,7 +218,12 @@ export default function ChartEditor({
             resolvedType={resolvedType}
             hasValidType={hasValidType}
             metrics={metrics}
+            pivotMetricKeys={pivotMetricKeys}
+            groupby={groupby}
+            groupbyColumns={groupbyColumns}
             chartData={chartData}
+            chartTotalsRows={chartTotalsRows}
+            chartSubtotalRows={chartSubtotalRows}
             loadingData={loadingData}
             chartLibReady={chartLibReady}
             option={option}
