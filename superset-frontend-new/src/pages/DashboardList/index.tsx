@@ -367,6 +367,7 @@ export default function DashboardList() {
                 try {
                   const res = await api.post("/dashboard/", {
                     dashboard_title: createName.trim(),
+                    published: true,
                   });
                   const newId = res.data?.id;
                   setCreateDialogOpen(false);

@@ -195,6 +195,28 @@ def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
     # metric-label and adhoc-metric orderby entries itself, and dropping
     # metric orderbys here would break the per-side recall window for
     # metric-ordered Top-N queries.
+    #
+    # Drop orderby entries that reference plain columns outside the grouped
+    # dimensions or the selected metrics: when the query groups rows,
+    # PostgreSQL rejects ORDER BY columns that do not appear in GROUP BY.
+    grouped_dims = set(qdict.get("groupby") or [])
+    metric_labels: set[str] = set()
+    for metric in qdict.get("metrics") or []:
+        if isinstance(metric, str):
+            metric_labels.add(metric)
+        elif isinstance(metric, dict) and metric.get("label"):
+            metric_labels.add(metric["label"])
+    valid_orderby_cols = grouped_dims | metric_labels
+    qdict["orderby"] = [
+        entry
+        for entry in (qdict.get("orderby") or [])
+        if entry
+        and (
+            isinstance(entry[0], dict)
+            or not grouped_dims
+            or entry[0] in valid_orderby_cols
+        )
+    ]
     return qdict
 
 
