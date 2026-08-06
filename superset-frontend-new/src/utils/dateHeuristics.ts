@@ -8,6 +8,57 @@ export interface DateColumnInfo {
 
 const DATE_KEYWORDS = /date|time/i;
 
+function toYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Format a value that represents a date into "YYYY-MM-DD".
+ *
+ * Handles Unix timestamps (milliseconds/seconds), YYYYMMDD integers, and
+ * ISO 8601 date/datetime strings.  ISO strings keep their date part verbatim
+ * so timezone-aware values (e.g. "...T16:00:00.000Z") never shift the day.
+ */
+export function formatDateValue(value: unknown): string | null {
+  if (typeof value === "number") {
+    // YYYYMMDD integers (1900-01-01 .. 2200-12-31)
+    if (Number.isInteger(value) && value >= 19000101 && value <= 22001231) {
+      const s = String(Math.floor(value));
+      if (s.length === 8) {
+        return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+      }
+    }
+    // Unix milliseconds
+    if (value > 1e12 && value < 1e16) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return toYmd(d);
+    }
+    // Unix seconds
+    if (value > 1e8 && value < 1e12) {
+      const d = new Date(value * 1000);
+      if (
+        !isNaN(d.getTime()) &&
+        d.getFullYear() > 1900 &&
+        d.getFullYear() < 2200
+      ) {
+        return toYmd(d);
+      }
+    }
+  }
+  if (typeof value === "string") {
+    const iso = value.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const num = Number(value);
+    if (!isNaN(num) && num >= 19000101) {
+      return formatDateValue(num);
+    }
+  }
+  return null;
+}
+
 export function detectDateColumnFromMeta(
   columnName: string,
   columnType: string | null,

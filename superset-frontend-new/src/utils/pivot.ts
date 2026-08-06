@@ -45,6 +45,13 @@ export interface PivotTableProps {
   metricsLayout?: "ROWS" | "COLUMNS";
   formatCell?: (key: string, value: unknown) => string;
   /**
+   * Names of temporal columns in the source rows.  Their values are
+   * formatted (e.g. Unix timestamps / YYYYMMDD / ISO 8601 → "YYYY-MM-DD")
+   * in row/column dimension labels, so date dimensions do not show raw
+   * values in the pivot headers.
+   */
+  dateColumns?: string[];
+  /**
    * Day-granularity wide rows (dimension columns + per-day metric columns,
    * ratio metrics as ``label__num`` / ``label__den`` component columns)
    * fetched from ``/bi/pivot/wide-data``.  When present the grid is
