@@ -117,6 +117,22 @@ class DashboardAccessFilter(BaseFilter):  # pylint: disable=too-few-public-metho
         if security_manager.is_admin():
             return query
 
+        owner_ids_query = (
+            db.session.query(Dashboard.id)
+            .join(Dashboard.owners)
+            .filter(security_manager.user_model.id == get_user_id())
+        )
+
+        # Users with access to all datasources can view any published dashboard,
+        # regardless of slice/datasource mappings.
+        if security_manager.can_access_all_datasources():
+            return query.filter(
+                or_(
+                    Dashboard.id.in_(owner_ids_query),
+                    Dashboard.published.is_(True),
+                )
+            )
+
         is_rbac_disabled_filter = []
         dashboard_has_roles = Dashboard.roles.any()
         if is_feature_enabled("DASHBOARD_RBAC"):
@@ -137,12 +153,6 @@ class DashboardAccessFilter(BaseFilter):  # pylint: disable=too-few-public-metho
                     ),
                 )
             )
-        )
-
-        owner_ids_query = (
-            db.session.query(Dashboard.id)
-            .join(Dashboard.owners)
-            .filter(security_manager.user_model.id == get_user_id())
         )
 
         feature_flagged_filters = []

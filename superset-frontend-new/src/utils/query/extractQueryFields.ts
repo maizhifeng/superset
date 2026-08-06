@@ -71,8 +71,18 @@ export function extractQueryFields(
   }
 
   const rawOrderby = formData.orderby;
+  // When the query groups rows, ORDER BY must only reference grouped
+  // dimensions or selected metrics; sorting by any other column generates
+  // invalid SQL (PostgreSQL requires ORDER BY columns to appear in GROUP BY).
+  const hasGrouping = groupby.length > 0 || columns.length > 0;
+  const metricLabels = metrics
+    .map((m) => (typeof m === "string" ? m : (m?.label ?? "")))
+    .filter(Boolean);
+  const validSortColumns = new Set([...groupby, ...columns, ...metricLabels]);
   const orderby = Array.isArray(rawOrderby)
-    ? (rawOrderby as QueryOrderBy[])
+    ? (rawOrderby as QueryOrderBy[]).filter(
+        ([col]) => !hasGrouping || validSortColumns.has(col),
+      )
     : [];
 
   const order_desc =
