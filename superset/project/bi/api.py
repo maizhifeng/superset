@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from concurrent.futures import as_completed, ThreadPoolExecutor
@@ -9,7 +10,8 @@ import numpy as np
 import pandas as pd
 import rison
 import sqlalchemy as sa
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
+from werkzeug.local import LocalProxy
 
 # All superset model imports are lazy (inside functions) to avoid
 # circular imports during app initialization.
@@ -46,6 +48,32 @@ def _read_federated_extra(datasource: Any) -> dict[str, Any]:
     extra = _parse_extra(getattr(datasource, "extra", None))
     federated = extra.get("federated", {})
     return federated if isinstance(federated, dict) else {}
+
+
+# Results are cached for at most 5 minutes; dashboard auto-refresh sends
+# ``force`` to bypass the cache, so longer TTLs risk stale numbers.
+_BI_CACHE_MAX_TTL = 300
+
+
+def _cache_timeout() -> int:
+    """Cache TTL for federated results, capped at ``_BI_CACHE_MAX_TTL``."""
+    default = current_app.config.get("CACHE_DEFAULT_TIMEOUT", 300)
+    try:
+        default = int(default)
+    except (TypeError, ValueError):
+        default = 300
+    return max(1, min(default, _BI_CACHE_MAX_TTL))
+
+
+def _cache_key(prefix: str, *parts: Any) -> str:
+    """Build a cache key including user identity so RLS results stay isolated."""
+    user = g.get("user", None)
+    user_id = getattr(user, "id", 0)
+    roles = sorted(
+        getattr(r, "name", str(r)) for r in getattr(user, "roles", None) or []
+    )
+    raw = "|".join([prefix, *[str(p) for p in parts], str(user_id), *roles])
+    return "bi:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _looks_non_additive(label: str) -> bool:
@@ -812,19 +840,14 @@ def _execute_federated_sides(
 def filter_values(datasource_id: int, column_name: str) -> Any:
     from flask import current_app
 
-    from superset.connectors.sqla.models import SqlaTable
     from superset.daos.datasource import DatasourceDAO
     from superset.daos.exceptions import DatasourceNotFound
     from superset.utils.core import DatasourceType
 
-    try:
-        datasource = DatasourceDAO.get_datasource(DatasourceType.TABLE, datasource_id)
-    except DatasourceNotFound:
-        return jsonify({"result": []}), 200
-
     default_limit = current_app.config.get("FILTER_SELECT_ROW_LIMIT", 10000)
     query_params: dict[str, Any] = {}
-    if q_str := request.args.get("q"):
+    q_str = request.args.get("q")
+    if q_str:
         try:
             query_params = rison.loads(q_str)
         except Exception:  # noqa: S110
@@ -834,6 +857,50 @@ def filter_values(datasource_id: int, column_name: str) -> Any:
         filters = []
     page_size = int(query_params.get("page_size") or default_limit)
     page = int(query_params.get("page") or 0)
+
+    try:
+        datasource = DatasourceDAO.get_datasource(DatasourceType.TABLE, datasource_id)
+    except DatasourceNotFound:
+        return jsonify({"result": []}), 200
+
+    values = _fetch_filter_values(
+        datasource, datasource_id, column_name, q_str, page_size, page, filters
+    )
+    return jsonify({"result": values}), 200
+
+
+def _fetch_filter_values(  # noqa: C901
+    datasource: Any,
+    datasource_id: int,
+    column_name: str,
+    q_str: str | None,
+    page_size: int,
+    page: int,
+    filters: list[dict[str, Any]],
+) -> list[Any]:
+    """Fetch distinct filter values (primary + federated partner), cached.
+
+    Results are cached in Redis for non-search requests (``filters`` empty),
+    keyed by dataset, column, query string and the current user so RLS-aware
+    results are never shared across users.
+    """
+    from superset.connectors.sqla.models import SqlaTable
+
+    cache_key = _cache_key(
+        "filter-values",
+        datasource_id,
+        column_name,
+        q_str or "",
+        page_size,
+        page,
+    )
+    cacheable = not filters
+    if cacheable:
+        from superset import cache_manager
+
+        cached = cache_manager.data_cache.get(cache_key)
+        if cached is not None:
+            return cached
 
     try:
         primary_vals = _distinct_values(
@@ -867,13 +934,23 @@ def filter_values(datasource_id: int, column_name: str) -> Any:
                 )
                 merged = list(set(primary_vals + partner_vals))
                 merged.sort(key=lambda v: (v is None, str(v)))
-                return jsonify({"result": merged})
+                if cacheable:
+                    from superset import cache_manager
+
+                    cache_manager.data_cache.set(
+                        cache_key, merged, timeout=_cache_timeout()
+                    )
+                return merged
         except Exception:
             logger.warning("Federated filter values merge failed", exc_info=True)
 
     result = list(primary_vals)
     result.sort(key=lambda v: (v is None, str(v)))
-    return jsonify({"result": result})
+    if cacheable:
+        from superset import cache_manager
+
+        cache_manager.data_cache.set(cache_key, result, timeout=_cache_timeout())
+    return result
 
 
 @bi_blueprint.route("/federated-datasets", methods=["GET"])
@@ -898,6 +975,414 @@ def federated_datasets() -> Any:
         ):
             ids.append(ds_id)
     return jsonify({"result": ids})
+
+
+_AGG_STRIP_RE = re.compile(
+    r"^(SUM|AVG|MIN|MAX|COUNT)\s*\(\s*(?P<body>.*?)\s*\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _metric_wide_parts(  # noqa: C901
+    datasource: Any,
+    metric_entry: Any,
+) -> tuple[list[Any], dict[str, Any]] | None:
+    """Resolve one metric entry into wide-table (per-day) SQL expressions.
+
+    Returns ``(expressions, meta)`` where each expression is a SQLAlchemy
+    selectable labelled with the metric label (ratio metrics produce two
+    component expressions ``label__num`` / ``label__den``).  ``meta`` carries
+    the client-side aggregation semantics: ``{"agg": "sum" | "min" | "max" |
+    "count" | "ratio", "num": ..., "den": ...}``.
+
+    Returns ``None`` when the metric cannot be re-aggregated client-side
+    (e.g. AVG or COUNT DISTINCT over per-day values).
+    """
+    cols = {col.column_name: col for col in datasource.columns}
+    metrics_by_name = {m.metric_name: m for m in datasource.metrics}
+
+    label = None
+    if isinstance(metric_entry, dict):
+        label = metric_entry.get("label")
+        expr_type = metric_entry.get("expressionType")
+        if expr_type == "SIMPLE":
+            col_name = (
+                (metric_entry.get("column") or {}).get("column_name")
+                if isinstance(metric_entry.get("column"), dict)
+                else None
+            )
+            aggregate = str(metric_entry.get("aggregate") or "SUM").lower()
+            if aggregate in ("count_distinct", "avg"):
+                return None
+            if col_name is None or col_name not in cols:
+                return None
+            col_expr = cols[col_name].get_sqla_col(
+                template_processor=datasource.get_template_processor()
+            )
+            if aggregate == "count":
+                return [sa.literal(1).label(label or col_name)], {
+                    "agg": "count",
+                    "label": label or col_name,
+                }
+            return [col_expr.label(label or col_name)], {
+                "agg": aggregate,
+                "label": label or col_name,
+            }
+        if expr_type == "SQL":
+            expression = str(metric_entry.get("sqlExpression") or "")
+        else:
+            return None
+    else:
+        label = str(metric_entry) if metric_entry else ""
+        metric = metrics_by_name.get(label)
+        expression = ""
+        if metric and metric.expression and metric.expression != "NULL":
+            expression = metric.expression
+        if not expression:
+            # Plain "AGG(col)" label such as "SUM(充值流水)" with no
+            # dataset-level metric definition.
+            match = _AGG_STRIP_RE.match(label)
+            if not match:
+                return None
+            agg_name = match.group(1).lower()
+            if agg_name in ("avg", "count_distinct"):
+                return None
+            col_name = match.group("body").strip('"')
+            if col_name not in cols:
+                return None
+            return [
+                cols[col_name]
+                .get_sqla_col(template_processor=datasource.get_template_processor())
+                .label(label)
+            ], {"agg": agg_name, "label": label}
+
+    if not expression or expression == "NULL":
+        return None
+    label = label or expression
+
+    if ratio_match := _RATIO_METRIC_RE.match(expression):
+        num_expr = ratio_match.group("num")
+        den_expr = ratio_match.group("den")
+        if "COUNT(DISTINCT" in num_expr.upper() or "COUNT(DISTINCT" in den_expr.upper():
+            return None
+        return [
+            sa.literal_column(num_expr).label(f"{label}__num"),
+            sa.literal_column(den_expr).label(f"{label}__den"),
+        ], {
+            "agg": "ratio",
+            "label": label,
+            "num": f"{label}__num",
+            "den": f"{label}__den",
+        }
+
+    strip_match = _AGG_STRIP_RE.match(expression)
+    if not strip_match:
+        return None
+    agg_name = strip_match.group(1).lower()
+    if agg_name in ("avg",):
+        return None
+    if agg_name == "count" and strip_match.group("body").strip().upper() == "*":
+        return [sa.literal(1).label(label)], {"agg": "count", "label": label}
+    body = strip_match.group("body")
+    if "DISTINCT" in body.upper():
+        return None
+    return [sa.literal_column(body).label(label)], {"agg": agg_name, "label": label}
+
+
+def _wide_sql(  # noqa: C901
+    datasource: Any,
+    columns: list[str],
+    metric_parts: list[tuple[list[Any], dict[str, Any]]],
+    filters: list[dict[str, Any]],
+) -> str | None:
+    """Build the wide-table SQL for one database side (day-granularity)."""
+    cols = {col.column_name: col for col in datasource.columns}
+    tp = datasource.get_template_processor()
+    tbl, cte = datasource.get_from_clause(tp)
+
+    select_cols: list[Any] = []
+    for dim in columns:
+        if dim not in cols:
+            continue
+        select_cols.append(cols[dim].get_sqla_col(template_processor=tp).label(dim))
+    for exprs, _meta in metric_parts:
+        select_cols.extend(exprs)
+    if not select_cols:
+        return None
+
+    qry = sa.select(select_cols).select_from(tbl)
+    preds: list[Any] = []
+    for f in filters:
+        col = f.get("col")
+        if col not in cols:
+            continue
+        predicate = _build_predicate(
+            cols[col].get_sqla_col(template_processor=tp),
+            f.get("op"),
+            f.get("val"),
+        )
+        if predicate is not None:
+            preds.append(predicate)
+    if datasource.fetch_values_predicate:
+        preds.append(datasource.get_fetch_values_predicate(template_processor=tp))
+    rls_filters = datasource.get_sqla_row_level_filters(template_processor=tp)
+    if rls_filters:
+        preds.append(sa.and_(*rls_filters))
+    if preds:
+        qry = qry.where(sa.and_(*preds))
+
+    with datasource.database.get_sqla_engine() as engine:
+        sql = str(qry.compile(engine, compile_kwargs={"literal_binds": True}))
+        sql = datasource._apply_cte(sql, cte)
+        if engine.dialect.identifier_preparer._double_percents:
+            sql = sql.replace("%%", "%")
+        return datasource.database.mutate_sql_based_on_config(sql)
+
+
+def _run_wide_side(
+    side: tuple[Any, str, str, str | None, str | None],
+    _app: Any,
+    _user: Any,
+) -> tuple[str, pd.DataFrame | None]:
+    """Execute one wide-table side without column-alignment requirements."""
+    from flask import g
+
+    db_conn, sql, db_label, catalog, schema = side
+    try:
+        with _app.app_context():
+            if _user is not None:
+                g.user = _user
+            df = db_conn.get_df(
+                sql=sql,
+                catalog=catalog,
+                schema=schema,
+            )
+            return db_label, df
+    except Exception as ex:
+        logger.error("Wide side [%s] failed: %s", db_label, ex, exc_info=True)
+        return db_label, None
+
+
+def _run_wide_query(  # noqa: C901
+    datasource: Any,
+    partner_datasource: Any | None,
+    aliyun_db: Any,
+    oversea_db: Any,
+    aliyun_db_name: str,
+    oversea_db_name: str,
+    columns: list[str],
+    metric_parts: list[tuple[list[Any], dict[str, Any]]],
+    filters: list[dict[str, Any]],
+    row_limit: int | None,
+) -> pd.DataFrame | None:
+    """Fetch the day-granularity wide table from both sides and merge."""
+    from werkzeug.local import LocalProxy
+
+    _app = current_app._get_current_object()
+    _user_raw = g.get("user", None)
+    _user = (
+        _user_raw._get_current_object()
+        if isinstance(_user_raw, LocalProxy)
+        else _user_raw
+    )
+
+    primary_sql = _wide_sql(datasource, columns, metric_parts, filters)
+    if primary_sql is None:
+        return None
+
+    sides: list[tuple[Any, str, str, str | None, str | None]] = [
+        (aliyun_db, primary_sql, aliyun_db_name, datasource.catalog, datasource.schema)
+    ]
+    if partner_datasource is not None:
+        partner_sql = _wide_sql(partner_datasource, columns, metric_parts, filters)
+        if partner_sql is not None:
+            sides.append(
+                (
+                    oversea_db,
+                    partner_sql,
+                    oversea_db_name,
+                    partner_datasource.catalog,
+                    partner_datasource.schema,
+                )
+            )
+        else:
+            logger.warning("Wide query: partner side skipped (SQL construction failed)")
+
+    with ThreadPoolExecutor(max_workers=min(len(sides), 5)) as pool:
+        futures = {pool.submit(_run_wide_side, s, _app, _user): s for s in sides}
+        side_dfs: list[tuple[str, pd.DataFrame]] = []
+        for future in as_completed(futures):
+            label, df = future.result()
+            if df is not None and not df.empty:
+                side_dfs.append((label, df))
+
+    if not side_dfs:
+        return None
+
+    if len(side_dfs) == 1:
+        merged = side_dfs[0][1]
+    else:
+        merged = _merge_dataframes(
+            [df for _, df in side_dfs],
+            [label for label, _ in side_dfs],
+        )
+    if "_db_source" in merged.columns:
+        merged = merged.drop(columns=["_db_source"])
+    if row_limit and len(merged) > row_limit:
+        merged = merged.head(row_limit)
+    return merged.reset_index(drop=True)
+
+
+@bi_blueprint.route("/pivot/wide-data", methods=["POST"])
+def pivot_wide_data() -> Any:  # noqa: C901
+    """Day-granularity wide table for client-side pivot aggregation.
+
+    Returns every requested dimension column plus per-day metric columns
+    (ratio metrics as ``__num``/``__den`` component pairs), so the frontend
+    can re-aggregate for arbitrary row/column layouts without further
+    backend queries.  Metrics that cannot be re-aggregated client-side
+    (AVG, COUNT DISTINCT) are rejected with 400.
+    """
+    from superset import db
+    from superset.daos.exceptions import DatasourceNotFound
+    from superset.utils.core import extract_dataframe_dtypes
+
+    json_body = request.json
+    if json_body is None:
+        return jsonify({"error": "Request is not JSON"}), 400
+
+    ds_id = int((json_body.get("datasource") or {}).get("id") or 0)
+    if not ds_id:
+        return jsonify({"error": "datasource.id is required"}), 400
+
+    from superset.daos.datasource import DatasourceDAO
+    from superset.utils.core import DatasourceType
+
+    try:
+        datasource = DatasourceDAO.get_datasource(DatasourceType.TABLE, ds_id)
+    except DatasourceNotFound:
+        return jsonify({"error": "Datasource not found"}), 404
+
+    federated_config = _get_federated_config(datasource)
+    if not federated_config:
+        return jsonify({"error": "Dataset is not federated"}), 400
+
+    columns = json_body.get("columns") or []
+    if not isinstance(columns, list) or not columns:
+        return jsonify({"error": "columns is required"}), 400
+    metrics = json_body.get("metrics") or []
+    if not isinstance(metrics, list) or not metrics:
+        return jsonify({"error": "metrics is required"}), 400
+    filters = json_body.get("filters") or []
+    if not isinstance(filters, list):
+        filters = []
+    row_limit = int(json_body.get("row_limit") or 100000)
+    if not filters:
+        # Unfiltered wide tables cover the full history and can balloon to
+        # tens of thousands of rows per side; cap them defensively.
+        row_limit = min(row_limit, 50000)
+
+    metric_parts: list[tuple[list[Any], dict[str, Any]]] = []
+    components: dict[str, dict[str, Any]] = {}
+    for entry in metrics:
+        parts = _metric_wide_parts(datasource, entry)
+        if parts is None:
+            label = entry.get("label") if isinstance(entry, dict) else str(entry)
+            # Skip metrics that cannot be re-aggregated client-side (AVG,
+            # COUNT DISTINCT, undefined expressions) so dashboards that mix
+            # them with aggregatable metrics still get the wide table.
+            logger.warning("Wide metric skipped (not client-reaggregatable): %s", label)
+            continue
+        exprs, meta = parts
+        metric_parts.append((exprs, meta))
+        components[meta["label"]] = meta
+
+    if not metric_parts:
+        return jsonify(
+            {
+                "error": (
+                    "No metric can be re-aggregated client-side "
+                    "(AVG / COUNT DISTINCT unsupported)"
+                )
+            }
+        ), 400
+
+    aliyun_db_name, oversea_db_name = federated_config
+    aliyun_db = _get_database(aliyun_db_name)
+    if aliyun_db is None:
+        return jsonify({"error": f"database '{aliyun_db_name}' not found"}), 404
+    oversea_db = _get_database(oversea_db_name)
+    if oversea_db is None:
+        return jsonify({"error": f"database '{oversea_db_name}' not found"}), 404
+
+    partner_datasource = None
+    if partner_id := _read_federated_extra(datasource).get("partner_dataset_id"):
+        from superset.connectors.sqla.models import SqlaTable
+
+        partner_datasource = (
+            db.session.query(SqlaTable).filter(SqlaTable.id == partner_id).one_or_none()
+        )
+
+    from superset import cache_manager
+    from superset.utils import json as _json_lib
+
+    force = bool(json_body.get("force"))
+    metric_labels = [m["label"] for _e, m in metric_parts]
+    cache_key = (
+        None
+        if force
+        else _cache_key(
+            "pivot-wide",
+            ds_id,
+            columns,
+            metric_labels,
+            json_body.get("filters") or [],
+            row_limit,
+        )
+    )
+    if cache_key is not None:
+        cached = cache_manager.data_cache.get(cache_key)
+        if cached is not None:
+            return current_app.response_class(cached, mimetype="application/json")
+
+    df = _run_wide_query(
+        datasource,
+        partner_datasource,
+        aliyun_db,
+        oversea_db,
+        aliyun_db_name,
+        oversea_db_name,
+        columns,
+        metric_parts,
+        filters,
+        row_limit,
+    )
+    if df is None:
+        return jsonify({"error": "Wide query failed on all sides"}), 500
+
+    colnames = list(df.columns)
+    data_raw = df.replace({np.nan: None})
+    data = _json_lib.loads(data_raw.to_json(orient="records", force_ascii=False))
+    payload: dict[str, Any] = {
+        "status": "success",
+        "data": data,
+        "colnames": colnames,
+        "coltypes": extract_dataframe_dtypes(df, datasource),
+        "rowcount": len(df),
+        "sql_rowcount": len(df),
+        "metric_components": components,
+        "cached_dttm": None,
+        "cache_key": cache_key,
+        "is_cached": False,
+        "queried_dttm": None,
+        "error": None,
+        "stacktrace": None,
+    }
+    result: dict[str, Any] = {"result": [payload]}
+    body = _json_lib.dumps(result, sort_keys=False)
+    if cache_key is not None:
+        cache_manager.data_cache.set(cache_key, body, timeout=_cache_timeout())
+    return current_app.response_class(body, mimetype="application/json")
 
 
 @bi_blueprint.route("/chart/data", methods=["POST"])
@@ -965,9 +1450,28 @@ def chart_data() -> Any:  # noqa: C901
         if all_dims:
             query_obj.columns = all_dims
 
-    query_results: list[dict[str, Any]] = []
-    try:
-        for query_obj in query_context.queries:
+    # Cache the full response (Redis) for non-forced requests.  Manual chart
+    # refreshes and dashboard auto-refresh send ``force`` to bypass the cache.
+    from superset import cache_manager
+    from superset.common.db_query_status import QueryStatus
+    from superset.utils import json as _json_lib
+
+    force = bool(json_body.get("force"))
+    cache_key: str | None = None
+    cached_body: str | None = None
+    if not force:
+        cache_key = _cache_key("chart-data", datasource.id, json_body)
+        cached_body = cache_manager.data_cache.get(cache_key)
+        if cached_body is not None:
+            return current_app.response_class(cached_body, mimetype="application/json")
+
+    # Each query runs in its own thread (the two database sides inside
+    # ``_run_federated_query`` are already parallel) with the request user
+    # restored so RLS-aware SQL generation behaves identically.
+    def _run_one(idx: int, query_obj: Any) -> dict[str, Any]:
+        with _app.app_context():
+            if _user is not None:
+                g.user = _user
             result_type = query_obj.result_type or query_context.result_type
 
             if result_type in (
@@ -975,13 +1479,9 @@ def chart_data() -> Any:  # noqa: C901
                 ChartDataResultType.TIMEGRAINS,
                 ChartDataResultType.QUERY,
             ):
-                payload = get_query_results(
-                    result_type, query_context, query_obj, False
-                )
-                query_results.append(payload)
-                continue
+                return get_query_results(result_type, query_context, query_obj, False)
 
-            payload = _run_federated_query(
+            return _run_federated_query(
                 query_obj,
                 query_context,
                 datasource,
@@ -990,17 +1490,31 @@ def chart_data() -> Any:  # noqa: C901
                 aliyun_db_name,
                 oversea_db_name,
             )
-            query_results.append(payload)
+
+    _app = current_app._get_current_object()
+    _user_raw = g.get("user", None)
+    _user = (
+        _user_raw._get_current_object()
+        if isinstance(_user_raw, LocalProxy)
+        else _user_raw
+    )
+    query_results: list[dict[str, Any] | None] = [None] * len(query_context.queries)
+    try:
+        with ThreadPoolExecutor(max_workers=min(len(query_context.queries), 4)) as pool:
+            futures = {
+                pool.submit(_run_one, idx, query_obj): idx
+                for idx, query_obj in enumerate(query_context.queries)
+            }
+            for future in as_completed(futures):
+                query_results[futures[future]] = future.result()
     except QueryObjectValidationError as ex:
         return jsonify({"error": ex.message}), 400
 
     # Use json.dumps directly to avoid Flask's JSON_SORT_KEYS=True
-    from flask import current_app
-
-    from superset.utils import json as _json_lib
-
     result: dict[str, Any] = {"result": query_results}
-    return current_app.response_class(
-        _json_lib.dumps(result, sort_keys=False),
-        mimetype="application/json",
-    )
+    body = _json_lib.dumps(result, sort_keys=False)
+    if cache_key is not None and all(
+        r is not None and r.get("status") == QueryStatus.SUCCESS for r in query_results
+    ):
+        cache_manager.data_cache.set(cache_key, body, timeout=_cache_timeout())
+    return current_app.response_class(body, mimetype="application/json")

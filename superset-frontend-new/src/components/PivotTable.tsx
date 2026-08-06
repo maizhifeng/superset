@@ -29,7 +29,12 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
-import { buildPivotGrid, type PivotTableProps } from "@/utils/pivot";
+import {
+  buildPivotGrid,
+  MAX_PIVOT_COLS,
+  MAX_PIVOT_ROWS,
+  type PivotTableProps,
+} from "@/utils/pivot";
 
 export { type PivotTableProps } from "@/utils/pivot";
 
@@ -113,16 +118,19 @@ export default function PivotTable(props: PivotTableProps) {
     colCombos,
     colGroupStarts,
     truncated,
+    totalRows: gridTotalRows,
+    subtotalRows: gridSubtotalRows,
   } = useMemo(() => buildPivotGrid(props), [props]);
 
   const totalsLookup = useMemo(() => {
-    if (!props.totalRows) return null;
+    const source = gridTotalRows ?? props.totalRows;
+    if (!source) return null;
     const map = new Map<string, Record<string, unknown>>();
-    for (const r of props.totalRows) {
+    for (const r of source) {
       map.set(colDimNames.map((d) => String(r[d] ?? "")).join("\u0000"), r);
     }
     return map;
-  }, [props.totalRows, colDimNames]);
+  }, [gridTotalRows, props.totalRows, colDimNames]);
 
   const backendTotal = (cIdx: number): number | null => {
     if (!totalsLookup) return null;
@@ -144,11 +152,40 @@ export default function PivotTable(props: PivotTableProps) {
     () => new Set(),
   );
 
+  const findGroup = (
+    list: PivotGroup[],
+    collapseKey: string,
+  ): PivotGroup | null => {
+    for (const g of list) {
+      if (g.collapseKey === collapseKey) return g;
+      const found = findGroup(g.children, collapseKey);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  // Collapsing a group also collapses every descendant group (all lower
+  // row dimensions), Excel-style; expanding only affects the group itself,
+  // so children stay collapsed until explicitly expanded.
   const toggleGroup = (collapseKey: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(collapseKey)) next.delete(collapseKey);
-      else next.add(collapseKey);
+      if (next.has(collapseKey)) {
+        next.delete(collapseKey);
+      } else {
+        next.add(collapseKey);
+        const target = findGroup(groups, collapseKey);
+        if (target) {
+          const stack = [...target.children];
+          while (stack.length > 0) {
+            const g = stack.pop() as PivotGroup;
+            if (g.children.length > 0) {
+              next.add(g.collapseKey);
+              stack.push(...g.children);
+            }
+          }
+        }
+      }
       return next;
     });
   };
@@ -211,8 +248,9 @@ export default function PivotTable(props: PivotTableProps) {
   const visibleRowDimCount = showLevelLabels.filter(Boolean).length;
 
   const subtotalLookupByLevel = useMemo(() => {
-    if (!props.subtotalRows) return null;
-    return props.subtotalRows.map((rows, level) => {
+    const source = gridSubtotalRows ?? props.subtotalRows;
+    if (!source) return null;
+    return source.map((rows, level) => {
       if (!rows) return null;
       const dims = rowDimLabels.slice(0, level + 1);
       const map = new Map<string, Record<string, unknown>>();
@@ -227,7 +265,7 @@ export default function PivotTable(props: PivotTableProps) {
       }
       return map;
     });
-  }, [props.subtotalRows, rowDimLabels, colDimNames]);
+  }, [gridSubtotalRows, props.subtotalRows, rowDimLabels, colDimNames]);
 
   const subtotalValue = (group: PivotGroup, cIdx: number): number | null => {
     const lookup = subtotalLookupByLevel?.[group.level];
@@ -684,7 +722,8 @@ export default function PivotTable(props: PivotTableProps) {
             bgcolor: "background.paper",
           }}
         >
-          数据量较大，已截断显示（最多 1000 行 / 80 列）
+          数据量较大，已截断显示（最多 {MAX_PIVOT_ROWS} 行 / {MAX_PIVOT_COLS}{" "}
+          列）
         </Typography>
       )}
     </TableContainer>

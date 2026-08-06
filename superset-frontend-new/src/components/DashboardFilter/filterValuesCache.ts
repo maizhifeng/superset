@@ -92,4 +92,25 @@ export function buildSiblingFilters(
   return result;
 }
 
+export function buildTimeRangeFilters(
+  filter: FilterConfig,
+  allFilters: FilterConfig[],
+  filterState: FilterState,
+): { col: string; op: string; val: unknown }[] {
+  const result: { col: string; op: string; val: unknown }[] = [];
+  for (const f of allFilters) {
+    if (f.datasetId !== filter.datasetId) continue;
+    if (f.filterType !== "time_range") continue;
+    const raw = filterState[f.id]?.value;
+    if (!Array.isArray(raw)) continue;
+    const [start, end] = raw as [
+      string | null | undefined,
+      string | null | undefined,
+    ];
+    if (start) result.push({ col: f.column, op: ">=", val: start });
+    if (end) result.push({ col: f.column, op: "<=", val: end });
+  }
+  return result;
+}
+
 export { valuesCache, pendingFetches, lsLoad, lsSave };

@@ -1,11 +1,13 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
+import Skeleton from "@mui/material/Skeleton";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsOption } from "echarts";
 import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
 import PivotTable from "@/components/PivotTable";
+import type { WideMetricComponent } from "@/utils/pivot";
 import type { ChartDataPayload, ChartDataRow } from "@/types/api";
 import { formatMetricValue, type MetricFormatMap } from "@/utils/formatNumber";
 import { DEFAULT_PIVOT_CONFIG } from "./useChartEditor";
@@ -32,6 +34,76 @@ interface ChartPreviewProps {
   page?: number;
   hasMore?: boolean;
   onPageChange?: (page: number) => void;
+}
+
+function PivotSkeleton() {
+  const headerWidths = [96, 88, 72, 84, 76, 64];
+  const rowWidths = [110, 84, 96, 72, 88, 60, 92, 78];
+  return (
+    <Box
+      sx={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 1,
+          py: 1.25,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: "grey.50",
+          flexShrink: 0,
+        }}
+      >
+        {headerWidths.map((w, i) => (
+          <Skeleton
+            key={i}
+            sx={{ height: 14, borderRadius: 1, flexShrink: 0 }}
+            width={w}
+          />
+        ))}
+      </Box>
+      {rowWidths.map((w, r) => (
+        <Box
+          key={r}
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1,
+            py: 1,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            flexShrink: 0,
+          }}
+        >
+          <Skeleton
+            sx={{ height: 12, borderRadius: 1, flexShrink: 0 }}
+            width={w}
+          />
+          {[0, 1, 2, 3, 4].map((c) => (
+            <Skeleton
+              key={c}
+              sx={{
+                height: 12,
+                borderRadius: 1,
+                flex: 1,
+                maxWidth: 96,
+                opacity: 1 - (c + (r % 2)) * 0.08,
+              }}
+            />
+          ))}
+        </Box>
+      ))}
+    </Box>
+  );
 }
 
 export default function ChartPreview({
@@ -91,6 +163,8 @@ export default function ChartPreview({
           <Typography variant="body2" color="text.disabled">
             请至少选择一个指标
           </Typography>
+        ) : resolvedType === "pivot_table_v2" && loadingData ? (
+          <PivotSkeleton />
         ) : loadingData && !chartData ? (
           <CircularProgress size={24} />
         ) : resolvedType === "table" ? (
@@ -128,6 +202,25 @@ export default function ChartPreview({
               rowTotals={DEFAULT_PIVOT_CONFIG.rowTotals}
               colTotals={DEFAULT_PIVOT_CONFIG.colTotals}
               metricsLayout={DEFAULT_PIVOT_CONFIG.metricsLayout}
+              wideData={
+                (
+                  chartData as ChartDataPayload & {
+                    metric_components?: Record<string, unknown>;
+                  }
+                ).metric_components
+                  ? {
+                      rows: chartData.data,
+                      components: (
+                        chartData as ChartDataPayload & {
+                          metric_components?: Record<string, unknown>;
+                        }
+                      ).metric_components as Record<
+                        string,
+                        WideMetricComponent
+                      >,
+                    }
+                  : undefined
+              }
               formatCell={(key, val) => {
                 if (val === null || val === undefined) return "";
                 return formatMetricValue(key, val, metricFormatMap);

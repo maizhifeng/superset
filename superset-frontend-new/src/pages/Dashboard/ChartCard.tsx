@@ -102,6 +102,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
 import type { ChartDataPayload, ChartDataRow, ChartData } from "@/types/api";
 import PivotTable, { type PivotTableProps } from "@/components/PivotTable";
+import type { WideMetricComponent } from "@/utils/pivot";
 import { DEFAULT_PIVOT_CONFIG } from "@/pages/ChartCreation/useChartEditor";
 
 export interface CompareDimension {
@@ -240,7 +241,11 @@ function ChartCard({
   useEffect(() => {
     localStorage.setItem(storageKey, String(pct95Threshold));
   }, [pct95Threshold, storageKey]);
-  const prevPct95Ref = useRef(false);
+  // Refresh only when the user toggles p95 on, not on initial mount: the
+  // initial chart/data fetch already covers the full distribution, and the
+  // p95 split is computed client-side, so a mount-time refetch just doubles
+  // the backend query cost.
+  const prevPct95Ref = useRef(pct95Active);
   useEffect(() => {
     if (pct95Active && !prevPct95Ref.current) {
       onRefresh(chartId);
@@ -467,10 +472,7 @@ function ChartCard({
     const raw = rawMeta?.params || rawMeta?.form_data || "{}";
     let fd: Record<string, unknown> = {};
     try {
-      fd =
-        typeof raw === "string"
-          ? JSON.parse(raw)
-          : raw ?? {};
+      fd = typeof raw === "string" ? JSON.parse(raw) : (raw ?? {});
     } catch {
       return null;
     }
@@ -484,6 +486,10 @@ function ChartCard({
           return obj.label || obj.column?.column_name || "";
         })
       : [];
+    const chartPayload = data;
+    const hasWideData =
+      Boolean(chartPayload?.metric_components) &&
+      Array.isArray(chartPayload?.data);
     return {
       groupbyRows: Array.isArray(fd.groupbyRows)
         ? (fd.groupbyRows as string[])
@@ -501,8 +507,17 @@ function ChartCard({
       colTotals: DEFAULT_PIVOT_CONFIG.colTotals,
       metricsLayout: DEFAULT_PIVOT_CONFIG.metricsLayout,
       formatCell: tableFormatCell,
+      wideData: hasWideData
+        ? {
+            rows: chartPayload.data as ChartDataRow[],
+            components: (chartPayload.metric_components ?? {}) as Record<
+              string,
+              WideMetricComponent
+            >,
+          }
+        : undefined,
     };
-  }, [vizType, meta, tableFormatCell, pivotTotalRows, pivotSubtotalRows]);
+  }, [vizType, meta, tableFormatCell, pivotTotalRows, pivotSubtotalRows, data]);
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);
@@ -911,7 +926,9 @@ function ChartCard({
                       hasMore={hasMore}
                       onPageChange={onPageChange}
                     />
-                  ) : vizType === "pivot_table_v2" && data?.data && pivotProps ? (
+                  ) : vizType === "pivot_table_v2" &&
+                    data?.data &&
+                    pivotProps ? (
                     <PivotTable data={data.data} {...pivotProps} />
                   ) : option && chartLibReady ? (
                     <ReactEChartsCore

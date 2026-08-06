@@ -15,6 +15,22 @@ function getChartDataUrl(dsId: number): string {
   return isFederatedDataset(dsId) ? "/bi/chart/data" : "/chart/data";
 }
 
+/** Convert adhoc filters ({subject, operator, comparator}) to wide-table
+ * filter predicates ({col, op, val}) accepted by /bi/pivot/wide-data. */
+function toWideFilters(
+  adhocFilters: {
+    subject: string;
+    operator: string;
+    comparator: unknown;
+  }[],
+): { col: string; op: string; val: unknown }[] {
+  return adhocFilters.map((f) => ({
+    col: f.subject,
+    op: f.operator,
+    val: f.comparator,
+  }));
+}
+
 export { buildQueryObject };
 
 export function parseChartConfig(chart: ChartData): FormData {
@@ -81,6 +97,41 @@ export function useDashboardData() {
           return { id: cid, data: {}, totalRow: null };
 
         const isPivot = chart.viz_type === "pivot_table_v2";
+        const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
+        const adhocFilters = buildFn(dsId);
+
+        if (isPivot && isFederatedDataset(dsId)) {
+          // Wide-table path: fetch the day-granularity table once and let
+          // the frontend re-aggregate for any row/column layout, so layout
+          // changes need no backend round-trip.
+          const columns = Array.from(
+            new Set([
+              ...(Array.isArray(fd.groupbyRows) ? fd.groupbyRows : []),
+              ...(Array.isArray(fd.groupbyColumns) ? fd.groupbyColumns : []),
+            ]),
+          );
+          const wideBody: {
+            datasource: { id: number; type: string };
+            columns: string[];
+            metrics: typeof query.metrics;
+            filters: { col: string; op: string; val: unknown }[];
+            row_limit: number;
+            force?: boolean;
+          } = {
+            datasource: { id: dsId, type: chart.datasource_type || "table" },
+            columns,
+            metrics: query.metrics,
+            filters: toWideFilters(adhocFilters),
+            row_limit: 100000,
+          };
+          if (force) wideBody.force = true;
+          const postRes = await api.post("/bi/pivot/wide-data", wideBody);
+          const first = (
+            Array.isArray(postRes.data?.result) ? postRes.data.result : []
+          )[0] as ChartDataPayload | undefined;
+          return { id: cid, data: first ?? {}, totalRow: null };
+        }
+
         const pageSize = 50;
         if (isPivot) {
           query.row_limit = 10000;
@@ -89,8 +140,6 @@ export function useDashboardData() {
           query.row_offset = page * pageSize;
         }
 
-        const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
         if (adhocFilters.length > 0) {
           query.filters = adhocFilters.map((f) => ({
             col: f.subject,
@@ -308,6 +357,39 @@ export function useDashboardData() {
         if (!query.metrics || query.metrics.length === 0) return null;
 
         const isPivot = chart.viz_type === "pivot_table_v2";
+        const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
+        const adhocFilters = buildFn(dsId);
+
+        if (isPivot && isFederatedDataset(dsId)) {
+          const columns = Array.from(
+            new Set([
+              ...(Array.isArray(fd.groupbyRows) ? fd.groupbyRows : []),
+              ...(Array.isArray(fd.groupbyColumns) ? fd.groupbyColumns : []),
+            ]),
+          );
+          const wideBody: {
+            datasource: { id: number; type: string };
+            columns: string[];
+            metrics: typeof query.metrics;
+            filters: { col: string; op: string; val: unknown }[];
+            row_limit: number;
+            force: boolean;
+          } = {
+            datasource: { id: dsId, type: chart.datasource_type || "table" },
+            columns,
+            metrics: query.metrics,
+            filters: toWideFilters(adhocFilters),
+            row_limit: 100000,
+            force: true,
+          };
+          const postRes = await api.post("/bi/pivot/wide-data", wideBody);
+          const results = (
+            Array.isArray(postRes.data?.result) ? postRes.data.result : []
+          ) as ChartDataResponseResult[];
+          const data: ChartDataPayload = (results[0] || {}) as ChartDataPayload;
+          return { data, hasMore: false };
+        }
+
         const pageSize = 50;
         if (isPivot) {
           query.row_limit = 10000;
@@ -316,8 +398,6 @@ export function useDashboardData() {
           query.row_offset = page * pageSize;
         }
 
-        const buildFn = buildAdhocFilters ?? buildAdhocFiltersRef.current;
-        const adhocFilters = buildFn(dsId);
         if (adhocFilters.length > 0) {
           query.filters = adhocFilters.map((f) => ({
             col: f.subject,

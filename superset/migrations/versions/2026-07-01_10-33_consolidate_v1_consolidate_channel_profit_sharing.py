@@ -78,7 +78,9 @@ def upgrade():
             batch_op.add_column(Column("默认分成", String(255), nullable=True))
 
     # 7. rename 分成比例 -> 渠道商分成 for existing installations
-    if table_has_column("profit_sharing", "分成比例") and not table_has_column("profit_sharing", "渠道商分成"):
+    if table_has_column("profit_sharing", "分成比例") and not table_has_column(
+        "profit_sharing", "渠道商分成"
+    ):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.alter_column("分成比例", new_column_name="渠道商分成")
 
