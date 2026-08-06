@@ -20,8 +20,11 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import UnfoldLessIcon from "@mui/icons-material/UnfoldLess";
+import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -35,6 +38,7 @@ import {
   MAX_PIVOT_ROWS,
   type PivotTableProps,
 } from "@/utils/pivot";
+import { formatDateValue } from "@/utils/dateHeuristics";
 
 export { type PivotTableProps } from "@/utils/pivot";
 
@@ -99,12 +103,22 @@ function buildTree(
 }
 
 export default function PivotTable(props: PivotTableProps) {
-  const { formatCell } = props;
+  const { formatCell, dateColumns } = props;
   const theme = useTheme();
   const boundaryColor = theme.palette.divider;
   const boundaryStyle = {
     borderLeft: "2px solid",
     borderLeftColor: boundaryColor,
+  };
+
+  // Date dimension values are formatted in row/column labels so headers do
+  // not show raw timestamps / YYYYMMDD integers / ISO strings.
+  const formatDimLabel = (key: string, value: unknown): string => {
+    if (value === null || value === undefined) return "";
+    if (dateColumns && dateColumns.includes(key)) {
+      return formatDateValue(value) ?? String(value);
+    }
+    return String(value);
   };
 
   const {
@@ -166,12 +180,26 @@ export default function PivotTable(props: PivotTableProps) {
 
   // Collapsing a group also collapses every descendant group (all lower
   // row dimensions), Excel-style; expanding only affects the group itself,
-  // so children stay collapsed until explicitly expanded.
+  // so children stay collapsed until explicitly expanded. Leaf groups (the
+  // deepest dimension) follow the same keys, so their rows are only shown
+  // while the leaf group itself is expanded.
   const toggleGroup = (collapseKey: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(collapseKey)) {
         next.delete(collapseKey);
+        const target = findGroup(groups, collapseKey);
+        if (target) {
+          const stack = [...target.children];
+          while (stack.length > 0) {
+            const g = stack.pop() as PivotGroup;
+            if (g.children.length === 0) {
+              next.delete(g.collapseKey);
+            } else {
+              stack.push(...g.children);
+            }
+          }
+        }
       } else {
         next.add(collapseKey);
         const target = findGroup(groups, collapseKey);
@@ -216,7 +244,7 @@ export default function PivotTable(props: PivotTableProps) {
     const keys = new Set<string>();
     const collect = (list: PivotGroup[]): void => {
       for (const g of list) {
-        if (g.children.length > 0) keys.add(g.collapseKey);
+        keys.add(g.collapseKey);
         collect(g.children);
       }
     };
@@ -224,23 +252,110 @@ export default function PivotTable(props: PivotTableProps) {
     setCollapsedGroups(keys);
   }
 
-  // A row-dimension level's column is only visible when some group at the
-  // previous level is expanded (i.e. rows at this level are shown somewhere).
-  const showLevelLabels = useMemo(() => {
-    const findExpandedAtLevel = (level: number): boolean => {
-      const stack: PivotGroup[] = [...groups];
-      while (stack.length > 0) {
-        const node = stack.pop() as PivotGroup;
-        if (node.level === level && !collapsedGroups.has(node.collapseKey)) {
-          return true;
-        }
-        stack.push(...node.children);
+  // All groups (leaf groups included) indexed by their dimension level, so
+  // each dimension label can quickly collapse/expand every group below it.
+  const groupsByLevel = useMemo(() => {
+    const byLevel: PivotGroup[][] = [];
+    const collect = (list: PivotGroup[]): void => {
+      for (const g of list) {
+        (byLevel[g.level] ??= []).push(g);
+        collect(g.children);
       }
-      return false;
     };
+    collect(groups);
+    return byLevel;
+  }, [groups]);
+
+  // Keys of every group at a deeper level than `level`: the quick toggle on a
+  // dimension label operates on all lower-level dimensions only.
+  const belowKeysByLevel = useMemo(() => {
+    const result: string[][] = [];
+    for (let level = 0; level < groupsByLevel.length; level += 1) {
+      const keys: string[] = [];
+      for (let l = level + 1; l < groupsByLevel.length; l += 1) {
+        for (const g of groupsByLevel[l]) keys.push(g.collapseKey);
+      }
+      result.push(keys);
+    }
+    return result;
+  }, [groupsByLevel]);
+
+  // Keys of the groups a dimension-label quick toggle operates on: at the top
+  // label this is every group (global collapse/expand); at deeper labels it is
+  // every group strictly below that dimension level, so operating at level L
+  // applies to all dimensions at level L+1 and below.
+  const toggleKeysForLevel = (level: number): string[] =>
+    level === 0
+      ? groupsByLevel.flatMap((list) => list.map((g) => g.collapseKey))
+      : belowKeysByLevel[level] ?? [];
+
+  const belowCollapsed = (level: number): boolean => {
+    const keys = toggleKeysForLevel(level);
+    return keys.length > 0 && keys.every((k) => collapsedGroups.has(k));
+  };
+
+  const toggleBelow = (level: number) => {
+    const keys = toggleKeysForLevel(level);
+    if (keys.length === 0) return;
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      const expand = keys.every((k) => next.has(k));
+      for (const k of keys) {
+        if (expand) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
+  };
+
+  const levelQuickToggle = (level: number): ReactNode => {
+    if (toggleKeysForLevel(level).length === 0) return null;
+    const expand = belowCollapsed(level);
+    const label = expand ? "展开全部下级维度" : "折叠全部下级维度";
+    return (
+      <Tooltip title={label} placement="bottom">
+        <IconButton
+          size="small"
+          aria-label={label}
+          onClick={() => toggleBelow(level)}
+          sx={{ p: 0, minWidth: 20, minHeight: 20, color: "inherit" }}
+        >
+          {expand ? (
+            <UnfoldMoreIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <UnfoldLessIcon sx={{ fontSize: 16 }} />
+          )}
+        </IconButton>
+      </Tooltip>
+    );
+  };
+
+  // A row-dimension level's column exists only while some group at that
+  // level actually renders: intermediate groups always render their header
+  // row when their ancestors are expanded, while leaf groups (the deepest
+  // dimension) only render their data rows when expanded themselves, so
+  // collapsing a lower level removes its column (and all deeper ones).
+  const showLevelLabels = useMemo(() => {
+    const renderedByLevel: boolean[] = [];
+    const expandedLeavesByLevel: boolean[] = [];
+    const walk = (list: PivotGroup[], ancestorsExpanded: boolean): void => {
+      for (const g of list) {
+        const groupExpanded = !collapsedGroups.has(g.collapseKey);
+        if (ancestorsExpanded) renderedByLevel[g.level] = true;
+        if (ancestorsExpanded && groupExpanded && g.children.length === 0) {
+          expandedLeavesByLevel[g.level] = true;
+        }
+        walk(g.children, ancestorsExpanded && groupExpanded);
+      }
+    };
+    walk(groups, true);
+    const leafLevel = rowDimLabels.length - 1;
     const visible: boolean[] = [true];
     for (let level = 1; level < rowDimLabels.length; level += 1) {
-      visible[level] = findExpandedAtLevel(level - 1);
+      visible[level] =
+        level === leafLevel
+          ? expandedLeavesByLevel[level] === true
+          : renderedByLevel[level] === true;
     }
     return visible;
   }, [groups, rowDimLabels.length, collapsedGroups]);
@@ -389,18 +504,27 @@ export default function PivotTable(props: PivotTableProps) {
             "&:last-child td": { borderBottom: 0 },
           }}
         >
-          {rowHeaders.map((levelHeaders, level) =>
-            showLevelLabels[level] ? (
-              <TableCell
-                key={`cgv-${level}`}
-                sx={{
-                  left: level * 120,
-                  ...rowHeaderStyle,
-                  ...rowAreaStyle,
-                  fontWeight: 700,
-                }}
-              >
-                {level === group.level ? (
+          {rowHeaders.map((levelHeaders, level) => {
+            if (!showLevelLabels[level]) return null;
+            if (level === group.level) {
+              // Subtotal row: merge the group label across every remaining
+              // level column, e.g. "oversea | 枫之谷-印尼汇总" for a group at
+              // level 1 (the deeper empty cells are absorbed by the span).
+              let span = 0;
+              for (let l = level; l < showLevelLabels.length; l += 1) {
+                if (showLevelLabels[l]) span += 1;
+              }
+              return (
+                <TableCell
+                  key={`cgv-${level}`}
+                  colSpan={span}
+                  sx={{
+                    left: level * 120,
+                    ...rowHeaderStyle,
+                    ...rowAreaStyle,
+                    fontWeight: 700,
+                  }}
+                >
                   <Box
                     sx={{
                       display: "flex",
@@ -410,6 +534,20 @@ export default function PivotTable(props: PivotTableProps) {
                     }}
                     onClick={() => toggleGroup(group.collapseKey)}
                   >
+                    <Box
+                      component="span"
+                      sx={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {formatDimLabel(
+                        rowDimLabels[level],
+                        group.keyTuple[level],
+                      )}
+                      {!isCollapsed ? " 汇总" : ""}
+                    </Box>
                     <IconButton
                       size="small"
                       onClick={(e) => {
@@ -424,25 +562,30 @@ export default function PivotTable(props: PivotTableProps) {
                         <ExpandMoreIcon sx={{ fontSize: 16 }} />
                       )}
                     </IconButton>
-                    <Box
-                      component="span"
-                      sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {group.keyTuple[level]}
-                    </Box>
                   </Box>
-                ) : level < group.level ? (
-                  (group.keyTuple[level] ?? "")
-                ) : (
-                  ""
-                )}
-              </TableCell>
-            ) : null,
-          )}
+                </TableCell>
+              );
+            }
+            if (level < group.level) {
+              return (
+                <TableCell
+                  key={`cgv-${level}`}
+                  sx={{
+                    left: level * 120,
+                    ...rowHeaderStyle,
+                    ...rowAreaStyle,
+                    fontWeight: 700,
+                  }}
+                >
+                  {formatDimLabel(
+                    rowDimLabels[level],
+                    group.keyTuple[level],
+                  )}
+                </TableCell>
+              );
+            }
+            return null;
+          })}
           {colLabels.map((colLabel, cIdx) => {
             const backend = subtotalValue(group, cIdx);
             const fallback = groupClientSum(group.rows, cIdx);
@@ -482,7 +625,7 @@ export default function PivotTable(props: PivotTableProps) {
           nodes.push(...renderGroup(child));
         }
       }
-    } else {
+    } else if (!collapsedGroups.has(group.collapseKey)) {
       for (const rIdx of group.rows) {
         nodes.push(
           <TableRow
@@ -502,29 +645,7 @@ export default function PivotTable(props: PivotTableProps) {
                     ...(level > 0 ? { fontWeight: 400 } : {}),
                   }}
                 >
-                  {level === 0 && hasNestedRows ? (
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.25,
-                      }}
-                    >
-                      <Box sx={{ width: 18, flexShrink: 0 }} />
-                      <Box
-                        component="span"
-                        sx={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {levelHeaders[rIdx] ?? ""}
-                      </Box>
-                    </Box>
-                  ) : (
-                    (levelHeaders[rIdx] ?? "")
-                  )}
+                  {formatDimLabel(rowDimLabels[level], levelHeaders[rIdx])}
                 </TableCell>
               ) : null,
             )}
@@ -600,7 +721,25 @@ export default function PivotTable(props: PivotTableProps) {
                             minWidth: 120,
                           }}
                         >
-                          {label}
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.5,
+                            }}
+                          >
+                            {levelQuickToggle(rl)}
+                            <Box
+                              component="span"
+                              sx={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {label}
+                            </Box>
+                          </Box>
                         </TableCell>
                       ) : null,
                     )
@@ -626,7 +765,9 @@ export default function PivotTable(props: PivotTableProps) {
                           : {}),
                     }}
                   >
-                    {group.label}
+                    {level < colDimNames.length
+                      ? formatDimLabel(colDimNames[level], group.label)
+                      : group.label}
                   </TableCell>
                 ))}
                 {level === 0 && showRowTotals && (

@@ -194,6 +194,9 @@ export default function ChartPreview({
               groupbyRows={groupby}
               groupbyColumns={groupbyColumns}
               metrics={pivotMetricKeys}
+              dateColumns={(chartData.colnames ?? []).filter(
+                (_, i) => (chartData.coltypes ?? [])[i] === 2,
+              )}
               totalRows={chartTotalsRows ?? undefined}
               subtotalRows={chartSubtotalRows ?? undefined}
               aggregateFunction={DEFAULT_PIVOT_CONFIG.aggregateFunction}

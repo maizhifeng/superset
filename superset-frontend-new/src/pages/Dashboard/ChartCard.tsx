@@ -98,6 +98,7 @@ import {
   formatPercentage,
   type MetricFormatMap,
 } from "@/utils/formatNumber";
+import { formatDateValue } from "@/utils/dateHeuristics";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
 import type { ChartDataPayload, ChartDataRow, ChartData } from "@/types/api";
@@ -114,42 +115,6 @@ export interface CompareConfig {
   enabled: boolean;
   chartId: number;
   dimensions: CompareDimension[];
-}
-
-function formatDateValue(value: unknown): string | null {
-  if (typeof value === "number") {
-    if (value > 1e12 && value < 1e16) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString();
-    }
-    if (value > 19000000 && value <= 22000000 && value < 1e9) {
-      const s = String(Math.floor(value));
-      if (s.length === 8) {
-        return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-      }
-    }
-    if (value > 1e8 && value < 1e12) {
-      const d = new Date(value * 1000);
-      if (
-        !isNaN(d.getTime()) &&
-        d.getFullYear() > 1900 &&
-        d.getFullYear() < 2200
-      ) {
-        return d.toLocaleDateString();
-      }
-    }
-  }
-  if (typeof value === "string") {
-    if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(value)) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) return d.toLocaleDateString();
-    }
-    const num = Number(value);
-    if (!isNaN(num) && num > 19000000) {
-      return formatDateValue(num);
-    }
-  }
-  return null;
 }
 
 const LONG_PRESS_MS = 500;
@@ -490,6 +455,11 @@ function ChartCard({
     const hasWideData =
       Boolean(chartPayload?.metric_components) &&
       Array.isArray(chartPayload?.data);
+    const payloadColnames = chartPayload?.colnames ?? [];
+    const payloadColtypes = chartPayload?.coltypes ?? [];
+    const dateColumns = payloadColnames.filter(
+      (_, i) => payloadColtypes[i] === 2,
+    );
     return {
       groupbyRows: Array.isArray(fd.groupbyRows)
         ? (fd.groupbyRows as string[])
@@ -507,6 +477,7 @@ function ChartCard({
       colTotals: DEFAULT_PIVOT_CONFIG.colTotals,
       metricsLayout: DEFAULT_PIVOT_CONFIG.metricsLayout,
       formatCell: tableFormatCell,
+      dateColumns,
       wideData: hasWideData
         ? {
             rows: chartPayload.data as ChartDataRow[],
