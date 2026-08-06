@@ -92,6 +92,37 @@ export default function ChartEditor({
   const c = (full: number | string, comp: number | string) =>
     compact ? comp : full;
 
+  // Pivot charts use an Excel-style 2x2 field builder on the left with the
+  // live preview on the right; everything else keeps the stacked layout.
+  const isPivotSplit = !compact && resolvedType === "pivot_table_v2";
+
+  const formPane = (
+    <ChartEditorForm
+      datasets={datasets}
+      datasourceId={datasourceId}
+      metrics={metrics}
+      groupby={groupby}
+      groupbyColumns={groupbyColumns}
+      vizType={vizType}
+      metricsOptions={metricsOptions}
+      dimensionOptions={dimensionOptions}
+      loadingDatasets={loadingDatasets}
+      loadingColumns={loadingColumns}
+      compact={compact}
+      onDatasourceChange={(id) => {
+        setDatasourceId(id);
+        setMetrics([]);
+        setGroupby([]);
+        setGroupbyColumns([]);
+        setUserChangedType(false);
+        setSavedFormData(null);
+      }}
+      onMetricsChange={handleMetricsChange}
+      onGroupbyChange={setGroupby}
+      onGroupbyColumnsChange={setGroupbyColumns}
+    />
+  );
+
   if (loadingChart) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -177,70 +208,75 @@ export default function ChartEditor({
           {error}
         </Alert>
       )}
-      <ChartEditorForm
-        datasets={datasets}
-        datasourceId={datasourceId}
-        metrics={metrics}
-        groupby={groupby}
-        groupbyColumns={groupbyColumns}
-        vizType={vizType}
-        metricsOptions={metricsOptions}
-        dimensionOptions={dimensionOptions}
-        loadingDatasets={loadingDatasets}
-        loadingColumns={loadingColumns}
-        compact={compact}
-        onDatasourceChange={(id) => {
-          setDatasourceId(id);
-          setMetrics([]);
-          setGroupby([]);
-          setGroupbyColumns([]);
-          setUserChangedType(false);
-          setSavedFormData(null);
-        }}
-        onMetricsChange={handleMetricsChange}
-        onGroupbyChange={setGroupby}
-        onGroupbyColumnsChange={setGroupbyColumns}
-      />
       <Box
         sx={{
           flex: 1,
-          p: c(0.5, 0.75),
           minHeight: 0,
           display: "flex",
-          flexDirection: "column",
+          flexDirection: isPivotSplit ? "row" : "column",
+          overflow: "hidden",
         }}
       >
-        {!datasourceId ? (
-          <ExploreWelcome />
-        ) : (
-          <ChartPreview
-            datasourceId={datasourceId}
-            resolvedType={resolvedType}
-            hasValidType={hasValidType}
-            metrics={metrics}
-            pivotMetricKeys={pivotMetricKeys}
-            groupby={groupby}
-            groupbyColumns={groupbyColumns}
-            chartData={chartData}
-            chartTotalsRows={chartTotalsRows}
-            chartSubtotalRows={chartSubtotalRows}
-            loadingData={loadingData}
-            chartLibReady={chartLibReady}
-            option={option}
-            bigNumberValue={bigNumberValue}
-            metricFormatMap={metricFormatMap}
-            page={page}
-            hasMore={hasMore}
-            onPageChange={(p) => setPage(p)}
-            onSortChange={(sorts) => {
-              const s = sorts[0];
-              if (s) {
-                setPage(0);
-                setSortEntry({ column: s.column, direction: s.direction });
-              } else setSortEntry(null);
+        {isPivotSplit ? (
+          <Box
+            sx={{
+              width: { md: 350, lg: 390 },
+              flexShrink: 0,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflowY: "auto",
+              borderRight: "1px solid",
+              borderColor: "divider",
             }}
-          />
+          >
+            {formPane}
+          </Box>
+        ) : (
+          formPane
         )}
+        <Box
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            p: c(0.5, 0.75),
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {!datasourceId ? (
+            <ExploreWelcome />
+          ) : (
+            <ChartPreview
+              datasourceId={datasourceId}
+              resolvedType={resolvedType}
+              hasValidType={hasValidType}
+              metrics={metrics}
+              pivotMetricKeys={pivotMetricKeys}
+              groupby={groupby}
+              groupbyColumns={groupbyColumns}
+              chartData={chartData}
+              chartTotalsRows={chartTotalsRows}
+              chartSubtotalRows={chartSubtotalRows}
+              loadingData={loadingData}
+              chartLibReady={chartLibReady}
+              option={option}
+              bigNumberValue={bigNumberValue}
+              metricFormatMap={metricFormatMap}
+              page={page}
+              hasMore={hasMore}
+              onPageChange={(p) => setPage(p)}
+              onSortChange={(sorts) => {
+                const s = sorts[0];
+                if (s) {
+                  setPage(0);
+                  setSortEntry({ column: s.column, direction: s.direction });
+                } else setSortEntry(null);
+              }}
+            />
+          )}
+        </Box>
       </Box>
       {compact ? (
         <Box sx={{ p: 2, pt: 0 }}>

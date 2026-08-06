@@ -133,9 +133,9 @@ export function useChartEditor({
     direction: "asc" | "desc";
   } | null>(null);
   const [chartData, setChartData] = useState<ChartDataPayload | null>(null);
-  const [chartTotalsRows, setChartTotalsRows] = useState<
-    ChartDataRow[] | null
-  >(null);
+  const [chartTotalsRows, setChartTotalsRows] = useState<ChartDataRow[] | null>(
+    null,
+  );
   const [chartSubtotalRows, setChartSubtotalRows] = useState<
     ChartDataRow[][] | null
   >(null);
@@ -159,8 +159,7 @@ export function useChartEditor({
   const isEditing = Boolean(sliceId || initialData?.datasource_id);
 
   const pivotMetricKeys = useMemo(
-    () =>
-      metrics.map((m) => (metricNames.has(m) ? m : `SUM(${m})`)),
+    () => metrics.map((m) => (metricNames.has(m) ? m : `SUM(${m})`)),
     [metrics, metricNames],
   );
 
@@ -453,6 +452,11 @@ export function useChartEditor({
     }
   }, [previewParams]);
 
+  const wideCacheRef = useRef<{
+    key: string;
+    payload: ChartDataPayload;
+  } | null>(null);
+
   useEffect(() => {
     if (
       !previewParams ||
@@ -466,6 +470,9 @@ export function useChartEditor({
       setLoadingData(false);
       return;
     }
+    // Pivot layout changes must not keep rendering the stale grid: switch to
+    // the skeleton immediately and render only once the new data is ready.
+    if (previewParams.viz_type === "pivot_table_v2") setLoadingData(true);
     const timer = setTimeout(() => {
       if (abortRef.current) abortRef.current.abort();
       const isRequery = chartDataRef.current !== null;
@@ -473,172 +480,262 @@ export function useChartEditor({
       const controller = new AbortController();
       abortRef.current = controller;
       setLoadingData(true);
-      const queryFormData: FormData = {
-        metrics: buildMetricsPayload(previewParams.metrics),
-        groupby: previewParams.groupby,
-        groupbyRows: previewParams.groupby,
-        groupbyColumns: previewParams.groupbyColumns,
-        viz_type: previewParams.viz_type,
-      };
-      if (previewParams.pivotConfig) {
-        queryFormData.aggregateFunction =
-          previewParams.pivotConfig.aggregateFunction;
-        queryFormData.transposePivot = previewParams.pivotConfig.transposePivot;
-        queryFormData.combineMetric = previewParams.pivotConfig.combineMetric;
-        queryFormData.rowTotals = previewParams.pivotConfig.rowTotals;
-        queryFormData.colTotals = previewParams.pivotConfig.colTotals;
-        queryFormData.metricsLayout = previewParams.pivotConfig.metricsLayout;
-      }
-      if (savedFormData) {
-        if (savedFormData.time_range)
-          queryFormData.time_range = savedFormData.time_range;
-        if (savedFormData.adhoc_filters)
-          queryFormData.adhoc_filters = savedFormData.adhoc_filters;
-        if (savedFormData.row_limit)
-          queryFormData.row_limit = savedFormData.row_limit;
-        if (savedFormData.granularity_sqla)
-          queryFormData.granularity_sqla = savedFormData.granularity_sqla;
-      }
-      if (sortEntry)
-        queryFormData.orderby = [
-          [sortEntry.column, sortEntry.direction === "asc"],
-        ];
       const isPivotQuery = previewParams.viz_type === "pivot_table_v2";
-      if (isPivotQuery) {
-        queryFormData.row_limit = 10000;
-        delete queryFormData.row_offset;
-      } else {
-        queryFormData.row_limit = pageSize + 1;
-        queryFormData.row_offset = page * pageSize;
-      }
-      const query = buildQueryObject(queryFormData, previewParams.viz_type);
-      const totalsQuery = isPivotQuery
-        ? buildQueryObject(
+      const isFed = isFederatedDataset(Number(previewParams.datasource_id));
+
+      const dashboardFilters = buildDashboardAdhocFilters?.(
+        previewParams.datasource_id,
+      );
+      const savedAdhoc = Array.isArray(savedFormData?.adhoc_filters)
+        ? (savedFormData.adhoc_filters as {
+            subject?: string;
+            operator?: string;
+            comparator?: unknown;
+            col?: string;
+            op?: string;
+            val?: unknown;
+          }[])
+        : [];
+      const allFilters: {
+        subject?: string;
+        operator?: string;
+        comparator?: unknown;
+        col?: string;
+        op?: string;
+        val?: unknown;
+      }[] = [...savedAdhoc, ...(dashboardFilters ?? [])];
+      const toWideFilters = allFilters
+        .map((f) => ({
+          col: f.subject ?? f.col ?? "",
+          op: f.operator ?? f.op ?? "",
+          val: f.comparator ?? f.val,
+        }))
+        .filter((f) => f.col);
+
+      // Wide-table path: row/column layout changes re-aggregate client-side
+      // with zero backend round-trips; the cache is keyed by datasource +
+      // metrics + filters, i.e. everything the wide table actually depends on.
+      // Only enabled with an active time range: without filters the wide
+      // table would cover the full history (tens of thousands of rows),
+      // which is too heavy to ship to the browser.
+      if (isPivotQuery && isFed && toWideFilters.length > 0) {
+        const wideKey = JSON.stringify([
+          previewParams.datasource_id,
+          previewParams.metrics,
+          allFilters,
+        ]);
+        const cached = wideCacheRef.current;
+        if (cached && cached.key === wideKey) {
+          setChartData(cached.payload);
+          setLoadingData(false);
+          return;
+        }
+        api
+          .post(
+            "/bi/pivot/wide-data",
             {
-              ...queryFormData,
-              groupby: [],
-              groupbyRows: [],
-              groupbyColumns: [],
-              columns: [],
+              datasource: {
+                id: previewParams.datasource_id,
+                type: "table",
+              },
+              columns: dimensionOptions.map((d) => d.value),
+              metrics: buildMetricsPayload(previewParams.metrics),
+              filters: toWideFilters,
+              row_limit: 100000,
             },
-            previewParams.viz_type,
+            { signal: controller.signal },
           )
-        : null;
-      const subtotalQueries: ReturnType<typeof buildQueryObject>[] = [];
-      if (isPivotQuery) {
-        for (
-          let level = 0;
-          level < previewParams.groupby.length - 1;
-          level += 1
-        ) {
-          const dims = [
-            ...previewParams.groupby.slice(0, level + 1),
-            ...previewParams.groupbyColumns,
+          .then((res) => {
+            if (controller.signal.aborted) return;
+            const results = (
+              Array.isArray(res.data?.result) ? res.data.result : []
+            ) as ChartDataPayload[];
+            const payload = results[0];
+            if (payload) {
+              setChartData(payload);
+              wideCacheRef.current = { key: wideKey, payload };
+              setHasMore(false);
+            } else {
+              setChartData({});
+            }
+          })
+          .catch(() => {
+            if (controller.signal.aborted) return;
+            // Metrics that cannot be re-aggregated client-side (AVG /
+            // COUNT DISTINCT) fall back to the classic multi-query path.
+            runLegacyQuery();
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) setLoadingData(false);
+          });
+        return () => controller.abort();
+      }
+
+      const runLegacyQuery = () => {
+        const queryFormData: FormData = {
+          metrics: buildMetricsPayload(previewParams.metrics),
+          groupby: previewParams.groupby,
+          groupbyRows: previewParams.groupby,
+          groupbyColumns: previewParams.groupbyColumns,
+          viz_type: previewParams.viz_type,
+        };
+        if (previewParams.pivotConfig) {
+          queryFormData.aggregateFunction =
+            previewParams.pivotConfig.aggregateFunction;
+          queryFormData.transposePivot =
+            previewParams.pivotConfig.transposePivot;
+          queryFormData.combineMetric = previewParams.pivotConfig.combineMetric;
+          queryFormData.rowTotals = previewParams.pivotConfig.rowTotals;
+          queryFormData.colTotals = previewParams.pivotConfig.colTotals;
+          queryFormData.metricsLayout = previewParams.pivotConfig.metricsLayout;
+        }
+        if (savedFormData) {
+          if (savedFormData.time_range)
+            queryFormData.time_range = savedFormData.time_range;
+          if (savedFormData.adhoc_filters)
+            queryFormData.adhoc_filters = savedFormData.adhoc_filters;
+          if (savedFormData.row_limit)
+            queryFormData.row_limit = savedFormData.row_limit;
+          if (savedFormData.granularity_sqla)
+            queryFormData.granularity_sqla = savedFormData.granularity_sqla;
+        }
+        if (sortEntry)
+          queryFormData.orderby = [
+            [sortEntry.column, sortEntry.direction === "asc"],
           ];
-          subtotalQueries.push(
-            buildQueryObject(
+        if (isPivotQuery) {
+          queryFormData.row_limit = 10000;
+          delete queryFormData.row_offset;
+        } else {
+          queryFormData.row_limit = pageSize + 1;
+          queryFormData.row_offset = page * pageSize;
+        }
+        const query = buildQueryObject(queryFormData, previewParams.viz_type);
+        const totalsQuery = isPivotQuery
+          ? buildQueryObject(
               {
                 ...queryFormData,
-                groupby: dims,
-                groupbyRows: dims,
+                groupby: [],
+                groupbyRows: [],
                 groupbyColumns: [],
                 columns: [],
               },
               previewParams.viz_type,
-            ),
-          );
-        }
-      }
-      const dashboardFilters = buildDashboardAdhocFilters?.(
-        previewParams.datasource_id,
-      );
-      if (dashboardFilters && dashboardFilters.length > 0) {
-        query.filters = dashboardFilters.map((f) => ({
-          col: f.subject,
-          op: f.operator,
-          val: f.comparator,
-        }));
-        if (totalsQuery) {
-          totalsQuery.filters = dashboardFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          }));
-        }
-        for (const q of subtotalQueries) {
-          q.filters = dashboardFilters.map((f) => ({
-            col: f.subject,
-            op: f.operator,
-            val: f.comparator,
-          }));
-        }
-      }
-      const chartUrl = isFederatedDataset(Number(previewParams.datasource_id))
-        ? "/bi/chart/data"
-        : "/chart/data";
-      const queries = [query];
-      if (totalsQuery) queries.push(totalsQuery);
-      queries.push(...subtotalQueries);
-      api
-        .post(
-          chartUrl,
-          {
-            datasource: { id: previewParams.datasource_id, type: "table" },
-            queries,
-            form_data: {
-              viz_type: previewParams.viz_type,
-              metrics: previewParams.metrics,
-              groupby: previewParams.groupby,
-              groupbyRows: previewParams.groupby,
-              groupbyColumns: previewParams.groupbyColumns,
-              aggregateFunction: previewParams.pivotConfig?.aggregateFunction,
-              transposePivot: previewParams.pivotConfig?.transposePivot,
-              combineMetric: previewParams.pivotConfig?.combineMetric,
-              rowTotals: previewParams.pivotConfig?.rowTotals,
-              colTotals: previewParams.pivotConfig?.colTotals,
-              metricsLayout: previewParams.pivotConfig?.metricsLayout,
-            },
-          },
-          { signal: controller.signal },
-        )
-        .then((res) => {
-          if (controller.signal.aborted) return;
-          const results = (
-            Array.isArray(res.data?.result) ? res.data.result : []
-          ) as { data?: unknown }[];
-          const rowData = (results[0] || {}) as ChartDataPayload;
-          const totalsData = results[1]?.data;
-          setChartTotalsRows(
-            Array.isArray(totalsData) ? totalsData : null,
-          );
-          setChartSubtotalRows(
-            results
-              .slice(2)
-              .map((r) =>
-                Array.isArray(r?.data) ? (r.data as ChartDataRow[]) : null,
-              )
-              .filter((v): v is ChartDataRow[] => v !== null),
-          );
-          if (rowData && Array.isArray(rowData.data)) {
-            if (isPivotQuery) {
-              setHasMore(false);
-            } else {
-              const hasNext = rowData.data.length > pageSize;
-              setHasMore(hasNext);
-              if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
-            }
+            )
+          : null;
+        const subtotalQueries: ReturnType<typeof buildQueryObject>[] = [];
+        if (isPivotQuery) {
+          for (
+            let level = 0;
+            level < previewParams.groupby.length - 1;
+            level += 1
+          ) {
+            const dims = [
+              ...previewParams.groupby.slice(0, level + 1),
+              ...previewParams.groupbyColumns,
+            ];
+            subtotalQueries.push(
+              buildQueryObject(
+                {
+                  ...queryFormData,
+                  groupby: dims,
+                  groupbyRows: dims,
+                  groupbyColumns: [],
+                  columns: [],
+                },
+                previewParams.viz_type,
+              ),
+            );
           }
-          setChartData(rowData);
-        })
-        .catch(() => {
-          if (controller.signal.aborted) return;
-          setChartData({});
-          setChartTotalsRows(null);
-          setChartSubtotalRows(null);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setLoadingData(false);
-        });
+        }
+        if (dashboardFilters && dashboardFilters.length > 0) {
+          query.filters = dashboardFilters.map((f) => ({
+            col: f.subject,
+            op: f.operator,
+            val: f.comparator,
+          }));
+          if (totalsQuery) {
+            totalsQuery.filters = dashboardFilters.map((f) => ({
+              col: f.subject,
+              op: f.operator,
+              val: f.comparator,
+            }));
+          }
+          for (const q of subtotalQueries) {
+            q.filters = dashboardFilters.map((f) => ({
+              col: f.subject,
+              op: f.operator,
+              val: f.comparator,
+            }));
+          }
+        }
+        const chartUrl = isFederatedDataset(Number(previewParams.datasource_id))
+          ? "/bi/chart/data"
+          : "/chart/data";
+        const queries = [query];
+        if (totalsQuery) queries.push(totalsQuery);
+        queries.push(...subtotalQueries);
+        api
+          .post(
+            chartUrl,
+            {
+              datasource: { id: previewParams.datasource_id, type: "table" },
+              queries,
+              form_data: {
+                viz_type: previewParams.viz_type,
+                metrics: previewParams.metrics,
+                groupby: previewParams.groupby,
+                groupbyRows: previewParams.groupby,
+                groupbyColumns: previewParams.groupbyColumns,
+                aggregateFunction: previewParams.pivotConfig?.aggregateFunction,
+                transposePivot: previewParams.pivotConfig?.transposePivot,
+                combineMetric: previewParams.pivotConfig?.combineMetric,
+                rowTotals: previewParams.pivotConfig?.rowTotals,
+                colTotals: previewParams.pivotConfig?.colTotals,
+                metricsLayout: previewParams.pivotConfig?.metricsLayout,
+              },
+            },
+            { signal: controller.signal },
+          )
+          .then((res) => {
+            if (controller.signal.aborted) return;
+            const results = (
+              Array.isArray(res.data?.result) ? res.data.result : []
+            ) as { data?: unknown }[];
+            const rowData = (results[0] || {}) as ChartDataPayload;
+            const totalsData = results[1]?.data;
+            setChartTotalsRows(Array.isArray(totalsData) ? totalsData : null);
+            setChartSubtotalRows(
+              results
+                .slice(2)
+                .map((r) =>
+                  Array.isArray(r?.data) ? (r.data as ChartDataRow[]) : null,
+                )
+                .filter((v): v is ChartDataRow[] => v !== null),
+            );
+            if (rowData && Array.isArray(rowData.data)) {
+              if (isPivotQuery) {
+                setHasMore(false);
+              } else {
+                const hasNext = rowData.data.length > pageSize;
+                setHasMore(hasNext);
+                if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
+              }
+            }
+            setChartData(rowData);
+          })
+          .catch(() => {
+            if (controller.signal.aborted) return;
+            setChartData({});
+            setChartTotalsRows(null);
+            setChartSubtotalRows(null);
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) setLoadingData(false);
+          });
+      };
+
+      runLegacyQuery();
       return () => controller.abort();
     }, 300);
     return () => clearTimeout(timer);
@@ -651,6 +748,7 @@ export function useChartEditor({
     buildDashboardAdhocFilters,
     page,
     buildMetricsPayload,
+    dimensionOptions,
   ]);
 
   const option = useMemo(() => {
@@ -868,10 +966,7 @@ export function useChartEditor({
     const subtotalQueries: ReturnType<typeof buildQueryObject>[] = [];
     if (isPivot) {
       for (let level = 0; level < groupby.length - 1; level += 1) {
-        const dims = [
-          ...groupby.slice(0, level + 1),
-          ...groupbyColumns,
-        ];
+        const dims = [...groupby.slice(0, level + 1), ...groupbyColumns];
         subtotalQueries.push(
           buildQueryObject(
             {
@@ -924,12 +1019,20 @@ export function useChartEditor({
           groupby,
           groupbyRows: groupby,
           groupbyColumns: groupbyColumns,
-          aggregateFunction: isPivot ? DEFAULT_PIVOT_CONFIG.aggregateFunction : undefined,
-          transposePivot: isPivot ? DEFAULT_PIVOT_CONFIG.transposePivot : undefined,
-          combineMetric: isPivot ? DEFAULT_PIVOT_CONFIG.combineMetric : undefined,
+          aggregateFunction: isPivot
+            ? DEFAULT_PIVOT_CONFIG.aggregateFunction
+            : undefined,
+          transposePivot: isPivot
+            ? DEFAULT_PIVOT_CONFIG.transposePivot
+            : undefined,
+          combineMetric: isPivot
+            ? DEFAULT_PIVOT_CONFIG.combineMetric
+            : undefined,
           rowTotals: isPivot ? DEFAULT_PIVOT_CONFIG.rowTotals : undefined,
           colTotals: isPivot ? DEFAULT_PIVOT_CONFIG.colTotals : undefined,
-          metricsLayout: isPivot ? DEFAULT_PIVOT_CONFIG.metricsLayout : undefined,
+          metricsLayout: isPivot
+            ? DEFAULT_PIVOT_CONFIG.metricsLayout
+            : undefined,
         },
       })
       .then((res) => {

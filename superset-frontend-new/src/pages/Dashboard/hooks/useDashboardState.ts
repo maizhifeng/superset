@@ -219,66 +219,77 @@ export function useDashboardState() {
           }[] = [];
           const seen = new Set<string>();
           const stringTypes = /varchar|char|text|string/i;
-          for (const dsId of dsIds) {
-            try {
-              const dataset = await getDataset<{
-                columns: {
-                  column_name: string;
-                  type: string | null;
-                  is_dttm: boolean;
-                  extra: string | null;
-                }[];
-              }>(dsId);
-              const cols = dataset.columns ?? [];
-              for (const col of cols) {
-                if (!col.column_name || !col.type) continue;
-                const key = `${dsId}:${col.column_name}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                let extra: Record<string, unknown> | null = null;
-                try {
-                  extra = col.extra ? JSON.parse(col.extra) : null;
-                } catch {
-                  /* ignore */
-                }
-                if (extra?.dashboard_filter !== true) continue;
-                if (col.is_dttm)
-                  timeCols.push({
-                    datasetId: dsId,
-                    column: col.column_name,
-                    name: col.column_name,
-                    columnType: "time",
-                  });
-                else if (stringTypes.test(col.type))
-                  stringCols.push({
-                    datasetId: dsId,
-                    column: col.column_name,
-                    name: col.column_name,
-                    columnType: "string",
-                  });
-                else
-                  stringCols.push({
-                    datasetId: dsId,
-                    column: col.column_name,
-                    name: col.column_name,
-                    columnType: "string",
-                  });
+          const datasets = await Promise.all(
+            [...dsIds].map(async (dsId) => {
+              try {
+                return {
+                  dsId,
+                  dataset: await getDataset<{
+                    columns: {
+                      column_name: string;
+                      type: string | null;
+                      is_dttm: boolean;
+                      extra: string | null;
+                    }[];
+                  }>(dsId),
+                };
+              } catch {
+                return null;
               }
-            } catch {
-              /* ignore */
+            }),
+          );
+          for (const entry of datasets) {
+            if (!entry) continue;
+            const { dsId, dataset } = entry;
+            const cols = dataset.columns ?? [];
+            for (const col of cols) {
+              if (!col.column_name || !col.type) continue;
+              const key = `${dsId}:${col.column_name}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              let extra: Record<string, unknown> | null = null;
+              try {
+                extra = col.extra ? JSON.parse(col.extra) : null;
+              } catch {
+                /* ignore */
+              }
+              if (extra?.dashboard_filter !== true) continue;
+              if (col.is_dttm)
+                timeCols.push({
+                  datasetId: dsId,
+                  column: col.column_name,
+                  name: col.column_name,
+                  columnType: "time",
+                });
+              else if (stringTypes.test(col.type))
+                stringCols.push({
+                  datasetId: dsId,
+                  column: col.column_name,
+                  name: col.column_name,
+                  columnType: "string",
+                });
+              else
+                stringCols.push({
+                  datasetId: dsId,
+                  column: col.column_name,
+                  name: col.column_name,
+                  columnType: "string",
+                });
             }
           }
           setDashboardDimensions([...timeCols, ...stringCols]);
         }
         setChartMeta(metaMap);
         const fmtMaps: Record<number, Record<string, string>> = {};
-        for (const dsId of dsIds) {
-          try {
-            fmtMaps[dsId] = await getMetricFormatMap(dsId);
-          } catch {
-            /* ignore */
-          }
-        }
+        await Promise.all(
+          [...dsIds].map(async (dsId) => {
+            try {
+              fmtMaps[dsId] = await getMetricFormatMap(dsId);
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
         setMetricFormatMaps(fmtMaps);
         await new Promise((resolve) => setTimeout(resolve, 20));
         const {

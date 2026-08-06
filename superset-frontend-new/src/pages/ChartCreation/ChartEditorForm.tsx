@@ -6,6 +6,7 @@ import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import type { Dataset } from "@/types/api";
 import PickerField from "./PickerField";
+import PivotLayoutBuilder from "./PivotLayoutBuilder";
 
 interface FieldOption {
   value: string;
@@ -76,6 +77,66 @@ export default function ChartEditorForm({
     </CardContent>
   );
 
+  const isPivotSplit = isPivot && !compact;
+  const datasetCard = (
+    <Card
+      elevation={0}
+      sx={{
+        // In the stacked layout `flex: 1` splits width evenly with the other
+        // cards; in the pivot side panel the card must size to its content
+        // so the layout grid below it fills the remaining height.
+        flex: isPivotSplit ? undefined : 1,
+        minWidth: { md: 180 },
+        borderRadius: 2,
+        border: "1px solid",
+        borderColor: "divider",
+        overflow: "hidden",
+      }}
+    >
+      <CardHeader
+        sx={{
+          px: c(0.75, 0.75),
+          py: isPivotSplit ? 0.15 : c(0.25, 0.25),
+          bgcolor: "grey.50",
+          borderBottom: "1px solid",
+          borderColor: "divider",
+        }}
+        title={
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              fontSize: compact ? "0.6rem" : undefined,
+            }}
+          >
+            数据集
+          </Typography>
+        }
+      />
+      <CardContent sx={{ p: isPivotSplit ? 0.5 : c(0.75, 0.75) }}>
+        <PickerField
+          label="数据集"
+          options={datasets.map((d) => ({
+            value: String(d.id),
+            label: d.table_name,
+          }))}
+          selected={datasourceId ? [datasourceId] : []}
+          onChange={(vals) => {
+            onDatasourceChange(vals[0] || "");
+          }}
+          loading={loadingDatasets}
+          placeholder="选择数据集..."
+          singleSelect
+          hideGroups
+          hideHeader
+          dense={isPivotSplit}
+        />
+      </CardContent>
+    </Card>
+  );
+
   return (
     <Box
       sx={{
@@ -84,108 +145,39 @@ export default function ChartEditorForm({
         gap: c(0.5, 0.75),
         px: c(1, 1),
         py: c(0.5, 0.5),
-        borderBottom: "1px solid",
+        borderBottom: isPivot && !compact ? "none" : "1px solid",
         borderColor: "divider",
-        flexShrink: 0,
+        flex: isPivot && !compact ? 1 : undefined,
+        flexShrink: isPivot && !compact ? undefined : 0,
+        minHeight: isPivot && !compact ? 0 : undefined,
       }}
     >
-      <Box sx={{ display: "flex", gap: c(1, 0.75), flexWrap: "wrap" }}>
-        {!compact && (
-          <Card
-            elevation={0}
-            sx={{
-              flex: 1,
-              minWidth: { md: 180 },
-              borderRadius: 2,
-              border: "1px solid",
-              borderColor: "divider",
-              overflow: "hidden",
-            }}
-          >
-            <CardHeader
-              sx={{
-                px: c(0.75, 0.75),
-                py: c(0.25, 0.25),
-                bgcolor: "grey.50",
-                borderBottom: "1px solid",
-                borderColor: "divider",
-              }}
-              title={
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontSize: compact ? "0.6rem" : undefined,
-                  }}
-                >
-                  数据集
-                </Typography>
-              }
-            />
-            <CardContent sx={{ p: c(0.75, 0.75) }}>
-              <PickerField
-                label="数据集"
-                options={datasets.map((d) => ({
-                  value: String(d.id),
-                  label: d.table_name,
-                }))}
-                selected={datasourceId ? [datasourceId] : []}
-                onChange={(vals) => {
-                  onDatasourceChange(vals[0] || "");
-                }}
-                loading={loadingDatasets}
-                placeholder="选择数据集..."
-                singleSelect
-                hideGroups
-                hideHeader
-              />
-            </CardContent>
-          </Card>
-        )}
-        <Card
-          elevation={0}
+      {isPivot && !compact ? (
+        <Box
           sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
             flex: 1,
-            minWidth: { md: 180 },
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "divider",
-            overflow: "hidden",
+            minHeight: 0,
           }}
         >
-          <CardHeader
-            sx={{
-              px: c(0.75, 0.75),
-              py: c(0.25, 0.25),
-              bgcolor: "grey.50",
-              borderBottom: "1px solid",
-              borderColor: "divider",
-            }}
-            title={
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  fontSize: compact ? "0.6rem" : undefined,
-                }}
-              >
-                {isPivot ? "行维度" : "分组"}
-              </Typography>
-            }
+          {datasetCard}
+          <PivotLayoutBuilder
+            dimensionOptions={datasourceId ? dimensionOptions : []}
+            metricOptions={datasourceId ? metricsOptions : []}
+            rowDims={groupby}
+            colDims={groupbyColumns}
+            metrics={metrics}
+            loading={loadingColumns}
+            onRowDimsChange={onGroupbyChange}
+            onColDimsChange={onGroupbyColumnsChange}
+            onMetricsChange={onMetricsChange}
           />
-          {dimPicker(
-            isPivot ? "行维度" : "分组",
-            groupby,
-            onGroupbyChange,
-            "添加维度...",
-          )}
-        </Card>
-
-        {isPivot && (
+        </Box>
+      ) : (
+        <Box sx={{ display: "flex", gap: c(1, 0.75), flexWrap: "wrap" }}>
+          {!compact && datasetCard}
           <Card
             elevation={0}
             sx={{
@@ -215,70 +207,113 @@ export default function ChartEditorForm({
                     fontSize: compact ? "0.6rem" : undefined,
                   }}
                 >
-                  列维度
+                  {isPivot ? "行维度" : "分组"}
                 </Typography>
               }
             />
             {dimPicker(
-              "列维度",
-              groupbyColumns,
-              onGroupbyColumnsChange,
+              isPivot ? "行维度" : "分组",
+              groupby,
+              onGroupbyChange,
               "添加维度...",
             )}
           </Card>
-        )}
 
-        <Card
-          elevation={0}
-          sx={{
-            flex: 1,
-            minWidth: { md: 180 },
-            borderRadius: 2,
-            border: "1px solid",
-            borderColor: "divider",
-            overflow: "hidden",
-          }}
-        >
-          <CardHeader
-            sx={{
-              px: c(0.75, 0.75),
-              py: c(0.25, 0.25),
-              bgcolor: "grey.50",
-              borderBottom: "1px solid",
-              borderColor: "divider",
-            }}
-            title={
-              <Typography
-                variant="caption"
+          {isPivot && (
+            <Card
+              elevation={0}
+              sx={{
+                flex: 1,
+                minWidth: { md: 180 },
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: "divider",
+                overflow: "hidden",
+              }}
+            >
+              <CardHeader
                 sx={{
-                  fontWeight: 600,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.04em",
-                  fontSize: compact ? "0.6rem" : undefined,
+                  px: c(0.75, 0.75),
+                  py: c(0.25, 0.25),
+                  bgcolor: "grey.50",
+                  borderBottom: "1px solid",
+                  borderColor: "divider",
                 }}
-              >
-                指标
-              </Typography>
-            }
-          />
-          <CardContent sx={{ p: c(0.75, 0.75) }}>
-            {loadingColumns ? (
-              <CircularProgress size={16} />
-            ) : (
-              <PickerField
-                label="指标"
-                options={datasourceId ? metricsOptions : []}
-                selected={metrics}
-                onChange={onMetricsChange}
-                placeholder="添加指标..."
-                hideHeader
-                hideGroups
-                compact
+                title={
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      fontSize: compact ? "0.6rem" : undefined,
+                    }}
+                  >
+                    列维度
+                  </Typography>
+                }
               />
-            )}
-          </CardContent>
-        </Card>
-      </Box>
+              {dimPicker(
+                "列维度",
+                groupbyColumns,
+                onGroupbyColumnsChange,
+                "添加维度...",
+              )}
+            </Card>
+          )}
+
+          <Card
+            elevation={0}
+            sx={{
+              flex: 1,
+              minWidth: { md: 180 },
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+              overflow: "hidden",
+            }}
+          >
+            <CardHeader
+              sx={{
+                px: c(0.75, 0.75),
+                py: c(0.25, 0.25),
+                bgcolor: "grey.50",
+                borderBottom: "1px solid",
+                borderColor: "divider",
+              }}
+              title={
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontSize: compact ? "0.6rem" : undefined,
+                  }}
+                >
+                  指标
+                </Typography>
+              }
+            />
+            <CardContent sx={{ p: c(0.75, 0.75) }}>
+              {loadingColumns ? (
+                <CircularProgress size={16} />
+              ) : (
+                <PickerField
+                  label="指标"
+                  options={datasourceId ? metricsOptions : []}
+                  selected={metrics}
+                  onChange={onMetricsChange}
+                  placeholder="添加指标..."
+                  hideHeader
+                  hideGroups
+                  compact
+                />
+              )}
+            </CardContent>
+          </Card>
+        </Box>
+      )}
     </Box>
   );
 }

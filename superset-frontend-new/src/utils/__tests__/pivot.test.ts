@@ -168,3 +168,89 @@ test("metricsLayout ROWS strips metric display names in row headers", () => {
   expect(grid.rowHeaders).toEqual([["US", "US"], ["消耗", "count"]]);
   expect(grid.rowLabels).toEqual(["US · 消耗", "US · count"]);
 });
+
+test("wide data path aggregates day-granularity rows client-side", () => {
+  const grid = buildPivotGrid({
+    wideData: {
+      rows: [
+        { 国家: "US", 平台: "iOS", "SUM(消耗)": 10, 消耗: 10, 新增: 2, "cpa__num": 10, "cpa__den": 2 },
+        { 国家: "US", 平台: "iOS", "SUM(消耗)": 5, 消耗: 5, 新增: 1, "cpa__num": 5, "cpa__den": 1 },
+        { 国家: "US", 平台: "Android", "SUM(消耗)": 7, 消耗: 7, 新增: 1, "cpa__num": 7, "cpa__den": 1 },
+        { 国家: "CN", 平台: "iOS", "SUM(消耗)": 20, 消耗: 20, 新增: 4, "cpa__num": 20, "cpa__den": 4 },
+      ],
+      components: {
+        "SUM(消耗)": { agg: "sum" },
+        cpa: { agg: "ratio", num: "cpa__num", den: "cpa__den" },
+      },
+    },
+    groupbyRows: ["国家"],
+    groupbyColumns: ["平台"],
+    metrics: ["SUM(消耗)", "cpa"],
+    aggregateFunction: "Sum",
+  });
+  expect(grid.rowLabels).toEqual(["US", "CN"]);
+  expect(grid.colHeaders).toEqual([
+    ["iOS", "iOS", "Android", "Android"],
+    ["消耗", "cpa", "消耗", "cpa"],
+  ]);
+  expect(grid.values).toEqual([
+    [15, 5, 7, 7],
+    [20, 5, null, null],
+  ]);
+});
+
+test("wide data path computes totals and subtotals from wide rows", () => {
+  const grid = buildPivotGrid({
+    wideData: {
+      rows: [
+        { 平台: "iOS", 主游戏: "游戏A", "SUM(消耗)": 10, 消耗: 10, 新增: 2, "cpa__num": 10, "cpa__den": 2 },
+        { 平台: "iOS", 主游戏: "游戏B", "SUM(消耗)": 20, 消耗: 20, 新增: 5, "cpa__num": 20, "cpa__den": 5 },
+        { 平台: "Android", 主游戏: "游戏A", "SUM(消耗)": 30, 消耗: 30, 新增: 3, "cpa__num": 30, "cpa__den": 3 },
+      ],
+      components: {
+        "SUM(消耗)": { agg: "sum" },
+        cpa: { agg: "ratio", num: "cpa__num", den: "cpa__den" },
+      },
+    },
+    groupbyRows: ["平台", "主游戏"],
+    groupbyColumns: [],
+    metrics: ["SUM(消耗)", "cpa"],
+    aggregateFunction: "Sum",
+  });
+  // totals: sums across all rows
+  expect(grid.totalRows).toEqual([
+    { "SUM(消耗)": 60, cpa: 6 },
+  ]);
+  // subtotal level 0: grouped by 平台
+  expect(grid.subtotalRows).toHaveLength(1);
+  expect(grid.subtotalRows![0]).toEqual([
+    { 平台: "iOS", "SUM(消耗)": 30, cpa: 4.285714285714286 },
+    { 平台: "Android", "SUM(消耗)": 30, cpa: 10 },
+  ]);
+});
+
+test("wide data path honours transposePivot and metricsLayout ROWS", () => {
+  const grid = buildPivotGrid({
+    wideData: {
+      rows: [
+        { 国家: "US", 平台: "iOS", "SUM(消耗)": 10, 消耗: 10, 新增: 2, "cpa__num": 10, "cpa__den": 2 },
+        { 国家: "CN", 平台: "iOS", "SUM(消耗)": 20, 消耗: 20, 新增: 4, "cpa__num": 20, "cpa__den": 4 },
+      ],
+      components: {
+        "SUM(消耗)": { agg: "sum" },
+        cpa: { agg: "ratio", num: "cpa__num", den: "cpa__den" },
+      },
+    },
+    groupbyRows: ["国家"],
+    groupbyColumns: ["平台"],
+    metrics: ["SUM(消耗)", "cpa"],
+    transposePivot: true,
+    metricsLayout: "ROWS",
+  });
+  expect(grid.rowLabels).toEqual(["iOS · 消耗", "iOS · cpa"]);
+  expect(grid.colLabels).toEqual(["US", "CN"]);
+  expect(grid.values).toEqual([
+    [10, 20],
+    [5, 5],
+  ]);
+});

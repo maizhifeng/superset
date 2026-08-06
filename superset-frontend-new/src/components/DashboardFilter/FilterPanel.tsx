@@ -17,6 +17,7 @@ import { isFederatedDataset } from "@/config/federatedDatasets";
 import type { FilterConfig, FilterState } from "./types";
 import {
   buildSiblingFilters,
+  buildTimeRangeFilters,
   lsLoad,
   lsSave,
   pendingFetches,
@@ -75,6 +76,7 @@ function FilterSelect({
     async (search: string) => {
       const { filter: f, allFilters: af, filterState: fs } = latestRef.current;
       const siblingFilters = buildSiblingFilters(f, af, fs);
+      const timeRangeFilters = buildTimeRangeFilters(f, af, fs);
 
       if (search) {
         setLoading(true);
@@ -84,6 +86,7 @@ function FilterSelect({
             page: 0,
             filters: [
               ...siblingFilters,
+              ...timeRangeFilters,
               { col: filter.column, op: "ct", val: search },
             ],
           };
@@ -141,7 +144,7 @@ function FilterSelect({
           const q: Record<string, unknown> = {
             page_size: 100,
             page: 0,
-            filters: siblingFilters,
+            filters: [...siblingFilters, ...timeRangeFilters],
           };
           const path = isFederatedDataset(filter.datasetId)
             ? `/bi/filter-values/${filter.datasetId}/${encodeURIComponent(filter.column)}/?q=${rison.encode(q)}`

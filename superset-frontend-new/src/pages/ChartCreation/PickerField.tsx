@@ -49,6 +49,8 @@ interface PickerFieldProps {
   hideGroups?: boolean;
   hideHeader?: boolean;
   compact?: boolean;
+  /** Extra-dense trigger row (used inside the pivot layout side panel). */
+  dense?: boolean;
 }
 
 function DragHandle(props: { isDragging?: boolean }) {
@@ -288,6 +290,7 @@ export default function PickerField({
   hideGroups: _hideGroups,
   hideHeader,
   compact,
+  dense,
 }: PickerFieldProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -381,13 +384,13 @@ export default function PickerField({
           alignItems: "center",
           flexWrap: "nowrap",
           gap: 0.75,
-          p: 1.5,
+          p: dense ? 0.75 : 1.5,
           borderRadius: 1.5,
           border: "1px solid",
           borderColor: anchorEl ? "primary.main" : "divider",
           bgcolor: "background.paper",
           cursor: loading ? "default" : "pointer",
-          minHeight: 48,
+          minHeight: dense ? 32 : 48,
           overflow: "auto",
           transition: "border-color 150ms ease, box-shadow 150ms ease",
           "&:hover": {
