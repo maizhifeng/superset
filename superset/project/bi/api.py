@@ -196,9 +196,12 @@ def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
     # metric orderbys here would break the per-side recall window for
     # metric-ordered Top-N queries.
     #
-    # Drop orderby entries that reference plain columns outside the grouped
-    # dimensions or the selected metrics: when the query groups rows,
-    # PostgreSQL rejects ORDER BY columns that do not appear in GROUP BY.
+    # Drop orderby entries that reference plain columns the generated SQL
+    # cannot order by: when the query groups rows, PostgreSQL rejects ORDER
+    # BY columns that do not appear in GROUP BY; when the query aggregates
+    # without GROUP BY (e.g. a pivot totals row) the same restriction
+    # applies because the SELECT is fully aggregated.  The global sort on
+    # the merged result still honours the dropped entries.
     grouped_dims = set(qdict.get("groupby") or [])
     metric_labels: set[str] = set()
     for metric in qdict.get("metrics") or []:
@@ -207,14 +210,26 @@ def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
         elif isinstance(metric, dict) and metric.get("label"):
             metric_labels.add(metric["label"])
     valid_orderby_cols = grouped_dims | metric_labels
+    has_grouped_dims = bool(grouped_dims)
+    has_metrics = bool(qdict.get("metrics"))
     qdict["orderby"] = [
         entry
         for entry in (qdict.get("orderby") or [])
         if entry
         and (
             isinstance(entry[0], dict)
-            or not grouped_dims
-            or entry[0] in valid_orderby_cols
+            or (
+                isinstance(entry[0], str)
+                and (
+                    (has_grouped_dims and entry[0] in valid_orderby_cols)
+                    or (not has_grouped_dims and not has_metrics)
+                    or (
+                        not has_grouped_dims
+                        and has_metrics
+                        and entry[0] in metric_labels
+                    )
+                )
+            )
         )
     ]
     return qdict

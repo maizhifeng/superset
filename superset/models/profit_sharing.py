@@ -77,7 +77,7 @@ class ProfitSharing(Model):
                             papp_id=game.papp_id,
                             channel_id=channel.channel_id,
                             papp_name=game.papp_name,
-                            channel_name=game.channel_name,
+                            channel_name=channel.channel_name,
                             渠道商分成=channel_data.默认分成 if channel_data else None,
                             商户分成="1",
                             ios虚拟支付分成=channel_data.ios虚拟支付分成
