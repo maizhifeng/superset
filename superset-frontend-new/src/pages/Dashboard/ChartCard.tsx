@@ -14,6 +14,8 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 
 import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -26,69 +28,12 @@ import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import { keyframes } from "@emotion/react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { buildEChartsOption, getECharts } from "@/utils/echarts";
-
-const barBounce = keyframes`
-  0%, 100% { transform: scaleY(0.25); }
-  50% { transform: scaleY(1); }
-`;
+import ChartLoadingSkeleton from "@/components/ChartLoadingSkeleton";
 
 const spin = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 `;
-
-const loadingBarColors = [
-  "primary.main",
-  "warning.main",
-  "info.main",
-  "success.main",
-  "error.main",
-];
-
-function ChartLoadingSkeleton() {
-  return (
-    <Box
-      onClick={(e) => e.stopPropagation()}
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 0.5,
-        flex: 1,
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "center",
-          gap: 0.75,
-          height: 80,
-        }}
-      >
-        {loadingBarColors.map((color, i) => (
-          <Box
-            key={i}
-            sx={{
-              width: 20,
-              height: `${[60, 85, 40, 70, 50][i]}%`,
-              borderRadius: 0.75,
-              bgcolor: color,
-              opacity: 0.4,
-              transformOrigin: "bottom",
-              animation: `${barBounce} ${0.6 + i * 0.15}s ease-in-out infinite`,
-              animationDelay: `${i * 0.1}s`,
-            }}
-          />
-        ))}
-      </Box>
-      <Typography variant="caption" color="text.disabled">
-        加载中...
-      </Typography>
-    </Box>
-  );
-}
 import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import { useEChartsType } from "@/hooks/useEChartsType";
@@ -104,6 +49,7 @@ import { useFullscreenStore } from "@/store/fullscreenStore";
 import type { ChartDataPayload, ChartDataRow, ChartData } from "@/types/api";
 import PivotTable, { type PivotTableProps } from "@/components/PivotTable";
 import type { WideMetricComponent } from "@/utils/pivot";
+import { displayMetricName } from "@/utils/pivot";
 import { DEFAULT_PIVOT_CONFIG } from "@/pages/ChartCreation/useChartEditor";
 
 export interface CompareDimension {
@@ -206,17 +152,30 @@ function ChartCard({
   useEffect(() => {
     localStorage.setItem(storageKey, String(pct95Threshold));
   }, [pct95Threshold, storageKey]);
+  const pct95MetricKey = `pct95_metric_${chartId}`;
+  const [pct95Metric, setPct95Metric] = useState<string>(() => {
+    const saved = localStorage.getItem(pct95MetricKey);
+    return typeof saved === "string" ? saved : "";
+  });
+  useEffect(() => {
+    localStorage.setItem(pct95MetricKey, pct95Metric);
+  }, [pct95Metric, pct95MetricKey]);
   // Refresh only when the user toggles p95 on, not on initial mount: the
   // initial chart/data fetch already covers the full distribution, and the
   // p95 split is computed client-side, so a mount-time refetch just doubles
-  // the backend query cost.
+  // the backend query cost.  Pivot wide data is always fetched in full
+  // (never server-paginated), so toggling 95% on/off needs no refetch at
+  // all.  Tables may hold only the current page while server-paginated, so
+  // they refetch the full distribution; the request deliberately omits
+  // ``force`` so repeated on/off cycling hits the backend cache (≤5 min TTL)
+  // instead of re-running the query every cycle.
   const prevPct95Ref = useRef(pct95Active);
   useEffect(() => {
-    if (pct95Active && !prevPct95Ref.current) {
+    if (pct95Active && !prevPct95Ref.current && vizType !== "pivot_table_v2") {
       onRefresh(chartId);
     }
     prevPct95Ref.current = pct95Active;
-  }, [pct95Active, chartId, onRefresh]);
+  }, [pct95Active, chartId, onRefresh, vizType]);
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -336,18 +295,45 @@ function ChartCard({
     };
   }, [data, metricFormatMap]);
 
-  const { sortMetricCol, dimCols } = useMemo(() => {
-    if (!data) return { sortMetricCol: "", dimCols: [] as string[] };
+  const { dimCols, metricCandidates, effectiveSortMetric } = useMemo(() => {
+    if (!data)
+      return {
+        dimCols: [] as string[],
+        metricCandidates: [] as string[],
+        effectiveSortMetric: "",
+      };
     const colnames = data.colnames;
     const coltypes = data.coltypes;
     if (!colnames || !coltypes)
-      return { sortMetricCol: "", dimCols: [] as string[] };
-    const smCol =
+      return {
+        dimCols: [] as string[],
+        metricCandidates: [] as string[],
+        effectiveSortMetric: "",
+      };
+    const defaultMetric =
       colnames.find((_, i) => i > 0 && coltypes[i] === 0) || colnames[1] || "";
-    const smIdx = colnames.indexOf(smCol);
-    const dCols = smIdx > 0 ? colnames.slice(0, smIdx) : [];
-    return { sortMetricCol: smCol, dimCols: dCols };
-  }, [data]);
+    const wideComponents = (
+      data as ChartDataPayload & {
+        metric_components?: Record<string, WideMetricComponent>;
+      }
+    )?.metric_components;
+    const candidates = [
+      ...colnames.filter(
+        (_, i) => coltypes[i] === 0 && !/__(?:num|den)$/.test(colnames[i]),
+      ),
+      ...Object.keys(wideComponents ?? {}).filter((k) => !colnames.includes(k)),
+    ];
+    const chosen =
+      pct95Metric && candidates.includes(pct95Metric)
+        ? pct95Metric
+        : defaultMetric;
+    const chosenIdx = colnames.indexOf(chosen);
+    return {
+      dimCols: chosenIdx > 0 ? colnames.slice(0, chosenIdx) : [],
+      metricCandidates: candidates,
+      effectiveSortMetric: chosen,
+    };
+  }, [data, pct95Metric]);
 
   const rows = useMemo(
     () => (Array.isArray(data?.data) ? data.data : []),
@@ -356,20 +342,21 @@ function ChartCard({
 
   const sorted = useMemo(
     () =>
-      pct95Active && sortMetricCol
+      pct95Active && effectiveSortMetric
         ? [...rows].sort(
-            (a, b) => Number(b[sortMetricCol]) - Number(a[sortMetricCol]),
+            (a, b) =>
+              Number(b[effectiveSortMetric]) - Number(a[effectiveSortMetric]),
           )
         : rows,
-    [rows, pct95Active, sortMetricCol],
+    [rows, pct95Active, effectiveSortMetric],
   );
 
   const splitIdx = useMemo(
     () =>
-      pct95Active && sortMetricCol
-        ? pctSplitIndex(sorted, sortMetricCol, pct95Threshold)
+      pct95Active && effectiveSortMetric
+        ? pctSplitIndex(sorted, effectiveSortMetric, pct95Threshold)
         : rows.length,
-    [sorted, pct95Active, sortMetricCol, pct95Threshold, rows.length],
+    [sorted, pct95Active, effectiveSortMetric, pct95Threshold, rows.length],
   );
 
   const processedData = useMemo(() => {
@@ -380,7 +367,7 @@ function ChartCard({
 
     if (
       pct95Active &&
-      sortMetricCol &&
+      effectiveSortMetric &&
       splitIdx < rows.length &&
       vizType !== "pivot_table_v2"
     ) {
@@ -409,7 +396,7 @@ function ChartCard({
     rows,
     sorted,
     pct95Active,
-    sortMetricCol,
+    effectiveSortMetric,
     splitIdx,
     totalRow,
     dimCols,
@@ -487,8 +474,26 @@ function ChartCard({
             >,
           }
         : undefined,
+      pct95:
+        pct95Active && effectiveSortMetric
+          ? {
+              enabled: true,
+              metric: effectiveSortMetric,
+              threshold: pct95Threshold,
+            }
+          : undefined,
     };
-  }, [vizType, meta, tableFormatCell, pivotTotalRows, pivotSubtotalRows, data]);
+  }, [
+    vizType,
+    meta,
+    tableFormatCell,
+    pivotTotalRows,
+    pivotSubtotalRows,
+    data,
+    pct95Active,
+    effectiveSortMetric,
+    pct95Threshold,
+  ]);
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);
@@ -614,14 +619,53 @@ function ChartCard({
             </IconButton>
           </Tooltip>
           {pct95Active && (
-            <Typography
-              variant="caption"
-              sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
-            >
-              {formatPercentage(Math.round(pct95Threshold * 100), 0)}
-            </Typography>
+            <>
+              <Typography
+                variant="caption"
+                sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
+              >
+                {formatPercentage(Math.round(pct95Threshold * 100), 0)}
+              </Typography>
+              {metricCandidates.length > 1 && (
+                <Select
+                  size="small"
+                  variant="standard"
+                  value={effectiveSortMetric}
+                  onChange={(e) => setPct95Metric(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  renderValue={(v) => displayMetricName(v)}
+                  sx={{
+                    maxWidth: isMobile ? 110 : 160,
+                    mr: 0.5,
+                    fontSize: "0.75rem",
+                    color: "primary.main",
+                    "& .MuiSelect-select": {
+                      py: 0.25,
+                      pr: 1.5,
+                    },
+                  }}
+                >
+                  {metricCandidates.map((m) => (
+                    <MenuItem
+                      key={m}
+                      value={m}
+                      sx={{
+                        maxWidth: 260,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "block",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      {displayMetricName(m)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              )}
+            </>
           )}
-          {vizType === "table" && (
+          {(vizType === "table" || vizType === "pivot_table_v2") && (
             <Tooltip title={isCompareActive ? "停止对比" : "对比"}>
               <IconButton
                 size="small"
@@ -788,7 +832,16 @@ function ChartCard({
               />
             )
           ) : vizType === "pivot_table_v2" && data?.data && pivotProps ? (
-            <PivotTable data={data.data} {...pivotProps} />
+            isCompareActive ? (
+              <MirrorTable
+                dimensions={compareConfig.dimensions}
+                data={mirrorData}
+                onClose={() => onToggleCompare(chartId)}
+                formatCell={tableFormatCell}
+              />
+            ) : (
+              <PivotTable data={data.data} {...pivotProps} />
+            )
           ) : option && chartLibReady ? (
             <ReactEChartsCore
               ref={chartRef}

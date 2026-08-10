@@ -27,6 +27,17 @@ export interface WideMetricComponent {
   den?: string;
 }
 
+/**
+ * 95% mode options for pivot tables: keep the aggregated row groups that
+ * account for ``threshold`` of the chosen metric's total (defaults to the
+ * first metric), dropping the trailing zero/low rows.
+ */
+export interface PivotPct95 {
+  enabled: boolean;
+  metric: string;
+  threshold: number;
+}
+
 export interface WideData {
   rows: ChartDataRow[];
   components: Record<string, WideMetricComponent>;
@@ -72,6 +83,12 @@ export interface PivotTableProps {
    * dataset-defined metrics are recomputed per their definition.
    */
   subtotalRows?: ChartDataRow[][];
+  /**
+   * 95% mode: after client-side re-aggregation, keep only the row groups
+   * whose cumulative metric value covers ``threshold`` of the total.  Applied
+   * on the aggregated row combos so day-granularity wide rows stay intact.
+   */
+  pct95?: PivotPct95;
 }
 
 export interface PivotGrid {
@@ -234,6 +251,69 @@ function wideCellValue(
   return aggregateValues(acc.values, aggFn);
 }
 
+/**
+ * Total value of a row combo for the 95% metric across all column combos.
+ * Ratio metrics re-aggregate as ``SUM(num) / SUM(den)`` over the column
+ * combos instead of summing per-cell ratios.
+ */
+function wideRowComboValue(
+  acc: WideAccMap,
+  combo: string[],
+  metric: string,
+  meta: WideMetricComponent | undefined,
+  aggFn: string,
+): number {
+  const byCol = acc.get(combo.join("\u0000"));
+  if (!byCol) return 0;
+  let total = 0;
+  let num = 0;
+  let den = 0;
+  let found = false;
+  for (const byMetric of byCol.values()) {
+    const a = byMetric.get(metric);
+    if (!a) continue;
+    found = true;
+    if (meta?.agg === "ratio") {
+      num += a.num;
+      den += a.den;
+    } else {
+      const v = wideCellValue(meta, a, aggFn);
+      if (v !== null) total += v;
+    }
+  }
+  if (!found) return 0;
+  if (meta?.agg === "ratio") return den !== 0 ? num / den : 0;
+  return total;
+}
+
+/**
+ * Keys (``\u0000``-joined tuples) of the row combos to keep: the combos
+ * sorted by the metric descending until the cumulative value reaches
+ * ``threshold`` of the total.  Zero-valued trailing combos are excluded;
+ * when every combo is zero (or the metric is missing) everything is kept.
+ */
+function pct95KeptKeys(
+  combos: string[][],
+  value: (combo: string[]) => number,
+  threshold: number,
+): Set<string> {
+  const all = new Set(combos.map((c) => c.join("\u0000")));
+  if (combos.length <= 1 || threshold <= 0 || threshold >= 1) return all;
+  const scored = combos.map((c) => ({ key: c.join("\u0000"), v: value(c) }));
+  const total = scored.reduce((s, e) => s + e.v, 0);
+  if (total <= 0) return all;
+  scored.sort((a, b) => b.v - a.v);
+  const limit = total * threshold;
+  let cum = 0;
+  const kept = new Set<string>();
+  for (const e of scored) {
+    cum += e.v;
+    kept.add(e.key);
+    if (cum >= limit) break;
+  }
+  return kept;
+}
+
 function buildGridOutput(
   colDims: string[],
   colCombos: string[][],
@@ -309,6 +389,7 @@ function buildWidePivotGrid(props: PivotTableProps): PivotGrid {
     transposePivot = false,
     metricsLayout = "COLUMNS",
     aggregateFunction = "Sum",
+    pct95,
   } = props;
   const rows = wideData?.rows ?? [];
   const components = wideData?.components ?? {};
@@ -327,7 +408,22 @@ function buildWidePivotGrid(props: PivotTableProps): PivotGrid {
   );
   const acc = wideAggregate(rows, rowDims, colDims, metrics, components);
 
-  const rowCombos = sortTuples(distinctTuples(rows, rowDims), rowDims);
+  let rowCombos = sortTuples(distinctTuples(rows, rowDims), rowDims);
+  if (pct95?.enabled && pct95.metric) {
+    const kept = pct95KeptKeys(
+      rowCombos,
+      (combo) =>
+        wideRowComboValue(
+          acc,
+          combo,
+          pct95.metric,
+          components[pct95.metric],
+          aggFn,
+        ),
+      pct95.threshold,
+    );
+    rowCombos = rowCombos.filter((c) => kept.has(c.join("\u0000")));
+  }
   const colCombos = sortTuples(distinctTuples(rows, colDims), colDims);
 
   const effectiveColCombos: ComboEntry[] = metricOnRows
@@ -469,6 +565,7 @@ export function buildPivotGrid(props: PivotTableProps): PivotGrid {
     metrics = [],
     transposePivot = false,
     metricsLayout = "COLUMNS",
+    pct95,
   } = props;
 
   let rowDims = [...groupbyRows];
@@ -537,24 +634,8 @@ export function buildPivotGrid(props: PivotTableProps): PivotGrid {
     });
   };
 
-  const rowCombos = sortTuplesLegacy(distinctTuplesLegacy(rowDims), rowDims);
+  let rowCombos = sortTuplesLegacy(distinctTuplesLegacy(rowDims), rowDims);
   const colCombos = sortTuplesLegacy(distinctTuplesLegacy(colDims), colDims);
-
-  const effectiveColCombos: ComboEntry[] = metricOnRows
-    ? colCombos.map((combo) => ({ combo, metric: "" }))
-    : colCombos.flatMap((combo) =>
-        metrics.map((metric) => ({ combo, metric })),
-      );
-
-  const effectiveRowCombos: ComboEntry[] = metricOnRows
-    ? rowCombos.flatMap((combo) => metrics.map((metric) => ({ combo, metric })))
-    : rowCombos.map((combo) => ({ combo, metric: "" }));
-
-  const truncated =
-    effectiveColCombos.length > MAX_PIVOT_COLS ||
-    effectiveRowCombos.length > MAX_PIVOT_ROWS;
-  const colCombosCapped = effectiveColCombos.slice(0, MAX_PIVOT_COLS);
-  const rowCombosCapped = effectiveRowCombos.slice(0, MAX_PIVOT_ROWS);
 
   // Index numeric rows by (row-combo, col-combo) once instead of filtering
   // the full dataset for every grid cell; cell lookups are then O(1).
@@ -574,6 +655,42 @@ export function buildPivotGrid(props: PivotTableProps): PivotGrid {
     if (bucket) bucket.push(entry);
     else numericByCombo.set(key, [entry]);
   }
+
+  if (pct95?.enabled && pct95.metric) {
+    const kept = pct95KeptKeys(
+      rowCombos,
+      (combo) => {
+        const rowKey = combo.join("\u0000");
+        let total = 0;
+        for (const [key, bucket] of numericByCombo) {
+          if (!key.startsWith(`${rowKey}\u0000`)) continue;
+          for (const e of bucket) {
+            const v = e.numeric[pct95.metric];
+            if (Number.isFinite(v)) total += v;
+          }
+        }
+        return total;
+      },
+      pct95.threshold,
+    );
+    rowCombos = rowCombos.filter((c) => kept.has(c.join("\u0000")));
+  }
+
+  const effectiveColCombos: ComboEntry[] = metricOnRows
+    ? colCombos.map((combo) => ({ combo, metric: "" }))
+    : colCombos.flatMap((combo) =>
+        metrics.map((metric) => ({ combo, metric })),
+      );
+
+  const effectiveRowCombos: ComboEntry[] = metricOnRows
+    ? rowCombos.flatMap((combo) => metrics.map((metric) => ({ combo, metric })))
+    : rowCombos.map((combo) => ({ combo, metric: "" }));
+
+  const truncated =
+    effectiveColCombos.length > MAX_PIVOT_COLS ||
+    effectiveRowCombos.length > MAX_PIVOT_ROWS;
+  const colCombosCapped = effectiveColCombos.slice(0, MAX_PIVOT_COLS);
+  const rowCombosCapped = effectiveRowCombos.slice(0, MAX_PIVOT_ROWS);
 
   const aggregateByFn = (fn: string): (number | null)[][] =>
     rowCombosCapped.map((r) =>

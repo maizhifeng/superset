@@ -47,8 +47,13 @@ interface GameOption {
   上线时间: string;
 }
 
-interface SelectedGame extends GameOption {
-  dateRange: { start: string; end: string };
+type SelectedGame = GameOption;
+
+/** 游戏最早上线时间(papp_id → 上线时间),未选渠道时兜底 */
+interface LaunchByChannel {
+  global: Record<string, string>;
+  /** 各渠道上线时间:papp_id → (渠道名 → 上线时间) */
+  perChannel: Record<string, Record<string, string>>;
 }
 
 const PERIODS = [
@@ -67,7 +72,8 @@ function fmtValue(
   return formatMetricValue(key, value, formatMap);
 }
 
-const extractName = (val: string) => val.replace(/\s*\([^)]*\)$/, "").trim();
+const extractName = (val: string) =>
+  val.replace(/\s*[([][^)\]]*[)\]]$/, "").trim();
 
 interface CompareModalProps {
   open: boolean;
@@ -98,6 +104,10 @@ export default function CompareModal({
 }: CompareModalProps) {
   const [games, setGames] = useState<GameOption[]>([]);
   const [selectedGames, setSelectedGames] = useState<SelectedGame[]>([]);
+  const [launchByChannel, setLaunchByChannel] = useState<LaunchByChannel>({
+    global: {},
+    perChannel: {},
+  });
   const [primaryPappId, setPrimaryPappId] = useState<string | null>(null);
   const [periodDays, setPeriodDays] = useState(30);
   const [timeGrain, setTimeGrain] = useState("P1D");
@@ -271,26 +281,35 @@ export default function CompareModal({
       )
       .then((res) => res.data?.result ?? []);
     const profitSharingPromise = api
-      .get<{ result: { papp_id: number; 上线时间: string }[] }>(
-        "/project/profit-sharing",
-      )
+      .get<{
+        result: { papp_id: number; channel_name: string; 上线时间: string }[];
+      }>("/project/profit-sharing")
       .then((res) => res.data?.result ?? []);
 
     Promise.all([gamesPromise, profitSharingPromise])
       .then(([games, profitShares]) => {
         if (cancelled) return;
-        const launchTimeByPapp: Record<number, string> = {};
+        // Different channels launch on different dates, so keep both the
+        // earliest launch per game (fallback) and per-channel launch times.
+        const globalLaunch: Record<string, string> = {};
+        const perChannel: Record<string, Record<string, string>> = {};
         for (const ps of profitShares) {
-          if (ps.上线时间) {
-            launchTimeByPapp[ps.papp_id] = ps.上线时间;
+          if (!ps.上线时间) continue;
+          const pid = String(ps.papp_id);
+          if (!globalLaunch[pid] || ps.上线时间 < globalLaunch[pid]) {
+            globalLaunch[pid] = ps.上线时间;
+          }
+          if (ps.channel_name) {
+            (perChannel[pid] ??= {})[ps.channel_name] = ps.上线时间;
           }
         }
+        setLaunchByChannel({ global: globalLaunch, perChannel });
         const list = games
-          .filter((g) => launchTimeByPapp[g.papp_id])
+          .filter((g) => globalLaunch[g.papp_id])
           .map((g) => ({
             papp_id: String(g.papp_id),
             papp_name: g.papp_name ?? "",
-            上线时间: launchTimeByPapp[g.papp_id],
+            上线时间: globalLaunch[g.papp_id],
           }));
         setGames(list);
       })
@@ -318,22 +337,25 @@ export default function CompareModal({
     setSelectedGames((prev) => prev.filter((g) => g.papp_id !== pappId));
   }, []);
 
-  useEffect(() => {
-    setSelectedGames((prev) =>
-      prev.map((g) => {
-        if (!g.上线时间) return g;
-        const start = dayjs(g.上线时间);
-        if (!start.isValid()) return g;
-        return {
-          ...g,
-          dateRange: {
-            start: start.format("YYYY/MM/DD"),
-            end: start.add(periodDays, "day").format("YYYY/MM/DD"),
-          },
-        };
-      }),
-    );
-  }, [periodDays]);
+  // Resolve the launch-date window for a game, preferring the exact channel's
+  // launch date (different channels launch on different dates) and falling
+  // back to the game's earliest launch date.
+  const resolveDateRange = useCallback(
+    (game: SelectedGame, cchName?: string) => {
+      const launch =
+        (cchName && launchByChannel.perChannel[game.papp_id]?.[cchName]) ||
+        launchByChannel.global[game.papp_id] ||
+        game.上线时间;
+      if (!launch) return undefined;
+      const start = dayjs(launch);
+      if (!start.isValid()) return undefined;
+      return {
+        start: start.format("YYYY/MM/DD"),
+        end: start.add(periodDays, "day").format("YYYY/MM/DD"),
+      };
+    },
+    [launchByChannel, periodDays],
+  );
 
   const handleQuery = useCallback(async () => {
     if (selectedGames.length === 0 || !chartFormData || !chartDsId) return;
@@ -354,14 +376,25 @@ export default function CompareModal({
       const timeGrainSql = timeGrain === "P1D" ? undefined : timeGrain;
       const BATCH = 3;
 
-      // Build detail queries (one per game, full dimensions)
+      // Build detail queries, one per (game × channel) combo so each query
+      // can use that channel's own launch-date window.
+      const cchComboValues =
+        selectedCchNames.length > 0 ? selectedCchNames : [undefined];
+      const combos = selectedGames.flatMap((g) =>
+        cchComboValues.map((cchVal) => ({
+          game: g,
+          cchVal,
+          cchName: cchVal ? extractName(cchVal) : undefined,
+        })),
+      );
       const detailRows: ChartDataRow[] = [];
       let colNames: string[] = [];
 
-      for (let i = 0; i < selectedGames.length; i += BATCH) {
-        const batch = selectedGames.slice(i, i + BATCH);
+      for (let i = 0; i < combos.length; i += BATCH) {
+        const batch = combos.slice(i, i + BATCH);
         const batchResults = await Promise.all(
-          batch.map(async (game) => {
+          batch.map(async ({ game, cchVal, cchName }) => {
+            const range = resolveDateRange(game, cchName);
             const q: QueryObject = {
               result_type: "full",
               metrics: extractQueryFields(chartFormData, chartVizType).metrics,
@@ -371,10 +404,10 @@ export default function CompareModal({
                 {
                   col: COL.papp_id,
                   op: "IN",
-                  val: [`${game.papp_name} (${game.papp_id})`],
+                  val: [`${game.papp_name} [${game.papp_id}]`],
                 },
-                ...(selectedCchNames.length > 0
-                  ? [{ col: COL.cch_name_id, op: "IN", val: selectedCchNames }]
+                ...(cchVal
+                  ? [{ col: COL.cch_name_id, op: "IN", val: [cchVal] }]
                   : []),
                 ...(selectedChannels.length > 0
                   ? [{ col: COL.channel_name, op: "IN", val: selectedChannels }]
@@ -387,12 +420,12 @@ export default function CompareModal({
               (q.filters as SimpleFilter[]).push({
                 col: timeCol,
                 op: ">=",
-                val: game.dateRange.start,
+                val: range?.start ?? "",
               });
               (q.filters as SimpleFilter[]).push({
                 col: timeCol,
                 op: "<=",
-                val: game.dateRange.end,
+                val: range?.end ?? "",
               });
             }
             if (timeGrainSql && timeCol) {
@@ -448,20 +481,32 @@ export default function CompareModal({
           chartFormData,
           chartVizType,
         ).metrics;
+        // "Remaining" section: when a channel is selected the secondary query
+        // still scopes to that channel (its remaining media), so use the
+        // channel's own launch date; otherwise fall back to the game's.
+        const intraCchName =
+          selectedCchNames.length === 1
+            ? extractName(selectedCchNames[0])
+            : undefined;
         const baseFilters: SimpleFilter[] = [
           {
             col: COL.papp_id,
             op: "IN",
-            val: [`${game.papp_name} (${game.papp_id})`],
+            val: [`${game.papp_name} [${game.papp_id}]`],
           },
         ];
         if (timeCol) {
+          const range = resolveDateRange(game, intraCchName);
           baseFilters.push({
             col: timeCol,
             op: ">=",
-            val: game.dateRange.start,
+            val: range?.start ?? "",
           });
-          baseFilters.push({ col: timeCol, op: "<=", val: game.dateRange.end });
+          baseFilters.push({
+            col: timeCol,
+            op: "<=",
+            val: range?.end ?? "",
+          });
         }
 
         if (selectedChannels.length > 0) {
@@ -606,7 +651,7 @@ export default function CompareModal({
               {
                 col: COL.papp_id,
                 op: "IN",
-                val: [`${game.papp_name} (${game.papp_id})`],
+                val: [`${game.papp_name} [${game.papp_id}]`],
               },
             ];
             if (selectedChannels.length > 0) {
@@ -629,15 +674,16 @@ export default function CompareModal({
               });
             }
             if (timeCol) {
+              const range = resolveDateRange(game, intraCchName);
               aggFilters.push({
                 col: timeCol,
                 op: ">=",
-                val: game.dateRange.start,
+                val: range?.start ?? "",
               });
               aggFilters.push({
                 col: timeCol,
                 op: "<=",
-                val: game.dateRange.end,
+                val: range?.end ?? "",
               });
             }
             const aggRes = await api.post("/chart/data", {
@@ -749,38 +795,38 @@ export default function CompareModal({
         }
       }
 
-      // Fetch aggregate per game — bare query, no form_data to avoid granularity leak
+      // Fetch aggregate per (game × channel) combo — bare query, no form_data
+      // to avoid granularity leak
       const aggRows: ChartDataRow[] = [];
-      for (let i = 0; i < selectedGames.length; i += BATCH) {
-        const batch = selectedGames.slice(i, i + BATCH);
+      for (let i = 0; i < combos.length; i += BATCH) {
+        const batch = combos.slice(i, i + BATCH);
         const batchAggs = await Promise.all(
-          batch.map(async (game) => {
+          batch.map(async ({ game, cchVal, cchName }) => {
             const filters: SimpleFilter[] = [
               {
                 col: COL.papp_id,
                 op: "IN",
-                val: [`${game.papp_name} (${game.papp_id})`],
+                val: [`${game.papp_name} [${game.papp_id}]`],
               },
+              ...(cchVal
+                ? [{ col: COL.cch_name_id, op: "IN", val: [cchVal] }]
+                : []),
+              ...(selectedChannels.length > 0
+                ? [{ col: COL.channel_name, op: "IN", val: selectedChannels }]
+                : []),
             ];
-            if (selectedCchNames.length > 0)
-              filters.push({
-                col: COL.cch_name_id,
-                op: "IN",
-                val: selectedCchNames,
-              });
-            if (selectedChannels.length > 0)
-              filters.push({
-                col: COL.channel_name,
-                op: "IN",
-                val: selectedChannels,
-              });
             if (timeCol) {
+              const range = resolveDateRange(game, cchName);
               filters.push({
                 col: timeCol,
                 op: ">=",
-                val: game.dateRange.start,
+                val: range?.start ?? "",
               });
-              filters.push({ col: timeCol, op: "<=", val: game.dateRange.end });
+              filters.push({
+                col: timeCol,
+                op: "<=",
+                val: range?.end ?? "",
+              });
             }
             const payload = {
               datasource: { id: chartDsId, type: chartDsType },
@@ -867,23 +913,38 @@ export default function CompareModal({
       ).metrics;
       const timeFilters: SimpleFilter[] =
         timeCol && selectedGames[0]
-          ? [
-              { col: timeCol, op: ">=", val: selectedGames[0].dateRange.start },
-              { col: timeCol, op: "<=", val: selectedGames[0].dateRange.end },
-            ]
+          ? (() => {
+              const range = resolveDateRange(selectedGames[0]);
+              return range
+                ? [
+                    { col: timeCol, op: ">=", val: range.start },
+                    { col: timeCol, op: "<=", val: range.end },
+                  ]
+                : [];
+            })()
           : [];
       const gameFilter: SimpleFilter | null =
         selectedGames.length > 0
           ? {
               col: COL.papp_id,
               op: "IN",
-              val: selectedGames.map((g) => `${g.papp_name} (${g.papp_id})`),
+              val: selectedGames.map((g) => `${g.papp_name} [${g.papp_id}]`),
             }
           : null;
       // Build per-section aggregate queries
       if (selectedCchNames.length > 1) {
         for (const cch of selectedCchNames) {
-          const filters: SimpleFilter[] = timeFilters;
+          // Each channel section uses that channel's own launch-date window
+          const cchRange =
+            timeCol && selectedGames[0]
+              ? resolveDateRange(selectedGames[0], extractName(cch))
+              : undefined;
+          const filters: SimpleFilter[] = cchRange
+            ? [
+                { col: timeCol, op: ">=", val: cchRange.start },
+                { col: timeCol, op: "<=", val: cchRange.end },
+              ]
+            : [];
           if (gameFilter) filters.push(gameFilter);
           filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
           if (selectedChannels.length > 0)
@@ -969,7 +1030,7 @@ export default function CompareModal({
           filters.push({
             col: COL.papp_id,
             op: "IN",
-            val: [`${g.papp_name} (${g.papp_id})`],
+            val: [`${g.papp_name} [${g.papp_id}]`],
           });
           if (selectedCchNames.length > 0)
             filters.push({
@@ -1046,6 +1107,7 @@ export default function CompareModal({
     selectedCchNames,
     selectedChannels,
     timeGrain,
+    resolveDateRange,
   ]);
 
   return (
@@ -1164,23 +1226,9 @@ export default function CompareModal({
               inputValue={inputValue}
               onInputChange={(_, v) => setInputValue(v)}
               options={gameOptions}
-              getOptionLabel={(o) => `${o.papp_name} (${o.papp_id})`}
+              getOptionLabel={(o) => `${o.papp_name} [${o.papp_id}]`}
               onChange={(_, value) => {
-                setSelectedGames(
-                  value.map((g: GameOption | SelectedGame) => {
-                    if ("dateRange" in g && g.dateRange) return g;
-                    const sg = g;
-                    const start = dayjs(sg.上线时间);
-                    if (!start.isValid()) return sg as unknown as SelectedGame;
-                    return {
-                      ...sg,
-                      dateRange: {
-                        start: start.format("YYYY/MM/DD"),
-                        end: start.add(periodDays, "day").format("YYYY/MM/DD"),
-                      },
-                    };
-                  }),
-                );
+                setSelectedGames(value);
                 const newIds = value.map((v: GameOption) => v.papp_id);
                 if (
                   newIds.length > 0 &&
@@ -1540,25 +1588,38 @@ export default function CompareModal({
               pb: 0.5,
             }}
           >
-            {selectedGames.map((g) => (
-              <Chip
-                key={g.papp_id}
-                icon={
-                  g.papp_id === primaryPappId ? (
-                    <Box component="span" sx={{ fontSize: 10, ml: 0.25 }}>
-                      ★
-                    </Box>
-                  ) : undefined
-                }
-                label={`${g.papp_name} (${g.dateRange.start} ~ ${g.dateRange.end})`}
-                onDelete={() => removeGame(g.papp_id)}
-                onClick={() => setPrimaryPappId(g.papp_id)}
-                size="small"
-                color={g.papp_id === primaryPappId ? "primary" : "default"}
-                variant={g.papp_id === primaryPappId ? "filled" : "outlined"}
-                sx={{ fontSize: "0.7rem", "& .MuiChip-label": { px: 0.75 } }}
-              />
-            ))}
+            {selectedGames.map((g) => {
+              // Show the per-channel launch window when a channel is picked
+              const labelCchName =
+                selectedCchNames.length === 1
+                  ? extractName(selectedCchNames[0])
+                  : undefined;
+              const range = resolveDateRange(g, labelCchName);
+              return (
+                <Chip
+                  key={g.papp_id}
+                  icon={
+                    g.papp_id === primaryPappId ? (
+                      <Box component="span" sx={{ fontSize: 10, ml: 0.25 }}>
+                        ★
+                      </Box>
+                    ) : undefined
+                  }
+                  label={`${g.papp_name} [${range?.start ?? ""} ~ ${range?.end ?? ""}]`}
+                  onDelete={() => removeGame(g.papp_id)}
+                  onClick={() => setPrimaryPappId(g.papp_id)}
+                  size="small"
+                  color={g.papp_id === primaryPappId ? "primary" : "default"}
+                  sx={{
+                    maxWidth: 320,
+                    "& .MuiChip-label": {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    },
+                  }}
+                />
+              );
+            })}
           </Box>
         )}
 

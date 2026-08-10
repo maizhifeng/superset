@@ -615,6 +615,7 @@ export function useChartEditor({
           ? buildQueryObject(
               {
                 ...queryFormData,
+                orderby: [],
                 groupby: [],
                 groupbyRows: [],
                 groupbyColumns: [],
@@ -955,6 +956,7 @@ export function useChartEditor({
       ? buildQueryObject(
           {
             ...queryFormData,
+            orderby: [],
             groupby: [],
             groupbyRows: [],
             groupbyColumns: [],

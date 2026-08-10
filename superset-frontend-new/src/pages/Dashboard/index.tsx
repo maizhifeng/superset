@@ -115,7 +115,7 @@ export default function Dashboard() {
           flex: 1,
           minHeight: 0,
           minWidth: 0,
-          overflow: "hidden",
+          overflow: "auto",
           px: { xs: spacing.xs, md: spacing.md },
           pt: { xs: spacing.sm, md: spacing.md },
         }}
