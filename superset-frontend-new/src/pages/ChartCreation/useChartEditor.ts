@@ -16,6 +16,7 @@ import type {
 } from "@/types/api";
 import type { AdhocMetric, QueryOrderBy } from "@/utils/query/types";
 import { formatNumber } from "@/utils/formatNumber";
+import { getChartDataUrl } from "@/api/chartData";
 import { isFederatedDataset } from "@/config/federatedDatasets";
 
 export interface PivotConfig {
@@ -670,9 +671,7 @@ export function useChartEditor({
             }));
           }
         }
-        const chartUrl = isFederatedDataset(Number(previewParams.datasource_id))
-          ? "/bi/chart/data"
-          : "/chart/data";
+        const chartUrl = getChartDataUrl(Number(previewParams.datasource_id));
         const queries = [query];
         if (totalsQuery) queries.push(totalsQuery);
         queries.push(...subtotalQueries);
@@ -1005,9 +1004,7 @@ export function useChartEditor({
         }));
       }
     }
-    const chartUrl = isFederatedDataset(Number(datasourceId))
-      ? "/bi/chart/data"
-      : "/chart/data";
+    const chartUrl = getChartDataUrl(Number(datasourceId));
     const queries = [query];
     if (totalsQuery) queries.push(totalsQuery);
     queries.push(...subtotalQueries);

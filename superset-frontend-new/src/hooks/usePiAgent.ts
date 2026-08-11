@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { PiAgentClient } from "@/api/piAgentClient";
 import { useAgentStore } from "@/store/agentStore";
 import { useAuthStore } from "@/store/authStore";
-import type { AgentStep, StepType } from "@/components/AgentApp/types";
+import { getAgentModel, setAgentModel } from "@/config/aiConfig";
+import type { AgentStep, StepType } from "@/types/ai";
 
 interface UsePiAgentReturn {
   isConnected: boolean;
@@ -13,6 +14,7 @@ interface UsePiAgentReturn {
   currentModel: string;
   modelList: { id: string; name?: string }[];
   steps: AgentStep[];
+  turnSteps: AgentStep[];
   sendMessage: (text: string) => void;
   setModel: (model: string) => void;
   abort: () => void;
@@ -30,10 +32,12 @@ type ReasoningState = "streaming" | "done";
 const _reasoningState = new Map<string, ReasoningState>();
 const _runningSessions = new Set<string>();
 const _completedThinking = new Map<string, string>();
+const _turnStepCount = new Map<string, number>();
 let _listenerInstalled = false;
 let _modelList: { id: string; name?: string }[] = [];
+let _currentModel = "";
 const _modelListUpdaters = new Set<
-  (models: { id: string; name?: string }[]) => void
+  (models: { id: string; name?: string }[], current?: string) => void
 >();
 const _updaters = new Set<() => void>();
 
@@ -59,6 +63,10 @@ function installListener(userId: string) {
         _thinkingBuffers.set(sid, "");
         _reasoningState.set(sid, "streaming");
         _runningSessions.add(sid);
+        _turnStepCount.set(
+          sid,
+          store.sessions.find((s) => s.id === sid)?.steps.length ?? 0,
+        );
         break;
 
       case "message_update":
@@ -144,10 +152,16 @@ function installListener(userId: string) {
         const textContent = _textBuffers.get(sid) ?? "";
         const summary =
           (event as any).finalText || textContent || finishedThinking || "";
+        const stepStart = _turnStepCount.get(sid) ?? 0;
+        const turnSteps =
+          store.sessions.find((s) => s.id === sid)?.steps.slice(stepStart) ??
+          [];
+        _turnStepCount.delete(sid);
         store.addMessage(sid, "assistant", {
           type: "agent_done",
-          steps: store.getActiveSession()?.steps ?? [],
+          steps: turnSteps,
           summary,
+          thinking: finishedThinking || undefined,
         });
         store.setSessionSummary(sid, summary.slice(0, 200));
         _textBuffers.delete(sid);
@@ -165,10 +179,39 @@ function installListener(userId: string) {
         });
         break;
 
-      case "model_list":
-        _modelList = (event as any).models ?? [];
-        _modelListUpdaters.forEach((fn) => fn(_modelList));
+      case "model_list": {
+        const models = (event as any).models ?? [];
+        _modelList = models;
+        const current = (event as any).current;
+        if (typeof current === "string" && current.length > 0) {
+          _currentModel = current;
+          const saved = getAgentModel();
+          if (saved && saved !== current) {
+            // A saved preference is replayed only when the provider still
+            // serves it; an empty model list (provider not ready at boot)
+            // still replays because the server skips validation then.
+            const savedAvailable =
+              models.length === 0 ||
+              models.some((m: { id: string }) => m.id === saved);
+            if (savedAvailable) {
+              client.setModel(saved);
+            } else {
+              // The saved model was removed from the provider: fall back to
+              // the server current model and persist it so this dead
+              // preference is not replayed (and rejected) on every connect.
+              try {
+                setAgentModel(current);
+              } catch {
+                /* config store unavailable */
+              }
+            }
+          }
+        } else if (_modelList.length > 0 && !_currentModel) {
+          _currentModel = _modelList[0].id;
+        }
+        _modelListUpdaters.forEach((fn) => fn(_modelList, _currentModel));
         break;
+      }
     }
 
     notifyUpdaters();
@@ -181,10 +224,8 @@ export function usePiAgent(): UsePiAgentReturn {
   const [currentText, setCurrentText] = useState("");
   const [currentThinking, setCurrentThinking] = useState("");
   const savedModel =
-    typeof window !== "undefined"
-      ? localStorage.getItem("pi_agent_model") || "gemma-4-e2b-it"
-      : "gemma-4-e2b-it";
-  const [currentModel, setCurrentModel] = useState(savedModel);
+    typeof window !== "undefined" ? getAgentModel() : "gemma-4-e2b-it";
+  const [currentModel, setCurrentModel] = useState(_currentModel || savedModel);
   const [modelList, setModelList] =
     useState<{ id: string; name?: string }[]>(_modelList);
   const [steps, setSteps] = useState<AgentStep[]>([]);
@@ -203,8 +244,13 @@ export function usePiAgent(): UsePiAgentReturn {
   useEffect(() => {
     const cb = callbackRef.current;
     _updaters.add(cb);
-    const modelUpdater = (models: { id: string; name?: string }[]) =>
+    const modelUpdater = (
+      models: { id: string; name?: string }[],
+      current?: string,
+    ) => {
       setModelList(models);
+      if (current) setCurrentModel(current);
+    };
     _modelListUpdaters.add(modelUpdater);
     return () => {
       _updaters.delete(cb);
@@ -239,12 +285,18 @@ export function usePiAgent(): UsePiAgentReturn {
 
     const user = useAuthStore.getState().user;
     installListener(user?.username ?? "anonymous");
-    const restored =
-      typeof window !== "undefined"
-        ? localStorage.getItem("pi_agent_model")
-        : null;
-    if (restored && restored !== "gemma-4-e2b-it") {
-      _client?.setModel(restored);
+    // On a fresh page load the module model state is unknown: queue the
+    // saved preference BEFORE new_session so the first session is created
+    // with the right model (pending messages flush before new_session on
+    // connect). The model_list flow remains the fallback for server
+    // restarts (replay or fallback-to-current).
+    if (!_currentModel) {
+      try {
+        const saved = getAgentModel();
+        if (saved) _client?.setModel(saved);
+      } catch {
+        /* config store unavailable */
+      }
     }
     _client!.connect(sessionId);
   }, []);
@@ -276,18 +328,25 @@ export function usePiAgent(): UsePiAgentReturn {
 
   const setModel = useCallback((model: string) => {
     try {
-      localStorage.setItem("pi_agent_model", model);
+      setAgentModel(model);
     } catch {
-      /* storage unavailable */
+      /* config store unavailable */
     }
+    _currentModel = model;
     _client?.setModel(model);
     setCurrentModel(model);
   }, []);
 
   const sid = _sessionId;
+  const activeSessionId = useAgentStore((s) => s.activeSessionId);
   const completionThinking = sid ? _completedThinking.get(sid) : undefined;
   const displayThinking = currentThinking || completionThinking || "";
   const isThinkingDone = sid ? _reasoningState.get(sid) === "done" : false;
+  const turnStart = sid ? _turnStepCount.get(sid) : undefined;
+  const turnSteps =
+    turnStart !== undefined && sid === activeSessionId
+      ? steps.slice(turnStart)
+      : [];
 
   return {
     isConnected,
@@ -298,6 +357,7 @@ export function usePiAgent(): UsePiAgentReturn {
     currentModel,
     modelList,
     steps,
+    turnSteps,
     sendMessage,
     setModel,
     abort,

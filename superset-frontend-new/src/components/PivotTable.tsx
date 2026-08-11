@@ -73,22 +73,26 @@ function buildTree(
   ancestors: string[],
   rowHeaders: string[][],
 ): PivotGroup[] {
-  const result: PivotGroup[] = [];
-  let current: PivotGroup | null = null;
+  // Group by key with a map instead of relying on consecutive rows: the 95%
+  // mode sorts rows by the split metric, so same-key rows are no longer
+  // adjacent and must still collapse into a single group.
+  const byKey = new Map<string, PivotGroup>();
   for (const i of indices) {
     const key = rowHeaders[level]?.[i] ?? "";
-    if (!current || current.keyTuple[level] !== key) {
-      current = {
+    let group = byKey.get(key);
+    if (!group) {
+      group = {
         level,
         keyTuple: [...ancestors, key],
         collapseKey: `${level}:${[...ancestors, key].join("\u0000")}`,
         rows: [],
         children: [],
       };
-      result.push(current);
+      byKey.set(key, group);
     }
-    current.rows.push(i);
+    group.rows.push(i);
   }
+  const result = [...byKey.values()];
   if (level < rowHeaders.length - 1) {
     for (const group of result) {
       group.children = buildTree(
@@ -103,7 +107,7 @@ function buildTree(
 }
 
 export default function PivotTable(props: PivotTableProps) {
-  const { formatCell, dateColumns } = props;
+  const { formatCell, dateColumns, pct95, data } = props;
   const theme = useTheme();
   const boundaryColor = theme.palette.divider;
   const boundaryStyle = {
@@ -234,10 +238,24 @@ export default function PivotTable(props: PivotTableProps) {
     return buildTree(0, indices, [], rowHeaders);
   }, [rowLabels, rowHeaders, hasNestedRows]);
 
-  const groupSignature = useMemo(
-    () => JSON.stringify(groups.map((g) => g.keyTuple)),
-    [groups],
-  );
+  // The signature covers the full dimension-value tree of the raw data, not
+  // the pct95-filtered grid: switching the 95% split metric re-filters rows
+  // client-side, which must not reset the collapse state. The reset only
+  // fires when the underlying rows actually change (data refresh/filters).
+  const groupSignature = useMemo(() => {
+    const rows = Array.isArray(data) ? data : [];
+    const tuples: string[] = [];
+    for (const r of rows) {
+      let acc = "";
+      for (const dim of rowDimLabels) {
+        acc = acc
+          ? `${acc}\u0000${String(r[dim] ?? "")}`
+          : String(r[dim] ?? "");
+        tuples.push(acc);
+      }
+    }
+    return JSON.stringify([...new Set(tuples)].sort());
+  }, [data, rowDimLabels]);
   const [groupSignatureState, setGroupSignatureState] = useState("");
   if (hasNestedRows && groupSignatureState !== groupSignature) {
     setGroupSignatureState(groupSignature);
@@ -266,13 +284,14 @@ export default function PivotTable(props: PivotTableProps) {
     return byLevel;
   }, [groups]);
 
-  // Keys of every group at a deeper level than `level`: the quick toggle on a
-  // dimension label operates on all lower-level dimensions only.
+  // Keys of every group at `level` and deeper: the quick toggle on a
+  // dimension label operates on that dimension plus all lower ones, so
+  // expanding at a collapsed level also reveals its own groups.
   const belowKeysByLevel = useMemo(() => {
     const result: string[][] = [];
     for (let level = 0; level < groupsByLevel.length; level += 1) {
       const keys: string[] = [];
-      for (let l = level + 1; l < groupsByLevel.length; l += 1) {
+      for (let l = level; l < groupsByLevel.length; l += 1) {
         for (const g of groupsByLevel[l]) keys.push(g.collapseKey);
       }
       result.push(keys);
@@ -280,14 +299,11 @@ export default function PivotTable(props: PivotTableProps) {
     return result;
   }, [groupsByLevel]);
 
-  // Keys of the groups a dimension-label quick toggle operates on: at the top
-  // label this is every group (global collapse/expand); at deeper labels it is
-  // every group strictly below that dimension level, so operating at level L
-  // applies to all dimensions at level L+1 and below.
+  // Keys of the groups a dimension-label quick toggle operates on: the
+  // dimension itself and everything below it, so collapsing the "渠道商"
+  // label hides the channel groups, not just the games under them.
   const toggleKeysForLevel = (level: number): string[] =>
-    level === 0
-      ? groupsByLevel.flatMap((list) => list.map((g) => g.collapseKey))
-      : belowKeysByLevel[level] ?? [];
+    belowKeysByLevel[level] ?? [];
 
   const belowCollapsed = (level: number): boolean => {
     const keys = toggleKeysForLevel(level);
@@ -309,6 +325,7 @@ export default function PivotTable(props: PivotTableProps) {
   };
 
   const levelQuickToggle = (level: number): ReactNode => {
+    if (level >= groupsByLevel.length - 1) return null;
     if (toggleKeysForLevel(level).length === 0) return null;
     const expand = belowCollapsed(level);
     const label = expand ? "展开全部下级维度" : "折叠全部下级维度";
@@ -407,6 +424,50 @@ export default function PivotTable(props: PivotTableProps) {
     }
     return any ? sum : null;
   };
+
+  // In 95% mode the split metric is also the display sort: groups at every
+  // level are ordered by their aggregated value descending, so collapsed
+  // subtotal rows and expanded children both read largest-to-smallest.
+  const sortedGroups = useMemo(() => {
+    if (!pct95?.enabled) return groups;
+    const metricIdx = colLabels.indexOf(pct95.metric);
+    if (metricIdx < 0) return groups;
+    const groupValue = (g: PivotGroup): number => {
+      const lookup = subtotalLookupByLevel?.[g.level];
+      const combo = colCombos[metricIdx] ?? [];
+      const metric = colLabels[metricIdx];
+      const backend =
+        lookup && metric
+          ? lookup.get(
+              [...g.keyTuple, ...combo.map((v) => String(v ?? ""))].join(
+                "\u0000",
+              ),
+            )?.[metric]
+          : undefined;
+      if (typeof backend === "number") return backend;
+      let sum = 0;
+      let any = false;
+      for (const rIdx of g.rows) {
+        const v = values[rIdx]?.[metricIdx];
+        if (v !== null && v !== undefined) {
+          sum += v;
+          any = true;
+        }
+      }
+      return any ? sum : -Infinity;
+    };
+    const clone = (g: PivotGroup): PivotGroup => ({
+      ...g,
+      children: g.children.map(clone),
+    });
+    const sortRec = (list: PivotGroup[]): void => {
+      list.sort((a, b) => groupValue(b) - groupValue(a));
+      for (const g of list) sortRec(g.children);
+    };
+    const copy = groups.map(clone);
+    sortRec(copy);
+    return copy;
+  }, [groups, pct95, colLabels, colCombos, values, subtotalLookupByLevel]);
 
   if (values.length === 0 || colLabels.length === 0) {
     return (
@@ -577,10 +638,7 @@ export default function PivotTable(props: PivotTableProps) {
                     fontWeight: 700,
                   }}
                 >
-                  {formatDimLabel(
-                    rowDimLabels[level],
-                    group.keyTuple[level],
-                  )}
+                  {formatDimLabel(rowDimLabels[level], group.keyTuple[level])}
                 </TableCell>
               );
             }
@@ -787,7 +845,7 @@ export default function PivotTable(props: PivotTableProps) {
           })}
         </TableHead>
         <TableBody>
-          {groups.flatMap((group) => renderGroup(group))}
+          {sortedGroups.flatMap((group) => renderGroup(group))}
           {showColTotals && (
             <TableRow
               sx={{

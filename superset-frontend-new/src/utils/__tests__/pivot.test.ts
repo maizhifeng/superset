@@ -358,9 +358,10 @@ test("pct95 keeps top row combos by cumulative value, dropping zero rows", () =>
     metrics: ["SUM(新增)"],
     pct95: { enabled: true, metric: "SUM(新增)", threshold: 0.95 },
   });
-  // total = 1000, 95% = 950 → mini_game (500) + mobile (480) = 980, zeros dropped
-  expect(grid.rowLabels).toEqual(["mobile", "mini_game"]);
-  expect(grid.values).toEqual([[480], [500]]);
+  // total = 1000, 95% = 950 → mini_game (500) + mobile (480) = 980, zeros
+  // dropped, and retained rows are sorted descending by the split metric.
+  expect(grid.rowLabels).toEqual(["mini_game", "mobile"]);
+  expect(grid.values).toEqual([[500], [480]]);
 });
 
 test("pct95 keeps the last non-zero row when values are sparse", () => {
@@ -428,7 +429,8 @@ test("pct95 applies to the narrow data path too", () => {
     metrics: ["SUM(新增)"],
     pct95: { enabled: true, metric: "SUM(新增)", threshold: 0.95 },
   });
-  expect(grid.rowLabels).toEqual(["mobile", "mini_game"]);
+  // retained rows sorted descending by the split metric
+  expect(grid.rowLabels).toEqual(["mini_game", "mobile"]);
 });
 
 test("pct95 disabled leaves all rows intact", () => {

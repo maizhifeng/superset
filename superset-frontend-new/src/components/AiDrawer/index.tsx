@@ -6,110 +6,30 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import StorageIcon from "@mui/icons-material/Storage";
-import AiConfigDialog from "@/components/AiConfigDialog";
 import DocViewer from "@/components/DocViewer";
 import { getDocTitle } from "@/components/docCatalog";
 import SmartInput from "@/components/AiDrawer/SmartInput";
-import { queryDrillDown, fetchDrillDownData } from "@/api/drillDown";
-import type { DrillDownQuery, DrillDownData } from "@/api/drillDown";
 import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useDrawerStore } from "@/store/drawerState";
-import { useConversationStore } from "@/store/conversationStore";
-import { useAiStream } from "@/hooks/useAiStream";
 import { useNotificationStore } from "@/store/notificationStore";
+import { usePiAgent } from "@/hooks/usePiAgent";
+import { useAgentStore } from "@/store/agentStore";
 import AiDrawerHeader from "./AiDrawerHeader";
 import AssistantContent from "./AssistantContent";
 import InsightContent from "./InsightContent";
-import SuggestionList from "./SuggestionList";
 import { useAiDrawerResize } from "./useAiDrawerResize";
-import type { DrillDownSuggestion, KnowledgeCard } from "@/types/ai";
+import type { KnowledgeCard } from "@/types/ai";
 import type { AiDrawerProps } from "./types";
-import DAILY_REPORT_PROMPT from "@/config/dailyReportPrompt";
-import WEEKLY_REPORT_PROMPT from "@/config/weeklyReportPrompt";
-import DRILL_DOWN_PROMPT from "@/config/drillDownPrompt";
 
-let _suggestionIdCounter = 0;
-function nextSuggestionId(): string {
-  return `dd-${Date.now().toString(36)}-${++_suggestionIdCounter}`;
-}
+const DAILY_REPORT_PROMPT =
+  "请生成昨日数据日报。先调用 get_dataset_schema 获取当前数据集的可用维度列和指标，然后由你自行决定查询方式与报告结构，与昨日数据对比前日变化，输出数据有据、结论清晰的完整日报。日报按以下四个视角组织，每个视角输出近 7 天重点指标变化趋势（结合昨日 vs 前日对比，指出趋势与异常），可补充你认为有价值的分析角度：1. 平台维度（新增进入、消耗、充值流水）；2. 主游戏维度（新增进入、消耗、cpa、ltv_1~ltv_7）；3. 重点主游戏下渠道商维度（按消耗或新增进入排名靠前的主游戏，其下各渠道商）；4. 平台+媒体维度。指标与列名必须逐字使用 schema 中的确切名称，不得改写（如「新增进入」不能写成「新增用户」）。禁止 LaTeX。";
 
-const DRILL_DOWN_MARKER = "DRILL_DOWN_SUGGESTIONS";
+const WEEKLY_REPORT_PROMPT =
+  "请生成上周数据周报。先调用 get_dataset_schema 获取当前数据集的可用维度列和指标，然后由你自行决定分析维度、对比方式与报告结构（可选角度如项目、渠道商、媒体、平台、团队、趋势等，选择你认为最有洞察的），与上周数据对比前周变化，输出数据有据、结论清晰的完整周报。禁止 LaTeX。";
 
-function extractDrillDownSuggestions(text: string): DrillDownSuggestion[] {
-  const idx = text.lastIndexOf(DRILL_DOWN_MARKER);
-  if (idx === -1) return extractInlineJsonSuggestions(text);
-
-  const block = text.slice(idx + DRILL_DOWN_MARKER.length).trim();
-  const suggestions: DrillDownSuggestion[] = [];
-  const parts = block.split(/\n(?=[-*]\s)/);
-  for (const part of parts) {
-    const lines = part.split("\n");
-    const labelLine = lines[0].replace(/^[-*]\s+/, "").trim();
-    if (
-      labelLine.length <= 5 ||
-      labelLine.startsWith("```") ||
-      labelLine.startsWith("---")
-    )
-      continue;
-    const jsonMatch = part.match(/```json\s*([\s\S]*?)```/);
-    let query: DrillDownQuery | undefined;
-    if (jsonMatch) {
-      try {
-        query = JSON.parse(jsonMatch[1]);
-      } catch {
-        /* ignore */
-      }
-    }
-    suggestions.push({
-      id: nextSuggestionId(),
-      label: labelLine,
-      prompt: labelLine,
-      query,
-    });
-  }
-  return suggestions;
-}
-
-function extractInlineJsonSuggestions(text: string): DrillDownSuggestion[] {
-  const suggestions: DrillDownSuggestion[] = [];
-  const pattern =
-    /([^\n`]*?针对[^\n`]*?)\s*`{2,3}json\s*(\{(?:"columns"|"metrics")[\s\S]*?\})\s*`{2,3}/g;
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    const label = match[1].replace(/^[-*\s]+/, "").trim();
-    if (label.length <= 5) continue;
-    let query: DrillDownQuery | undefined;
-    try {
-      query = JSON.parse(match[2]);
-    } catch {
-      /* ignore */
-    }
-    suggestions.push({ id: nextSuggestionId(), label, prompt: label, query });
-  }
-  return suggestions;
-}
-
-function stripDrillDownSection(text: string): string {
-  let result = text;
-  const idx = result.lastIndexOf(DRILL_DOWN_MARKER);
-  if (idx !== -1) {
-    result = result.slice(0, idx).trim();
-  }
-  result = stripInlineJsonQueries(result);
-  return result;
-}
-
-function stripInlineJsonQueries(text: string): string {
-  const result = text.replace(
-    /`{2,3}json\s*(\{(?:[^{}]|\{[^{}]*\})*\})\s*`{2,3}/g,
-    (match, json) => {
-      if (json.includes('"columns"') || json.includes('"metrics"')) return "";
-      return match;
-    },
-  );
-  return result.replace(/\n{3,}/g, "\n\n").trim();
-}
+const DICT_PROMPT =
+  "请介绍当前广告投放数据集的数据字典：调用 get_dataset_schema 获取可用的维度列和指标，说明各字段的业务含义（日期、主游戏、渠道商、媒体、平台、团队、消耗、新增进入、CPA、ROI、LTV 等）。";
 
 const knowledgeCards: KnowledgeCard[] = [
   {
@@ -145,8 +65,7 @@ const knowledgeCards: KnowledgeCard[] = [
     title: "数据字典",
     description: "数据模型、字段定义与业务含义",
     icon: <StorageIcon sx={{ fontSize: 24 }} />,
-    prompt:
-      "请介绍 Starfly 的数据模型和数据字典，包括核心表结构、字段定义、关联关系及业务含义。",
+    prompt: DICT_PROMPT,
   },
 ];
 
@@ -158,45 +77,41 @@ export default function AiDrawer({
   chartMeta,
   filters,
 }: AiDrawerProps) {
-  const { stream, stop: streamStop, streaming } = useAiStream();
+  const pi = usePiAgent();
   const notify = useNotificationStore((s) => s.notify);
   const { activePreset } = useAiConfigStore();
   const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   const setDrawerWidth = useDrawerStore((s) => s.setDrawerWidth);
   const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
   const insight = useInsight();
-  const threads = useConversationStore((s) => s.threads);
-  const activeThreadId = useConversationStore((s) => s.activeThreadId);
-  const createThread = useConversationStore((s) => s.createThread);
-  const addMessage = useConversationStore((s) => s.addMessage);
-  const activeThread = useConversationStore((s) => s.getActiveThread()) ?? null;
+  const sessions = useAgentStore((s) => s.sessions);
+  const createSession = useAgentStore((s) => s.createSession);
+  const activeSession = useAgentStore((s) => s.getActiveSession()) ?? null;
 
-  const [configOpen, setConfigOpen] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<DrillDownSuggestion[]>([]);
-  const [streamingText, setStreamingText] = useState("");
-  const [dataLoading, setDataLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevOpenRef = useRef(open);
   const isAssist = variant === "assistant";
-  const dateRangeRef = useRef("");
-  const CACHE_TTL = 5 * 60 * 1000;
-  const reportCacheRef = useRef<{
-    timestamp: number;
-    summaryContext: string;
-    dateRange: string;
-  } | null>(null);
-  const DRILLDOWN_CACHE_TTL = 5 * 60 * 1000;
-  const drillDownCacheRef = useRef<{
-    timestamp: number;
-    summaryContext: string;
-    dateRange: string;
-  } | null>(null);
 
   const handleMouseDown = useAiDrawerResize(
     typeof drawerWidth === "number" ? drawerWidth : 640,
     setDrawerWidth,
   );
+
+  useEffect(() => {
+    if (!isAssist) return;
+    if (open) {
+      const store = useAgentStore.getState();
+      let sid = store.activeSessionId;
+      const exists = store.sessions.some((s) => s.id === sid);
+      if (!sid || !exists) sid = store.createSession();
+      pi.connect(sid);
+    } else {
+      pi.disconnect();
+    }
+    // pi is intentionally omitted: connect/disconnect follows drawer lifecycle
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isAssist]);
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -211,265 +126,43 @@ export default function AiDrawer({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [activeThread?.messages, streamingText]);
+  }, [
+    activeSession?.messages,
+    pi.currentText,
+    pi.currentThinking,
+    pi.turnSteps,
+  ]);
 
-  const ensureThread = useCallback(() => {
-    if (!activeThreadId) return createThread();
-    return activeThreadId;
-  }, [activeThreadId, createThread]);
+  const ensureSession = useCallback(() => {
+    const store = useAgentStore.getState();
+    let sid = store.activeSessionId;
+    if (!sid || !store.sessions.some((s) => s.id === sid)) {
+      sid = store.createSession();
+    }
+    pi.connect(sid);
+    return sid;
+  }, [pi]);
 
   const handleSend = useCallback(
-    async (text: string, keepSuggestions?: boolean) => {
-      const threadId = ensureThread();
-      addMessage(threadId, "user", { type: "text", body: text });
-      if (!keepSuggestions) setSuggestions([]);
-      setStreamingText("");
-
-      try {
-        const history = (activeThread?.messages ?? [])
-          .filter((m) => m.content.type === "text")
-          .map((m) => ({
-            role: m.role,
-            content: (m.content as { type: "text"; body: string }).body,
-          }));
-        const full = await stream(
-          text,
-          history,
-          (t) => setStreamingText(stripDrillDownSection(t)),
-          true,
-        );
-        setStreamingText("");
-        addMessage(threadId, "assistant", {
-          type: "text",
-          body: stripDrillDownSection(full),
-        });
-        const drillDowns = extractDrillDownSuggestions(full);
-        if (drillDowns.length > 0) setSuggestions(drillDowns);
-      } catch (e: unknown) {
-        if ((e as Error).name === "AbortError") return;
-        setStreamingText("");
-        addMessage(threadId, "assistant", {
-          type: "error",
-          message: "请求失败，请重试",
-          retryable: true,
-        });
-      }
+    (text: string) => {
+      ensureSession();
+      pi.sendMessage(text);
     },
-    [ensureThread, addMessage, stream, activeThread],
+    [ensureSession, pi],
   );
-
-  const handleRetry = useCallback(() => {
-    const thread = activeThread;
-    if (!thread || thread.messages.length === 0) return;
-    const lastMsg = thread.messages[thread.messages.length - 1];
-    const prevMsg = thread.messages[thread.messages.length - 2];
-    if (lastMsg.role === "assistant") {
-      useConversationStore.getState().addMessage(thread.id, "user", {
-        type: "text",
-        body: prevMsg?.content.type === "text" ? prevMsg.content.body : "",
-      });
-    }
-  }, [activeThread]);
 
   const handleCardClick = (card: KnowledgeCard) => {
     if (card.kind === "doc") {
       setActiveDoc(card.docKey);
-    } else if (card.title === "生成日报") {
-      void startReport(
-        "日报",
-        "📊 正在从数据集查询昨日数据...",
-        card.prompt,
-        async () => {
-          const { fetchDailyReportData } = await import("@/api/dailyReport");
-          const data = await fetchDailyReportData();
-          return { summaryContext: data.summaryContext, dateRange: "昨日" };
-        },
-      );
-    } else if (card.title === "生成周报") {
-      const cached = reportCacheRef.current;
-      const now = Date.now();
-      void startReport(
-        "周报",
-        cached && now - cached.timestamp < CACHE_TTL
-          ? "📊 正在生成周报（使用缓存数据）..."
-          : "📊 正在从数据集查询两周数据...",
-        card.prompt,
-        async () => {
-          if (cached && now - cached.timestamp < CACHE_TTL) {
-            return {
-              summaryContext: cached.summaryContext,
-              dateRange: cached.dateRange,
-            };
-          }
-          const { fetchWeeklyReportData } = await import("@/api/weeklyReport");
-          const data = await fetchWeeklyReportData();
-          const dateRange = `${data.week1Label}, ${data.week2Label}`;
-          reportCacheRef.current = {
-            timestamp: Date.now(),
-            summaryContext: data.summaryContext,
-            dateRange,
-          };
-          return { summaryContext: data.summaryContext, dateRange };
-        },
-      );
-    } else {
-      void startNewChat(card.prompt);
+      return;
     }
-  };
-
-  const startNewChat = async (text: string) => {
-    const threadId = createThread();
-    addMessage(threadId, "user", { type: "text", body: text });
-    setSuggestions([]);
-    setStreamingText("");
-    try {
-      const full = await stream(text, [], (t) =>
-        setStreamingText(stripDrillDownSection(t)),
-      );
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "text",
-        body: stripDrillDownSection(full),
-      });
-      const drillDowns = extractDrillDownSuggestions(full);
-      if (drillDowns.length > 0) setSuggestions(drillDowns);
-    } catch (e: unknown) {
-      if ((e as Error).name === "AbortError") return;
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "error",
-        message: "请求失败，请重试",
-        retryable: true,
-      });
-    }
-  };
-
-  const startReport = useCallback(
-    async (
-      label: string,
-      placeholder: string,
-      promptTemplate: string,
-      fetchData: () => Promise<{ summaryContext: string; dateRange: string }>,
-    ) => {
-      const threadId = createThread();
-      addMessage(threadId, "user", { type: "text", body: placeholder });
-      setStreamingText("");
-      setDataLoading(true);
-      try {
-        const data = await fetchData();
-        dateRangeRef.current = data.dateRange;
-        const today = new Date().toISOString().slice(0, 10);
-        const dateInjectedTemplate = promptTemplate.replace(
-          "{{REPORT_DATE}}",
-          today,
-        );
-        const fullPrompt = [
-          dateInjectedTemplate,
-          "",
-          "### 从 Superset 查询到的实际数据",
-          "",
-          data.summaryContext,
-          "",
-          `请根据以上实际数据生成完整${label}。`,
-        ].join("\n");
-        const full = await stream(fullPrompt, [], (t) =>
-          setStreamingText(stripDrillDownSection(t)),
-        );
-        setStreamingText("");
-        setDataLoading(false);
-        addMessage(threadId, "assistant", {
-          type: "text",
-          body: stripDrillDownSection(full),
-        });
-        setSuggestions(extractDrillDownSuggestions(full));
-      } catch {
-        setStreamingText("");
-        setDataLoading(false);
-        setSuggestions([]);
-        addMessage(threadId, "assistant", {
-          type: "error",
-          message:
-            "数据查询失败，请稍后重试。如果问题持续，请检查 Superset 后端是否正常运行。",
-          retryable: true,
-        });
-      }
-    },
-    [createThread, addMessage, stream],
-  );
-
-  const startDrillDown = async (suggestion: DrillDownSuggestion) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === suggestion.id ? { ...s, loading: true } : s)),
-    );
-    setDataLoading(true);
-    const threadId = createThread();
-    addMessage(threadId, "user", {
-      type: "text",
-      body: `📊 钻取分析: ${suggestion.label}`,
-    });
-    try {
-      let data: DrillDownData;
-      if (suggestion.query) {
-        data = await queryDrillDown(suggestion.query);
-      } else {
-        const cached = drillDownCacheRef.current;
-        if (cached && Date.now() - cached.timestamp < DRILLDOWN_CACHE_TTL) {
-          data = {
-            summaryContext: cached.summaryContext,
-            dateRange: cached.dateRange,
-          };
-        } else {
-          data = await fetchDrillDownData();
-          drillDownCacheRef.current = { timestamp: Date.now(), ...data };
-        }
-      }
-      dateRangeRef.current = data.dateRange;
-      setStreamingText("");
-      const dateInjectedPrompt = DRILL_DOWN_PROMPT.replace(
-        "{dateRange}",
-        data.dateRange,
-      );
-      const fullPrompt = [
-        dateInjectedPrompt,
-        "",
-        "### 钻取明细数据",
-        "",
-        data.summaryContext,
-        "",
-        `请根据以上数据，完成以下钻取分析任务：${suggestion.prompt}`,
-      ].join("\n");
-      const full = await stream(fullPrompt, [], (t) =>
-        setStreamingText(stripDrillDownSection(t)),
-      );
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "text",
-        body: stripDrillDownSection(full),
-      });
-      const secondary = extractDrillDownSuggestions(full);
-      if (secondary.length > 0) setSuggestions(secondary);
-    } catch {
-      setStreamingText("");
-      addMessage(threadId, "assistant", {
-        type: "error",
-        message: "钻取数据查询失败，请稍后重试",
-        retryable: true,
-      });
-    } finally {
-      setSuggestions((prev) =>
-        prev.map((s) =>
-          s.id === suggestion.id ? { ...s, loading: false } : s,
-        ),
-      );
-      setDataLoading(false);
-    }
+    ensureSession();
+    pi.sendMessage(card.prompt);
   };
 
   const handleClose = () => {
     if (isAssist) {
       setActiveDoc(null);
-      setSuggestions([]);
-      setStreamingText("");
     } else {
       insight.clear();
     }
@@ -496,7 +189,7 @@ export default function AiDrawer({
 
   const subtitle = isAssist
     ? !activeDoc
-      ? activePreset.model
+      ? pi.currentModel
       : undefined
     : chartMeta
       ? `${chartMeta.slice_name || `#${chartId}`} · ${activePreset.model}`
@@ -545,17 +238,14 @@ export default function AiDrawer({
           <AiDrawerHeader
             title={title}
             subtitle={subtitle}
-            showSettings={isAssist && !activeDoc}
-            showBack={isAssist ? !!(activeDoc || threads.length > 0) : true}
+            showBack={isAssist ? !!(activeDoc || sessions.length > 0) : true}
             onBack={() => {
               if (isAssist && activeDoc) setActiveDoc(null);
               else if (isAssist) {
-                createThread();
-                setSuggestions([]);
-                setStreamingText("");
+                createSession();
+                ensureSession();
               } else openAiDrawer("assistant");
             }}
-            onSettings={() => setConfigOpen(true)}
             onClose={handleClose}
           />
 
@@ -564,13 +254,15 @@ export default function AiDrawer({
           ) : isAssist ? (
             <AssistantContent
               ref={scrollRef}
-              activeThread={activeThread}
+              activeSession={activeSession}
               knowledgeCards={knowledgeCards}
-              streaming={streaming}
-              streamingText={streamingText}
-              dataLoading={dataLoading}
+              streaming={pi.isRunning}
+              streamingText={pi.currentText}
+              thinking={pi.currentThinking}
+              thinkingDone={pi.isThinkingDone}
+              turnSteps={pi.turnSteps}
+              isConnected={pi.isConnected}
               onCardClick={handleCardClick}
-              onRetry={handleRetry}
             />
           ) : (
             <InsightContent
@@ -596,23 +288,16 @@ export default function AiDrawer({
                 bgcolor: "background.paper",
               }}
             >
-              <SuggestionList
-                suggestions={suggestions}
-                disabled={streaming || dataLoading}
-                onSelect={(s) => void startDrillDown(s)}
-              />
               <SmartInput
-                onSend={(t) => void handleSend(t)}
-                onStop={streamStop}
-                streaming={streaming}
+                onSend={(t) => handleSend(t)}
+                onStop={pi.abort}
+                streaming={pi.isRunning}
+                currentModel={pi.currentModel}
+                modelList={pi.modelList}
+                onModelChange={pi.setModel}
               />
             </Box>
           )}
-
-          <AiConfigDialog
-            open={configOpen}
-            onClose={() => setConfigOpen(false)}
-          />
         </Box>
       </Box>
     </Box>

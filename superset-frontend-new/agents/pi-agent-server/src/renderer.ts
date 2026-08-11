@@ -5,8 +5,15 @@ export interface TableSection {
   summary?: string;
 }
 
+/**
+ * Structured output envelope. The agent decides the report structure itself:
+ * either free-form markdown (preferred) or the legacy summary/tables/
+ * analysis/recommendations slots (still supported for backward compat).
+ */
 export interface AgentStructuredOutput {
   summary?: string;
+  /** Free-form markdown report body; structure is decided by the model. */
+  markdown?: string;
   tables?: TableSection[];
   analysis?: string[];
   recommendations?: string[];
@@ -25,10 +32,21 @@ export function isValidStructuredOutput(
 ): data is AgentStructuredOutput {
   if (!data || typeof data !== "object") return false;
   const obj = data as Record<string, unknown>;
-  if (obj.summary !== undefined && typeof obj.summary !== "string") return false;
-  if (obj.analysis !== undefined && (!Array.isArray(obj.analysis) || !obj.analysis.every((a) => typeof a === "string")))
+  if (obj.summary !== undefined && typeof obj.summary !== "string")
     return false;
-  if (obj.recommendations !== undefined && (!Array.isArray(obj.recommendations) || !obj.recommendations.every((r) => typeof r === "string")))
+  if (obj.markdown !== undefined && typeof obj.markdown !== "string")
+    return false;
+  if (
+    obj.analysis !== undefined &&
+    (!Array.isArray(obj.analysis) ||
+      !obj.analysis.every((a) => typeof a === "string"))
+  )
+    return false;
+  if (
+    obj.recommendations !== undefined &&
+    (!Array.isArray(obj.recommendations) ||
+      !obj.recommendations.every((r) => typeof r === "string"))
+  )
     return false;
   if (obj.tables !== undefined) {
     if (!Array.isArray(obj.tables)) return false;
@@ -36,8 +54,17 @@ export function isValidStructuredOutput(
       if (!table || typeof table !== "object") return false;
       const t = table as Record<string, unknown>;
       if (typeof t.title !== "string") return false;
-      if (!Array.isArray(t.headers) || !t.headers.every((h) => typeof h === "string")) return false;
-      if (!Array.isArray(t.rows) || !t.rows.every((r) => Array.isArray(r) && r.every((c) => typeof c === "string")))
+      if (
+        !Array.isArray(t.headers) ||
+        !t.headers.every((h) => typeof h === "string")
+      )
+        return false;
+      if (
+        !Array.isArray(t.rows) ||
+        !t.rows.every(
+          (r) => Array.isArray(r) && r.every((c) => typeof c === "string"),
+        )
+      )
         return false;
     }
   }
@@ -50,6 +77,13 @@ export function renderStructuredOutput(output: AgentStructuredOutput): string {
   if (output.summary) {
     parts.push(output.summary);
     parts.push("");
+  }
+
+  // Free-form markdown body takes precedence; the agent decides its own
+  // sections, tables and bullet structure.
+  if (output.markdown) {
+    parts.push(output.markdown.trim());
+    return parts.join("\n").trim();
   }
 
   if (output.tables) {
@@ -89,17 +123,29 @@ export function renderStructuredOutput(output: AgentStructuredOutput): string {
 
 export function tryRenderStructuredContent(text: string): string | null {
   const trimmed = text.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
 
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (isValidStructuredOutput(parsed)) {
-      return renderStructuredOutput(parsed);
-    }
-    return null;
-  } catch {
-    return null;
+  const candidates: string[] = [];
+  // 1. The whole output is a JSON object/array
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    candidates.push(trimmed);
   }
+  // 2. A ```json fenced block embedded anywhere in the output
+  const blockMatch = text.match(/```json\s*([\s\S]*?)```/);
+  if (blockMatch) {
+    candidates.push(blockMatch[1].trim());
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (isValidStructuredOutput(parsed)) {
+        return renderStructuredOutput(parsed);
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  return null;
 }
 
 export function buildFallbackOutput(toolResultText: string): string {

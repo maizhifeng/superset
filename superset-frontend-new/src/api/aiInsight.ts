@@ -1,4 +1,5 @@
 import api from "@/api";
+import { postChartData } from "@/api/chartData";
 import {
   DATA_ANALYST_SYSTEM_PROMPT,
   CHART_INSIGHT_SYSTEM_PROMPT,
@@ -200,7 +201,7 @@ export async function streamChartInsight(
   if (fi.query.length)
     (payload.queries as Record<string, unknown>[])[0].filters = fi.query;
 
-  const dataResp = await api.post("/chart/data", payload, { signal });
+  const dataResp = await postChartData(payload, { signal });
   const first =
     (Array.isArray(dataResp.data?.result)
       ? dataResp.data.result[0]
@@ -327,6 +328,7 @@ export async function streamWithTools(
   signal?: AbortSignal,
   modelCfg?: ModelConfig,
   history?: { role: string; content: string }[],
+  maxRounds = 5,
 ): Promise<string> {
   const rawBaseUrl = modelCfg?.baseUrl || "";
   const useProxy =
@@ -349,7 +351,7 @@ export async function streamWithTools(
   if (history) messages.push(...history);
   messages.push({ role: "user", content: prompt });
 
-  const MAX_ROUNDS = 5;
+  const MAX_ROUNDS = maxRounds;
   let fullText = "";
 
   for (let round = 0; round < MAX_ROUNDS; round++) {

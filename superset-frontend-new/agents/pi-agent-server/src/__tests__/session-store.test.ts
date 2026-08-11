@@ -85,6 +85,40 @@ test("cleanup does not affect other WebSocket connections", () => {
   expect(store.has(ws2, "sid-2")).toBe(true);
 });
 
+test("removeAll disposes every session and clears current session id", () => {
+  const store = new SessionStore();
+  const ws = createMockWs();
+  const dispose1 = vi.fn();
+  const dispose2 = vi.fn();
+
+  store.create(ws, "sid-1", "user-1", { dispose: dispose1 } as any);
+  store.create(ws, "sid-2", "user-2", { dispose: dispose2 } as any);
+  store.setCurrentSessionId(ws, "sid-1");
+
+  store.removeAll(ws);
+
+  expect(store.has(ws, "sid-1")).toBe(false);
+  expect(store.has(ws, "sid-2")).toBe(false);
+  expect(store.getSession("sid-1")).toBeUndefined();
+  expect(store.getSession("sid-2")).toBeUndefined();
+  expect(dispose1).toHaveBeenCalledTimes(1);
+  expect(dispose2).toHaveBeenCalledTimes(1);
+  expect(store.getCurrentSessionId(ws)).toBeUndefined();
+});
+
+test("removeAll does not affect other WebSocket connections", () => {
+  const store = new SessionStore();
+  const ws1 = createMockWs();
+  const ws2 = createMockWs();
+
+  store.create(ws1, "sid-1", "user-1", { dispose: vi.fn() } as any);
+  store.create(ws2, "sid-2", "user-2", { dispose: vi.fn() } as any);
+  store.removeAll(ws1);
+
+  expect(store.has(ws1, "sid-1")).toBe(false);
+  expect(store.has(ws2, "sid-2")).toBe(true);
+});
+
 test("create is idempotent for existing session", () => {
   const store = new SessionStore();
   const ws = createMockWs();

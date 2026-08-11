@@ -4,11 +4,11 @@
  * 供 LLM 通过 function calling 按需查询广告投放数据集（id=26）。
  * 提供白名单约束的安全查询能力，返回 Markdown 表格。
  *
- * 与 weeklyReport / drillDown 不同，此模块不做任何后处理聚合，
+ * 与周报/钻取等批量预取模块不同，此模块不做任何后处理聚合，
  * 只负责将 LLM 的结构化请求转发给 Superset 并格式化返回。
  */
 
-import api from "@/api";
+import { postChartData } from "@/api/chartData";
 
 /** 数据集 ID（广告投放数据表），所有查询固定使用此数据源 */
 const DATASOURCE = { id: 26, type: "table" as const };
@@ -58,6 +58,7 @@ export type AllowedMetric = (typeof ALLOWED_METRICS)[number];
 
 /** 允许的时间范围 */
 export const ALLOWED_TIME_RANGES = [
+  "Last 2 days",
   "Last 7 days",
   "Last 14 days",
   "Last 30 days",
@@ -215,7 +216,7 @@ export async function executeQuery(
   let resp;
   try {
     const hasDateCol = params.columns.includes("日期");
-    resp = await api.post("/chart/data", {
+    resp = await postChartData({
       datasource: DATASOURCE,
       result_format: "json" as const,
       result_type: "full" as const,

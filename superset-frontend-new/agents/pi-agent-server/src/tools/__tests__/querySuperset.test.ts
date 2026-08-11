@@ -1,5 +1,83 @@
 import { describe, test, expect } from "vitest";
-import { buildMetricEntry, buildFilters, toMarkdownTable } from "../querySuperset.js";
+import {
+  buildMetricEntry,
+  buildFilters,
+  toMarkdownTable,
+  parseAndCacheSchema,
+  parseRowLimit,
+  parseOrderby,
+} from "../querySuperset.js";
+
+describe("parseRowLimit", () => {
+  test("defaults to 1000 so detail queries are not silently truncated", () => {
+    expect(parseRowLimit(undefined)).toBe(1000);
+    expect(parseRowLimit(null)).toBe(1000);
+    expect(parseRowLimit("100" as never)).toBe(1000);
+  });
+
+  test("clamps explicit limits to the 1-1000 range", () => {
+    expect(parseRowLimit(500)).toBe(500);
+    expect(parseRowLimit(0)).toBe(1);
+    expect(parseRowLimit(5000)).toBe(1000);
+    expect(parseRowLimit(123.6)).toBe(124);
+  });
+});
+
+describe("parseAndCacheSchema", () => {
+  test("distinguishes dimension columns from numeric columns", () => {
+    const schema = parseAndCacheSchema({
+      result: {
+        columns: [
+          { column_name: "日期", groupby: true, type_generic: 2 },
+          { column_name: "主游戏", groupby: true, type_generic: 1 },
+          { column_name: "渠道商", groupby: true, type_generic: 1 },
+          { column_name: "消耗", groupby: true, type_generic: 0 },
+          { column_name: "新增进入", groupby: true, type_generic: 0 },
+          { column_name: "主游戏[ID]", groupby: true, type_generic: 0 },
+        ],
+        metrics: [{ metric_name: "cpa" }, { metric_name: "roi_1" }],
+      },
+    });
+
+    expect(schema).toContain("可用维度列: 日期, 主游戏, 渠道商");
+    expect(schema).toContain("可用数值列（可直接 SUM() 作为指标）: 消耗, 新增进入");
+    expect(schema).toContain("可用指标: cpa, roi_1");
+    expect(schema).not.toContain("主游戏[ID]");
+    expect(schema).not.toContain("消耗[ID]");
+  });
+
+  test("numeric SUM metric passes the valid metric names whitelist", () => {
+    parseAndCacheSchema({
+      result: {
+        columns: [
+          { column_name: "日期", groupby: true, type_generic: 2 },
+          { column_name: "返点后消耗", groupby: true, type_generic: 0 },
+        ],
+        metrics: [],
+      },
+    });
+
+    const entry = buildMetricEntry("SUM(返点后消耗)");
+    expect(entry).toEqual({
+      expressionType: "SIMPLE",
+      column: { column_name: "返点后消耗" },
+      aggregate: "SUM",
+      label: "SUM(返点后消耗)",
+    });
+  });
+
+  test("omits numeric section when no numeric columns exist", () => {
+    const schema = parseAndCacheSchema({
+      result: {
+        columns: [
+          { column_name: "主游戏", groupby: true, type_generic: 1 },
+        ],
+        metrics: [],
+      },
+    });
+    expect(schema).not.toContain("可用数值列");
+  });
+});
 
 describe("buildMetricEntry", () => {
   test("converts SUM(...) to simple aggregate expression", () => {
@@ -131,5 +209,77 @@ describe("toMarkdownTable", () => {
     expect(lines[0]).toBe("渠道商 | 消耗 | 新增");
     expect(lines[1]).toBe("--- | --- | ---");
     expect(lines).toHaveLength(2);
+  });
+});
+
+describe("toMarkdownTable truncation notice", () => {
+  const cols = ["渠道商", "消耗"];
+  const rows = [
+    { 渠道商: "A", 消耗: 60 },
+    { 渠道商: "B", 消耗: 30 },
+    { 渠道商: "C", 消耗: 10 },
+  ];
+
+  test("reports total rows, kept rows and missing percentage", () => {
+    const result = toMarkdownTable(cols, rows, 100, 2);
+    expect(result).toContain("共 5 行");
+    expect(result).toContain("仅展示按首个指标累计占比前 95% 的主要项（3 行）");
+    expect(result).toContain("另有 2 行（40%）未显示");
+    expect(result).toContain("show_all=true");
+  });
+
+  test("omits notice when nothing is truncated", () => {
+    const result = toMarkdownTable(cols, rows, 100, 0);
+    expect(result).not.toContain("未显示");
+  });
+});
+
+describe("parseOrderby", () => {
+  test("parses standard array form", () => {
+    expect(parseOrderby([["SUM(消耗)", false]])).toEqual([["消耗", false]]);
+  });
+
+  test("parses arrow string form", () => {
+    expect(parseOrderby("日期↓")).toEqual([["日期", false]]);
+    expect(parseOrderby("日期↑")).toEqual([["日期", true]]);
+  });
+
+  test("parses desc/asc and chinese suffixes", () => {
+    expect(parseOrderby("消耗 desc")).toEqual([["消耗", false]]);
+    expect(parseOrderby("消耗 降序")).toEqual([["消耗", false]]);
+    expect(parseOrderby("消耗 升序")).toEqual([["消耗", true]]);
+  });
+
+  test("returns empty for invalid input", () => {
+    expect(parseOrderby(undefined)).toEqual([]);
+    expect(parseOrderby("")).toEqual([]);
+    expect(parseOrderby(123 as never)).toEqual([]);
+  });
+});
+
+describe("excluded metrics", () => {
+  test("ltv_14 is hidden from schema output and the whitelist", () => {
+    const schema = parseAndCacheSchema({
+      result: {
+        columns: [{ column_name: "日期", groupby: true, type_generic: 2 }],
+        metrics: [
+          { metric_name: "ltv_1" },
+          { metric_name: "ltv_14" },
+          { metric_name: "ltv_21" },
+          { metric_name: "cpa" },
+        ],
+      },
+    });
+    expect(schema).toContain("可用指标: ltv_1, ltv_21, cpa");
+    expect(schema).not.toContain("ltv_14");
+    // buildMetricEntry falls back to SUM(...) since ltv_14 is not in the
+    // saved-metric whitelist anymore; the column check then rejects it.
+    const entry = buildMetricEntry("ltv_14");
+    expect(entry).toEqual({
+      expressionType: "SIMPLE",
+      column: { column_name: "ltv_14" },
+      aggregate: "SUM",
+      label: "SUM(ltv_14)",
+    });
   });
 });

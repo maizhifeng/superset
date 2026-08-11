@@ -103,6 +103,17 @@ class ChartDataRestApi(ChartRestApi):
             return self.response_400(
                 message=error.message if hasattr(error, "message") else str(error)
             )
+
+        # Federated datasets must be queried through the cross-database merge
+        # path (same as /api/v1/bi/chart/data); the standard ChartDataCommand
+        # would only hit the primary database side.
+        from superset.project.bi.api import _get_federated_config
+
+        if federated_config := _get_federated_config(query_context.datasource):
+            return self._agent_data_federated(
+                json_body, query_context, federated_config
+            )
+
         cache_timeout = query_context.get_cache_timeout()
         use_async = (
             is_feature_enabled("GLOBAL_ASYNC_QUERIES")
@@ -118,6 +129,81 @@ class ChartDataRestApi(ChartRestApi):
             datasource=query_context.datasource,
             add_extra_log_payload=lambda **kwargs: None,
         )
+
+    def _agent_data_federated(  # noqa: C901
+        self,
+        json_body: dict[str, Any],
+        query_context: QueryContext,
+        federated_config: tuple[str, str],
+    ) -> Response:
+        """Run a federated (cross-database) query for the Pi agent.
+
+        Mirrors the ``/api/v1/bi/chart/data`` endpoint: the query SQL is
+        generated once and executed against both configured databases in
+        parallel, then the results are merged and re-aggregated.  The
+        response payload matches the standard chart data result format so
+        the Pi agent tool parsing is unaffected.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        from superset.common.db_query_status import QueryStatus
+        from superset.project.bi.api import _get_database, _run_federated_query
+        from superset.utils import json as _json_lib
+
+        datasource = query_context.datasource
+        aliyun_db_name, oversea_db_name = federated_config
+        aliyun_db = _get_database(aliyun_db_name)
+        if aliyun_db is None:
+            return self.response_400(message=f"database '{aliyun_db_name}' not found")
+        oversea_db = _get_database(oversea_db_name)
+        if oversea_db is None:
+            return self.response_400(message=f"database '{oversea_db_name}' not found")
+
+        # Recover the full dimension set (row + column) from the raw request,
+        # same as /bi/chart/data, since QueryObject folds groupby into columns.
+        raw_queries = json_body.get("queries") or []
+        for query_obj, raw_q in zip(query_context.queries, raw_queries, strict=False):
+            row_dims = list((raw_q or {}).get("groupby") or [])
+            col_dims = list((raw_q or {}).get("columns") or [])
+            all_dims = row_dims + col_dims
+            if all_dims:
+                query_obj.columns = all_dims
+
+        # Each query runs in its own thread (the two database sides inside
+        # ``_run_federated_query`` are already parallel) with the request
+        # user restored so RLS-aware SQL generation behaves identically.
+        _app = app._get_current_object()
+        _user = g.get("user", None)
+
+        def _run_one(query_obj: Any) -> dict[str, Any]:
+            with _app.app_context():
+                if _user is not None:
+                    g.user = _user
+                return _run_federated_query(
+                    query_obj,
+                    query_context,
+                    datasource,
+                    aliyun_db,
+                    oversea_db,
+                    aliyun_db_name,
+                    oversea_db_name,
+                )
+
+        with ThreadPoolExecutor(max_workers=min(len(query_context.queries), 4)) as pool:
+            query_results = list(pool.map(_run_one, query_context.queries))
+
+        # Use json.dumps directly to avoid Flask's JSON_SORT_KEYS=True
+        result: dict[str, Any] = {"result": query_results}
+        body = _json_lib.dumps(result, sort_keys=False)
+        if all(
+            r is not None and r.get("status") == QueryStatus.SUCCESS
+            for r in query_results
+        ):
+            logger.info(
+                "agent federated query succeeded for %d query(s)",
+                len(query_results),
+            )
+        return app.response_class(body, mimetype="application/json")
 
     @expose("/<int:pk>/data/", methods=("GET",))
     @protect()

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { DrillDownQuery } from "@/api/drillDown";
 
 export type MessageContent =
   | { type: "text"; body: string }
@@ -24,15 +23,6 @@ export interface ConversationThread {
     dashboardId?: number;
     chartId?: number;
   };
-}
-
-export interface DrillDownSuggestion {
-  id: string;
-  label: string;
-  prompt: string;
-  query?: DrillDownQuery;
-  loading?: boolean;
-  analyzed?: boolean;
 }
 
 export type KnowledgeCard =
@@ -84,7 +74,12 @@ export interface AgentStep {
 export type AgentMessageContent =
   | MessageContent
   | { type: "agent_step"; step: AgentStep }
-  | { type: "agent_done"; steps: AgentStep[]; summary: string };
+  | {
+      type: "agent_done";
+      steps: AgentStep[];
+      summary: string;
+      thinking?: string;
+    };
 
 export interface AgentConversationMessage {
   id: string;

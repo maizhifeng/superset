@@ -410,19 +410,23 @@ function buildWidePivotGrid(props: PivotTableProps): PivotGrid {
 
   let rowCombos = sortTuples(distinctTuples(rows, rowDims), rowDims);
   if (pct95?.enabled && pct95.metric) {
-    const kept = pct95KeptKeys(
-      rowCombos,
-      (combo) =>
-        wideRowComboValue(
-          acc,
-          combo,
-          pct95.metric,
-          components[pct95.metric],
-          aggFn,
-        ),
-      pct95.threshold,
-    );
+    const metricValue = (combo: string[]) =>
+      wideRowComboValue(
+        acc,
+        combo,
+        pct95.metric,
+        components[pct95.metric],
+        aggFn,
+      );
+    const kept = pct95KeptKeys(rowCombos, metricValue, pct95.threshold);
     rowCombos = rowCombos.filter((c) => kept.has(c.join("\u0000")));
+    // The 95% split metric is also the display sort: descending, so the
+    // retained rows are ordered from largest to smallest contribution.
+    rowCombos.sort(
+      (a, b) =>
+        metricValue(b) - metricValue(a) ||
+        a.join("\u0000").localeCompare(b.join("\u0000")),
+    );
   }
   const colCombos = sortTuples(distinctTuples(rows, colDims), colDims);
 
@@ -657,23 +661,26 @@ export function buildPivotGrid(props: PivotTableProps): PivotGrid {
   }
 
   if (pct95?.enabled && pct95.metric) {
-    const kept = pct95KeptKeys(
-      rowCombos,
-      (combo) => {
-        const rowKey = combo.join("\u0000");
-        let total = 0;
-        for (const [key, bucket] of numericByCombo) {
-          if (!key.startsWith(`${rowKey}\u0000`)) continue;
-          for (const e of bucket) {
-            const v = e.numeric[pct95.metric];
-            if (Number.isFinite(v)) total += v;
-          }
+    const metricValue = (combo: string[]) => {
+      const rowKey = combo.join("\u0000");
+      let total = 0;
+      for (const [key, bucket] of numericByCombo) {
+        if (!key.startsWith(`${rowKey}\u0000`)) continue;
+        for (const e of bucket) {
+          const v = e.numeric[pct95.metric];
+          if (Number.isFinite(v)) total += v;
         }
-        return total;
-      },
-      pct95.threshold,
-    );
+      }
+      return total;
+    };
+    const kept = pct95KeptKeys(rowCombos, metricValue, pct95.threshold);
     rowCombos = rowCombos.filter((c) => kept.has(c.join("\u0000")));
+    // Same descending order as the wide path: split metric is the sort key.
+    rowCombos.sort(
+      (a, b) =>
+        metricValue(b) - metricValue(a) ||
+        a.join("\u0000").localeCompare(b.join("\u0000")),
+    );
   }
 
   const effectiveColCombos: ComboEntry[] = metricOnRows

@@ -3,26 +3,21 @@ import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
 
 interface AiDrawerHeaderProps {
   title: string;
-  showSettings: boolean;
   showBack: boolean;
   subtitle?: string;
   onBack: () => void;
-  onSettings: () => void;
   onClose: () => void;
 }
 
 export default function AiDrawerHeader({
   title,
-  showSettings,
   showBack,
   subtitle,
   onBack,
-  onSettings,
   onClose,
 }: AiDrawerHeaderProps) {
   return (
@@ -50,24 +45,14 @@ export default function AiDrawerHeader({
         {subtitle && (
           <Typography
             variant="caption"
-            color="text.disabled"
-            sx={{ lineHeight: 1.2, display: "block", fontSize: "0.6875rem" }}
+            color="text.secondary"
+            noWrap
+            sx={{ fontSize: "0.6875rem", lineHeight: 1.2, display: "block" }}
           >
             {subtitle}
           </Typography>
         )}
       </Box>
-      {showSettings && (
-        <IconButton
-          size="small"
-          onClick={onSettings}
-          aria-label="设置"
-          data-testid="SettingsIcon"
-          sx={{ mr: 0.25 }}
-        >
-          <SettingsIcon sx={{ fontSize: 20 }} />
-        </IconButton>
-      )}
       <IconButton size="small" onClick={onClose}>
         <CloseIcon sx={{ fontSize: 20 }} />
       </IconButton>

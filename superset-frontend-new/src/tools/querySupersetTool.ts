@@ -48,7 +48,7 @@ export const QUERY_SUPERSET_TOOL = {
         },
         time_range: {
           type: "string",
-          enum: ["Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days"],
+          enum: ["Last 2 days", "Last 7 days", "Last 14 days", "Last 30 days", "Last 90 days"],
           description: "时间范围，默认 Last 14 days",
           optional: true,
         },
