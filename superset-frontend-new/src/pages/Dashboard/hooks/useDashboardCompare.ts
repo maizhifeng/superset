@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import api, { getDataset } from "@/api";
+import { getDataset } from "@/api";
+import { postChartData } from "@/api/chartData";
 import type { ChartData, ChartDataPayload } from "@/types/api";
 import type { SimpleFilter } from "@/utils/query/types";
 import {
@@ -120,7 +121,7 @@ export function useDashboardCompare({
           result_type: "full" as const,
           force,
         };
-        const postRes = await api.post("/chart/data", payload);
+        const postRes = await postChartData(payload);
         const postResult = postRes.data?.result;
         const rawData = Array.isArray(postResult)
           ? postResult[0] || {}

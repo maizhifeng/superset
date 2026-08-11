@@ -14,13 +14,41 @@ interface SimpleAggregate {
 type MetricEntry = string | SimpleAggregate;
 
 const SAVED_METRICS = new Set([
-  "cpa", "cpp", "count",
-  "roi_1", "roi_2", "roi_3", "roi_4", "roi_5", "roi_6", "roi_7",
-  "roi_14", "roi_21", "roi_30", "roi_60", "roi_90", "累计roi",
-  "ltv_1", "ltv_2", "ltv_3", "ltv_4", "ltv_5", "ltv_6", "ltv_7",
-  "ltv_14", "ltv_21", "ltv_30", "ltv_60", "ltv_90",
-  "1日付费率", "2日留存率", "自然付费%", "自然新增%",
+  "cpa",
+  "cpp",
+  "count",
+  "roi_1",
+  "roi_2",
+  "roi_3",
+  "roi_4",
+  "roi_5",
+  "roi_6",
+  "roi_7",
+  "roi_14",
+  "roi_21",
+  "roi_30",
+  "roi_60",
+  "roi_90",
+  "累计roi",
+  "ltv_1",
+  "ltv_2",
+  "ltv_3",
+  "ltv_4",
+  "ltv_5",
+  "ltv_6",
+  "ltv_7",
+  "ltv_21",
+  "ltv_30",
+  "ltv_60",
+  "ltv_90",
+  "1日付费率",
+  "2日留存率",
+  "自然付费%",
+  "自然新增%",
 ]);
+
+// Metrics explicitly excluded from the schema and the query whitelist.
+const EXCLUDED_METRICS = new Set(["ltv_14"]);
 
 // Dynamically populated from schema fetch — used alongside SAVED_METRICS
 let validMetricNames: Set<string> | null = null;
@@ -50,13 +78,20 @@ export function buildMetricEntry(m: string): MetricEntry {
 }
 
 export function buildFilters(filters: unknown): unknown[] {
-  if (!filters || typeof filters !== "object" || Object.keys(filters).length === 0) return [];
-  return Object.entries(filters as Record<string, unknown>).map(([col, val]) => ({
-    expressionType: "SIMPLE",
-    subject: col,
-    operator: "==",
-    comparator: String(val),
-  }));
+  if (
+    !filters ||
+    typeof filters !== "object" ||
+    Object.keys(filters).length === 0
+  )
+    return [];
+  return Object.entries(filters as Record<string, unknown>).map(
+    ([col, val]) => ({
+      expressionType: "SIMPLE",
+      subject: col,
+      operator: "==",
+      comparator: String(val),
+    }),
+  );
 }
 
 export function toMarkdownTable(
@@ -87,7 +122,9 @@ export function toMarkdownTable(
   );
   const table = [header, sep, ...body].join("\n");
   if (truncatedCount > 0) {
-    return `${table}\n\n> 仅展示占比前95%的主要项，另有 ${truncatedCount} 项未显示。如需完整明细请重新查询并设置 show_all=true。`;
+    const total = rows.length + truncatedCount;
+    const pct = Math.round((truncatedCount / total) * 100);
+    return `${table}\n\n> 共 ${total} 行，仅展示按首个指标累计占比前 95% 的主要项（${rows.length} 行），另有 ${truncatedCount} 行（${pct}%）未显示。如需完整明细请设置 show_all=true 重新查询。`;
   }
   return table;
 }
@@ -115,7 +152,8 @@ function filterTopRowsByMetric(
 
   let cumulative = 0;
   const cutoffIdx = sorted.findIndex((row) => {
-    const val = typeof row[metricCol] === "number" ? (row[metricCol] as number) : 0;
+    const val =
+      typeof row[metricCol] === "number" ? (row[metricCol] as number) : 0;
     cumulative += val / total;
     return cumulative >= threshold;
   });
@@ -131,20 +169,40 @@ function normalizeColName(name: string): string {
   return sumMatch ? sumMatch[1] : name;
 }
 
-function parseOrderby(value: unknown): [string, boolean][] {
+/**
+ * Parse the model-provided orderby. Accepts the standard array form
+ * [["列名", true/false]] as well as human-friendly strings like
+ * "日期↓", "日期↑", "消耗 desc", "消耗 降序".
+ */
+export function parseOrderby(value: unknown): [string, boolean][] {
   if (Array.isArray(value)) {
     return (value as [string, boolean][]).map(
       ([col, asc]) => [normalizeColName(col), asc] as [string, boolean],
     );
   }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    const match = trimmed.match(/^(.+?)\s*(↓|↑|desc|asc|降序|升序)$/i);
+    if (match) {
+      const col = normalizeColName(match[1].trim());
+      // orderby tuple is [column, ascending]: false = descending
+      const isDesc = /↓|desc|降序/i.test(match[2]);
+      return [[col, !isDesc] as [string, boolean]];
+    }
+    return [[normalizeColName(trimmed), false] as [string, boolean]];
+  }
   return [];
 }
 
-function parseRowLimit(value: unknown): number {
+export function parseRowLimit(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.min(Math.max(1, Math.round(value)), 1000);
   }
-  return 100;
+  // Default to the maximum so detail queries (project × channel × day)
+  // are not silently truncated; the 95% top-rows filter keeps the
+  // response token-bounded instead.
+  return 1000;
 }
 
 // ── Auth token cache ────────────────────────────────────────────
@@ -174,45 +232,84 @@ async function fetchWithRetry(
       const res = await fetch(url, init);
       if (res.ok) return res;
       if (i < retries && res.status >= 500) {
-        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200));
+        await new Promise((r) =>
+          setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200),
+        );
         continue;
       }
       return res;
     } catch (e) {
       lastErr = e as Error;
       if (i < retries) {
-        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200));
+        await new Promise((r) =>
+          setTimeout(r, baseDelayMs * 2 ** i + Math.random() * 200),
+        );
       }
     }
   }
   throw lastErr ?? new Error("fetch failed");
 }
 
-function parseAndCacheSchema(json: { result: Record<string, unknown> }): string {
+export function parseAndCacheSchema(json: {
+  result: Record<string, unknown>;
+}): string {
   const r = json.result;
   if (!r) return "";
 
-  const cols = r.columns as Array<{ column_name: string; groupby?: boolean }> | undefined;
+  const cols = r.columns as
+    | Array<{ column_name: string; groupby?: boolean; type_generic?: number }>
+    | undefined;
   const metrics = r.metrics as Array<{ metric_name: string }> | undefined;
+
+  // GenericDataType in this Superset fork (superset/utils/core.py):
+  // NUMERIC = 0, STRING = 1, TEMPORAL = 2, BOOLEAN = 3
+  // (unlike upstream Superset where NUMERIC is 1/2 — the fork's enum has
+  // a single NUMERIC=0 covering int/float/decimal columns)
+  const isNumeric = (c: { type_generic?: number }) => c.type_generic === 0;
 
   const lines: string[] = [];
   if (cols) {
-    const displayCols = cols
-      .filter((c) => c.groupby !== false && !(c.column_name || "").endsWith("[ID]"))
+    const dimCols = cols.filter(
+      (c) =>
+        !isNumeric(c) &&
+        c.groupby !== false &&
+        !(c.column_name || "").endsWith("[ID]"),
+    );
+    const numericCols = cols
+      .filter((c) => isNumeric(c) && !(c.column_name || "").endsWith("[ID]"))
       .map((c) => c.column_name);
-    lines.push(`可用维度列: ${displayCols.join(", ")}`);
+
+    lines.push(`可用维度列: ${dimCols.map((c) => c.column_name).join(", ")}`);
     lines.push("");
+    if (numericCols.length > 0) {
+      lines.push(
+        `可用数值列（可直接 SUM() 作为指标）: ${numericCols.join(", ")}`,
+      );
+      lines.push("");
+    }
   }
   if (metrics) {
-    const displayMetrics = metrics.map((m) => m.metric_name);
+    const displayMetrics = metrics
+      .filter((m) => !EXCLUDED_METRICS.has(m.metric_name))
+      .map((m) => m.metric_name);
     lines.push(`可用指标: ${displayMetrics.join(", ")}`);
     lines.push("");
   }
   validColNames = new Set((cols ?? []).map((c) => c.column_name));
-  validMetricNames = new Set((metrics ?? []).map((m) => m.metric_name));
+  validMetricNames = new Set([
+    ...(metrics ?? [])
+      .filter((m) => !EXCLUDED_METRICS.has(m.metric_name))
+      .map((m) => m.metric_name),
+    ...((cols ?? [])
+      .filter((c) => isNumeric(c) && !(c.column_name || "").endsWith("[ID]"))
+      .map((c) => `SUM(${c.column_name})`) as string[]),
+  ]);
   schemaCache = lines.join("\n");
   schemaCacheTime = Date.now();
-  logger.info("schema", `fetched ${cols?.length ?? 0} cols, ${metrics?.length ?? 0} metrics`);
+  logger.info(
+    "schema",
+    `fetched ${cols?.length ?? 0} cols, ${metrics?.length ?? 0} metrics`,
+  );
   return schemaCache;
 }
 
@@ -227,16 +324,19 @@ async function resolveToken(authToken?: string): Promise<string | null> {
   if (!config.supersetUsername || !config.supersetPassword) return null;
   const { flaskInternalUrl, supersetUsername, supersetPassword } = config;
   try {
-    const res = await fetchWithRetry(`${flaskInternalUrl}/api/v1/security/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: supersetUsername,
-        password: supersetPassword,
-        provider: "db",
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
+    const res = await fetchWithRetry(
+      `${flaskInternalUrl}/api/v1/security/login`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: supersetUsername,
+          password: supersetPassword,
+          provider: "db",
+        }),
+        signal: AbortSignal.timeout(5000),
+      },
+    );
     if (res.ok) {
       const data = (await res.json()) as { access_token: string };
       schemaToken = data.access_token;
@@ -341,7 +441,10 @@ export async function executeQuerySuperset(
 
   const token = await resolveToken(authToken);
   const schema = await getSchema(userId, authToken);
-  logger.info("query", `token=${!!token} schema=${!!schema} validColNames=${!!validColNames} metrics=[${metricsArr.join(",")}]`);
+  logger.info(
+    "query",
+    `token=${!!token} schema=${!!schema} validColNames=${!!validColNames} metrics=[${metricsArr.join(",")}]`,
+  );
 
   // Filter out invalid metric names against known schema
   const isValidStringMetric = (m: string) =>
@@ -354,12 +457,15 @@ export async function executeQuerySuperset(
     return isValidObjMetric(m);
   });
   if (filteredMetrics.length !== metrics.length) {
-    logger.info("query", `removed ${metrics.length - filteredMetrics.length} invalid metric(s), remaining=${filteredMetrics.length}`);
+    logger.info(
+      "query",
+      `removed ${metrics.length - filteredMetrics.length} invalid metric(s), remaining=${filteredMetrics.length}`,
+    );
   }
   if (filteredMetrics.length === 0 && metrics.length > 0) {
     return schema
-      ? `${schema}---\n查询失败: 指标名 "${metricsArr.join(", ")}" 在数据集中不存在，请使用 Schema 中的正确指标名`
-      : `查询失败: 指标名 "${metricsArr.join(", ")}" 在数据集中不存在`;
+      ? `${schema}---\n查询失败: 指标名 "${metricsArr.join(", ")}" 不存在或名称不准确。指标名必须逐字使用 Schema 中的确切名称（区分大小写），禁止改写（如「消耗金额」「新增用户」）；数值列用 SUM(列名) 形式。`
+      : `查询失败: 指标名 "${metricsArr.join(", ")}" 不存在或名称不准确，请使用 Schema 中的确切指标名`;
   }
   metrics = filteredMetrics;
 
@@ -369,9 +475,15 @@ export async function executeQuerySuperset(
     if (typeof first === "object") return first.label;
     return first;
   })();
-  const effectiveOrderby: [string, boolean][] = firstMetricLabel
-    ? [[firstMetricLabel, false]]
-    : [];
+  // Honor the model's ordering intent when it parses cleanly (standard
+  // array or "列名↓/↑" style); fall back to first-metric descending.
+  const modelOrderby = parseOrderby(args.orderby);
+  const effectiveOrderby: [string, boolean][] =
+    modelOrderby.length > 0
+      ? modelOrderby
+      : firstMetricLabel
+        ? [[firstMetricLabel, false]]
+        : [];
 
   const payload = {
     datasource: { id: datasetId, type: "table" },
@@ -390,7 +502,10 @@ export async function executeQuerySuperset(
     ],
   };
 
-  logger.info("query", `metrics=${JSON.stringify(metrics)} orderby=${JSON.stringify(effectiveOrderby)} schema=${!!schema}`);
+  logger.info(
+    "query",
+    `metrics=${JSON.stringify(metrics)} orderby=${JSON.stringify(effectiveOrderby)} schema=${!!schema}`,
+  );
 
   const baseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -440,17 +555,34 @@ export async function executeQuerySuperset(
 
   let truncatedCount = 0;
   if (!showAll && effectiveOrderby.length > 0 && effectiveOrderby[0][0]) {
-    const sortCol = effectiveOrderby[0][0];
-    const isDesc = effectiveOrderby[0][1] !== false;
-    const metricCol = cols.find((c) => c === sortCol);
-    if (metricCol) {
-      const filtered = filterTopRowsByMetric(rows, metricCol, isDesc, 0.95);
-      rows = filtered.rows;
-      truncatedCount = filtered.truncatedCount;
+    // Trend/drill-down queries (columns contain 日期) must stay complete:
+    // truncating by a metric would drop days and break the time axis.
+    // Ranking queries keep the 95% top-rows filter to bound the response.
+    if (!cols.includes("日期")) {
+      const sortCol = effectiveOrderby[0][0];
+      const isDesc = effectiveOrderby[0][1] !== false;
+      const metricCol = cols.find((c) => c === sortCol);
+      if (metricCol) {
+        const filtered = filterTopRowsByMetric(rows, metricCol, isDesc, 0.95);
+        rows = filtered.rows;
+        truncatedCount = filtered.truncatedCount;
+      }
     }
   }
 
   const table = toMarkdownTable(cols, rows, rowLimit, truncatedCount);
+
+  // Surface silent row-limit truncation: when the backend returned exactly
+  // row_limit rows, more rows may exist. Let the model decide whether to
+  // re-query with a larger row_limit.
+  const rowcount = (result?.rowcount as number | undefined) ?? rows.length;
+  if (rowcount >= rowLimit) {
+    queryCache.set(
+      cacheKey,
+      `${table}\n\n> 结果已达行数上限（${rowLimit} 行），可能不完整。如需完整数据请设置更大的 row_limit 重新查询。`,
+    );
+    return `${table}\n\n> 结果已达行数上限（${rowLimit} 行），可能不完整。如需完整数据请设置更大的 row_limit 重新查询。`;
+  }
   queryCache.set(cacheKey, table);
   return table;
 }

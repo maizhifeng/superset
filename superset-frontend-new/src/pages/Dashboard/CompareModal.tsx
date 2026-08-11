@@ -27,6 +27,7 @@ import ChevronLeft from "@mui/icons-material/ChevronLeft";
 import ChevronRight from "@mui/icons-material/ChevronRight";
 import dayjs from "dayjs";
 import api, { getMetricFormatMap } from "@/api";
+import { postChartData } from "@/api/chartData";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { extractQueryFields } from "@/utils/query/extractQueryFields";
 import { formatMetricValue } from "@/utils/formatNumber";
@@ -439,7 +440,7 @@ export default function CompareModal({
               result_type: "full" as const,
               force: true,
             };
-            const res = await api.post("/chart/data", payload);
+            const res = await postChartData(payload);
             const results = (
               Array.isArray(res.data?.result) ? res.data.result : []
             ) as ChartDataResponseResult[];
@@ -538,7 +539,7 @@ export default function CompareModal({
                 : undefined,
           };
           try {
-            const res = await api.post("/chart/data", {
+            const res = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [secQuery1],
               result_format: "json" as const,
@@ -602,7 +603,7 @@ export default function CompareModal({
                 : undefined,
           };
           try {
-            const res = await api.post("/chart/data", {
+            const res = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [secQuery2],
               result_format: "json" as const,
@@ -686,7 +687,7 @@ export default function CompareModal({
                 val: range?.end ?? "",
               });
             }
-            const aggRes = await api.post("/chart/data", {
+            const aggRes = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [
                 {
@@ -845,7 +846,7 @@ export default function CompareModal({
               force: true,
             };
             try {
-              const res = await api.post("/chart/data", payload);
+              const res = await postChartData(payload);
               const results = (
                 Array.isArray(res.data?.result) ? res.data.result : []
               ) as ChartDataResponseResult[];
@@ -954,7 +955,7 @@ export default function CompareModal({
               val: selectedChannels,
             });
           try {
-            const res = await api.post("/chart/data", {
+            const res = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [
                 {
@@ -995,7 +996,7 @@ export default function CompareModal({
             });
           filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
           try {
-            const res = await api.post("/chart/data", {
+            const res = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [
                 {
@@ -1045,7 +1046,7 @@ export default function CompareModal({
               val: selectedChannels,
             });
           try {
-            const res = await api.post("/chart/data", {
+            const res = await postChartData({
               datasource: { id: chartDsId, type: chartDsType },
               queries: [
                 {

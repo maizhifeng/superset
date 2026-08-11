@@ -18,6 +18,11 @@ const mockSendMessage = vi.fn();
 const mockClear = vi.fn();
 const mockStop = vi.fn();
 const mockUpdateModelConfig = vi.fn();
+const mockPiSendMessage = vi.fn();
+const mockPiConnect = vi.fn();
+const mockPiDisconnect = vi.fn();
+const mockPiAbort = vi.fn();
+const mockPiSetModel = vi.fn();
 
 vi.mock("@/pages/Dashboard/hooks/useInsight", () => ({
   useInsight: vi.fn(() => ({
@@ -31,6 +36,26 @@ vi.mock("@/pages/Dashboard/hooks/useInsight", () => ({
     stop: mockStop,
     modelConfig: { provider: "lmstudio", model: "gemma-4-e4b-it" },
     updateModelConfig: mockUpdateModelConfig,
+  })),
+}));
+
+vi.mock("@/hooks/usePiAgent", () => ({
+  usePiAgent: vi.fn(() => ({
+    isConnected: true,
+    isRunning: false,
+    currentText: "",
+    currentThinking: "",
+    isThinkingDone: false,
+    currentModel: "gemma-4-e4b-it",
+    modelList: [{ id: "gemma-4-e4b-it", name: "Gemma 4 E4B" }],
+    steps: [],
+    turnSteps: [],
+    sendMessage: mockPiSendMessage,
+    setModel: mockPiSetModel,
+    abort: mockPiAbort,
+    connect: mockPiConnect,
+    disconnect: mockPiDisconnect,
+    isSessionRunning: () => false,
   })),
 }));
 
@@ -288,14 +313,14 @@ test("calls clear and onClose when closed via X", () => {
   expect(onClose).toHaveBeenCalled();
 });
 
-test("shows settings panel when gear icon is clicked", () => {
+test("assistant mode shows knowledge cards and sends prompt on click", () => {
   renderWithProviders(
     <AiDrawer variant="assistant" open={true} chartId={1} onClose={vi.fn()} />,
   );
-  const gearBtn = screen.getByRole("button", { name: "设置" });
-  expect(gearBtn).toBeInTheDocument();
-  fireEvent.click(gearBtn);
-  expect(screen.getByText("AI 模型配置")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "添加" }));
-  expect(screen.getByLabelText(/API 端点/i)).toBeInTheDocument();
+  expect(screen.getByText("生成日报")).toBeInTheDocument();
+  expect(screen.getByText("生成周报")).toBeInTheDocument();
+  fireEvent.click(screen.getByText("生成日报"));
+  expect(mockPiSendMessage).toHaveBeenCalledWith(
+    expect.stringContaining("生成昨日数据日报"),
+  );
 });

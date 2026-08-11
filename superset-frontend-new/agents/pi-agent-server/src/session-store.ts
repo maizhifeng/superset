@@ -93,6 +93,25 @@ export class SessionStore {
     this.sessions.delete(storeSessionId);
   }
 
+  /**
+   * Remove every session bound to a WebSocket connection.  Used when the
+   * per-connection model preference changes: sessions keep the model they
+   * were created with, so all of them must be discarded and re-created with
+   * the new model on the next prompt.
+   */
+  removeAll(ws: WebSocket): void {
+    const store = this.getWsStore(ws);
+    for (const [sid, entry] of store) {
+      this.subscriptions.get(sid)?.();
+      this.subscriptions.delete(sid);
+      entry.unsub();
+      entry.agentSession.dispose();
+      this.sessions.delete(sid);
+    }
+    store.clear();
+    this.wsCurrentSessionId.delete(ws);
+  }
+
   cleanup(ws: WebSocket): void {
     const store = this.wsSessions.get(ws);
     if (!store) return;
@@ -116,11 +135,7 @@ export class SessionStore {
     return this.wsPreferredModel.get(ws);
   }
 
-  updateUnsub(
-    ws: WebSocket,
-    storeSessionId: string,
-    unsub: () => void,
-  ): void {
+  updateUnsub(ws: WebSocket, storeSessionId: string, unsub: () => void): void {
     const wsStore = this.getWsStore(ws);
     const existing = wsStore.get(storeSessionId);
     if (existing) {

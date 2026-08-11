@@ -22,7 +22,12 @@ vi.mock("@/config/aiConfig", () => ({
 
 /* ---------- imports ---------- */
 
-import { streamChartInsight, streamChat, abortSession } from "@/api/aiInsight";
+import {
+  streamChartInsight,
+  streamChat,
+  abortSession,
+  streamWithTools,
+} from "@/api/aiInsight";
 import api from "@/api";
 
 function chartMeta(overrides?: Record<string, unknown>) {
@@ -217,7 +222,7 @@ test("streamChartInsight passes filters to chart data query", async () => {
 
   const postCall = vi
     .mocked(api.post)
-    .mock.calls.find(([url]) => url === "/chart/data");
+    .mock.calls.find(([url]) => url === "/bi/chart/data");
   expect(postCall).toBeDefined();
   const payload = postCall![1] as Record<string, unknown>;
   const queries = (payload.queries as Record<string, unknown>[])[0];
@@ -258,4 +263,63 @@ test("streamChartInsight passes modelCfg to LLM", async () => {
   expect(promptBody).toBeDefined();
   const parsed = JSON.parse(promptBody!);
   expect(parsed.model).toBe("my-model");
+});
+
+/* ========== streamWithTools ========== */
+
+test("streamWithTools stops tool-calling loop at maxRounds", async () => {
+  let llmCalls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+    if (typeof url === "string" && url.includes("/chat/completions")) {
+      llmCalls++;
+      return Promise.resolve({
+        ok: true,
+        body: sseStream(
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_x","type":"function","function":{"name":"query_superset","arguments":"{\\"columns\\":[\\"日期\\"],\\"metrics\\":[\\"SUM(消耗)\\"],\\"time_range\\":\\"Last 2 days\\"}"}}]}}]}\n',
+          "data: [DONE]\n",
+        ),
+      } as unknown as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({}),
+    } as Response);
+  });
+
+  const full = await streamWithTools(
+    "sys",
+    "请生成日报",
+    { onText: vi.fn() },
+    undefined,
+    undefined,
+    undefined,
+    3,
+  );
+
+  expect(llmCalls).toBe(3);
+  expect(full).toBe("");
+});
+
+test("streamWithTools defaults to 5 rounds when maxRounds is omitted", async () => {
+  let llmCalls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation((url) => {
+    if (typeof url === "string" && url.includes("/chat/completions")) {
+      llmCalls++;
+      return Promise.resolve({
+        ok: true,
+        body: sseStream(
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_y","type":"function","function":{"name":"query_superset","arguments":"{\\"columns\\":[\\"日期\\"],\\"metrics\\":[\\"SUM(消耗)\\"],\\"time_range\\":\\"Last 2 days\\"}"}}]}}]}\n',
+          "data: [DONE]\n",
+        ),
+      } as unknown as Response);
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({}),
+    } as Response);
+  });
+
+  await streamWithTools("sys", "请生成日报", { onText: vi.fn() });
+
+  expect(llmCalls).toBe(5);
 });

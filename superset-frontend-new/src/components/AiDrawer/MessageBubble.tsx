@@ -13,11 +13,13 @@ import FaceIcon from "@mui/icons-material/Face";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import LightMdRenderer from "@/components/LightMdRenderer";
-import type { MessageContent } from "@/types/ai";
+import AgentStepCard from "@/components/AiDrawer/AgentStepCard";
+import ThinkingBlock from "@/components/AiDrawer/ThinkingBlock";
+import type { AgentMessageContent } from "@/types/ai";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
-  content: MessageContent;
+  content: AgentMessageContent;
   onRetry?: () => void;
 }
 
@@ -100,6 +102,32 @@ export default function MessageBubble({
             </TableBody>
           </Table>
         );
+      case "agent_done":
+        return (
+          <Box>
+            {content.thinking && <ThinkingBlock text={content.thinking} done />}
+            {content.steps.length > 0 && (
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0.5,
+                  my: 1,
+                }}
+              >
+                {content.steps.map((step, i) => (
+                  <AgentStepCard
+                    key={step.id}
+                    step={step}
+                    compact
+                    isLast={i === content.steps.length - 1}
+                  />
+                ))}
+              </Box>
+            )}
+            <LightMdRenderer content={content.summary} />
+          </Box>
+        );
       case "sql":
         return (
           <Box
@@ -181,7 +209,9 @@ export default function MessageBubble({
                     ? content.body
                     : content.type === "sql"
                       ? content.sql
-                      : "";
+                      : content.type === "agent_done"
+                        ? content.summary
+                        : "";
                 void handleCopy(text);
               }}
               sx={{ width: 24, height: 24 }}

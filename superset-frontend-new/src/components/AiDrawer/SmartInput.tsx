@@ -5,7 +5,7 @@ import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
-import ModelSelector from "@/components/AgentApp/ModelSelector";
+import ModelSelector from "@/components/AiDrawer/ModelSelector";
 
 interface SmartInputProps {
   onSend: (text: string) => void;

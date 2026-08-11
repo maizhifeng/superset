@@ -9,11 +9,8 @@ import api from "@/api";
 
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
 import type { ChartDataResponseResult } from "@/utils/query/types";
+import { getChartDataUrl } from "@/api/chartData";
 import { isFederatedDataset } from "@/config/federatedDatasets";
-
-function getChartDataUrl(dsId: number): string {
-  return isFederatedDataset(dsId) ? "/bi/chart/data" : "/chart/data";
-}
 
 /** Convert adhoc filters ({subject, operator, comparator}) to wide-table
  * filter predicates ({col, op, val}) accepted by /bi/pivot/wide-data. */

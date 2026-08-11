@@ -32,13 +32,11 @@ const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
 const AdminRoles = lazy(() => import("@/pages/AdminRoles"));
-const AgentChat = lazy(() => import("@/components/AgentApp/PiAgentChat"));
-import AgentApp from "@/components/AgentApp/AgentApp";
 
 interface RouteConfig {
   path: string;
   Component: ComponentType;
-  layout: "default" | "agent" | "none";
+  layout: "default" | "none";
 }
 
 const routes: RouteConfig[] = [
@@ -71,8 +69,6 @@ const routes: RouteConfig[] = [
   { path: "/settings", Component: Settings, layout: "default" },
   { path: "/admin/users", Component: AdminUsers, layout: "default" },
   { path: "/admin/roles", Component: AdminRoles, layout: "default" },
-  { path: "/agent", Component: AgentChat, layout: "agent" },
-  { path: "/agent/*", Component: AgentChat, layout: "agent" },
 ];
 
 function LoadingFallback() {
@@ -102,22 +98,6 @@ function ProtectedLayout({
       <AppLayout>
         <PageTransition>{children}</PageTransition>
       </AppLayout>
-    </ProtectedRoute>
-  );
-}
-
-function ProtectedAgentLayout({
-  children,
-  requiredRoles,
-}: {
-  children: React.ReactNode;
-  requiredRoles?: string[];
-}) {
-  return (
-    <ProtectedRoute requiredRoles={requiredRoles}>
-      <AgentApp>
-        <PageTransition>{children}</PageTransition>
-      </AgentApp>
     </ProtectedRoute>
   );
 }
@@ -185,21 +165,8 @@ export default function App() {
           }
         />
 
-        {routes.map(({ path, Component, layout }) => {
+        {routes.map(({ path, Component, layout: _layout }) => {
           const requiredRoles = routePermissions[path];
-          if (layout === "agent") {
-            return (
-              <Route
-                key={path}
-                path={path}
-                element={
-                  <ProtectedAgentLayout requiredRoles={requiredRoles}>
-                    <Component />
-                  </ProtectedAgentLayout>
-                }
-              />
-            );
-          }
           return (
             <Route
               key={path}

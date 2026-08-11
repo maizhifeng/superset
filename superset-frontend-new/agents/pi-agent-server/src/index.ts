@@ -1,6 +1,9 @@
 import { WebSocket, WebSocketServer } from "ws";
 import type { Model } from "@earendil-works/pi-ai";
-import type { ToolDefinition, AgentSession } from "@earendil-works/pi-coding-agent";
+import type {
+  ToolDefinition,
+  AgentSession,
+} from "@earendil-works/pi-coding-agent";
 import {
   AuthStorage,
   SessionManager,
@@ -11,6 +14,7 @@ import {
 import { handleConnection } from "./ws-handler.js";
 import type { ModelInfo } from "./types.js";
 import { getWsPreferredModel, getWsAuthToken } from "./session-store.js";
+import { getPreferredModel } from "./model-preference.js";
 import extensionFactory, { setSchemaForNextSession } from "./extension.js";
 import { getSchema } from "./tools/querySuperset.js";
 import { loadConfig } from "./config.js";
@@ -27,12 +31,17 @@ interface ModelEntry {
 
 async function fetchModelList(): Promise<ModelInfo[]> {
   try {
-    const res = await fetch(`${LLM_BASE_URL}/models`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${LLM_BASE_URL}/models`, {
+      signal: AbortSignal.timeout(5000),
+    });
     if (!res.ok) return [];
     const json = (await res.json()) as { data?: ModelEntry[] };
     const data = json.data ?? (Array.isArray(json) ? json : undefined);
     if (data) {
-      return data.map((m) => ({ id: m.id ?? m.name ?? "", name: m.name ?? m.id }));
+      return data.map((m) => ({
+        id: m.id ?? m.name ?? "",
+        name: m.name ?? m.id,
+      }));
     }
     return [];
   } catch {
@@ -41,6 +50,30 @@ async function fetchModelList(): Promise<ModelInfo[]> {
 }
 
 const modelList: ModelInfo[] = await fetchModelList();
+
+// Retry when the LLM provider was not ready at boot (e.g. right after a
+// container restart the provider may still be starting). A stale empty
+// model list would otherwise make the effective default fall back to
+// LLM_MODEL and block frontend re-application of saved preferences.
+if (modelList.length === 0) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const retried = await fetchModelList();
+    if (retried.length > 0) {
+      modelList.push(...retried);
+      break;
+    }
+    logger.warn("model", `model list empty, retry ${attempt}/5`);
+  }
+}
+
+// Effective default model: prefer the configured LLM_MODEL when it exists in
+// the provider's model list, otherwise fall back to the first available
+// model so sessions are created with a model the provider actually serves.
+const effectiveDefaultModel =
+  modelList.find((m) => m.id === LLM_MODEL)?.id ??
+  modelList[0]?.id ??
+  LLM_MODEL;
 
 const authStorage = AuthStorage.create();
 authStorage.setRuntimeApiKey("flask-llm", "internal");
@@ -53,15 +86,27 @@ const resourceLoader = new DefaultResourceLoader({
 
 await resourceLoader.reload();
 
-async function createSession(userId: string, tools: ToolDefinition[], ws?: WebSocket): Promise<AgentSession | null> {
-  const modelId = ws ? getWsPreferredModel(ws) ?? LLM_MODEL : LLM_MODEL;
+async function createSession(
+  userId: string,
+  tools: ToolDefinition[],
+  ws?: WebSocket,
+): Promise<AgentSession | null> {
+  const modelId = ws
+    ? (getWsPreferredModel(ws) ??
+      getPreferredModel(userId) ??
+      effectiveDefaultModel)
+    : effectiveDefaultModel;
+  logger.info(
+    "session",
+    `creating session for user=${userId} model=${modelId} (wsPreferred=${ws ? !!getWsPreferredModel(ws) : false} persistent=${ws ? (getPreferredModel(userId) ?? "-") : "-"})`,
+  );
   const model: Model<string> = {
     provider: "flask-llm",
     id: modelId,
     name: modelId,
     api: "openai-completions",
     baseUrl: LLM_BASE_URL,
-    reasoning: false,
+    reasoning: true,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
@@ -72,7 +117,10 @@ async function createSession(userId: string, tools: ToolDefinition[], ws?: WebSo
     const token = getWsAuthToken(ws);
     logger.info("session", `ws token available: ${!!token}`);
     const schema = await getSchema(userId, token);
-    logger.info("session", `schema fetched for session: ${!!schema} (${schema?.slice(0, 60).replace(/\n/g, " ")})`);
+    logger.info(
+      "session",
+      `schema fetched for session: ${!!schema} (${schema?.slice(0, 60).replace(/\n/g, " ")})`,
+    );
     if (schema) {
       setSchemaForNextSession(schema);
       logger.info("session", "schema queued for next agent session");
@@ -86,6 +134,9 @@ async function createSession(userId: string, tools: ToolDefinition[], ws?: WebSo
     customTools: tools,
     noTools: "builtin",
     sessionManager: SessionManager.inMemory(),
+    // Reasoning starts off; processPrompt enables it per-intent for
+    // report/comparison requests (see isReasoningIntent in agent-orchestrator).
+    thinkingLevel: "off",
   });
 
   return session;
@@ -100,7 +151,13 @@ const wss = new WebSocketServer({
 wss.on("connection", (ws, req) => {
   const searchParams = new URL(req.url ?? "", "http://localhost").searchParams;
   const accessToken = searchParams.get("token") ?? undefined;
-  handleConnection(ws, createSession, modelList, accessToken);
+  handleConnection(
+    ws,
+    createSession,
+    modelList,
+    accessToken,
+    effectiveDefaultModel,
+  );
 });
 
 logger.info("server", `started on port ${config.wsPort}`);

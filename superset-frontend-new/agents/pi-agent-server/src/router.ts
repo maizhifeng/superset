@@ -4,9 +4,11 @@ import type { ClientMessage, ModelInfo, ServerMessage } from "./types.js";
 import {
   SessionStore,
   setWsPreferredModel,
+  getWsPreferredModel,
   setWsAuthToken,
   getWsAuthToken,
 } from "./session-store.js";
+import { setPreferredModel } from "./model-preference.js";
 import {
   processPrompt,
   createTools,
@@ -17,6 +19,18 @@ function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
   }
+}
+
+function sendModelList(
+  ws: WebSocket,
+  modelList: ModelInfo[],
+  defaultModel: string,
+): void {
+  send(ws, {
+    type: "model_list",
+    models: modelList,
+    current: getWsPreferredModel(ws) ?? defaultModel,
+  });
 }
 
 function parseMessage(raw: string): ClientMessage | null {
@@ -38,6 +52,7 @@ export function handleConnection(
   ) => Promise<AgentSession | null>,
   modelList: ModelInfo[] = [],
   accessToken?: string,
+  defaultModel = "",
 ): void {
   const sessionStore = new SessionStore();
 
@@ -45,7 +60,7 @@ export function handleConnection(
     setWsAuthToken(ws, accessToken);
   }
 
-  send(ws, { type: "model_list", models: modelList });
+  sendModelList(ws, modelList, defaultModel);
 
   ws.on("message", async (raw) => {
     const msg = parseMessage(raw.toString());
@@ -79,13 +94,34 @@ export function handleConnection(
 
       case "set_model":
         if (msg.model) {
+          // Reject models the provider does not serve (skip validation when
+          // the model list is unavailable, e.g. provider was down at boot).
+          if (
+            modelList.length > 0 &&
+            !modelList.some((m) => m.id === msg.model)
+          ) {
+            send(ws, {
+              type: "error",
+              message: `模型 "${msg.model}" 不在可用模型列表中`,
+              retryable: false,
+            });
+            break;
+          }
           setWsPreferredModel(ws, msg.model);
-          // 销毁当前会话，下一条 prompt 会用新模型重建
+          if (msg.user_id) {
+            setPreferredModel(msg.user_id, msg.model);
+          }
+          // Sessions keep the model they were created with, so discard ALL
+          // sessions of this connection — the next prompt recreates them
+          // with the newly selected model (this also covers sessions created
+          // before the first prompt, which had no "current session" set).
           const currentSid = sessionStore.getCurrentSessionId(ws);
+          sessionStore.removeAll(ws);
           if (currentSid) {
-            sessionStore.remove(ws, currentSid);
             send(ws, { type: "session_created", sessionId: currentSid });
           }
+          // Echo the updated model state so the client selector stays in sync
+          sendModelList(ws, modelList, defaultModel);
         }
         break;
 

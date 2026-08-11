@@ -4,7 +4,6 @@ export type {
   MessageContent,
   ConversationMessage,
   ConversationThread,
-  DrillDownSuggestion,
   KnowledgeCard,
   InsightState,
 } from "@/types/ai";

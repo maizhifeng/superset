@@ -3,6 +3,7 @@ import {
   validateAgentOutput,
   extractLastAssistantText,
   extractToolResultText,
+  isReasoningIntent,
 } from "../agent-orchestrator.js";
 
 test("validateAgentOutput returns valid when tool results exist", () => {
@@ -60,7 +61,9 @@ test("extractToolResultText returns last tool content string", () => {
 
 test("extractToolResultText returns empty when no tool messages", () => {
   expect(extractToolResultText([])).toBe("");
-  expect(extractToolResultText([{ role: "assistant", content: "hi" }])).toBe("");
+  expect(extractToolResultText([{ role: "assistant", content: "hi" }])).toBe(
+    "",
+  );
 });
 
 test("extractToolResultText handles array of mixed types", () => {
@@ -71,4 +74,12 @@ test("extractToolResultText handles array of mixed types", () => {
     },
   ];
   expect(extractToolResultText(messages)).toBe("line1\nline2");
+});
+
+test("isReasoningIntent matches report requests", () => {
+  expect(isReasoningIntent("请生成昨日数据日报")).toBe(true);
+  expect(isReasoningIntent("对比上周和本周的消耗变化")).toBe(true);
+  expect(isReasoningIntent("帮我算一下各渠道的消耗占比")).toBe(true);
+  expect(isReasoningIntent("分析近7天各渠道商的返点后消耗")).toBe(false);
+  expect(isReasoningIntent("查询渠道商微信小游戏的消耗")).toBe(false);
 });

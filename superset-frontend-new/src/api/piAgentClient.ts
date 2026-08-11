@@ -1,3 +1,5 @@
+import { getAgentWsUrl } from "@/utils/agentWsUrl";
+
 type ModelInfo = { id: string; name?: string };
 type ServerMessage =
   | { type: "session_created"; sessionId: string }
@@ -28,16 +30,20 @@ type ServerMessage =
       messages: unknown[];
       finalText?: string;
     }
-  | { type: "model_list"; models: ModelInfo[] }
+  | { type: "model_list"; models: ModelInfo[]; current?: string }
   | { type: "error"; message: string; retryable: boolean };
 
-/** @deprecated Use PiAgentChatAdapter instead. This client is no longer the primary WS interface. */
+/** Event handler for messages received from the pi-agent WebSocket. */
 export type PiAgentEventHandler = (event: ServerMessage) => void;
 
 const RECONNECT_BASE_MS = 1500;
 const PENDING_TIMEOUT_MS = 5000;
 
-/** @deprecated Use PiAgentChatAdapter from piAgentAdapter.ts instead. */
+/**
+ * Low-level WebSocket client for the pi-agent server.  Wraps session
+ * creation, prompt streaming, auth, reconnect and buffering; consumed by
+ * usePiAgent which translates the events into agentStore sessions/steps.
+ */
 export class PiAgentClient {
   private ws: WebSocket | null = null;
   private userId: string;
@@ -69,8 +75,7 @@ export class PiAgentClient {
       return;
     }
 
-    const wsUrl =
-      import.meta.env.VITE_PI_AGENT_WS_URL || "ws://localhost:9000/agent/ws";
+    const wsUrl = getAgentWsUrl();
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
@@ -132,12 +137,13 @@ export class PiAgentClient {
   }
 
   setModel(model: string): void {
+    const payload = { type: "set_model" as const, model, user_id: this.userId };
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.pendingMessages.push({ type: "set_model", model });
+      this.pendingMessages.push(payload);
       this.startPendingTimer();
       return;
     }
-    this.send({ type: "set_model", model });
+    this.send(payload);
   }
 
   abort(): void {
