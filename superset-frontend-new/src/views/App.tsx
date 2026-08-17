@@ -1,4 +1,4 @@
-import { useState, useCallback, type ComponentType } from "react";
+import { useCallback, type ComponentType } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Box from "@mui/material/Box";
@@ -9,6 +9,7 @@ import PageTransition from "@/components/PageTransition";
 import KeyboardShortcutHelpModal from "@/components/KeyboardShortcutHelpModal";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import { useAuthStore } from "@/store/authStore";
+import { useHelpModalStore } from "@/store/helpModal";
 import { routePermissions } from "@/config/routePermissions";
 
 const Login = lazy(() => import("@/pages/Login"));
@@ -23,15 +24,11 @@ const DatabaseDetail = lazy(() => import("@/pages/DatabaseDetail"));
 const DatasetList = lazy(() => import("@/pages/DatasetList"));
 const DatasetCreation = lazy(() => import("@/pages/DatasetCreation"));
 const DatasetEdit = lazy(() => import("@/pages/DatasetEdit"));
-const ProjectConfig = lazy(() => import("@/pages/ProjectConfig"));
-const ChannelConfig = lazy(() => import("@/pages/ChannelConfig"));
-const ProfitSharingConfig = lazy(() => import("@/pages/ProfitSharingConfig"));
+const ProjectConfigCenter = lazy(() => import("@/pages/ProjectConfigCenter"));
 const SavedQueryList = lazy(() => import("@/pages/SavedQueryList"));
 const AlertReportList = lazy(() => import("@/pages/AlertReportList"));
 const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
-const Settings = lazy(() => import("@/pages/Settings"));
-const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
-const AdminRoles = lazy(() => import("@/pages/AdminRoles"));
+const SystemAdmin = lazy(() => import("@/pages/SystemAdmin"));
 
 interface RouteConfig {
   path: string;
@@ -52,13 +49,7 @@ const routes: RouteConfig[] = [
   { path: "/dataset/list", Component: DatasetList, layout: "default" },
   { path: "/dataset/create", Component: DatasetCreation, layout: "default" },
   { path: "/dataset/edit/:id", Component: DatasetEdit, layout: "default" },
-  { path: "/project/config", Component: ProjectConfig, layout: "default" },
-  { path: "/project/channel", Component: ChannelConfig, layout: "default" },
-  {
-    path: "/project/profit-sharing",
-    Component: ProfitSharingConfig,
-    layout: "default",
-  },
+  { path: "/project/settings", Component: ProjectConfigCenter, layout: "default" },
   {
     path: "/saved_query/list",
     Component: SavedQueryList,
@@ -66,9 +57,20 @@ const routes: RouteConfig[] = [
   },
   { path: "/alert/list", Component: AlertReportList, layout: "default" },
   { path: "/query_history", Component: QueryHistoryList, layout: "default" },
-  { path: "/settings", Component: Settings, layout: "default" },
-  { path: "/admin/users", Component: AdminUsers, layout: "default" },
-  { path: "/admin/roles", Component: AdminRoles, layout: "default" },
+  { path: "/system/admin", Component: SystemAdmin, layout: "default" },
+];
+
+// Redirect legacy routes to their consolidated tabbed pages.
+const legacyRedirects: { path: string; to: string }[] = [
+  { path: "/settings", to: "/system/admin?tab=menu" },
+  { path: "/admin/users", to: "/system/admin?tab=users" },
+  { path: "/admin/roles", to: "/system/admin?tab=roles" },
+  { path: "/project/config", to: "/project/settings?tab=game" },
+  { path: "/project/channel", to: "/project/settings?tab=channel" },
+  {
+    path: "/project/profit-sharing",
+    to: "/project/settings?tab=profit-sharing",
+  },
 ];
 
 function LoadingFallback() {
@@ -105,9 +107,11 @@ function ProtectedLayout({
 function GlobalShortcuts() {
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [helpOpen, setHelpOpen] = useState(false);
+  const helpOpen = useHelpModalStore((s) => s.open);
+  const toggleHelp = useHelpModalStore((s) => s.toggleHelp);
+  const closeHelp = useHelpModalStore((s) => s.closeHelp);
 
-  useShortcutWithHelp("shift+/", () => setHelpOpen((prev) => !prev), {
+  useShortcutWithHelp("shift+/", toggleHelp, {
     label: "打开快捷键帮助",
     category: "global",
     description: "按 Shift+? 查看所有快捷键",
@@ -143,7 +147,7 @@ function GlobalShortcuts() {
     description: "按 G + H 返回首页",
   });
 
-  const handleCloseHelp = useCallback(() => setHelpOpen(false), []);
+  const handleCloseHelp = useCallback(() => closeHelp(), [closeHelp]);
 
   if (!isAuthenticated) return null;
 
@@ -179,6 +183,10 @@ export default function App() {
             />
           );
         })}
+
+        {legacyRedirects.map(({ path, to }) => (
+          <Route key={path} path={path} element={<Navigate to={to} replace />} />
+        ))}
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

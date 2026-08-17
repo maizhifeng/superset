@@ -16,6 +16,7 @@ import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
 import { useDrawerStore } from "@/store/drawerState";
 import { PRESET_INTERVALS } from "@/pages/Dashboard/constants";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useRecentDashboards } from "@/store/recentDashboards";
 import { useDashboardData } from "@/pages/Dashboard/hooks/useDashboardData";
 import { useDashboardCompare } from "@/pages/Dashboard/hooks/useDashboardCompare";
 import { useDashboardLayout } from "@/pages/Dashboard/hooks/useDashboardLayout";
@@ -106,16 +107,12 @@ export function useDashboardState() {
   const [navItems, setNavItems] = useState<{ id: number; name: string }[]>([]);
 
   const openNav = () => {
-    const cards = document.querySelectorAll("[data-chart-index]");
-    const items = Array.from(cards).map((el) => ({
-      id: Number(el.getAttribute("data-chart-index")),
-      name:
-        el
-          .querySelector(".drag-handle .MuiTypography-root")
-          ?.textContent?.trim() ||
-        `Chart #${el.getAttribute("data-chart-index")}`,
-    }));
-    setNavItems(items);
+    setNavItems(
+      layoutItems.map((item) => ({
+        id: item.chartId,
+        name: item.sliceName || `Chart #${item.chartId}`,
+      })),
+    );
     setNavOpen(true);
   };
 
@@ -149,6 +146,7 @@ export function useDashboardState() {
       const res = await api.get<{ result: DashboardData }>(`/dashboard/${id}`);
       const dash = res.data.result;
       setDashboard(dash);
+      useRecentDashboards.getState().record(Number(id));
       if (prevTitleRef.current !== dash.dashboard_title)
         prevTitleRef.current = dash.dashboard_title;
 
@@ -474,6 +472,7 @@ export function useDashboardState() {
     clearAll,
     layoutItems,
     onFilterDrawerOpen: () => setFilterDrawerOpen(true),
+    onFilterDrawerToggle: () => setFilterDrawerOpen((prev) => !prev),
     onAddFilter: (id: string) => setPendingFilterIds((prev) => [...prev, id]),
     onRefreshAll: () => void refreshCharts(),
     onOpenNav: openNav,

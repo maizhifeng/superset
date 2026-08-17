@@ -123,29 +123,31 @@ export default function Dashboard() {
         <DashboardGrid
           containerWidth={layout.containerWidth}
           layoutItems={layoutItems}
-          chartMeta={chartMeta}
-          chartData={chartData}
-          chartLoading={chartLoading}
           saving={layout.saving}
           containerRef={layout.containerRef}
+          chartData={{
+            chartMeta,
+            chartData,
+            chartLoading,
+            totalRows,
+            pivotTotalRows,
+            pivotSubtotalRows,
+            metricFormatMaps,
+            chartPages,
+            chartHasMore,
+            compareConfig: compare.compareConfig,
+            mirrorData: compare.mirrorData,
+          }}
           onSizeChange={layout.handleSizeChange}
           onRefresh={handleRefreshChart}
           onEdit={handleEditChart}
           onDelete={handleDeleteChartClick}
           onInsight={handleOpenInsight}
           onAddChart={handleAddChartOpen}
-          compareConfig={compare.compareConfig}
-          mirrorData={compare.mirrorData}
           onToggleCompare={compare.handleToggleCompare}
           onOpenCompareBigScreen={compare.openPeriodModal}
-          totalRows={totalRows}
-          pivotTotalRows={pivotTotalRows}
-          pivotSubtotalRows={pivotSubtotalRows}
           intervalSeconds={intervalSeconds}
           onCycleInterval={cycleInterval}
-          metricFormatMaps={metricFormatMaps}
-          chartPages={chartPages}
-          chartHasMore={chartHasMore}
           onChartPageChange={handleChartPageChange}
         />
       </Box>

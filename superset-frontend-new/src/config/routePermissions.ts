@@ -8,6 +8,9 @@ export const routePermissions: Record<string, string[]> = {
   "/project/config": ["Admin"],
   "/project/channel": ["Admin"],
   "/project/profit-sharing": ["Admin"],
+  "/project/settings": ["Admin"],
+  "/system/admin": ["Admin"],
+  "/settings": ["Admin"],
   "/admin/users": ["Admin"],
   "/admin/roles": ["Admin"],
 };

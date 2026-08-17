@@ -15,6 +15,8 @@ interface SmartInputProps {
   currentModel?: string;
   modelList?: { id: string; name?: string }[];
   onModelChange?: (model: string) => void;
+  /** 挂载时预填到输入框的初始提问（如从全局搜索跳转而来）。 */
+  initialValue?: string;
 }
 
 const SLASH_COMMANDS = [
@@ -32,8 +34,9 @@ export default function SmartInput({
   currentModel,
   modelList,
   onModelChange,
+  initialValue,
 }: SmartInputProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue ?? "");
   const [showCommands, setShowCommands] = useState(false);
   const [filteredCommands, setFilteredCommands] = useState(SLASH_COMMANDS);
   const inputRef = useRef<HTMLDivElement>(null);

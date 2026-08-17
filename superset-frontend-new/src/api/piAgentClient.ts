@@ -1,15 +1,21 @@
 import { getAgentWsUrl } from "@/utils/agentWsUrl";
 
 type ModelInfo = { id: string; name?: string };
-type ServerMessage =
+export type ServerMessage =
   | { type: "session_created"; sessionId: string }
-  | { type: "agent_start"; storeSessionId?: string }
+  | { type: "agent_start"; storeSessionId?: string; insight?: boolean }
   | {
       type: "message_update";
       storeSessionId?: string;
+      insight?: boolean;
       assistantMessageEvent: { type: "text_delta"; delta: string };
     }
-  | { type: "thinking_delta"; storeSessionId?: string; delta: string }
+  | {
+      type: "thinking_delta";
+      storeSessionId?: string;
+      insight?: boolean;
+      delta: string;
+    }
   | {
       type: "tool_execution_start";
       storeSessionId?: string;
@@ -27,11 +33,24 @@ type ServerMessage =
   | {
       type: "agent_end";
       storeSessionId?: string;
+      insight?: boolean;
       messages: unknown[];
       finalText?: string;
     }
   | { type: "model_list"; models: ModelInfo[]; current?: string }
-  | { type: "error"; message: string; retryable: boolean };
+  | {
+      type: "error";
+      message: string;
+      retryable: boolean;
+      storeSessionId?: string;
+      insight?: boolean;
+    };
+
+/** Events streamed for chart-insight requests (server marks them insight). */
+export type InsightEvent = ServerMessage & {
+  insight: true;
+  storeSessionId: string;
+};
 
 /** Event handler for messages received from the pi-agent WebSocket. */
 export type PiAgentEventHandler = (event: ServerMessage) => void;
@@ -134,6 +153,38 @@ export class PiAgentClient {
       return;
     }
     this.send(msg);
+  }
+
+  /**
+   * Send a chart-insight request. Streams events marked `insight: true`
+   * back through the regular handler channel.
+   */
+  sendInsight(
+    storeSessionId: string,
+    payload: {
+      chartId?: number;
+      filters?: Record<string, unknown>;
+      prompt?: string;
+    },
+  ): void {
+    const msg: Record<string, unknown> = {
+      type: "insight",
+      storeSessionId,
+      ...payload,
+    };
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.pendingMessages.push(msg);
+      this.startPendingTimer();
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+        this.connect(storeSessionId);
+      }
+      return;
+    }
+    this.send(msg);
+  }
+
+  abortInsight(storeSessionId: string): void {
+    this.send({ type: "abort", storeSessionId });
   }
 
   setModel(model: string): void {

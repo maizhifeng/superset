@@ -1,25 +1,9 @@
-:root {
-  /* Design tokens — single source of truth.
-     Values mirror src/theme/spacing.ts and src/theme/motion.ts.
-     Update both locations when changing tokens. */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --duration-micro: 80ms;
-  --duration-quick: 150ms;
-  --duration-standard: 200ms;
-  --duration-slow: 300ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
-  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-}
+/*
+ * Theme-differentiated global styles (scrollbars, selection, focus ring).
+ * Design tokens (spacing/radius/duration/ease) live in src/theme/tokens.ts —
+ * they are consumed through the MUI theme and src/theme/, not through CSS
+ * custom properties, so no CSS token block is maintained here.
+ */
 
 [data-theme="paper"]::-webkit-scrollbar,
 [data-theme="paper"] ::-webkit-scrollbar {

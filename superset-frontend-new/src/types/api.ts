@@ -136,11 +136,24 @@ export interface DatabaseDetail {
   uuid: string;
 }
 
+export interface DashboardOwner {
+  id?: number;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+}
+
 export interface DashboardListItem {
   id: number;
   dashboard_title: string;
   published: boolean;
   changed_on_delta_humanized?: string;
+  owners?: DashboardOwner[];
+  created_by?: {
+    id?: number;
+    first_name?: string;
+    last_name?: string;
+  };
 }
 
 export interface SavedQuery {
@@ -259,7 +272,8 @@ export interface AdminUser {
   email: string;
   first_name: string;
   last_name: string;
-  is_active: boolean;
+  active?: boolean;
+  is_active?: boolean;
   last_login: string | null;
   login_count: number;
   fail_login_count: number;

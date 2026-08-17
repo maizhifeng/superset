@@ -1,6 +1,6 @@
 import { loadConfig } from "../config.js";
 import { logger } from "../logger.js";
-import LRU from "lru-cache";
+import { LRUCache } from "lru-cache";
 
 const config = loadConfig();
 
@@ -13,44 +13,8 @@ interface SimpleAggregate {
 
 type MetricEntry = string | SimpleAggregate;
 
-const SAVED_METRICS = new Set([
-  "cpa",
-  "cpp",
-  "count",
-  "roi_1",
-  "roi_2",
-  "roi_3",
-  "roi_4",
-  "roi_5",
-  "roi_6",
-  "roi_7",
-  "roi_14",
-  "roi_21",
-  "roi_30",
-  "roi_60",
-  "roi_90",
-  "累计roi",
-  "ltv_1",
-  "ltv_2",
-  "ltv_3",
-  "ltv_4",
-  "ltv_5",
-  "ltv_6",
-  "ltv_7",
-  "ltv_21",
-  "ltv_30",
-  "ltv_60",
-  "ltv_90",
-  "1日付费率",
-  "2日留存率",
-  "自然付费%",
-  "自然新增%",
-]);
-
-// Metrics explicitly excluded from the schema and the query whitelist.
-const EXCLUDED_METRICS = new Set(["ltv_14"]);
-
-// Dynamically populated from schema fetch — used alongside SAVED_METRICS
+// Dynamically populated from schema fetch; the schema is the single
+// source of truth for valid metric names.
 let validMetricNames: Set<string> | null = null;
 
 export function buildMetricEntry(m: string): MetricEntry {
@@ -62,9 +26,6 @@ export function buildMetricEntry(m: string): MetricEntry {
       aggregate: "SUM",
       label: m,
     };
-  }
-  if (SAVED_METRICS.has(m)) {
-    return m;
   }
   if (validMetricNames?.has(m)) {
     return m;
@@ -84,13 +45,32 @@ export function buildFilters(filters: unknown): unknown[] {
     Object.keys(filters).length === 0
   )
     return [];
-  return Object.entries(filters as Record<string, unknown>).map(
-    ([col, val]) => ({
-      expressionType: "SIMPLE",
-      subject: col,
-      operator: "==",
-      comparator: String(val),
-    }),
+  return Object.entries(filters as Record<string, unknown>).flatMap(
+    ([col, val]): {
+      expressionType: string;
+      subject: string;
+      operator: string;
+      comparator: string | string[];
+    }[] => {
+      if (Array.isArray(val)) {
+        return [
+          {
+            expressionType: "SIMPLE",
+            subject: col,
+            operator: "IN",
+            comparator: val.map(String),
+          },
+        ];
+      }
+      return [
+        {
+          expressionType: "SIMPLE",
+          subject: col,
+          operator: "==",
+          comparator: String(val),
+        },
+      ];
+    },
   );
 }
 
@@ -220,7 +200,7 @@ function isCacheValid(cacheTime: number, ttl: number): boolean {
   return cacheTime > 0 && Date.now() - cacheTime < ttl;
 }
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   init: RequestInit,
   retries = 2,
@@ -289,17 +269,13 @@ export function parseAndCacheSchema(json: {
     }
   }
   if (metrics) {
-    const displayMetrics = metrics
-      .filter((m) => !EXCLUDED_METRICS.has(m.metric_name))
-      .map((m) => m.metric_name);
+    const displayMetrics = metrics.map((m) => m.metric_name);
     lines.push(`可用指标: ${displayMetrics.join(", ")}`);
     lines.push("");
   }
   validColNames = new Set((cols ?? []).map((c) => c.column_name));
   validMetricNames = new Set([
-    ...(metrics ?? [])
-      .filter((m) => !EXCLUDED_METRICS.has(m.metric_name))
-      .map((m) => m.metric_name),
+    ...(metrics ?? []).map((m) => m.metric_name),
     ...((cols ?? [])
       .filter((c) => isNumeric(c) && !(c.column_name || "").endsWith("[ID]"))
       .map((c) => `SUM(${c.column_name})`) as string[]),
@@ -313,7 +289,7 @@ export function parseAndCacheSchema(json: {
   return schemaCache;
 }
 
-async function resolveToken(authToken?: string): Promise<string | null> {
+export async function resolveToken(authToken?: string): Promise<string | null> {
   // Frontend-provided token takes priority
   if (authToken) return authToken;
   // Cached env-derived JWT
@@ -375,29 +351,17 @@ export async function getSchema(
         const json = (await res.json()) as { result: Record<string, unknown> };
         return parseAndCacheSchema(json);
       }
+      schemaError = `Bearer auth failed: HTTP ${res.status}`;
     } catch (e) {
       schemaError = `Bearer auth failed: ${(e as Error).message}`;
     }
-  }
-  try {
-    const res = await fetchWithRetry(
-      `${config.flaskInternalUrl}/api/v1/dataset/${dsId}`,
-      { headers: { "X-Internal-Agent": "true" } },
-    );
-    if (res.ok) {
-      const json = (await res.json()) as { result: Record<string, unknown> };
-      return parseAndCacheSchema(json);
-    }
-    schemaError = `Internal agent auth failed: HTTP ${res.status}`;
-  } catch (e) {
-    schemaError = `Internal agent auth failed: ${(e as Error).message}`;
   }
   logger.warn("schema", `failed to fetch schema: ${schemaError}`);
   return "";
 }
 
 // ── Query result cache (LRU, 30s TTL, max 500 entries) ──────────
-const queryCache = new LRU<string, string>({
+const queryCache = new LRUCache<string, string>({
   max: 500,
   ttl: 30_000,
   ttlAutopurge: true,
@@ -443,12 +407,11 @@ export async function executeQuerySuperset(
   const schema = await getSchema(userId, authToken);
   logger.info(
     "query",
-    `token=${!!token} schema=${!!schema} validColNames=${!!validColNames} metrics=[${metricsArr.join(",")}]`,
+    `user=${userId} token=${!!token} schema=${!!schema} validColNames=${!!validColNames} metrics=[${metricsArr.join(",")}]`,
   );
 
   // Filter out invalid metric names against known schema
-  const isValidStringMetric = (m: string) =>
-    SAVED_METRICS.has(m) || (validMetricNames?.has(m) ?? false);
+  const isValidStringMetric = (m: string) => validMetricNames?.has(m) ?? false;
   const isValidObjMetric = (m: SimpleAggregate) =>
     validColNames ? validColNames.has(m.column.column_name) : false;
 
@@ -509,12 +472,10 @@ export async function executeQuerySuperset(
 
   const baseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-Internal-Agent": "true",
-    "X-User-Id": userId,
+    // The backend derives the acting user from this Bearer token, so no
+    // impersonation headers are needed (or accepted).
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  if (token) {
-    baseHeaders.Authorization = `Bearer ${token}`;
-  }
 
   let res = await fetch(`${flaskInternalUrl}/api/v1/chart/agent-data`, {
     method: "POST",

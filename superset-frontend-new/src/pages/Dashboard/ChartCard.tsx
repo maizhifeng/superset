@@ -47,7 +47,10 @@ import { formatDateValue } from "@/utils/dateHeuristics";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useFullscreenStore } from "@/store/fullscreenStore";
 import type { ChartDataPayload, ChartDataRow, ChartData } from "@/types/api";
-import PivotTable, { type PivotTableProps } from "@/components/PivotTable";
+import PivotTable, {
+  type PivotTableHandle,
+  type PivotTableProps,
+} from "@/components/PivotTable";
 import type { WideMetricComponent } from "@/utils/pivot";
 import { displayMetricName } from "@/utils/pivot";
 import { DEFAULT_PIVOT_CONFIG } from "@/pages/ChartCreation/useChartEditor";
@@ -170,6 +173,7 @@ function ChartCard({
   // ``force`` so repeated on/off cycling hits the backend cache (≤5 min TTL)
   // instead of re-running the query every cycle.
   const prevPct95Ref = useRef(pct95Active);
+  const pivotRef = useRef<PivotTableHandle | null>(null);
   useEffect(() => {
     if (pct95Active && !prevPct95Ref.current && vizType !== "pivot_table_v2") {
       onRefresh(chartId);
@@ -261,13 +265,48 @@ function ChartCard({
     }
   };
 
+  // `navigator.clipboard.write` needs a secure context (HTTPS/localhost), so
+  // on plain-http deployments the image copy falls back to a browser download.
+  const downloadImage = (): boolean => {
+    const instance = chartRef.current?.getEchartsInstance();
+    if (!instance) return false;
+    try {
+      const dataUrl = instance.getDataURL({
+        type: "png",
+        pixelRatio: 2,
+        backgroundColor: "#fff",
+      });
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `${meta?.slice_name || sliceName || `chart-${chartId}`}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const copyData = async () => {
     try {
-      if (vizType !== "table" && (await tryImageCopy())) {
-        notify({ severity: "success", message: "已复制到剪贴板" });
-        return;
+      if (vizType !== "table") {
+        if (await tryImageCopy()) {
+          notify({ severity: "success", message: "已复制到剪贴板" });
+          return;
+        }
+        if (downloadImage()) {
+          notify({ severity: "success", message: "图片已下载" });
+          return;
+        }
       }
-      const text = getTextContent(processedData);
+      // Pivot tables copy the current visible layout (collapse state,
+      // subtotal/totals rows) instead of the full detail dataset.
+      const pivotText =
+        vizType === "pivot_table_v2"
+          ? pivotRef.current?.getLayoutText() ?? null
+          : null;
+      const text = pivotText ?? getTextContent(processedData);
       if (!text) {
         notify({ severity: "warning", message: "暂无数据可复制" });
         return;
@@ -457,12 +496,26 @@ function ChartCard({
       metrics: metricsList.filter(Boolean),
       totalRows: pivotTotalRows,
       subtotalRows: pivotSubtotalRows,
-      aggregateFunction: DEFAULT_PIVOT_CONFIG.aggregateFunction,
-      transposePivot: DEFAULT_PIVOT_CONFIG.transposePivot,
-      combineMetric: DEFAULT_PIVOT_CONFIG.combineMetric,
-      rowTotals: DEFAULT_PIVOT_CONFIG.rowTotals,
-      colTotals: DEFAULT_PIVOT_CONFIG.colTotals,
-      metricsLayout: DEFAULT_PIVOT_CONFIG.metricsLayout,
+      // Saved form_data wins over the defaults, so explore-side customizations
+      // (aggregate function, transpose, totals, metric layout) render on the
+      // dashboard instead of being silently overridden.
+      aggregateFunction:
+        (fd.aggregateFunction as string | undefined) ??
+        DEFAULT_PIVOT_CONFIG.aggregateFunction,
+      transposePivot:
+        (fd.transposePivot as boolean | undefined) ??
+        DEFAULT_PIVOT_CONFIG.transposePivot,
+      combineMetric:
+        (fd.combineMetric as boolean | undefined) ??
+        DEFAULT_PIVOT_CONFIG.combineMetric,
+      rowTotals:
+        (fd.rowTotals as boolean | undefined) ?? DEFAULT_PIVOT_CONFIG.rowTotals,
+      colTotals:
+        (fd.colTotals as boolean | undefined) ?? DEFAULT_PIVOT_CONFIG.colTotals,
+      metricsLayout: (fd.metricsLayout as
+        | "ROWS"
+        | "COLUMNS"
+        | undefined) ?? DEFAULT_PIVOT_CONFIG.metricsLayout,
       formatCell: tableFormatCell,
       dateColumns,
       wideData: hasWideData
@@ -552,7 +605,7 @@ function ChartCard({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          borderRadius: 2,
+          borderRadius: 1.5,
           border: "1px solid",
           borderColor: "divider",
           bgcolor: "background.paper",
@@ -737,7 +790,13 @@ function ChartCard({
               />
             </IconButton>
           </Tooltip>
-          <Tooltip title={vizType === "table" ? "复制为文本" : "复制为图片"}>
+          <Tooltip
+            title={
+              vizType === "table" || vizType === "pivot_table_v2"
+                ? "复制为文本"
+                : "复制为图片"
+            }
+          >
             <IconButton
               size="small"
               onClick={(e) => {
@@ -749,6 +808,15 @@ function ChartCard({
               <ContentCopy sx={{ fontSize: isMobile ? 22 : 18 }} />
             </IconButton>
           </Tooltip>
+          <Box
+            sx={{
+              width: "1px",
+              height: 14,
+              bgcolor: "divider",
+              mx: 0.25,
+              flexShrink: 0,
+            }}
+          />
           <Tooltip title="AI 洞察">
             <IconButton
               size="small"
@@ -840,7 +908,7 @@ function ChartCard({
                 formatCell={tableFormatCell}
               />
             ) : (
-              <PivotTable data={data.data} {...pivotProps} />
+              <PivotTable ref={pivotRef} data={data.data} {...pivotProps} />
             )
           ) : option && chartLibReady ? (
             <ReactEChartsCore
@@ -953,7 +1021,7 @@ function ChartCard({
                   ) : vizType === "pivot_table_v2" &&
                     data?.data &&
                     pivotProps ? (
-                    <PivotTable data={data.data} {...pivotProps} />
+                    <PivotTable ref={pivotRef} data={data.data} {...pivotProps} />
                   ) : option && chartLibReady ? (
                     <ReactEChartsCore
                       echarts={getECharts()}

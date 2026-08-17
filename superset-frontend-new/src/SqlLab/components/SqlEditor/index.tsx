@@ -10,6 +10,7 @@ interface SqlEditorProps {
   onPrevTab: () => void;
   onNextTab: () => void;
   onPrevHistory: () => void;
+  onClearSql: () => void;
 }
 
 export default function SqlEditor({
@@ -21,6 +22,7 @@ export default function SqlEditor({
   onPrevTab,
   onNextTab,
   onPrevHistory,
+  onClearSql,
 }: SqlEditorProps) {
   const editorOpts = { allowInInput: true };
 
@@ -31,6 +33,16 @@ export default function SqlEditor({
       onRunQuery();
     },
     { label: "Run Query", category: "sql_lab" },
+    editorOpts,
+  );
+
+  useShortcutWithHelp(
+    "ctrl+shift+backspace",
+    (e: ExtendedKeyboardEvent) => {
+      e.preventDefault();
+      onClearSql();
+    },
+    { label: "Clear Editor", category: "sql_lab" },
     editorOpts,
   );
 

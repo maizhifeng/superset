@@ -32,9 +32,7 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 const baseProps = {
   containerWidth: 1200,
   layoutItems: [] as any[],
-  chartMeta: {} as any,
   chartData: {} as any,
-  chartLoading: {} as any,
   saving: false,
   containerRef: { current: null } as any,
   onSizeChange: vi.fn(),
@@ -43,12 +41,16 @@ const baseProps = {
   onDelete: vi.fn(),
   onInsight: vi.fn(),
   onAddChart: vi.fn(),
-  compareConfig: null,
-  mirrorData: {} as any,
   onToggleCompare: vi.fn(),
   onOpenCompareBigScreen: vi.fn(),
-  totalRows: {} as any,
 };
+
+const chartDataFor = (chartMeta: any) => ({
+  chartMeta,
+  chartData: {} as any,
+  chartLoading: {} as any,
+  totalRows: {} as any,
+});
 
 test("renders empty state when no items", () => {
   renderWithProviders(<DashboardGrid {...baseProps} />);
@@ -70,7 +72,7 @@ test("renders grid with chart cards when items exist", () => {
     <DashboardGrid
       {...baseProps}
       layoutItems={layoutItems}
-      chartMeta={chartMeta}
+      chartData={chartDataFor(chartMeta)}
     />,
   );
 
@@ -85,7 +87,7 @@ test("shows saving indicator when saving is true", () => {
       {...baseProps}
       saving={true}
       layoutItems={layoutItems}
-      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } }}
+      chartData={chartDataFor({ 1: { id: 1, slice_name: "T", viz_type: "table" } })}
     />,
   );
   expect(screen.getByText("保存中...")).toBeInTheDocument();
@@ -99,7 +101,7 @@ test("renders single column on mobile", () => {
       {...baseProps}
       containerWidth={500}
       layoutItems={layoutItems}
-      chartMeta={{ 1: { id: 1, slice_name: "T", viz_type: "table" } }}
+      chartData={chartDataFor({ 1: { id: 1, slice_name: "T", viz_type: "table" } })}
     />,
   );
 
@@ -114,7 +116,7 @@ test("passes onInsight callback to ChartCard", () => {
     <DashboardGrid
       {...baseProps}
       layoutItems={layoutItems}
-      chartMeta={{ 10: { id: 10, slice_name: "X", viz_type: "table" } }}
+      chartData={chartDataFor({ 10: { id: 10, slice_name: "X", viz_type: "table" } })}
       onInsight={onInsight}
     />,
   );

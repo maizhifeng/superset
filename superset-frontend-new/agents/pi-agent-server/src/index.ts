@@ -1,9 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
 import type { Model } from "@earendil-works/pi-ai";
-import type {
-  ToolDefinition,
-  AgentSession,
-} from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   AuthStorage,
   SessionManager,
@@ -14,15 +11,16 @@ import {
 import { handleConnection } from "./ws-handler.js";
 import type { ModelInfo } from "./types.js";
 import { getWsPreferredModel, getWsAuthToken } from "./session-store.js";
-import { getPreferredModel } from "./model-preference.js";
-import extensionFactory, { setSchemaForNextSession } from "./extension.js";
-import { getSchema } from "./tools/querySuperset.js";
+import { getPreferredModel, initStore } from "./store.js";
+import extensionFactory from "./extension.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 
 const config = loadConfig();
 const LLM_MODEL = config.llmModel;
 const LLM_BASE_URL = config.llmBaseUrl;
+
+await initStore();
 
 interface ModelEntry {
   id: string;
@@ -88,17 +86,14 @@ await resourceLoader.reload();
 
 async function createSession(
   userId: string,
-  tools: ToolDefinition[],
   ws?: WebSocket,
 ): Promise<AgentSession | null> {
-  const modelId = ws
-    ? (getWsPreferredModel(ws) ??
-      getPreferredModel(userId) ??
-      effectiveDefaultModel)
-    : effectiveDefaultModel;
+  const wsPreferred = ws ? getWsPreferredModel(ws) : undefined;
+  const persistedPref = ws ? await getPreferredModel(userId) : null;
+  const modelId = wsPreferred ?? persistedPref ?? effectiveDefaultModel;
   logger.info(
     "session",
-    `creating session for user=${userId} model=${modelId} (wsPreferred=${ws ? !!getWsPreferredModel(ws) : false} persistent=${ws ? (getPreferredModel(userId) ?? "-") : "-"})`,
+    `creating session for user=${userId} model=${modelId} (wsPreferred=${!!wsPreferred} persistent=${persistedPref ?? "-"})`,
   );
   const model: Model<string> = {
     provider: "flask-llm",
@@ -110,29 +105,16 @@ async function createSession(
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
-    maxTokens: 4096,
+    maxTokens: config.llmMaxTokens,
   };
-
-  if (ws) {
-    const token = getWsAuthToken(ws);
-    logger.info("session", `ws token available: ${!!token}`);
-    const schema = await getSchema(userId, token);
-    logger.info(
-      "session",
-      `schema fetched for session: ${!!schema} (${schema?.slice(0, 60).replace(/\n/g, " ")})`,
-    );
-    if (schema) {
-      setSchemaForNextSession(schema);
-      logger.info("session", "schema queued for next agent session");
-    }
-  }
 
   const { session } = await createAgentSession({
     model,
     authStorage,
     resourceLoader,
-    customTools: tools,
-    noTools: "builtin",
+    // Built-in agent only: no custom tools and no built-in coding tools.
+    // Data for report requests is fetched by the orchestrator instead.
+    noTools: "all",
     sessionManager: SessionManager.inMemory(),
     // Reasoning starts off; processPrompt enables it per-intent for
     // report/comparison requests (see isReasoningIntent in agent-orchestrator).

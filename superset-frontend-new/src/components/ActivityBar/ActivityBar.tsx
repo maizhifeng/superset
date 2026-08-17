@@ -55,7 +55,7 @@ export default function ActivityBar({
             <Tooltip
               key={item.id}
               title={item.label}
-              placement="bottom"
+              placement="right"
               slotProps={{ popper: { sx: { pointerEvents: "none" } } }}
             >
               <Box

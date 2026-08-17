@@ -90,7 +90,7 @@ export default function DashboardToolbar({
         showOnMobile: true,
         primary: true,
         fabIcon: <FilterListIcon />,
-        fabLabel: "Filter",
+        fabLabel: "筛选",
         action: () => onFilterDrawerToggle(true),
         render: (
           <FilterToolbarButton
@@ -110,7 +110,7 @@ export default function DashboardToolbar({
         priority: 20,
         showOnMobile: false,
         fabIcon: <RefreshIcon />,
-        fabLabel: "Refresh",
+        fabLabel: "刷新",
         action: refreshAllCharts,
         render: null,
       },
@@ -121,7 +121,7 @@ export default function DashboardToolbar({
               priority: 25,
               showOnMobile: true,
               fabIcon: <MenuIcon />,
-              fabLabel: "Jump to chart",
+              fabLabel: "跳转到图表",
               action: openNav,
               render: null,
             },

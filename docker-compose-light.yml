@@ -17,12 +17,21 @@
 
 # -----------------------------------------------------------------------
 # Lightweight docker-compose for running multiple Superset instances
-# This includes essential services: database, Redis, and Superset app
+# This includes essential services: database, Redis, Superset app,
+# frontend (Vite dev server) and the pi-agent AI backend
 #
 # RUNNING SUPERSET:
 # 1. Start services: docker-compose -f docker-compose-light.yml up
 # 2. Access at: http://localhost:9002 (or NODE_MUI_PORT if specified)
 # 3. Frontend: MUI (Vite dev server), Backend: Flask dev server
+#
+# AI AGENT:
+# - The pi-agent service runs the LLM agent loop server-side (WebSocket on
+#   port 3001, internal only). The Vite dev server proxies /agent/ws to it.
+# - LLM provider is configured via PI_AGENT_LLM_BASE_URL / PI_AGENT_LLM_MODEL
+#   (defaults to LM Studio on the docker host).
+# - Conversation transcripts and per-user model preferences are persisted in
+#   the shared Postgres database (agent_sessions / agent_model_prefs tables).
 #
 #
 # RUNNING MULTIPLE INSTANCES:
@@ -184,6 +193,8 @@ services:
       SCARF_ANALYTICS: "${SCARF_ANALYTICS:-}"
       superset: "http://superset-light:8088"
       SUPERSET_HOST: "http://superset-light:8088"
+      # Vite proxies /agent/ws to the dedicated pi-agent service
+      PI_AGENT_WS_TARGET: "ws://pi-agent:3001"
     ports:
       - "${NODE_PORT:-9000}:9000"
     command: ["/app/docker/docker-frontend-mui.sh"]
@@ -193,6 +204,34 @@ services:
       - path: docker/.env-local # optional override
         required: false
     volumes: *mui-volumes
+
+  pi-agent:
+    # AI agent backend: runs the LLM agent loop, chart-data acquisition and
+    # conversation persistence server-side. The browser only talks to this
+    # service over WebSocket (proxied by the Vite dev server).
+    build:
+      context: ./superset-frontend-new/agents/pi-agent-server
+    restart: unless-stopped
+    environment:
+      WS_PORT: 3001
+      LLM_MODEL: ${PI_AGENT_LLM_MODEL:-gemma-4-e2b-it}
+      LLM_BASE_URL: ${PI_AGENT_LLM_BASE_URL:-http://host.docker.internal:1234/v1}
+      FLASK_INTERNAL_URL: http://superset-light:8088
+      # Same database as Superset; agent_* tables hold conversation
+      # transcripts and per-user model preferences.
+      DATABASE_URL: postgresql://superset:superset@db-light:5432/superset_light
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db-light:
+        condition: service_started
+      superset-init-light:
+        condition: service_completed_successfully
+    # Mount source into the container and keep the image's own node_modules
+    # (see superset-websocket service for the rationale).
+    volumes:
+      - ./superset-frontend-new/agents/pi-agent-server:/app
+      - /app/node_modules
 
   pytest-runner:
     build:

@@ -1,4 +1,12 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  memo,
+  startTransition,
+} from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
@@ -47,7 +55,7 @@ function formatTimeLabel(v: unknown): string {
   return s;
 }
 
-function FilterSelect({
+const FilterSelectInner = memo(function FilterSelect({
   filter,
   value,
   onChange,
@@ -268,7 +276,7 @@ function FilterSelect({
       )}
     />
   );
-}
+});
 
 function FilterText({
   label,
@@ -436,6 +444,23 @@ function FilterDate({
   );
 }
 
+/** 延迟挂载期间显示的轻量占位，避免展开瞬间同步渲染大量重控件。 */
+function FilterPlaceholder({ name }: { name: string }) {
+  return (
+    <TextField
+      size="small"
+      disabled
+      label={name}
+      fullWidth
+      variant="outlined"
+      sx={{
+        "& .MuiInputBase-root": { minHeight: 36 },
+        "& .MuiInputBase-input": { py: 0.5, fontSize: "0.8125rem" },
+      }}
+    />
+  );
+}
+
 function renderFilterControl(
   filter: FilterConfig,
   value: unknown,
@@ -465,7 +490,7 @@ function renderFilterControl(
         );
       }
       return (
-        <FilterSelect
+        <FilterSelectInner
           filter={filter}
           value={value}
           onChange={onChange}
@@ -484,6 +509,9 @@ export default function FilterPanel({
 }: FilterPanelProps) {
   const [visibleIds, setVisibleIds] = useState<Set<string> | null>(null);
   const consumedPendingRef = useRef<Set<string>>(new Set());
+  // 展开时只先挂载前 N 个筛选项（轻量占位其余），随后分帧补齐，
+  // 避免展开瞬间同步渲染大量重型 Autocomplete 卡住主线程。
+  const [mountCount, setMountCount] = useState(2);
 
   const visibleFilters = useMemo(() => {
     if (visibleIds) {
@@ -501,6 +529,21 @@ export default function FilterPanel({
   useEffect(() => {
     initVisibleIds();
   }, [initVisibleIds]);
+
+  // 分帧逐步补齐筛选项挂载：每帧多挂几个（用 startTransition 降低优先级），
+  // 让展开动画期间主线程不被一次性创建全部 Autocomplete 占用。
+  useEffect(() => {
+    if (visibleFilters.length <= mountCount) return;
+    let count = mountCount;
+    let raf = 0;
+    const tick = () => {
+      count = Math.min(count + 2, visibleFilters.length);
+      startTransition(() => setMountCount(count));
+      if (count < visibleFilters.length) raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(raf);
+  }, [visibleFilters.length, mountCount]);
 
   useEffect(() => {
     if (pendingFilterIds && visibleIds) {
@@ -550,7 +593,7 @@ export default function FilterPanel({
             overflow: "visible",
           }}
         >
-          {visibleFilters.map((filter) => (
+          {visibleFilters.map((filter, index) => (
             <Box key={filter.id} sx={{ position: "relative" }}>
               <IconButton
                 size="small"
@@ -584,12 +627,16 @@ export default function FilterPanel({
                   {filter.name}
                 </Typography>
               ) : null}
-              {renderFilterControl(
-                filter,
-                filterState[filter.id]?.value,
-                (value: unknown) => onFilterChange(filter.id, value),
-                filters,
-                filterState,
+              {index < mountCount ? (
+                renderFilterControl(
+                  filter,
+                  filterState[filter.id]?.value,
+                  (value: unknown) => onFilterChange(filter.id, value),
+                  filters,
+                  filterState,
+                )
+              ) : (
+                <FilterPlaceholder name={filter.name} />
               )}
             </Box>
           ))}

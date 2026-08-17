@@ -16,7 +16,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTheme } from "@mui/material/styles";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
@@ -34,82 +44,64 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import {
   buildPivotGrid,
+  fractionMode,
   MAX_PIVOT_COLS,
   MAX_PIVOT_ROWS,
   type PivotTableProps,
 } from "@/utils/pivot";
+import {
+  mergeConsecutive,
+  buildTree,
+  type PivotGroup,
+} from "@/utils/pivot/tree";
+import { buildPivotTextExport } from "@/utils/pivot/textExport";
 import { formatDateValue } from "@/utils/dateHeuristics";
 
 export { type PivotTableProps } from "@/utils/pivot";
 
-function mergeConsecutive(labels: string[]): { label: string; span: number }[] {
-  const groups: { label: string; span: number }[] = [];
-  for (const label of labels) {
-    const last = groups[groups.length - 1];
-    if (last && last.label === label) {
-      last.span += 1;
-    } else {
-      groups.push({ label, span: 1 });
-    }
-  }
-  return groups;
+/** Default width of a row-dimension level column. */
+export const ROW_HEADER_WIDTH = 120;
+/** Default minimum width of a value column. */
+export const CELL_MIN_WIDTH = 90;
+/** Estimated row height for the windowed body rendering (browser only). */
+const ESTIMATED_ROW_HEIGHT = 32;
+/** Rows rendered above/below the visible window while virtualized. */
+const VIRTUAL_BUFFER_ROWS = 20;
+/** Virtualize the body once more rows than this are visible. */
+const VIRTUALIZE_THRESHOLD = 80;
+/** Hit area of the column-resize handle. */
+const RESIZE_HANDLE_WIDTH = 8;
+/** Row-header columns stop resizing below this width. */
+const MIN_RESIZED_WIDTH = 48;
+/** Font size of headers, subtotal rows and totals. */
+const HEADER_FONT_SIZE = "0.7rem";
+/** Font size of leaf detail rows: slightly smaller than headers/totals. */
+const DETAIL_FONT_SIZE = "0.65rem";
+
+// Pivot area colors (row/column/value), kept as constants so light and dark
+// themes could swap them without touching cell styles.
+const ROW_AREA_BG = "#e7eef1";
+const VALUE_AREA_BG = "#f6f0e2";
+
+export interface PivotTableHandle {
+  /**
+   * TSV text of the current visible layout: headers, the visible rows
+   * (collapsed groups excluded) and the totals row — matching what the
+   * table shows, not the full detail dataset.
+   */
+  getLayoutText: () => string | null;
 }
 
-interface PivotGroup {
-  level: number;
-  /** Dimension values from level 0 up to this group's level. */
-  keyTuple: string[];
-  /** Unique collapse key: level + ancestor values. */
-  collapseKey: string;
-  /** Leaf row indices under this group. */
-  rows: number[];
-  /** Sub-groups at the next level (empty for leaf groups). */
-  children: PivotGroup[];
-}
-
-function buildTree(
-  level: number,
-  indices: number[],
-  ancestors: string[],
-  rowHeaders: string[][],
-): PivotGroup[] {
-  // Group by key with a map instead of relying on consecutive rows: the 95%
-  // mode sorts rows by the split metric, so same-key rows are no longer
-  // adjacent and must still collapse into a single group.
-  const byKey = new Map<string, PivotGroup>();
-  for (const i of indices) {
-    const key = rowHeaders[level]?.[i] ?? "";
-    let group = byKey.get(key);
-    if (!group) {
-      group = {
-        level,
-        keyTuple: [...ancestors, key],
-        collapseKey: `${level}:${[...ancestors, key].join("\u0000")}`,
-        rows: [],
-        children: [],
-      };
-      byKey.set(key, group);
-    }
-    group.rows.push(i);
-  }
-  const result = [...byKey.values()];
-  if (level < rowHeaders.length - 1) {
-    for (const group of result) {
-      group.children = buildTree(
-        level + 1,
-        group.rows,
-        group.keyTuple,
-        rowHeaders,
-      );
-    }
-  }
-  return result;
-}
-
-export default function PivotTable(props: PivotTableProps) {
+const PivotTable = forwardRef<PivotTableHandle, PivotTableProps>(
+  function PivotTable(props, ref) {
   const { formatCell, dateColumns, pct95, data } = props;
   const theme = useTheme();
   const boundaryColor = theme.palette.divider;
+  // Slightly darker than the theme divider so the grid reads clearly.
+  const gridBorderColor =
+    theme.palette.mode === "dark"
+      ? "rgba(255, 255, 255, 0.22)"
+      : "rgba(0, 0, 0, 0.22)";
   const boundaryStyle = {
     borderLeft: "2px solid",
     borderLeftColor: boundaryColor,
@@ -136,6 +128,9 @@ export default function PivotTable(props: PivotTableProps) {
     colCombos,
     colGroupStarts,
     truncated,
+    rawRowTotals,
+    rawColTotals,
+    rawGrandTotal,
     totalRows: gridTotalRows,
     subtotalRows: gridSubtotalRows,
   } = useMemo(() => buildPivotGrid(props), [props]);
@@ -150,6 +145,27 @@ export default function PivotTable(props: PivotTableProps) {
     return map;
   }, [gridTotalRows, props.totalRows, colDimNames]);
 
+  // "Fraction of Total/Rows/Columns": the backend/aggregated totals are raw
+  // sums, so re-derive their denominators from the pre-fraction grid to keep
+  // totals/subtotals consistent with the fractioned cells.
+  const fractionOf = fractionMode(props.aggregateFunction ?? "Sum");
+  const fractionFactor = (
+    cIdx: number,
+    groupRawTotal: number | null,
+    isGrandRow: boolean,
+  ): number => {
+    if (!fractionOf) return 1;
+    const denominator =
+      fractionOf === "Total"
+        ? rawGrandTotal
+        : fractionOf === "Columns"
+          ? rawColTotals[cIdx]
+          : isGrandRow
+            ? rawGrandTotal
+            : groupRawTotal;
+    return denominator ? 1 / denominator : 0;
+  };
+
   const backendTotal = (cIdx: number): number | null => {
     if (!totalsLookup) return null;
     const combo = colCombos[cIdx] ?? [];
@@ -159,7 +175,8 @@ export default function PivotTable(props: PivotTableProps) {
       combo.map((v) => String(v ?? "")).join("\u0000"),
     );
     const v = row?.[metric];
-    return typeof v === "number" ? v : null;
+    if (typeof v !== "number") return null;
+    return v * fractionFactor(cIdx, null, true);
   };
 
   const showRowTotals = props.rowTotals;
@@ -169,58 +186,6 @@ export default function PivotTable(props: PivotTableProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
   );
-
-  const findGroup = (
-    list: PivotGroup[],
-    collapseKey: string,
-  ): PivotGroup | null => {
-    for (const g of list) {
-      if (g.collapseKey === collapseKey) return g;
-      const found = findGroup(g.children, collapseKey);
-      if (found) return found;
-    }
-    return null;
-  };
-
-  // Collapsing a group also collapses every descendant group (all lower
-  // row dimensions), Excel-style; expanding only affects the group itself,
-  // so children stay collapsed until explicitly expanded. Leaf groups (the
-  // deepest dimension) follow the same keys, so their rows are only shown
-  // while the leaf group itself is expanded.
-  const toggleGroup = (collapseKey: string) => {
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(collapseKey)) {
-        next.delete(collapseKey);
-        const target = findGroup(groups, collapseKey);
-        if (target) {
-          const stack = [...target.children];
-          while (stack.length > 0) {
-            const g = stack.pop() as PivotGroup;
-            if (g.children.length === 0) {
-              next.delete(g.collapseKey);
-            } else {
-              stack.push(...g.children);
-            }
-          }
-        }
-      } else {
-        next.add(collapseKey);
-        const target = findGroup(groups, collapseKey);
-        if (target) {
-          const stack = [...target.children];
-          while (stack.length > 0) {
-            const g = stack.pop() as PivotGroup;
-            if (g.children.length > 0) {
-              next.add(g.collapseKey);
-              stack.push(...g.children);
-            }
-          }
-        }
-      }
-      return next;
-    });
-  };
 
   const groups = useMemo(() => {
     const indices = rowLabels.map((_, i) => i);
@@ -237,6 +202,59 @@ export default function PivotTable(props: PivotTableProps) {
     }
     return buildTree(0, indices, [], rowHeaders);
   }, [rowLabels, rowHeaders, hasNestedRows]);
+
+  // collapseKey → group lookup, so collapse/expand toggles and the cascade
+  // don't re-traverse the whole tree on every interaction.
+  const groupIndex = useMemo(() => {
+    const index = new Map<string, PivotGroup>();
+    const collect = (list: PivotGroup[]): void => {
+      for (const g of list) {
+        index.set(g.collapseKey, g);
+        collect(g.children);
+      }
+    };
+    collect(groups);
+    return index;
+  }, [groups]);
+
+  // Collapsing a group also collapses every descendant group (all lower
+  // row dimensions), Excel-style; expanding only affects the group itself,
+  // so children stay collapsed until explicitly expanded. Leaf groups (the
+  // deepest dimension) follow the same keys, so their rows are only shown
+  // while the leaf group itself is expanded.
+  const toggleGroup = (collapseKey: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      const target = groupIndex.get(collapseKey);
+      if (next.has(collapseKey)) {
+        next.delete(collapseKey);
+        if (target) {
+          const stack = [...target.children];
+          while (stack.length > 0) {
+            const g = stack.pop() as PivotGroup;
+            if (g.children.length === 0) {
+              next.delete(g.collapseKey);
+            } else {
+              stack.push(...g.children);
+            }
+          }
+        }
+      } else {
+        next.add(collapseKey);
+        if (target) {
+          const stack = [...target.children];
+          while (stack.length > 0) {
+            const g = stack.pop() as PivotGroup;
+            if (g.children.length > 0) {
+              next.add(g.collapseKey);
+              stack.push(...g.children);
+            }
+          }
+        }
+      }
+      return next;
+    });
+  };
 
   // The signature covers the full dimension-value tree of the raw data, not
   // the pct95-filtered grid: switching the 95% split metric re-filters rows
@@ -409,7 +427,15 @@ export default function PivotTable(props: PivotTableProps) {
       [...group.keyTuple, ...combo.map((v) => String(v ?? ""))].join("\u0000"),
     );
     const v = row?.[metric];
-    return typeof v === "number" ? v : null;
+    if (typeof v !== "number") return null;
+    let groupRawTotal: number | null = null;
+    if (fractionOf === "Rows") {
+      groupRawTotal = group.rows.reduce(
+        (acc, rIdx) => acc + rawRowTotals[rIdx],
+        0,
+      );
+    }
+    return v * fractionFactor(cIdx, groupRawTotal, false);
   };
 
   const groupClientSum = (rows: number[], cIdx: number): number | null => {
@@ -428,6 +454,13 @@ export default function PivotTable(props: PivotTableProps) {
   // In 95% mode the split metric is also the display sort: groups at every
   // level are ordered by their aggregated value descending, so collapsed
   // subtotal rows and expanded children both read largest-to-smallest.
+  // Date dimensions soften this per collapse state: collapsed date groups
+  // keep the metric ordering (top rows first), while expanded date groups
+  // keep the chronological grid order from `buildPivotGrid`, so their
+  // detail rows read oldest-to-newest.
+  const dateLevels = rowDimLabels.map(
+    (d) => dateColumns?.includes(d) ?? false,
+  );
   const sortedGroups = useMemo(() => {
     if (!pct95?.enabled) return groups;
     const metricIdx = colLabels.indexOf(pct95.metric);
@@ -460,14 +493,256 @@ export default function PivotTable(props: PivotTableProps) {
       ...g,
       children: g.children.map(clone),
     });
-    const sortRec = (list: PivotGroup[]): void => {
-      list.sort((a, b) => groupValue(b) - groupValue(a));
-      for (const g of list) sortRec(g.children);
+    const sortRec = (list: PivotGroup[], level: number): void => {
+      if (dateLevels[level]) {
+        // Date level: collapsed groups rank by the split metric descending
+        // (top contributions first); expanded groups keep their chronological
+        // order from the grid, grouped after the collapsed ones.
+        const originalIdx = new Map(list.map((g, i) => [g, i]));
+        list.sort((a, b) => {
+          const aCollapsed = collapsedGroups.has(a.collapseKey);
+          const bCollapsed = collapsedGroups.has(b.collapseKey);
+          const aIdx = originalIdx.get(a) ?? 0;
+          const bIdx = originalIdx.get(b) ?? 0;
+          if (aCollapsed && bCollapsed)
+            return groupValue(b) - groupValue(a) || aIdx - bIdx;
+          if (aCollapsed) return -1;
+          if (bCollapsed) return 1;
+          return aIdx - bIdx;
+        });
+      } else {
+        list.sort((a, b) => groupValue(b) - groupValue(a));
+      }
+      for (const g of list) {
+        if (!collapsedGroups.has(g.collapseKey)) sortRec(g.children, level + 1);
+      }
     };
     const copy = groups.map(clone);
-    sortRec(copy);
+    sortRec(copy, 0);
     return copy;
-  }, [groups, pct95, colLabels, colCombos, values, subtotalLookupByLevel]);
+  }, [
+    groups,
+    pct95,
+    dateLevels,
+    collapsedGroups,
+    colLabels,
+    colCombos,
+    values,
+    subtotalLookupByLevel,
+  ]);
+
+  const groupStarts = useMemo(
+    () => new Set(colGroupStarts.filter((i) => i > 0)),
+    [colGroupStarts],
+  );
+
+  const rowTotal = useMemo(
+    () =>
+      values.map((row) =>
+        row.reduce<number>((acc, v) => acc + (v ?? 0), 0),
+      ),
+    [values],
+  );
+  const colTotal = useMemo(
+    () =>
+      colLabels.map((_, cIdx) =>
+        values.reduce<number>((acc, row) => acc + (row[cIdx] ?? 0), 0),
+      ),
+    [values, colLabels],
+  );
+  const grandTotal = useMemo(
+    () => rowTotal.reduce<number>((acc, v) => acc + v, 0),
+    [rowTotal],
+  );
+
+  // --- Column widths (drag to resize from the header cells) ---
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const getColWidth = useCallback(
+    (key: string, fallback: number): number => colWidths[key] ?? fallback,
+    [colWidths],
+  );
+
+  // Sticky vertical offsets per header row: MUI's stickyHeader pins every
+  // thead row at top:0, which would stack multi-row headers on top of each
+  // other. `headTops[level]` is the summed height of the rows above, so each
+  // header row sticks right below the previous one.
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const [headTops, setHeadTops] = useState<number[]>([]);
+  useLayoutEffect(() => {
+    const thead = theadRef.current;
+    if (!thead) return;
+    const update = () => {
+      const tops: number[] = [];
+      let acc = 0;
+      for (const row of Array.from(thead.rows)) {
+        tops.push(acc);
+        acc += row.offsetHeight;
+      }
+      setHeadTops(tops);
+    };
+    update();
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      observer.observe(thead);
+    }
+    return () => observer?.disconnect();
+  }, [colHeaders.length, visibleRowDimCount, colLabels.length]);
+  const dragRef = useRef<{
+    key: string;
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+  /** Screen X of the drag boundary line while resizing a column (null = idle). */
+  const [resizeIndicatorX, setResizeIndicatorX] = useState<number | null>(null);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const next = Math.max(
+        MIN_RESIZED_WIDTH,
+        drag.startWidth + e.clientX - drag.startX,
+      );
+      setColWidths((prev) => ({ ...prev, [drag.key]: next }));
+      setResizeIndicatorX(e.clientX);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setResizeIndicatorX(null);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+  const startResize =
+    (key: string, startWidth: number) => (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragRef.current = { key, startX: e.clientX, startWidth };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    };
+
+  // Sticky-left offsets per row-header level, derived from the resized widths.
+  const rowHeaderOffsets = useMemo(() => {
+    const offsets: number[] = [];
+    let acc = 0;
+    for (let l = 0; l < rowDimLabels.length; l += 1) {
+      offsets.push(acc);
+      acc += getColWidth(`rh-${l}`, ROW_HEADER_WIDTH);
+    }
+    return offsets;
+  }, [rowDimLabels, getColWidth]);
+  const cornerWidth = useMemo(() => {
+    let acc = 0;
+    for (let l = 0; l < rowDimLabels.length; l += 1) {
+      if (showLevelLabels[l]) acc += getColWidth(`rh-${l}`, ROW_HEADER_WIDTH);
+    }
+    return acc;
+  }, [rowDimLabels, showLevelLabels, getColWidth]);
+
+  // --- Flattened visible rows + windowed body rendering ---
+  // Row order comes from `buildPivotGrid` (smart ordering: 95% mode metric
+  // ranking, chronological date dimensions), so no manual column sort.
+  // Each row carries its full dimension tuple (`dims`) so consecutive rows
+  // with identical ancestor values can merge their header cells (rowSpan).
+  const visibleRows = useMemo(() => {
+    const out: {
+      key: string;
+      group?: PivotGroup;
+      rIdx?: number;
+      dims: string[];
+    }[] = [];
+    const walk = (list: PivotGroup[]): void => {
+      for (const g of list) {
+        if (g.children.length > 0) {
+          out.push({ key: `cg-${g.collapseKey}`, group: g, dims: g.keyTuple });
+          if (!collapsedGroups.has(g.collapseKey)) walk(g.children);
+        } else if (!collapsedGroups.has(g.collapseKey)) {
+          for (const rIdx of g.rows) {
+            out.push({
+              key: `r-${rIdx}`,
+              rIdx,
+              dims: rowHeaders.map((levelHeaders) =>
+                levelHeaders[rIdx] ?? "",
+              ),
+            });
+          }
+        }
+      }
+    };
+    walk(sortedGroups);
+    return out;
+  }, [sortedGroups, collapsedGroups, rowHeaders]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ top: 0, height: 0 });
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setViewport({ top: el.scrollTop, height: el.clientHeight });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(update);
+      observer.observe(el);
+    }
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, []);
+  const virtualize =
+    viewport.height > 0 && visibleRows.length > VIRTUALIZE_THRESHOLD;
+  const windowStart = virtualize
+    ? Math.max(
+        0,
+        Math.floor(viewport.top / ESTIMATED_ROW_HEIGHT) - VIRTUAL_BUFFER_ROWS,
+      )
+    : 0;
+  const windowEnd = virtualize
+    ? Math.min(
+        visibleRows.length,
+        Math.ceil(
+          (viewport.top + viewport.height) / ESTIMATED_ROW_HEIGHT,
+        ) + VIRTUAL_BUFFER_ROWS,
+      )
+    : visibleRows.length;
+  const renderedRows = virtualize
+    ? visibleRows.slice(windowStart, windowEnd)
+    : visibleRows;
+
+  const totalBodyCols =
+    visibleRowDimCount + colLabels.length + (showRowTotals ? 1 : 0);
+
+  // TSV export of the current visible layout (headers, visible rows in their
+  // current collapse state, totals row) — for copy-to-clipboard.
+  useImperativeHandle(ref, () => ({
+    getLayoutText: (): string | null =>
+      buildPivotTextExport({
+        values,
+        colLabels,
+        colCombos,
+        rowDimLabels,
+        showLevelLabels,
+        visibleRows,
+        showRowTotals: !!showRowTotals,
+        showColTotals: !!showColTotals,
+        renderCell,
+        subtotalValue,
+        groupClientSum,
+        rowTotal,
+        backendTotal,
+        colTotal,
+        grandTotal,
+      }),
+  }));
 
   if (values.length === 0 || colLabels.length === 0) {
     return (
@@ -486,48 +761,61 @@ export default function PivotTable(props: PivotTableProps) {
     );
   }
 
-  const groupStarts = new Set(colGroupStarts.filter((i) => i > 0));
-
-  const rowTotal = values.map((row) =>
-    row.reduce<number>((acc, v) => acc + (v ?? 0), 0),
-  );
-  const colTotal = colLabels.map((_, cIdx) =>
-    values.reduce<number>((acc, row) => acc + (row[cIdx] ?? 0), 0),
-  );
-  const grandTotal = rowTotal.reduce<number>((acc, v) => acc + v, 0);
-
   const renderCell = (key: string, v: number | null | undefined) => {
     if (v === null || v === undefined) return "";
     return formatCell ? formatCell(key, v) : String(v);
   };
 
   const cellStyle = {
-    minWidth: 90,
-    fontSize: "0.7rem",
-    textAlign: "right" as const,
+    textAlign: "center" as const,
     fontVariantNumeric: "tabular-nums" as const,
     p: 0.5,
+    borderBottom: "1px solid",
+    borderBottomColor: gridBorderColor,
+    borderRight: "1px solid",
+    borderRightColor: gridBorderColor,
   };
+  // Header/subtotal cells use the base size; detail rows are slightly smaller
+  // so the table hierarchy reads at a glance.
+  const valueCellStyle = (cIdx: number, detail = false) => ({
+    sx: cellStyle,
+    style: {
+      minWidth: getColWidth(`v-${cIdx}`, CELL_MIN_WIDTH),
+      fontSize: detail ? DETAIL_FONT_SIZE : HEADER_FONT_SIZE,
+    },
+  });
   const rowHeaderStyle = {
     position: "sticky" as const,
     zIndex: 2,
-    minWidth: 120,
-    fontSize: "0.7rem",
+    textAlign: "center" as const,
     whiteSpace: "nowrap" as const,
     p: 0.5,
     borderRight: "1px solid",
-    borderRightColor: "divider",
+    borderRightColor: gridBorderColor,
+    borderBottom: "1px solid",
+    borderBottomColor: gridBorderColor,
   };
+  const rowHeaderCellStyle = (level: number, detail = false) => ({
+    sx: rowHeaderStyle,
+    style: {
+      left: rowHeaderOffsets[level],
+      minWidth: getColWidth(`rh-${level}`, ROW_HEADER_WIDTH),
+      width: getColWidth(`rh-${level}`, ROW_HEADER_WIDTH),
+      fontSize: detail ? DETAIL_FONT_SIZE : HEADER_FONT_SIZE,
+    },
+  });
   const cornerStyle = {
     position: "sticky" as const,
     left: 0,
     zIndex: 3,
-    minWidth: 120,
-    fontSize: "0.7rem",
+    fontSize: HEADER_FONT_SIZE,
+    textAlign: "center" as const,
     whiteSpace: "nowrap" as const,
     p: 0.5,
     borderRight: "2px solid",
     borderRightColor: boundaryColor,
+    borderBottom: "1px solid",
+    borderBottomColor: gridBorderColor,
   };
   // Column area (column labels + values): green
   const colAreaStyle = {
@@ -538,209 +826,259 @@ export default function PivotTable(props: PivotTableProps) {
   };
   // Row area (row labels + values): blue
   const rowAreaStyle = {
-    "&.MuiTableCell-head": { bgcolor: "#e7eef1" },
-    bgcolor: "#e7eef1",
+    "&.MuiTableCell-head": { bgcolor: ROW_AREA_BG },
+    bgcolor: ROW_AREA_BG,
     color: "text.primary",
     fontWeight: 600,
   };
   // Value area (metric headers, data cells, totals): yellow
   const valueAreaStyle = {
-    "&.MuiTableCell-head": { bgcolor: "#f6f0e2" },
-    bgcolor: "#f6f0e2",
+    "&.MuiTableCell-head": { bgcolor: VALUE_AREA_BG },
+    bgcolor: VALUE_AREA_BG,
     color: "text.primary",
     fontWeight: 400,
   };
 
+  // Column boundary affordance: hover shows a light vertical line at the
+  // cell edge, dragging shows a full-height line following the pointer.
+  const resizeHandle = (key: string, width: number): ReactNode => (
+    <Box
+      component="span"
+      aria-hidden
+      data-resize-key={key}
+      onMouseDown={startResize(key, width)}
+      sx={{
+        position: "absolute",
+        top: 0,
+        right: -RESIZE_HANDLE_WIDTH / 2,
+        height: "100%",
+        width: RESIZE_HANDLE_WIDTH,
+        cursor: "col-resize",
+        touchAction: "none",
+        zIndex: 4,
+        "&:hover": {
+          bgcolor: "primary.main",
+          opacity: 0.35,
+        },
+      }}
+    />
+  );
+
   const colCornerLabel =
     colDimNames.length > 0 ? colDimNames.join(" · ") : "列标签";
 
-  const renderGroup = (group: PivotGroup): ReactNode[] => {
-    const nodes: ReactNode[] = [];
+  // Group subtotal row (a group with children, collapsed or not).
+  const renderGroupRow = (group: PivotGroup): ReactNode => {
     const isCollapsed = collapsedGroups.has(group.collapseKey);
-    if (group.children.length > 0) {
-      nodes.push(
-        <TableRow
-          key={`cg-${group.collapseKey}`}
-          sx={{
-            "&:last-child td": { borderBottom: 0 },
-          }}
-        >
-          {rowHeaders.map((levelHeaders, level) => {
-            if (!showLevelLabels[level]) return null;
-            if (level === group.level) {
-              // Subtotal row: merge the group label across every remaining
-              // level column, e.g. "oversea | 枫之谷-印尼汇总" for a group at
-              // level 1 (the deeper empty cells are absorbed by the span).
-              let span = 0;
-              for (let l = level; l < showLevelLabels.length; l += 1) {
-                if (showLevelLabels[l]) span += 1;
-              }
-              return (
-                <TableCell
-                  key={`cgv-${level}`}
-                  colSpan={span}
-                  sx={{
-                    left: level * 120,
-                    ...rowHeaderStyle,
-                    ...rowAreaStyle,
-                    fontWeight: 700,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.25,
-                      cursor: "pointer",
-                    }}
-                    onClick={() => toggleGroup(group.collapseKey)}
-                  >
-                    <Box
-                      component="span"
-                      sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {formatDimLabel(
-                        rowDimLabels[level],
-                        group.keyTuple[level],
-                      )}
-                      {!isCollapsed ? " 汇总" : ""}
-                    </Box>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleGroup(group.collapseKey);
-                      }}
-                      sx={{ p: 0, minWidth: 18, minHeight: 18 }}
-                    >
-                      {isCollapsed ? (
-                        <ChevronRightIcon sx={{ fontSize: 16 }} />
-                      ) : (
-                        <ExpandMoreIcon sx={{ fontSize: 16 }} />
-                      )}
-                    </IconButton>
-                  </Box>
-                </TableCell>
-              );
+    return (
+      <TableRow
+        key={`cg-${group.collapseKey}`}
+        sx={{
+          "&:last-child td": { borderBottom: 0 },
+        }}
+      >
+        {rowHeaders.map((levelHeaders, level) => {
+          if (!showLevelLabels[level]) return null;
+          if (level === group.level) {
+            // Subtotal row: merge the group label across every remaining
+            // level column, e.g. "oversea | 枫之谷-印尼汇总" for a group at
+            // level 1 (the deeper empty cells are absorbed by the span).
+            let span = 0;
+            for (let l = level; l < showLevelLabels.length; l += 1) {
+              if (showLevelLabels[l]) span += 1;
             }
-            if (level < group.level) {
-              return (
-                <TableCell
-                  key={`cgv-${level}`}
-                  sx={{
-                    left: level * 120,
-                    ...rowHeaderStyle,
-                    ...rowAreaStyle,
-                    fontWeight: 700,
-                  }}
-                >
-                  {formatDimLabel(rowDimLabels[level], group.keyTuple[level])}
-                </TableCell>
-              );
-            }
-            return null;
-          })}
-          {colLabels.map((colLabel, cIdx) => {
-            const backend = subtotalValue(group, cIdx);
-            const fallback = groupClientSum(group.rows, cIdx);
-            const value = backend !== null ? backend : fallback;
             return (
               <TableCell
-                key={`cgc-${cIdx}`}
+                key={`cgv-${level}`}
+                colSpan={span}
                 sx={{
-                  ...cellStyle,
-                  ...valueAreaStyle,
-                  fontWeight: 600,
-                  ...(groupStarts.has(cIdx) ? boundaryStyle : {}),
-                }}
-              >
-                {renderCell(colLabel, value)}
-              </TableCell>
-            );
-          })}
-          {showRowTotals && (
-            <TableCell
-              sx={{
-                ...cellStyle,
-                ...valueAreaStyle,
-                fontWeight: 700,
-              }}
-            >
-              {renderCell(
-                "__total__",
-                rowTotal[group.rows[group.rows.length - 1]],
-              )}
-            </TableCell>
-          )}
-        </TableRow>,
-      );
-      if (!isCollapsed) {
-        for (const child of group.children) {
-          nodes.push(...renderGroup(child));
-        }
-      }
-    } else if (!collapsedGroups.has(group.collapseKey)) {
-      for (const rIdx of group.rows) {
-        nodes.push(
-          <TableRow
-            key={rIdx}
-            sx={{
-              "&:last-child td": { borderBottom: 0 },
-            }}
-          >
-            {rowHeaders.map((levelHeaders, level) =>
-              showLevelLabels[level] ? (
-                <TableCell
-                  key={`rv-${level}`}
-                  sx={{
-                    left: level * 120,
-                    ...rowHeaderStyle,
-                    ...rowAreaStyle,
-                    ...(level > 0 ? { fontWeight: 400 } : {}),
-                  }}
-                >
-                  {formatDimLabel(rowDimLabels[level], levelHeaders[rIdx])}
-                </TableCell>
-              ) : null,
-            )}
-            {colLabels.map((colLabel, cIdx) => (
-              <TableCell
-                key={`cv-${cIdx}`}
-                sx={{
-                  ...cellStyle,
-                  ...valueAreaStyle,
-                  ...(groupStarts.has(cIdx) ? boundaryStyle : {}),
-                }}
-              >
-                {renderCell(colLabel, values[rIdx]?.[cIdx])}
-              </TableCell>
-            ))}
-            {showRowTotals && (
-              <TableCell
-                sx={{
-                  ...cellStyle,
-                  ...valueAreaStyle,
+                  ...rowHeaderCellStyle(level).sx,
+                  ...rowAreaStyle,
                   fontWeight: 700,
                 }}
+                style={rowHeaderCellStyle(level).style}
               >
-                {renderCell("__total__", rowTotal[rIdx])}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 0.25,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => toggleGroup(group.collapseKey)}
+                >
+                  <Box
+                    component="span"
+                    sx={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatDimLabel(
+                      rowDimLabels[level],
+                      group.keyTuple[level],
+                    )}
+                    {!isCollapsed ? " 汇总" : ""}
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleGroup(group.collapseKey);
+                    }}
+                    sx={{ p: 0, minWidth: 18, minHeight: 18 }}
+                  >
+                    {isCollapsed ? (
+                      <ChevronRightIcon sx={{ fontSize: 16 }} />
+                    ) : (
+                      <ExpandMoreIcon sx={{ fontSize: 16 }} />
+                    )}
+                  </IconButton>
+                </Box>
               </TableCell>
+            );
+          }
+          if (level < group.level) {
+            return (
+              <TableCell
+                key={`cgv-${level}`}
+                sx={{
+                  ...rowHeaderCellStyle(level).sx,
+                  ...rowAreaStyle,
+                  fontWeight: 700,
+                }}
+                style={rowHeaderCellStyle(level).style}
+              >
+                {formatDimLabel(rowDimLabels[level], group.keyTuple[level])}
+              </TableCell>
+            );
+          }
+          return null;
+        })}
+        {colLabels.map((colLabel, cIdx) => {
+          const backend = subtotalValue(group, cIdx);
+          const fallback = groupClientSum(group.rows, cIdx);
+          const value = backend !== null ? backend : fallback;
+          return (
+            <TableCell
+              key={`cgc-${cIdx}`}
+              sx={{
+                ...valueCellStyle(cIdx).sx,
+                ...valueAreaStyle,
+                fontWeight: 600,
+                ...(groupStarts.has(cIdx) ? boundaryStyle : {}),
+              }}
+              style={valueCellStyle(cIdx).style}
+            >
+              {renderCell(colLabel, value)}
+            </TableCell>
+          );
+        })}
+        {showRowTotals && (
+          <TableCell
+            sx={{
+              ...cellStyle,
+              ...valueAreaStyle,
+              fontWeight: 700,
+            }}
+            style={{
+              minWidth: getColWidth("total", CELL_MIN_WIDTH),
+              fontSize: HEADER_FONT_SIZE,
+            }}
+          >
+            {renderCell(
+              "__total__",
+              rowTotal[group.rows[group.rows.length - 1]],
             )}
-          </TableRow>,
-        );
-      }
-    }
-    return nodes;
+          </TableCell>
+        )}
+      </TableRow>
+    );
   };
 
+  // Leaf detail row: slightly smaller font than headers/subtotals.
+  const renderLeafRow = (rIdx: number): ReactNode => (
+    <TableRow
+      key={rIdx}
+      sx={{
+        "&:last-child td": { borderBottom: 0 },
+      }}
+    >
+      {rowHeaders.map((levelHeaders, level) =>
+        showLevelLabels[level] ? (
+          <TableCell
+            key={`rv-${level}`}
+            sx={{
+              ...rowHeaderCellStyle(level, true).sx,
+              ...rowAreaStyle,
+              ...(level > 0 ? { fontWeight: 400 } : {}),
+            }}
+            style={rowHeaderCellStyle(level, true).style}
+          >
+            {formatDimLabel(rowDimLabels[level], levelHeaders[rIdx])}
+          </TableCell>
+        ) : null,
+      )}
+      {colLabels.map((colLabel, cIdx) => (
+        <TableCell
+          key={`cv-${cIdx}`}
+          sx={{
+            ...valueCellStyle(cIdx, true).sx,
+            ...valueAreaStyle,
+            ...(groupStarts.has(cIdx) ? boundaryStyle : {}),
+          }}
+          style={valueCellStyle(cIdx, true).style}
+        >
+          {renderCell(colLabel, values[rIdx]?.[cIdx])}
+        </TableCell>
+      ))}
+      {showRowTotals && (
+        <TableCell
+          sx={{
+            ...cellStyle,
+            ...valueAreaStyle,
+            fontWeight: 700,
+          }}
+          style={{
+            minWidth: getColWidth("total", CELL_MIN_WIDTH),
+            fontSize: DETAIL_FONT_SIZE,
+          }}
+        >
+          {renderCell("__total__", rowTotal[rIdx])}
+        </TableCell>
+      )}
+    </TableRow>
+  );
+
+  const renderBodyRow = (row: {
+    key: string;
+    group?: PivotGroup;
+    rIdx?: number;
+  }): ReactNode =>
+    row.group ? renderGroupRow(row.group) : renderLeafRow(row.rIdx ?? 0);
+
+  const spacerRow = (height: number, key: string): ReactNode => (
+    <TableRow key={key} sx={{ height }}>
+      <TableCell colSpan={totalBodyCols} sx={{ borderBottom: 0, p: 0 }} />
+    </TableRow>
+  );
+
   return (
-    <TableContainer sx={{ width: "100%", maxHeight: "100%", overflow: "auto" }}>
-      <Table size="small" stickyHeader>
-        <TableHead>
+    <TableContainer
+      ref={containerRef}
+      sx={{ width: "100%", maxHeight: "100%", overflow: "auto" }}
+    >
+      <Table
+        size="small"
+        stickyHeader
+        sx={{
+          border: "1px solid",
+          borderColor: gridBorderColor,
+        }}
+      >
+        <TableHead ref={theadRef}>
           {colHeaders.map((levelHeaders, level) => {
             const isLastLevel = level === colHeaders.length - 1;
             const groups = isLastLevel
@@ -762,7 +1100,10 @@ export default function PivotTable(props: PivotTableProps) {
                       sx={{
                         ...cornerStyle,
                         ...colAreaStyle,
-                        minWidth: 120 * visibleRowDimCount,
+                      }}
+                      style={{
+                        minWidth: cornerWidth,
+                        top: headTops[level] ?? 0,
                       }}
                     >
                       {colCornerLabel}
@@ -775,14 +1116,23 @@ export default function PivotTable(props: PivotTableProps) {
                           sx={{
                             ...cornerStyle,
                             ...rowAreaStyle,
-                            left: rl * 120,
-                            minWidth: 120,
+                          }}
+                          style={{
+                            left: rowHeaderOffsets[rl],
+                            minWidth: getColWidth(`rh-${rl}`, ROW_HEADER_WIDTH),
+                            width: getColWidth(`rh-${rl}`, ROW_HEADER_WIDTH),
+                            top: headTops[level] ?? 0,
                           }}
                         >
+                          {resizeHandle(
+                            `rh-${rl}`,
+                            getColWidth(`rh-${rl}`, ROW_HEADER_WIDTH),
+                          )}
                           <Box
                             sx={{
                               display: "flex",
                               alignItems: "center",
+                              justifyContent: "center",
                               gap: 0.5,
                             }}
                           >
@@ -812,7 +1162,7 @@ export default function PivotTable(props: PivotTableProps) {
                       ...(!isLastLevel
                         ? { fontWeight: 600 }
                         : { fontWeight: 500 }),
-                      textAlign: group.span > 1 ? "center" : "right",
+                      textAlign: "center",
                       ...(!isLastLevel
                         ? {
                             borderRight: "2px solid",
@@ -822,7 +1172,15 @@ export default function PivotTable(props: PivotTableProps) {
                           ? boundaryStyle
                           : {}),
                     }}
+                    style={{
+                      minWidth: getColWidth(`v-${gi}`, CELL_MIN_WIDTH),
+                      fontSize: HEADER_FONT_SIZE,
+                      // stack header rows below each other while sticky
+                      top: headTops[level] ?? 0,
+                    }}
                   >
+                    {isLastLevel &&
+                      resizeHandle(`v-${gi}`, getColWidth(`v-${gi}`, CELL_MIN_WIDTH))}
                     {level < colDimNames.length
                       ? formatDimLabel(colDimNames[level], group.label)
                       : group.label}
@@ -836,7 +1194,15 @@ export default function PivotTable(props: PivotTableProps) {
                       ...valueAreaStyle,
                       fontWeight: 700,
                     }}
+                    style={{
+                      minWidth: getColWidth("total", CELL_MIN_WIDTH),
+                      fontSize: HEADER_FONT_SIZE,
+                    }}
                   >
+                    {resizeHandle(
+                      "total",
+                      getColWidth("total", CELL_MIN_WIDTH),
+                    )}
                     合计
                   </TableCell>
                 )}
@@ -845,7 +1211,16 @@ export default function PivotTable(props: PivotTableProps) {
           })}
         </TableHead>
         <TableBody>
-          {sortedGroups.flatMap((group) => renderGroup(group))}
+          {virtualize && windowStart > 0 && (
+            spacerRow(windowStart * ESTIMATED_ROW_HEIGHT, "spacer-top")
+          )}
+          {renderedRows.map(renderBodyRow)}
+          {virtualize && windowEnd < visibleRows.length && (
+            spacerRow(
+              (visibleRows.length - windowEnd) * ESTIMATED_ROW_HEIGHT,
+              "spacer-bottom",
+            )
+          )}
           {showColTotals && (
             <TableRow
               sx={{
@@ -855,23 +1230,25 @@ export default function PivotTable(props: PivotTableProps) {
                 },
               }}
             >
-              {rowDimLabels.map((_, level) =>
-                showLevelLabels[level] ? (
-                  <TableCell
-                    key={`ct-${level}`}
-                    sx={{
-                      left: level * 120,
-                      bottom: 0,
-                      ...rowHeaderStyle,
-                      ...rowAreaStyle,
-                      zIndex: 3,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {level === 0 ? "合计" : ""}
-                  </TableCell>
-                ) : null,
-              )}
+              {/* Totals header: merge all visible dimension columns into one
+                  cell, matching the subtotal rows' merged label. */}
+              <TableCell
+                key="ct-merged"
+                colSpan={visibleRowDimCount}
+                sx={{
+                  bottom: 0,
+                  ...rowHeaderStyle,
+                  ...rowAreaStyle,
+                  zIndex: 3,
+                  fontWeight: 700,
+                }}
+                style={{
+                  left: 0,
+                  fontSize: HEADER_FONT_SIZE,
+                }}
+              >
+                合计
+              </TableCell>
               {colLabels.map((colLabel, cIdx) => {
                 const backend = backendTotal(cIdx);
                 const value = backend !== null ? backend : colTotal[cIdx];
@@ -887,6 +1264,7 @@ export default function PivotTable(props: PivotTableProps) {
                       fontWeight: 700,
                       ...(groupStarts.has(cIdx) ? boundaryStyle : {}),
                     }}
+                    style={{ fontSize: HEADER_FONT_SIZE }}
                   >
                     {renderCell(colLabel, value)}
                   </TableCell>
@@ -902,6 +1280,7 @@ export default function PivotTable(props: PivotTableProps) {
                     zIndex: 2,
                     fontWeight: 700,
                   }}
+                  style={{ fontSize: HEADER_FONT_SIZE }}
                 >
                   {renderCell("__total__", grandTotal)}
                 </TableCell>
@@ -925,6 +1304,24 @@ export default function PivotTable(props: PivotTableProps) {
           列）
         </Typography>
       )}
+      {resizeIndicatorX !== null && (
+        <Box
+          data-testid="resize-indicator"
+          sx={{
+            position: "fixed",
+            top: 0,
+            bottom: 0,
+            width: 2,
+            bgcolor: "primary.main",
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+          style={{ left: resizeIndicatorX - 1 }}
+        />
+      )}
     </TableContainer>
   );
-}
+  },
+);
+
+export default PivotTable;

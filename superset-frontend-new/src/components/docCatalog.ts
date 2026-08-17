@@ -77,13 +77,13 @@ export const docs: Record<string, { title: string; content: string }> = {
 
 - **数据 API**: Starfly REST API（/api/v1/）
 - **认证**: JWT Token + Refresh Token 自动刷新
-- **代理转发**: Vite dev server 代理（/api -> backend, /llm -> LM Studio, /opencode -> opencode server）
+- **代理转发**: Vite dev server 代理（/api -> backend, /agent/ws -> Pi agent server）
 
 ## AI 架构
 
-- 所有 AI 请求均通过 OpenCode SDK 会话（streamChartInsight / streamDirectChat）
+- 所有 AI 请求均通过 Pi agent server（WebSocket）转发，浏览器不直连 LLM
 - 支持流式文本输出和中断
-- 可切换 AI 后端 Provider
+- 模型列表与当前模型由 agent server 统一提供
 
 ## Docker 部署
 

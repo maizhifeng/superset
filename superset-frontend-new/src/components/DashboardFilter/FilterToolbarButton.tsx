@@ -15,6 +15,7 @@ interface FilterToolbarButtonProps {
   activeCount: number;
   hiddenFilters: { id: string; name: string }[];
   onOpenDrawer: () => void;
+  onToggleDrawer?: () => void;
   onClearAll: () => void;
   onAddFilter: (id: string) => void;
 }
@@ -23,6 +24,7 @@ export default function FilterToolbarButton({
   activeCount,
   hiddenFilters,
   onOpenDrawer,
+  onToggleDrawer,
   onClearAll,
   onAddFilter,
 }: FilterToolbarButtonProps) {
@@ -31,7 +33,7 @@ export default function FilterToolbarButton({
   return (
     <>
       <Button
-        onClick={onOpenDrawer}
+        onClick={onToggleDrawer ?? onOpenDrawer}
         startIcon={
           <Badge
             badgeContent={activeCount}

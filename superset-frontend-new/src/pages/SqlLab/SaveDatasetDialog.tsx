@@ -15,8 +15,11 @@ interface SaveDatasetDialogProps {
   saving: boolean;
   saveError: string | null;
   saveSuccess: boolean;
+  savedDatasetId: number | null;
   onNameChange: (name: string) => void;
   onSave: () => void;
+  onOpenCreated?: (id: number) => void;
+  onCreateChart?: (id: number) => void;
   onClose: () => void;
 }
 
@@ -26,8 +29,11 @@ export default function SaveDatasetDialog({
   saving,
   saveError,
   saveSuccess,
+  savedDatasetId,
   onNameChange,
   onSave,
+  onOpenCreated,
+  onCreateChart,
   onClose,
 }: SaveDatasetDialogProps) {
   return (
@@ -42,9 +48,33 @@ export default function SaveDatasetDialog({
       <DialogContent>
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           {saveSuccess && (
-            <Typography color="success.main" variant="body2">
-              数据集保存成功
-            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Typography color="success.main" variant="body2">
+                数据集保存成功
+              </Typography>
+              {savedDatasetId && (
+                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  {onOpenCreated && (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => onOpenCreated(savedDatasetId)}
+                    >
+                      在编辑器中打开
+                    </Button>
+                  )}
+                  {onCreateChart && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => onCreateChart(savedDatasetId)}
+                    >
+                      基于它创建图表
+                    </Button>
+                  )}
+                </Box>
+              )}
+            </Box>
           )}
           {saveError && (
             <Typography color="error" variant="body2">
@@ -65,7 +95,7 @@ export default function SaveDatasetDialog({
       <Divider />
       <DialogActions>
         <Button variant="outlined" onClick={onClose} disabled={saving}>
-          取消
+          {saveSuccess ? "关闭" : "取消"}
         </Button>
         <Button
           variant="contained"

@@ -1,10 +1,9 @@
 import { useEffect } from "react";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import FilterListIcon from "@mui/icons-material/FilterList";
 import AddIcon from "@mui/icons-material/Add";
 import MenuIcon from "@mui/icons-material/Menu";
 import ChatInput from "@/components/ChatInput";
-import { FilterToolbarButton } from "@/components/DashboardFilter";
+import { FilterToolbarButton, FilterToggleFab } from "@/components/DashboardFilter";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useToolbarStore } from "@/store/toolbarStore";
 import type { DashboardData } from "@/types/api";
@@ -16,6 +15,7 @@ interface UseDashboardToolbarParams {
   clearAll: () => void;
   layoutItems: { chartId: number }[];
   onFilterDrawerOpen: () => void;
+  onFilterDrawerToggle: () => void;
   onAddFilter: (id: string) => void;
   onRefreshAll: () => void;
   onOpenNav: () => void;
@@ -29,6 +29,7 @@ export default function useDashboardToolbar({
   clearAll,
   layoutItems,
   onFilterDrawerOpen,
+  onFilterDrawerToggle,
   onAddFilter,
   onRefreshAll,
   onOpenNav,
@@ -46,15 +47,19 @@ export default function useDashboardToolbar({
       status: dashboard.published ? "published" : "draft",
     });
     registerTools(pageKey, [
-      {
-        id: "add_chart",
-        priority: 5,
-        showOnMobile: true,
-        fabIcon: <AddIcon />,
-        fabLabel: "添加图表",
-        action: onAddChart,
-        render: null,
-      },
+      ...(layoutItems.length > 0
+        ? [
+            {
+              id: "add_chart",
+              priority: 5,
+              showOnMobile: true,
+              fabIcon: <AddIcon />,
+              fabLabel: "添加图表",
+              action: onAddChart,
+              render: null,
+            },
+          ]
+        : []),
       {
         id: "search",
         priority: 0,
@@ -66,14 +71,26 @@ export default function useDashboardToolbar({
         priority: 10,
         showOnMobile: true,
         primary: true,
-        fabIcon: <FilterListIcon />,
         fabLabel: "筛选",
-        action: onFilterDrawerOpen,
+        fabRender: (
+          <FilterToggleFab
+            activeCount={activeCount}
+            hiddenCount={hiddenFilters.length}
+            hiddenFilters={hiddenFilters}
+            onOpenDrawer={onFilterDrawerOpen}
+            onClearAll={clearAll}
+            onAddFilter={(id: string) => {
+              onAddFilter(id);
+              onFilterDrawerOpen();
+            }}
+          />
+        ),
         render: (
           <FilterToolbarButton
             activeCount={activeCount}
             hiddenFilters={hiddenFilters}
             onOpenDrawer={onFilterDrawerOpen}
+            onToggleDrawer={onFilterDrawerToggle}
             onClearAll={clearAll}
             onAddFilter={(id: string) => {
               onAddFilter(id);
@@ -114,6 +131,7 @@ export default function useDashboardToolbar({
     pageKey,
     onAddChart,
     onFilterDrawerOpen,
+    onFilterDrawerToggle,
     onAddFilter,
     onRefreshAll,
     onOpenNav,

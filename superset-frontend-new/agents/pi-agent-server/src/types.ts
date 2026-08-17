@@ -29,6 +29,13 @@ export type ClientMessage =
       storeSessionId?: string;
       user_id?: string;
     }
+  | {
+      type: "insight";
+      storeSessionId: string;
+      chartId?: number;
+      filters?: Record<string, unknown>;
+      prompt?: string;
+    }
   | { type: "set_model"; model: string; user_id?: string }
   | { type: "abort"; storeSessionId?: string }
   | { type: "delete_session"; storeSessionId: string };
@@ -42,15 +49,51 @@ export interface AgentWebSocketMeta {
   preferredModel?: string;
 }
 
+/** Events for chart-insight requests (insight: true). */
+export type InsightServerMessage =
+  | { type: "agent_start"; storeSessionId: string; insight: true }
+  | {
+      type: "message_update";
+      storeSessionId: string;
+      insight: true;
+      assistantMessageEvent: { type: "text_delta"; delta: string };
+    }
+  | {
+      type: "thinking_delta";
+      storeSessionId: string;
+      insight: true;
+      delta: string;
+    }
+  | {
+      type: "agent_end";
+      storeSessionId: string;
+      insight: true;
+      messages: unknown[];
+      finalText?: string;
+    }
+  | {
+      type: "error";
+      storeSessionId: string;
+      insight: true;
+      message: string;
+      retryable: boolean;
+    };
+
 export type ServerMessage =
   | { type: "session_created"; sessionId: string; storeSessionId?: string }
-  | { type: "agent_start"; storeSessionId?: string }
+  | { type: "agent_start"; storeSessionId?: string; insight?: boolean }
   | {
       type: "message_update";
       storeSessionId?: string;
+      insight?: boolean;
       assistantMessageEvent: { type: "text_delta"; delta: string };
     }
-  | { type: "thinking_delta"; storeSessionId?: string; delta: string }
+  | {
+      type: "thinking_delta";
+      storeSessionId?: string;
+      insight?: boolean;
+      delta: string;
+    }
   | {
       type: "tool_execution_start";
       storeSessionId?: string;
@@ -69,8 +112,15 @@ export type ServerMessage =
   | {
       type: "agent_end";
       storeSessionId?: string;
+      insight?: boolean;
       messages: unknown[];
       finalText?: string;
     }
   | { type: "model_list"; models: ModelInfo[]; current?: string }
-  | { type: "error"; message: string; retryable: boolean };
+  | {
+      type: "error";
+      message: string;
+      retryable: boolean;
+      storeSessionId?: string;
+      insight?: boolean;
+    };

@@ -9,7 +9,7 @@ vi.mock("../tools/querySuperset.js", () => ({
 
 test("executeQuerySuperset is called with correct args", async () => {
   vi.mocked(executeQuerySuperset).mockResolvedValueOnce(
-    "渠道商 | 消耗\n--- | ---\n微信小游戏 | 1000"
+    "渠道商 | 消耗\n--- | ---\n微信小游戏 | 1000",
   );
 
   const result = await executeQuerySuperset(
@@ -18,7 +18,7 @@ test("executeQuerySuperset is called with correct args", async () => {
       metrics: ["SUM(消耗)"],
       time_range: "Last 7 days",
     },
-    "test-user"
+    "test-user",
   );
 
   expect(result).toContain("微信小游戏");
@@ -28,7 +28,7 @@ test("executeQuerySuperset is called with correct args", async () => {
       columns: ["渠道商"],
       metrics: ["SUM(消耗)"],
     }),
-    "test-user"
+    "test-user",
   );
 });
 

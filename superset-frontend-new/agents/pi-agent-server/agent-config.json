@@ -1,0 +1,57 @@
+{
+  "report": {
+    "defaultTimeRange": "Last 7 days",
+    "perspectives": [
+      {
+        "name": "平台维度",
+        "description": "新增进入、消耗、充值流水 近 7 天变化趋势",
+        "columns": ["日期", "平台"],
+        "metrics": ["SUM(新增进入)", "SUM(消耗)", "SUM(充值流水)"],
+        "orderby": [
+          ["平台", true],
+          ["日期", true]
+        ]
+      },
+      {
+        "name": "主游戏维度",
+        "description": "按消耗排名前 10 的主游戏，新增进入、消耗、cpa、ltv_1~ltv_7 近 7 天变化趋势",
+        "columns": ["日期", "主游戏"],
+        "metrics": [
+          "SUM(新增进入)",
+          "SUM(消耗)",
+          "cpa",
+          "ltv_1",
+          "ltv_2",
+          "ltv_3",
+          "ltv_4",
+          "ltv_5",
+          "ltv_6",
+          "ltv_7"
+        ],
+        "orderby": "日期↑",
+        "topBy": "主游戏",
+        "topMetric": "SUM(消耗)",
+        "topN": 10
+      },
+      {
+        "name": "重点主游戏 × 渠道商维度",
+        "description": "按消耗排名前 5 的主游戏，其下各渠道商近 7 天变化趋势",
+        "columns": ["日期", "主游戏", "渠道商"],
+        "metrics": ["SUM(新增进入)", "SUM(消耗)", "cpa"],
+        "orderby": "日期↑",
+        "topBy": "主游戏",
+        "topMetric": "SUM(消耗)",
+        "topN": 5,
+        "rowLimit": 400
+      },
+      {
+        "name": "平台 × 媒体维度",
+        "description": "近 7 天变化趋势",
+        "columns": ["日期", "平台", "媒体"],
+        "metrics": ["SUM(新增进入)", "SUM(消耗)", "SUM(充值流水)"],
+        "orderby": "日期↑",
+        "rowLimit": 500
+      }
+    ]
+  }
+}

@@ -1,17 +1,20 @@
 import { WebSocket } from "ws";
-import type {
-  AgentSession,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { SessionStore } from "./session-store.js";
-import type { ToolCallArg } from "./types.js";
+import { getWsAuthToken } from "./session-store.js";
 import { executeQuerySuperset, getSchema } from "./tools/querySuperset.js";
+import { buildChartInsightPrompt } from "./tools/chartData.js";
+import { loadAgentConfig, type AgentConfig, type ReportPerspective } from "./agent-config.js";
+import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { tryRenderStructuredContent, buildFallbackOutput } from "./renderer.js";
-
-const MAX_TOOL_ROUNDS =
-  parseInt(process.env.AGENT_MAX_TOOL_ROUNDS || "10", 10) || 10;
+import {
+  CHART_INSIGHT_SYSTEM_PROMPT,
+  CHAT_SYSTEM_PROMPT,
+  DATA_DICT_SYSTEM_PROMPT,
+  REPORT_SYSTEM_PROMPT,
+} from "./prompts.js";
+import { saveSessionMessages, type StoredMessage } from "./store.js";
 
 // ── Event sender abstraction ────────────────────────────────────
 export interface AgentEventSender {
@@ -39,6 +42,205 @@ const REASONING_INTENT_PATTERNS = [
  */
 export function isReasoningIntent(message: string): boolean {
   return REASONING_INTENT_PATTERNS.some((re) => re.test(message));
+}
+
+const REPORT_INTENT_PATTERNS = [/(?:日报|周报|月报|报表|报告)/];
+
+/**
+ * Whether the prompt asks for a periodic report (daily/weekly/monthly).
+ * Report requests are served by fetching every configured analysis
+ * perspective directly (deterministic data acquisition) and handing the
+ * data to the built-in agent to write the report.
+ */
+export function isReportIntent(message: string): boolean {
+  return REPORT_INTENT_PATTERNS.some((re) => re.test(message));
+}
+
+const DICT_INTENT_PATTERNS = [/(?:数据字典|字段定义|字段含义|数据模型)/];
+
+/**
+ * Whether the prompt asks for the dataset data dictionary. Dictionary
+ * requests are served by injecting the fetched dataset schema (dimension
+ * columns and metric definitions) into the prompt.
+ */
+export function isDictIntent(message: string): boolean {
+  return DICT_INTENT_PATTERNS.some((re) => re.test(message));
+}
+
+// ── Deterministic report data fetching ──────────────────────────
+/**
+ * Extract cell rows from a `toMarkdownTable` result. Both producer and
+ * consumer live in this codebase, so the pipe-separated layout is stable.
+ * Returns an empty array for error strings / non-table content.
+ */
+export function parseMarkdownRows(md: string): string[][] {
+  const rows: string[][] = [];
+  for (const line of md.split("\n")) {
+    if (!line.includes("|")) continue;
+    const cells = line.split("|").map((c) => c.trim());
+    if (cells.every((c) => /^---$/.test(c))) continue; // separator line
+    rows.push(cells);
+  }
+  // rows[0] is the header
+  return rows.slice(1);
+}
+
+/**
+ * Fetch every configured analysis perspective through the Superset chart
+ * data API. Emits tool-execution progress events so the UI shows each
+ * perspective query, then returns the combined markdown data.
+ *
+ * Perspectives with `topBy`/`topMetric`/`topN` run a two-step drilldown:
+ * first the top-N values of `topBy` by `topMetric`, then the perspective
+ * query filtered to those values (IN filter). This bounds the injected
+ * data volume and matches the perspective description.
+ */
+export async function fetchReportData(
+  config: AgentConfig,
+  userId: string,
+  emit: AgentEventSender,
+  storeSessionId: string,
+  authToken?: string,
+): Promise<string> {
+  const { perspectives, defaultTimeRange } = config.report;
+  const results: string[] = [];
+
+  for (let i = 0; i < perspectives.length; i++) {
+    const p = perspectives[i];
+    const args: Record<string, unknown> = {
+      columns: p.columns,
+      metrics: p.metrics,
+      time_range: defaultTimeRange,
+    };
+    if (p.orderby) args.orderby = p.orderby;
+    if (p.showAll) args.show_all = true;
+    if (p.rowLimit) args.row_limit = p.rowLimit;
+
+    let data: string;
+    try {
+      if (p.topBy && p.topMetric && p.topN) {
+        data = await fetchTopDrilldown(
+          p,
+          defaultTimeRange,
+          userId,
+          emit,
+          storeSessionId,
+          authToken,
+          i,
+        );
+      } else {
+        const toolCallId = `direct-${Date.now()}-${i}`;
+        emit({
+          type: "tool_execution_start",
+          storeSessionId,
+          toolCallId,
+          toolName: "query_superset",
+          args,
+        });
+        data = await executeQuerySuperset(args, userId, undefined, authToken);
+        emit({
+          type: "tool_execution_end",
+          storeSessionId,
+          toolCallId,
+          toolName: "query_superset",
+          result: data,
+        });
+      }
+    } catch (err) {
+      data = `查询失败: ${(err as Error).message ?? String(err)}`;
+      logger.warn(
+        "query",
+        `direct perspective query failed (${p.name}): ${(err as Error).message ?? String(err)}`,
+      );
+    }
+
+    results.push(`### 视角 ${i + 1}：${p.name}（${p.description}）\n${data}`);
+  }
+
+  return results.join("\n\n");
+}
+
+async function fetchTopDrilldown(
+  p: ReportPerspective,
+  defaultTimeRange: string,
+  userId: string,
+  emit: AgentEventSender,
+  storeSessionId: string,
+  authToken: string | undefined,
+  perspectiveIndex: number,
+): Promise<string> {
+  const topBy = p.topBy as string;
+  const topMetric = p.topMetric as string;
+  const topN = p.topN as number;
+
+  // Step 1: rank the top-N values of topBy by topMetric
+  const topArgs: Record<string, unknown> = {
+    columns: [topBy],
+    metrics: [topMetric],
+    time_range: defaultTimeRange,
+    orderby: [[topMetric, false]],
+    row_limit: topN,
+  };
+  const topToolCallId = `top-${Date.now()}-${perspectiveIndex}`;
+  emit({
+    type: "tool_execution_start",
+    storeSessionId,
+    toolCallId: topToolCallId,
+    toolName: "query_superset",
+    args: topArgs,
+  });
+  const topData = await executeQuerySuperset(
+    topArgs,
+    userId,
+    undefined,
+    authToken,
+  );
+  emit({
+    type: "tool_execution_end",
+    storeSessionId,
+    toolCallId: topToolCallId,
+    toolName: "query_superset",
+    result: topData,
+  });
+
+  // Step 2: perspective query filtered to the top values
+  const topValues = parseMarkdownRows(topData)
+    .map((row) => row[0])
+    .filter((v) => v && v !== "-");
+  const args: Record<string, unknown> = {
+    columns: p.columns,
+    metrics: p.metrics,
+    time_range: defaultTimeRange,
+  };
+  if (p.orderby) args.orderby = p.orderby;
+  if (p.showAll) args.show_all = true;
+  if (p.rowLimit) args.row_limit = p.rowLimit;
+  if (topValues.length > 0) {
+    args.filters = { [topBy]: topValues };
+  }
+
+  const toolCallId = `drill-${Date.now()}-${perspectiveIndex}`;
+  emit({
+    type: "tool_execution_start",
+    storeSessionId,
+    toolCallId,
+    toolName: "query_superset",
+    args,
+  });
+  const data = await executeQuerySuperset(args, userId, undefined, authToken);
+  emit({
+    type: "tool_execution_end",
+    storeSessionId,
+    toolCallId,
+    toolName: "query_superset",
+    result: data,
+  });
+
+  const header =
+    topValues.length > 0
+      ? `> 按 ${topMetric} 排名前 ${topValues.length} 的${topBy}：${topValues.join("、")}\n\n`
+      : "";
+  return `${header}${data}`;
 }
 
 // ── Validation ──────────────────────────────────────────────────
@@ -104,100 +306,27 @@ export function extractToolResultText(messages: unknown[]): string {
   return "";
 }
 
-// ── Tool factories ─────────────────────────────────────────────
-export function createTools(
-  userId: string,
-  getAuthToken?: () => string | undefined,
-  getDatasetId?: () => number | undefined,
-): ToolDefinition[] {
-  return [
-    {
-      name: "get_dataset_schema",
-      label: "获取数据集元数据",
-      description:
-        "获取当前数据集的可用维度列名和聚合指标名列表。返回结果包含所有可用的列名和指标名，用于构建后续的数据查询。此工具不执行数据查询，只返回元数据。每次对话开始时必须先调用此工具获取正确的列名和指标名。",
-      parameters: Type.Object({}),
-      execute: async () => {
-        const token = getAuthToken?.();
-        const dsId = getDatasetId?.();
-        const schema = await getSchema(userId, token, dsId);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: schema || "（未获取到 Schema 信息）",
-            },
-          ],
-          details: {},
-        };
-      },
-    },
-    {
-      name: "query_superset",
-      label: "查询数据集",
-      description:
-        '从数据集查询按维度聚合的数据，返回 markdown 表格。列名和指标名必须使用 get_dataset_schema 返回的名称，不得自行猜测。示例：columns=["渠道商"], metrics=["指标名1","指标名2"], time_range="Last 7 days"。',
-      parameters: Type.Object({
-        columns: Type.Array(Type.String(), {
-          description: "分组维度列名。必须使用 get_dataset_schema 返回的列名。",
-        }),
-        metrics: Type.Array(Type.String(), {
-          description:
-            "聚合指标名，必须逐字使用 get_dataset_schema 返回的确切名称（区分大小写），禁止改写、翻译或添加修饰词（如「消耗金额」「新增用户」）。数值列用 SUM(列名) 形式或列名本身；保存指标（如 cpa、roi_1）直接用原名。",
-        }),
-        time_range: Type.Optional(
-          Type.String({ description: "时间范围，默认 Last 14 days" }),
-        ),
-        filters: Type.Optional(
-          Type.Union(
-            [
-              Type.Record(
-                Type.String(),
-                Type.Union([Type.String(), Type.Number()]),
-              ),
-              Type.String(),
-            ],
-            {
-              description:
-                '列级过滤条件，key=列名 value=过滤值。当分析指定了具体游戏/渠道/媒体时，必须传入对应的过滤条件。如 {"主游戏":"三国：天命再临"} 或 {"渠道商":"微信小游戏"}',
-            },
-          ),
-        ),
-        orderby: Type.Optional(
-          Type.Array(Type.Tuple([Type.String(), Type.Boolean()]), {
-            description:
-              '排序字段，也支持字符串形式如 "日期↓"、"消耗 asc"。趋势/钻取查询（columns 含「日期」）建议按日期排序，数据不会做截断。',
-          }),
-        ),
-        row_limit: Type.Optional(
-          Type.Number({
-            maximum: 1000,
-            description:
-              "返回行数上限，必须是纯数字，默认 1000（上限也是 1000）。明细类查询建议直接省略该参数以获取最多数据。",
-          }),
-        ),
-        show_all: Type.Optional(
-          Type.Boolean({
-            description:
-              "是否显示全部数据行。默认 false，只展示占比前 95% 的主要项。当用户要求「完整」「全部」「所有明细」时设为 true。",
-          }),
-        ),
-      }),
-      execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-        const token = getAuthToken?.();
-        const result = await executeQuerySuperset(
-          params as Record<string, unknown>,
-          userId,
-          signal,
-          token,
-        );
-        return {
-          content: [{ type: "text" as const, text: result }],
-          details: {},
-        };
-      },
-    },
-  ];
+/**
+ * Reduce agent transcript messages to the plain-text user/assistant turns
+ * that get persisted for session restore.
+ */
+export function extractPersistableMessages(messages: unknown[]): StoredMessage[] {
+  const contentText = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content))
+      return (content as Array<{ text?: string }>)
+        .map((c) => c.text ?? "")
+        .join("\n");
+    return "";
+  };
+  const out: StoredMessage[] = [];
+  for (const m of messages) {
+    const rec = m as { role?: string; content?: unknown };
+    if (rec.role !== "user" && rec.role !== "assistant") continue;
+    const text = contentText(rec.content).trim();
+    if (text) out.push({ role: rec.role, content: text });
+  }
+  return out;
 }
 
 // ── Prompt lifecycle ────────────────────────────────────────────
@@ -232,6 +361,10 @@ export async function processPrompt(
 
   sessionStore.setState(storeSessionId, "running");
 
+  const isReport = isReportIntent(message);
+  const isDict = isDictIntent(message);
+  const appConfig = loadConfig();
+
   // Enable chain-of-thought for report/comparison intents so calculations
   // (change rates, shares, LTV coefficients) are reasoned through and the
   // thinking stream is shown in the UI.
@@ -247,7 +380,15 @@ export async function processPrompt(
       }
     }
   };
-  if (wantReasoning) setThinkingLevel("medium");
+  if (wantReasoning) setThinkingLevel(appConfig.reasoningLevel);
+
+  // Override the pi coding-agent default system prompt per intent so the
+  // model acts as a data analyst instead of a coding assistant.
+  agentSession.state.systemPrompt = isReport
+    ? REPORT_SYSTEM_PROMPT
+    : isDict
+      ? DATA_DICT_SYSTEM_PROMPT
+      : CHAT_SYSTEM_PROMPT;
 
   // One retry with reasoning disabled when the provider rejects the
   // reasoning_effort parameter (e.g. models that do not support thinking).
@@ -257,7 +398,6 @@ export async function processPrompt(
     try {
       emit({ type: "agent_start", storeSessionId });
 
-      let toolRound = 0;
       let terminated = false;
 
       const unsub = agentSession.subscribe((event) => {
@@ -275,57 +415,51 @@ export async function processPrompt(
             emit({ type: "thinking_delta", storeSessionId, delta: ae.delta });
           }
         }
-
-        if (event.type === "tool_execution_start") {
-          toolRound++;
-
-          if (toolRound > MAX_TOOL_ROUNDS) {
-            terminated = true;
-            sessionStore.deleteSubscription(storeSessionId);
-            sessionStore.updateUnsub(ws, storeSessionId, () => {});
-            sessionStore.setState(storeSessionId, "idle");
-            agentSession.dispose();
-            emit({
-              type: "agent_end",
-              storeSessionId,
-              messages: [],
-              finalText: `工具调用次数过多（超过 ${MAX_TOOL_ROUNDS} 次），已自动终止`,
-            });
-            return;
-          }
-          const args = event.args as ToolCallArg;
-          emit({
-            type: "tool_execution_start",
-            storeSessionId,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            args,
-          });
-        }
-
-        if (event.type === "tool_execution_end") {
-          const resultText =
-            event.result?.content
-              ?.map((c: unknown) =>
-                typeof c === "string"
-                  ? c
-                  : ((c as { text?: string }).text ?? ""),
-              )
-              .join("\n") ?? "";
-          emit({
-            type: "tool_execution_end",
-            storeSessionId,
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            result: resultText,
-          });
-        }
       });
 
       sessionStore.setSubscription(storeSessionId, unsub);
       sessionStore.updateUnsub(ws, storeSessionId, unsub);
 
-      await agentSession.prompt(message);
+      // Report requests: fetch every analysis perspective deterministically
+      // and hand the data to the built-in agent for writing the report.
+      // Dictionary requests: inject the dataset schema. Regular prompts go
+      // straight to the agent unchanged.
+      let promptText = message;
+      if (isReport) {
+        const config = loadAgentConfig();
+        const data = await fetchReportData(
+          config,
+          session.userId ?? "unknown",
+          emit,
+          storeSessionId,
+          getWsAuthToken(ws),
+        );
+        promptText = [
+          message,
+          "",
+          "以下是系统已获取的数据（各分析视角），请基于这些数据撰写完整报告：",
+          "",
+          "请先对每个视角计算核心指标的昨日 vs 前日变化率，再结合近 7 天趋势撰写报告。",
+          "",
+          data,
+          "",
+          `报告需覆盖全部 ${config.report.perspectives.length} 个分析视角，结合用户要求组织结构与重点，结论需有数据依据。`,
+        ].join("\n");
+      } else if (isDict) {
+        const schema = await getSchema(
+          session.userId ?? "unknown",
+          getWsAuthToken(ws),
+        );
+        promptText = [
+          message,
+          "",
+          "以下是系统已获取的数据集 Schema（维度列与指标定义）：",
+          "",
+          schema || "（Schema 获取失败，请说明数据字典暂不可用，不要编造字段定义）",
+        ].join("\n");
+      }
+
+      await agentSession.prompt(promptText);
 
       const current = sessionStore.getSession(storeSessionId);
       if (!current || current.state !== "running") return true;
@@ -349,6 +483,18 @@ export async function processPrompt(
         messages,
         finalText,
       });
+
+      // Persist the transcript so sessions survive server restarts and can
+      // be restored with their full history on the next connection.
+      const persistable = extractPersistableMessages(messages);
+      if (persistable.length > 0) {
+        const owner = sessionStore.getSession(storeSessionId);
+        await saveSessionMessages(
+          storeSessionId,
+          owner?.userId ?? "unknown",
+          persistable,
+        );
+      }
       return true;
     } catch (e: unknown) {
       const errMsg = (e as Error).message ?? String(e);
@@ -393,6 +539,119 @@ export async function processPrompt(
   try {
     while (!(await runOnce())) {
       // retry loop; runOnce returns false only when reasoning was rejected
+    }
+  } finally {
+    if (sessionStore.getSession(storeSessionId)) {
+      sessionStore.deleteSubscription(storeSessionId);
+      sessionStore.updateUnsub(ws, storeSessionId, () => {});
+      sessionStore.setState(storeSessionId, "idle");
+    }
+  }
+}
+
+// ── Chart insight lifecycle ─────────────────────────────────────
+/**
+ * Run a chart-insight request: fetch the chart data through the Superset
+ * API (with the verified user token) and stream the analysis back. Insight
+ * events carry `insight: true` so the client can route them to the insight
+ * drawer without touching chat sessions. Follow-up prompts reuse the same
+ * agent session (history kept in memory for the connection lifetime) and
+ * skip data fetching. Insight turns are transient and are not persisted.
+ */
+export async function processInsight(
+  ws: WebSocket,
+  storeSessionId: string,
+  agentSession: AgentSession,
+  chartId: number | undefined,
+  filters: Record<string, unknown>,
+  followUpPrompt: string | undefined,
+  emit: AgentEventSender,
+  sessionStore: SessionStore,
+): Promise<void> {
+  const emitInsight: AgentEventSender = (event) =>
+    emit({ ...event, insight: true });
+  const sendError = (message: string, retryable: boolean) =>
+    emitInsight({
+      type: "error",
+      storeSessionId,
+      message,
+      retryable,
+    });
+
+  const session = sessionStore.getSession(storeSessionId);
+  if (!session) {
+    sendError("会话不存在", false);
+    return;
+  }
+  if (session.state === "running") {
+    sendError("当前会话正在处理中，请等待完成或发送 abort", true);
+    return;
+  }
+  sessionStore.setState(storeSessionId, "running");
+
+  try {
+    emitInsight({ type: "agent_start", storeSessionId });
+
+    let promptText = followUpPrompt ?? "";
+    if (chartId !== undefined) {
+      try {
+        promptText = await buildChartInsightPrompt(
+          chartId,
+          filters,
+          session.userId ?? "unknown",
+          getWsAuthToken(ws),
+        );
+      } catch (e) {
+        sendError(
+          `图表数据获取失败: ${(e as Error).message ?? String(e)}`,
+          true,
+        );
+        return;
+      }
+    }
+
+    // Insight sessions are created per request, so overriding the system
+    // prompt here only affects this analysis.
+    agentSession.state.systemPrompt = CHART_INSIGHT_SYSTEM_PROMPT;
+
+    let terminated = false;
+    const unsub = agentSession.subscribe((event) => {
+      if (terminated || !sessionStore.getSession(storeSessionId)) return;
+      if (event.type === "message_update") {
+        const ae = event.assistantMessageEvent;
+        if (ae.type === "text_delta") {
+          emitInsight({
+            type: "message_update",
+            storeSessionId,
+            assistantMessageEvent: { type: "text_delta", delta: ae.delta },
+          });
+        }
+      }
+    });
+    sessionStore.setSubscription(storeSessionId, unsub);
+    sessionStore.updateUnsub(ws, storeSessionId, unsub);
+
+    await agentSession.prompt(promptText);
+
+    const messages = agentSession.state.messages ?? [];
+    const finalText = extractLastAssistantText(messages);
+    emitInsight({
+      type: "agent_end",
+      storeSessionId,
+      messages,
+      finalText,
+    });
+  } catch (e: unknown) {
+    const errMsg = (e as Error).message ?? String(e);
+    if (!sessionStore.getSession(storeSessionId)) {
+      emitInsight({
+        type: "agent_end",
+        storeSessionId,
+        messages: (agentSession.state.messages ?? []) as unknown[],
+        finalText: extractLastAssistantText(agentSession.state.messages ?? []),
+      });
+    } else {
+      sendError(errMsg, true);
     }
   } finally {
     if (sessionStore.getSession(storeSessionId)) {

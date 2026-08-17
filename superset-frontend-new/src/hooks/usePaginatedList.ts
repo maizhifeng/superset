@@ -9,6 +9,14 @@ export interface SortModel {
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
+/** 全局列表每页行数偏好（localStorage）。 */
+const PAGE_SIZE_KEY = "superset-list-page-size";
+
+export interface ListFilter {
+  col: string;
+  opr: string;
+  value: string | number | boolean;
+}
 
 interface UsePaginatedListOptions {
   endpoint: string;
@@ -17,6 +25,8 @@ interface UsePaginatedListOptions {
   errorMessage?: string;
   sortFieldMap?: Record<string, string>;
   defaultSortModel?: SortModel[];
+  /** 额外的服务端过滤条件，与搜索过滤合并（如按图表类型过滤）。 */
+  extraFilters?: ListFilter[];
 }
 
 export interface PaginatedListResult<T> {
@@ -27,12 +37,14 @@ export interface PaginatedListResult<T> {
   searchText: string;
   paginationModel: { page: number; pageSize: number };
   sortModel: SortModel[];
+  extraFilters: ListFilter[];
   deleteTarget: { id: number; name: string } | null;
   deleteLoading: boolean;
   deleteError: string | null;
   setSearchText: (v: string) => void;
   setPaginationModel: (m: { page: number; pageSize: number }) => void;
   setSortModel: (m: SortModel[]) => void;
+  setExtraFilters: (f: ListFilter[]) => void;
   setDeleteTarget: (t: { id: number; name: string } | null) => void;
   handleSearchChange: (v: string) => void;
   handleDelete: () => Promise<void>;
@@ -49,6 +61,7 @@ export function usePaginatedList<T>(
     errorMessage = "Failed to load data",
     sortFieldMap,
     defaultSortModel,
+    extraFilters: initialExtraFilters,
   } = options;
 
   const [rows, setRows] = useState<T[]>([]);
@@ -56,7 +69,18 @@ export function usePaginatedList<T>(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize });
+  const [extraFilters, setExtraFilters] = useState<ListFilter[]>(
+    initialExtraFilters ?? [],
+  );
+  const [paginationModel, setPaginationModel] = useState(() => {
+    // 未显式指定 pageSize 时，恢复用户上次选择的每页行数（默认 50）。
+    let size = pageSize;
+    if (options.pageSize === undefined) {
+      const saved = Number(localStorage.getItem(PAGE_SIZE_KEY));
+      if (Number.isFinite(saved) && saved > 0) size = saved;
+    }
+    return { page: 0, pageSize: size };
+  });
   const [sortModel, setSortModel] = useState<SortModel[]>(
     defaultSortModel ?? [],
   );
@@ -68,6 +92,7 @@ export function usePaginatedList<T>(
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const searchLoaded = useRef(false);
   const sortLoaded = useRef(false);
+  const extraFilterLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -95,12 +120,17 @@ export function usePaginatedList<T>(
       : undefined;
     const orderDirection = sortEntry?.sort;
 
+    const filters: ListFilter[] = [
+      ...(searchText
+        ? [{ col: filterColumn, opr: "ct", value: searchText }]
+        : []),
+      ...extraFilters,
+    ];
+
     const qs = rison.encode({
       page_size: paginationModel.pageSize,
       page: paginationModel.page,
-      ...(searchText && {
-        filters: [{ col: filterColumn, opr: "ct", value: searchText }],
-      }),
+      ...(filters.length > 0 ? { filters } : {}),
       ...(orderField && {
         order_column: orderField,
         order_direction: orderDirection,
@@ -121,7 +151,7 @@ export function usePaginatedList<T>(
         setError(parseErrorMessage(err, errorMessage));
         setLoading(false);
       });
-  }, [paginationModel, searchText, sortModel]);
+  }, [paginationModel, searchText, sortModel, extraFilters]);
 
   useEffect(() => {
     return () => {
@@ -134,19 +164,29 @@ export function usePaginatedList<T>(
     fetchData();
   }, [fetchData]);
 
+  // 记住用户选择的每页行数，跨列表页共享。
+  useEffect(() => {
+    localStorage.setItem(PAGE_SIZE_KEY, String(paginationModel.pageSize));
+  }, [paginationModel.pageSize]);
+
   useEffect(() => {
     if (searchLoaded.current) {
       setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
     searchLoaded.current = true;
-  }, [searchText]);
-
-  useEffect(() => {
+  }, [searchText]);  useEffect(() => {
     if (sortLoaded.current) {
       setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
     sortLoaded.current = true;
   }, [sortModel]);
+
+  useEffect(() => {
+    if (extraFilterLoaded.current) {
+      setPaginationModel((prev) => ({ ...prev, page: 0 }));
+    }
+    extraFilterLoaded.current = true;
+  }, [extraFilters]);
 
   const handleSearchChange = useCallback((v: string) => {
     clearTimeout(debounceTimerRef.current);
@@ -179,12 +219,14 @@ export function usePaginatedList<T>(
     searchText,
     paginationModel,
     sortModel,
+    extraFilters,
     deleteTarget,
     deleteLoading,
     deleteError,
     setSearchText,
     setPaginationModel,
     setSortModel,
+    setExtraFilters,
     setDeleteTarget,
     handleSearchChange,
     handleDelete,

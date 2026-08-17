@@ -29,6 +29,14 @@ export function useNavManager() {
   const routeOverrides = useUserRouteOverrides((s) => s.overrides);
   const currentUsername = useAuthStore((s) => s.user?.username);
 
+  // 系统管理固定入口：管理员角色命中或对该路由有单用户覆盖放行时可见。
+  const canAccessSystemAdmin = useMemo(() => {
+    if (!currentUsername) return false;
+    if (userRoles?.["Admin"] === true) return true;
+    const userOverrides = routeOverrides[currentUsername] ?? {};
+    return userOverrides["/system/admin"] === true;
+  }, [currentUsername, userRoles, routeOverrides]);
+
   const activeCategory = useNavStore((s) => s.activeCategory);
   const sidePanelOpen = useNavStore((s) => s.sidePanelOpen);
   const sidePanelPinned = useNavStore((s) => s.sidePanelPinned);
@@ -45,8 +53,8 @@ export function useNavManager() {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const activityBarItems: ActivityBarItem[] = useMemo(
-    () =>
-      items
+    () => [
+      ...items
         .filter((item) => {
           if (item.id === "home") return false;
           if (!enabled[item.id]) return false;
@@ -65,7 +73,18 @@ export function useNavManager() {
           icon: menuIconMap[item.id] ?? defaultIcon,
           label: item.label,
         })),
-    [items, enabled, userRoles, routeOverrides, currentUsername],
+      // 系统管理为固定入口，不受菜单开关控制，默认对管理员启用。
+      ...(canAccessSystemAdmin
+        ? [
+            {
+              id: "system_admin",
+              icon: menuIconMap.system_admin ?? defaultIcon,
+              label: "系统管理",
+            },
+          ]
+        : []),
+    ],
+    [items, enabled, userRoles, routeOverrides, currentUsername, canAccessSystemAdmin],
   );
 
   const handleNavEnter = useCallback((cat: string) => {
@@ -109,7 +128,15 @@ export function useNavManager() {
         const item = items.find((i) => i.id === id);
         if (item && item.path.endsWith("/list")) {
           navigate(item.path);
-          closeSidePanel();
+          const { sidePanelPinned, activeCategory, sidePanelOpen } =
+            useNavStore.getState();
+          if (sidePanelPinned) {
+            if (activeCategory !== mapped || !sidePanelOpen) {
+              void toggleCategory(mapped);
+            }
+          } else {
+            closeSidePanel();
+          }
           return;
         }
         const { sidePanelPinned, activeCategory } = useNavStore.getState();
@@ -117,10 +144,19 @@ export function useNavManager() {
         await toggleCategory(mapped);
         return;
       }
+      if (id === "system_admin") {
+        navigate("/system/admin");
+        if (!useNavStore.getState().sidePanelPinned) {
+          closeSidePanel();
+        }
+        return;
+      }
       const item = items.find((i) => i.id === id);
       if (item) {
         navigate(item.path);
-        closeSidePanel();
+        if (!useNavStore.getState().sidePanelPinned) {
+          closeSidePanel();
+        }
       }
     },
     [items, toggleCategory, openOverlay, closeSidePanel, navigate],
@@ -139,10 +175,14 @@ export function useNavManager() {
         openOverlay("sqllab");
       } else if (activeCategory === "settings") {
         navigate("/settings");
-        closeSidePanel();
+        if (!useNavStore.getState().sidePanelPinned) {
+          closeSidePanel();
+        }
       } else if (activeCategory === "database") {
         navigate("/database/list");
-        closeSidePanel();
+        if (!useNavStore.getState().sidePanelPinned) {
+          closeSidePanel();
+        }
       } else {
         openOverlay(activeCategory ?? "chart", id);
       }

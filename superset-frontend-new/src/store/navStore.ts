@@ -80,7 +80,7 @@ export const useNavStore = create<NavStore>()((set, get) => ({
   },
 
   closeSidePanel: () => {
-    set({ sidePanelOpen: false, activeCategory: null, sidePanelPinned: false });
+    set({ sidePanelOpen: false, activeCategory: null });
   },
 
   togglePinSidePanel: () => {

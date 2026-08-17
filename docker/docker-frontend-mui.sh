@@ -24,20 +24,8 @@ cd /app/superset-frontend-new
 echo "Running npm install"
 npm install
 
-# Start Pi agent WebSocket service in background (with auto-restart)
-echo "Starting Pi agent service"
-cd /app/superset-frontend-new/agents/pi-agent-server
-npm install
-(
-  while true; do
-    npx tsx src/index.ts 2>&1
-    echo "Pi agent exited, restarting in 2s..."
-    sleep 2
-  done
-) &
-PI_AGENT_PID=$!
-echo "Pi agent started (PID: $PI_AGENT_PID)"
+# The Pi agent service runs as its own compose service (`pi-agent`); the
+# Vite dev server proxies /agent/ws to it via PI_AGENT_WS_TARGET.
 
-cd /app/superset-frontend-new
 echo "Start Vite dev server"
 npm run dev-server

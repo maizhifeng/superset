@@ -57,19 +57,21 @@ DEFAULT_BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 1000))
 def get_table_column(
     table_name: str,
     column_name: str,
+    schema: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     """
     Get the specified column.
 
     :param table_name: The Table name
     :param column_name: The column name
+    :param schema: The schema name (defaults to the database default)
     :returns: The column dictionary or None if not found
     """
 
     insp = inspect(op.get_context().bind)
 
     try:
-        for column in insp.get_columns(table_name):
+        for column in insp.get_columns(table_name, schema=schema):
             if column["name"] == column_name:
                 return column
     except NoSuchTableError:
@@ -78,16 +80,19 @@ def get_table_column(
     return None
 
 
-def table_has_column(table_name: str, column_name: str) -> bool:
+def table_has_column(
+    table_name: str, column_name: str, schema: Optional[str] = None
+) -> bool:
     """
     Checks if a column exists in a given table.
 
     :param table_name: A table name
     :param column_name: A column name
+    :param schema: The schema name (defaults to the database default)
     :returns: True iff the column exists in the table
     """
 
-    return bool(get_table_column(table_name, column_name))
+    return bool(get_table_column(table_name, column_name, schema=schema))
 
 
 def table_has_index(table: str, index: str) -> bool:
