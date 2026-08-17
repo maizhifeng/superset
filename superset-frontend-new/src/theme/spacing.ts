@@ -1,18 +1,9 @@
-export const spacing = {
-  xs: 0.5,
-  sm: 1,
-  md: 2,
-  lg: 3,
-  xl: 4,
-  xxl: 6,
-} as const;
+import { space, gapScale } from "@/theme/tokens";
 
-export const gap = {
-  xs: 0.5,
-  sm: 1,
-  md: 2,
-  lg: 3,
-  xl: 4,
-} as const;
+/** MUI spacing units (1 unit = 8px). Values flow from design tokens. */
+export const spacing = space;
+
+/** Gap scale alias. */
+export const gap = gapScale;
 
 export type SpacingToken = keyof typeof spacing;

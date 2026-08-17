@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ClientMessage, ModelInfo, ServerMessage } from "./types.js";
 import {
   SessionStore,
@@ -7,13 +7,19 @@ import {
   getWsPreferredModel,
   setWsAuthToken,
   getWsAuthToken,
+  setWsVerifiedUser,
+  getWsVerifiedUser,
+  setWsAuthPending,
+  getWsAuthPending,
 } from "./session-store.js";
-import { setPreferredModel } from "./model-preference.js";
+import { verifyToken } from "./ws-auth.js";
+import { processPrompt, processInsight, type AgentEventSender } from "./agent-orchestrator.js";
 import {
-  processPrompt,
-  createTools,
-  type AgentEventSender,
-} from "./agent-orchestrator.js";
+  loadSessionMessages,
+  toAgentMessages,
+  deleteSession as deleteStoredSession,
+  setPreferredModel,
+} from "./store.js";
 
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
@@ -43,11 +49,38 @@ function parseMessage(raw: string): ClientMessage | null {
   }
 }
 
+function beginAuthVerification(ws: WebSocket, token: string | null): void {
+  if (!token) return;
+  const pending = (async () => {
+    const username = await verifyToken(token);
+    setWsVerifiedUser(ws, username);
+    return username;
+  })();
+  setWsAuthPending(ws, pending);
+}
+
+/**
+ * Resolve the verified username for a WebSocket connection. Waits for an
+ * in-flight token verification (the frontend sends `auth` right before
+ * `new_session` on connect) and returns null when no valid token was seen.
+ */
+async function ensureVerified(ws: WebSocket): Promise<string | null> {
+  const pending = getWsAuthPending(ws);
+  if (pending) {
+    try {
+      await pending;
+    } catch {
+      // verification errors are handled inside verifyToken
+    }
+    setWsAuthPending(ws, null);
+  }
+  return getWsVerifiedUser(ws) ?? null;
+}
+
 export function handleConnection(
   ws: WebSocket,
   sessionFactory: (
     userId: string,
-    tools: ToolDefinition[],
     ws: WebSocket,
   ) => Promise<AgentSession | null>,
   modelList: ModelInfo[] = [],
@@ -58,6 +91,7 @@ export function handleConnection(
 
   if (accessToken) {
     setWsAuthToken(ws, accessToken);
+    beginAuthVerification(ws, accessToken);
   }
 
   sendModelList(ws, modelList, defaultModel);
@@ -77,6 +111,7 @@ export function handleConnection(
       case "auth":
         if (msg.access_token) {
           setWsAuthToken(ws, msg.access_token);
+          beginAuthVerification(ws, msg.access_token);
         }
         break;
 
@@ -90,6 +125,10 @@ export function handleConnection(
 
       case "prompt":
         await handlePromptMessage(ws, sessionStore, msg, sessionFactory);
+        break;
+
+      case "insight":
+        await handleInsightMessage(ws, sessionStore, msg, sessionFactory);
         break;
 
       case "set_model":
@@ -109,7 +148,7 @@ export function handleConnection(
           }
           setWsPreferredModel(ws, msg.model);
           if (msg.user_id) {
-            setPreferredModel(msg.user_id, msg.model);
+            await setPreferredModel(msg.user_id, msg.model);
           }
           // Sessions keep the model they were created with, so discard ALL
           // sessions of this connection — the next prompt recreates them
@@ -131,6 +170,7 @@ export function handleConnection(
 
       case "delete_session":
         sessionStore.remove(ws, msg.storeSessionId);
+        await deleteStoredSession(msg.storeSessionId);
         break;
 
       default:
@@ -153,11 +193,20 @@ async function handleNewSession(
   msg: ClientMessage & { type: "new_session" },
   sessionFactory: (
     userId: string,
-    tools: ToolDefinition[],
     ws: WebSocket,
   ) => Promise<AgentSession | null>,
 ): Promise<void> {
-  const { storeSessionId, user_id } = msg;
+  const verifiedUser = await ensureVerified(ws);
+  if (!verifiedUser) {
+    send(ws, {
+      type: "error",
+      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
+      retryable: true,
+    });
+    return;
+  }
+
+  const { storeSessionId } = msg;
   if (!storeSessionId) {
     send(ws, {
       type: "error",
@@ -172,12 +221,7 @@ async function handleNewSession(
     return;
   }
 
-  const tools = createTools(
-    user_id,
-    () => getWsAuthToken(ws),
-    () => sessionStore.getSession(storeSessionId)?.datasetId,
-  );
-  const agentSession = await sessionFactory(user_id, tools, ws);
+  const agentSession = await sessionFactory(verifiedUser, ws);
   if (!agentSession) {
     send(ws, {
       type: "error",
@@ -187,7 +231,20 @@ async function handleNewSession(
     return;
   }
 
-  sessionStore.create(ws, storeSessionId, user_id, agentSession, msg.dataset_id);
+  // Restore the persisted transcript so conversations continue across
+  // server restarts (frontend session ids are stable in local storage).
+  const history = await loadSessionMessages(storeSessionId);
+  if (history && history.length > 0) {
+    agentSession.state.messages = toAgentMessages(history);
+  }
+
+  sessionStore.create(
+    ws,
+    storeSessionId,
+    verifiedUser,
+    agentSession,
+    msg.dataset_id,
+  );
   send(ws, { type: "session_created", sessionId: storeSessionId });
 }
 
@@ -197,10 +254,19 @@ async function handlePromptMessage(
   msg: ClientMessage & { type: "prompt" },
   sessionFactory: (
     userId: string,
-    tools: ToolDefinition[],
     ws: WebSocket,
   ) => Promise<AgentSession | null>,
 ): Promise<void> {
+  const verifiedUser = await ensureVerified(ws);
+  if (!verifiedUser) {
+    send(ws, {
+      type: "error",
+      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
+      retryable: true,
+    });
+    return;
+  }
+
   const storeSessionId =
     msg.storeSessionId ?? sessionStore.getCurrentSessionId(ws);
   if (!storeSessionId) {
@@ -215,12 +281,7 @@ async function handlePromptMessage(
   let agentSession = sessionStore.getAgentSession(ws, storeSessionId);
   if (!agentSession) {
     // Auto-create session
-    const userId = msg.user_id || "anonymous";
-    const tools = createTools(
-      userId,
-      () => getWsAuthToken(ws),
-    );
-    const newSession = await sessionFactory(userId, tools, ws);
+    const newSession = await sessionFactory(verifiedUser, ws);
     if (!newSession) {
       send(ws, {
         type: "error",
@@ -230,7 +291,7 @@ async function handlePromptMessage(
       return;
     }
     agentSession = newSession;
-    sessionStore.create(ws, storeSessionId, userId, agentSession);
+    sessionStore.create(ws, storeSessionId, verifiedUser, agentSession);
   }
 
   sessionStore.setCurrentSessionId(ws, storeSessionId);
@@ -244,6 +305,71 @@ async function handlePromptMessage(
     storeSessionId,
     agentSession,
     msg.message,
+    emit,
+    sessionStore,
+  );
+}
+
+async function handleInsightMessage(
+  ws: WebSocket,
+  sessionStore: SessionStore,
+  msg: ClientMessage & { type: "insight" },
+  sessionFactory: (
+    userId: string,
+    ws: WebSocket,
+  ) => Promise<AgentSession | null>,
+): Promise<void> {
+  const verifiedUser = await ensureVerified(ws);
+  if (!verifiedUser) {
+    send(ws, {
+      type: "error",
+      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
+      retryable: true,
+      storeSessionId: msg.storeSessionId,
+      insight: true,
+    });
+    return;
+  }
+
+  const storeSessionId = msg.storeSessionId;
+  if (!storeSessionId) {
+    send(ws, {
+      type: "error",
+      message: "storeSessionId 是必需的",
+      retryable: false,
+      insight: true,
+    });
+    return;
+  }
+
+  let agentSession = sessionStore.getAgentSession(ws, storeSessionId);
+  if (!agentSession) {
+    const newSession = await sessionFactory(verifiedUser, ws);
+    if (!newSession) {
+      send(ws, {
+        type: "error",
+        message: "无法创建 AI 会话",
+        retryable: false,
+        storeSessionId,
+        insight: true,
+      });
+      return;
+    }
+    agentSession = newSession;
+    sessionStore.create(ws, storeSessionId, verifiedUser, agentSession);
+  }
+
+  const emit: AgentEventSender = (event) => {
+    send(ws, event as unknown as ServerMessage);
+  };
+
+  await processInsight(
+    ws,
+    storeSessionId,
+    agentSession,
+    msg.chartId,
+    msg.filters ?? {},
+    msg.prompt,
     emit,
     sessionStore,
   );

@@ -3,6 +3,7 @@ import type { DataGridProps } from "@mui/x-data-grid";
 import { useMediaQuery, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
+import { useUiPreferences } from "@/store/uiPreferences";
 
 const DataGrid = lazy(() =>
   import("@mui/x-data-grid").then((m) => ({ default: m.DataGrid })),
@@ -11,6 +12,9 @@ const DataGrid = lazy(() =>
 function DataGridTable(props: DataGridProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  // 未显式指定密度时，应用用户的全局偏好。
+  const prefDensity = useUiPreferences((s) => s.gridDensity);
+  const density = props.density ?? prefDensity;
   return (
     <Box sx={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
       <Suspense
@@ -22,6 +26,7 @@ function DataGridTable(props: DataGridProps) {
       >
         <DataGrid
           {...props}
+          density={density}
           autoHeight={false}
           rowHeight={isMobile ? 52 : undefined}
           columnBufferPx={isMobile ? 150 : 200}

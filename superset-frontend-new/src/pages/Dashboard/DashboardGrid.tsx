@@ -7,10 +7,10 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import AddIcon from "@mui/icons-material/Add";
 import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
-import type { ChartData, ChartDataPayload, ChartDataRow } from "@/types/api";
+import type { ChartDataPayload } from "@/types/api";
 import ChartCard from "@/pages/Dashboard/ChartCard";
-import type { CompareConfig } from "@/pages/Dashboard/ChartCard";
 import type { ChartLayoutItem } from "@/utils/dashboard/layout";
+import type { DashboardChartData } from "@/pages/Dashboard/dashboardChartDataContext";
 
 const MIN_CARD_WIDTH = 120;
 const MOBILE_BREAKPOINT = 768;
@@ -74,63 +74,56 @@ function SizeSelector({
 interface DashboardGridProps {
   containerWidth: number;
   layoutItems: ChartLayoutItem[];
-  chartMeta: Record<number, ChartData>;
-  chartData: Record<number, ChartDataPayload>;
-  chartLoading: Record<number, boolean>;
   saving: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
+  chartData: DashboardChartData;
   onSizeChange: (chartId: number, newW: number, newH: number) => void;
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
   onDelete: (chartId: number) => void;
   onInsight?: (chartId: number) => void;
   onAddChart?: () => void;
-  compareConfig?: CompareConfig | null;
-  mirrorData?: ChartDataPayload;
   onToggleCompare: (chartId: number) => void;
   onOpenCompareBigScreen?: (
     chartId: number,
     chartData?: ChartDataPayload,
   ) => void;
-  totalRows?: Record<number, ChartDataRow | null>;
-  pivotTotalRows?: Record<number, ChartDataRow[]>;
-  pivotSubtotalRows?: Record<number, ChartDataRow[][]>;
   intervalSeconds?: number;
   onCycleInterval?: () => void;
-  metricFormatMaps?: Record<number, Record<string, string>>;
-  chartPages?: Record<number, number>;
-  chartHasMore?: Record<number, boolean>;
   onChartPageChange?: (chartId: number, page: number) => void;
 }
 
 function DashboardGrid({
   containerWidth,
   layoutItems,
-  chartMeta,
-  chartData,
-  chartLoading,
   saving,
   containerRef,
+  chartData,
   onSizeChange,
   onRefresh,
   onEdit,
   onDelete,
   onInsight,
   onAddChart,
-  compareConfig,
-  mirrorData,
   onToggleCompare,
   onOpenCompareBigScreen,
-  totalRows,
-  pivotTotalRows,
-  pivotSubtotalRows,
   intervalSeconds,
   onCycleInterval,
-  metricFormatMaps,
-  chartPages,
-  chartHasMore,
   onChartPageChange,
 }: DashboardGridProps) {
+  const {
+    chartMeta,
+    chartData: chartDataMap,
+    chartLoading,
+    totalRows,
+    pivotTotalRows,
+    pivotSubtotalRows,
+    metricFormatMaps,
+    chartPages,
+    chartHasMore,
+    mirrorData,
+    compareConfig,
+  } = chartData;
   const isMobile = containerWidth < MOBILE_BREAKPOINT;
   const colCount = isMobile
     ? 1
@@ -142,7 +135,10 @@ function DashboardGrid({
         sx={{
           p: 4,
           textAlign: "center",
-          borderRadius: 2,
+          borderRadius: 1.5,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: "surface.main",
           boxShadow: "var(--mui-palette-shadow-card)",
         }}
       >
@@ -228,6 +224,7 @@ function DashboardGrid({
           return (
             <Box
               key={item.i}
+              data-chart-index={item.chartId}
               sx={{
                 flex: `0 0 calc(${pct} - ${gapPx * 2}px)`,
                 height: cardHeight,
@@ -239,7 +236,7 @@ function DashboardGrid({
                 chartId={item.chartId}
                 sliceName={item.sliceName}
                 vizType={meta?.viz_type || "bar"}
-                data={chartData[item.chartId]}
+                data={chartDataMap[item.chartId]}
                 loading={!!chartLoading[item.chartId]}
                 meta={meta}
                 containerWidth={containerWidth}

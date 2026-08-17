@@ -35,7 +35,12 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CodeIcon from "@mui/icons-material/Code";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import FunctionsIcon from "@mui/icons-material/Functions";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { useToolbarStore } from "@/store/toolbarStore";
 import DateColumnDetector from "@/components/DateColumnDetector";
 import { detectDateColumnsFromMeta } from "@/utils/dateHeuristics";
@@ -47,11 +52,90 @@ export default function DatasetEdit() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const setCustom = useBreadcrumbStore((s) => s.setCustom);
+  const notify = useNotificationStore((s) => s.notify);
   const { registerTools, unregisterTools } = useToolbarStore();
+  /** 复制当前数据集的 ID 到剪贴板。 */
+  const handleCopyId = async () => {
+    if (!id) return;
+    try {
+      await navigator.clipboard.writeText(id);
+      notify({ severity: "success", message: `已复制数据集 ID ${id}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制可用的查询：物理表生成 SELECT *，虚拟表复制其封装 SQL。 */
+  const handleCopySql = async () => {
+    if (!dataset) return;
+    const table = dataset.schema
+      ? `${dataset.schema}.${dataset.table_name}`
+      : dataset.table_name;
+    const sql = dataset.kind === "virtual" && dataset.sql
+      ? dataset.sql
+      : `SELECT * FROM ${table};`;
+    try {
+      await navigator.clipboard.writeText(sql);
+      notify({ severity: "success", message: "已复制查询 SQL" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
   const [dataset, setDataset] = useState<DatasetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  /** 复制数据集的全部列名（每行一个）。 */
+  const handleCopyColumnNames = async () => {
+    if (!dataset) return;
+    const names = dataset.columns.map((c) => c.column_name);
+    if (names.length === 0) {
+      notify({ severity: "warning", message: "该数据集暂无列" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+      notify({ severity: "success", message: `已复制 ${names.length} 个列名` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制数据集的全部指标名（每行一个）。 */
+  const handleCopyAllMetricNames = async () => {
+    if (!dataset) return;
+    const names = dataset.metrics.map((m) => m.metric_name).filter(Boolean);
+    if (names.length === 0) {
+      notify({ severity: "warning", message: "该数据集暂无指标" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+      notify({ severity: "success", message: `已复制 ${names.length} 个指标名` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制某个指标的算式。 */
+  const handleCopyMetricFormula = async (metric: DatasetMetric) => {
+    try {
+      await navigator.clipboard.writeText(metric.expression ?? "");
+      notify({
+        severity: "success",
+        message: `已复制指标"${metric.metric_name}"的算式`,
+      });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制某个列的列名。 */
+  const handleCopyColumnName = async (name: string, type?: string) => {
+    if (!name) return;
+    try {
+      await navigator.clipboard.writeText(type ? `${name} (${type})` : name);
+      notify({ severity: "success", message: `已复制列名 ${name}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
   interface ExtraConfig {
     profit_sharing?: {
       papp_name_column?: string;
@@ -88,6 +172,8 @@ export default function DatasetEdit() {
     description: "",
     d3format: "",
   });
+  const [metricError, setMetricError] = useState<string | null>(null);
+  const [columnSearch, setColumnSearch] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -219,6 +305,7 @@ export default function DatasetEdit() {
       description: "",
       d3format: "",
     });
+    setMetricError(null);
     setAddMetricOpen(true);
   }, []);
 
@@ -261,9 +348,18 @@ export default function DatasetEdit() {
 
   const handleAddMetricSubmit = useCallback(() => {
     if (!newMetric.metric_name.trim() || !newMetric.expression.trim()) return;
+    const name = newMetric.metric_name.trim();
+    const exists = dataset?.metrics?.some(
+      (m) =>
+        m.metric_name.toLowerCase() === name.toLowerCase() && m.id !== 0,
+    );
+    if (exists) {
+      setMetricError("已存在同名指标，请更换名称");
+      return;
+    }
     const added: DatasetMetric = {
       id: 0,
-      metric_name: newMetric.metric_name.trim(),
+      metric_name: name,
       expression: newMetric.expression.trim(),
       verbose_name: newMetric.verbose_name.trim() || null,
       description: newMetric.description.trim() || null,
@@ -274,7 +370,7 @@ export default function DatasetEdit() {
       prev ? { ...prev, metrics: [...prev.metrics, added] } : prev,
     );
     setAddMetricOpen(false);
-  }, [newMetric]);
+  }, [newMetric, dataset?.metrics]);
 
   useEffect(() => {
     registerTools("dataset_edit", [
@@ -351,6 +447,42 @@ export default function DatasetEdit() {
         >
           <ArrowBackIcon sx={{ fontSize: 20 }} />
         </IconButton>
+        <Tooltip title="复制数据集 ID">
+          <IconButton
+            size="small"
+            onClick={() => void handleCopyId()}
+            sx={{ color: "text.secondary" }}
+          >
+            <ContentCopyIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="复制查询 SQL">
+          <IconButton
+            size="small"
+            onClick={() => void handleCopySql()}
+            sx={{ color: "text.secondary" }}
+          >
+            <CodeIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="复制全部列名">
+          <IconButton
+            size="small"
+            onClick={() => void handleCopyColumnNames()}
+            sx={{ color: "text.secondary" }}
+          >
+            <ViewColumnIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="复制全部指标名">
+          <IconButton
+            size="small"
+            onClick={() => void handleCopyAllMetricNames()}
+            sx={{ color: "text.secondary" }}
+          >
+            <FunctionsIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
         <TextField
           placeholder="数据集名称..."
           value={form.table_name}
@@ -478,6 +610,24 @@ export default function DatasetEdit() {
             }}
           >
             {tabValue === 0 && (
+              <Box sx={{ px: 0.5, pb: 1 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="搜索数据列..."
+                  value={columnSearch}
+                  onChange={(e) => {
+                    setColumnSearch(e.target.value);
+                    setPage(0);
+                  }}
+                  sx={{
+                    maxWidth: 320,
+                    "& .MuiOutlinedInput-root": { fontSize: "0.8125rem" },
+                  }}
+                />
+              </Box>
+            )}
+            {tabValue === 0 && (
               <TableContainer
                 ref={columnsRef}
                 sx={{
@@ -516,6 +666,11 @@ export default function DatasetEdit() {
                   </TableHead>
                   <TableBody>
                     {dataset.columns
+                      .filter((col) =>
+                        (col.column_name || "")
+                          .toLowerCase()
+                          .includes(columnSearch.trim().toLowerCase()),
+                      )
                       .sort((a, b) =>
                         (a.column_name || "").localeCompare(
                           b.column_name || "",
@@ -531,7 +686,25 @@ export default function DatasetEdit() {
                           <TableCell
                             sx={{ fontSize: "0.75rem", fontWeight: 500 }}
                           >
-                            {col.column_name}
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                              {col.column_name}
+                              <Tooltip title="复制列名">
+                                <IconButton
+                                  size="small"
+                                  sx={{ p: 0.25 }}
+                                  onClick={() =>
+                                    void handleCopyColumnName(
+                                      col.column_name,
+                                      col.type ?? "",
+                                    )
+                                  }
+                                >
+                                  <ContentCopyIcon
+                                    sx={{ fontSize: 13, color: "text.disabled" }}
+                                  />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
                           </TableCell>
                           <TableCell sx={{ fontSize: "0.75rem" }}>
                             <Chip
@@ -731,6 +904,13 @@ export default function DatasetEdit() {
                               px: 0.5,
                             }}
                           >
+                            <IconButton
+                              size="small"
+                              onClick={() => void handleCopyMetricFormula(m)}
+                              sx={{ p: 0.25 }}
+                            >
+                              <ContentCopyIcon fontSize="inherit" />
+                            </IconButton>
                             <IconButton
                               size="small"
                               onClick={() => handleEditMetric(m)}
@@ -1238,6 +1418,11 @@ export default function DatasetEdit() {
           </Box>
           <Box sx={{ flex: 1, overflow: "auto", p: 2.5 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+              {metricError && (
+                <Alert severity="error" sx={{ borderRadius: 1.5 }}>
+                  {metricError}
+                </Alert>
+              )}
               <Card
                 elevation={0}
                 sx={{

@@ -5,7 +5,6 @@ import Box from "@mui/material/Box";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import DonutSmallIcon from "@mui/icons-material/DonutSmall";
-import TableChartIcon from "@mui/icons-material/TableChart";
 import GridOnIcon from "@mui/icons-material/GridOn";
 import PinIcon from "@mui/icons-material/Pin";
 import BlockIcon from "@mui/icons-material/Block";
@@ -16,7 +15,6 @@ export const CHART_TYPES = [
   "line",
   "bar",
   "pie",
-  "table",
   "big_number",
   "pivot_table_v2",
 ] as const;
@@ -26,16 +24,18 @@ interface ChartTypeMeta {
   value: ChartType;
   icon: React.ReactNode;
   label: string;
+  desc: string;
 }
 
+// The pivot table is the only table-style chart type; the legacy `table`
+// type is no longer offered when creating charts.
 const chartTypeMeta: ChartTypeMeta[] = [
-  { value: "auto", icon: <AutoFixHighIcon />, label: "自动" },
-  { value: "line", icon: <ShowChartIcon />, label: "折线" },
-  { value: "bar", icon: <BarChartIcon />, label: "柱状" },
-  { value: "pie", icon: <DonutSmallIcon />, label: "饼图" },
-  { value: "table", icon: <TableChartIcon />, label: "表格" },
-  { value: "big_number", icon: <PinIcon />, label: "大数字" },
-  { value: "pivot_table_v2", icon: <GridOnIcon />, label: "数据透视" },
+  { value: "auto", icon: <AutoFixHighIcon />, label: "自动", desc: "根据数据自动推荐合适的图表类型" },
+  { value: "line", icon: <ShowChartIcon />, label: "折线", desc: "适合展示随时间变化的趋势" },
+  { value: "bar", icon: <BarChartIcon />, label: "柱状", desc: "适合对比分类维度的大小差异" },
+  { value: "pie", icon: <DonutSmallIcon />, label: "饼图", desc: "适合展示占比构成" },
+  { value: "big_number", icon: <PinIcon />, label: "大数字", desc: "突出展示单个关键指标数值" },
+  { value: "pivot_table_v2", icon: <GridOnIcon />, label: "表格", desc: "以多维透视表格展示明细" },
 ];
 
 interface ChartTypeSelectorProps {
@@ -103,10 +103,9 @@ export default function ChartTypeSelector({
         return (
           <Tooltip
             key={meta.value}
-            title={reason || ""}
+            title={reason || meta.desc}
             placement="bottom"
             enterDelay={400}
-            disableHoverListener={!reason}
           >
             <span>
               <ToggleButton

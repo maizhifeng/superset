@@ -1,7 +1,10 @@
 import { test, expect } from "vitest";
+import { createRef } from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../spec/helpers/testing-library";
-import PivotTable from "@/components/PivotTable";
+import PivotTable, {
+  type PivotTableHandle,
+} from "@/components/PivotTable";
 import { formatDateValue } from "@/utils/dateHeuristics";
 
 // 3-level row hierarchy: 平台 > 主游戏 > 渠道商
@@ -247,4 +250,264 @@ test("subtotal rows show 汇总 only while lower-level dimensions are expanded",
   expect(hasText("游戏A")).toBe(true);
   // the parent level still shows 汇总 (its children headers are visible)
   expect(hasText("iOS 汇总")).toBe(true);
+});
+
+test("fraction mode scales backend totals consistently with the fractioned cells", () => {
+  const rows = [
+    { 国家: "US", 平台: "iOS", "SUM(消耗)": 100 },
+    { 国家: "US", 平台: "Android", "SUM(消耗)": 200 },
+    { 国家: "CN", 平台: "iOS", "SUM(消耗)": 300 },
+    { 国家: "CN", 平台: "Android", "SUM(消耗)": 400 },
+  ];
+  renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["国家"]}
+      groupbyColumns={["平台"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum as Fraction of Total"
+      colTotals
+      rowTotals
+      metricsLayout="COLUMNS"
+      totalRows={[
+        { 平台: "iOS", "SUM(消耗)": 400 },
+        { 平台: "Android", "SUM(消耗)": 600 },
+      ]}
+    />,
+  );
+  // cells are fractioned by the raw grand total (1000)
+  expect(hasText("0.1")).toBe(true);
+  expect(hasText("0.4")).toBe(true);
+  // the backend-provided totals row is scaled by the same denominator, so it
+  // matches the fractioned column sums (0.4 / 0.6) instead of raw 400 / 600
+  const totalsRow = screen
+    .getAllByText("合计")
+    .map((el) => el.closest("tr") as HTMLElement)
+    .find((tr) => tr.textContent?.includes("0.6")) as HTMLElement;
+  const cells = Array.from(totalsRow.querySelectorAll("td"));
+  expect(cells.some((td) => td.textContent === "0.4")).toBe(true);
+  expect(cells.some((td) => td.textContent === "0.6")).toBe(true);
+  expect(cells.some((td) => td.textContent === "400")).toBe(false);
+  // grand total shows the fractioned grand total (1)
+  expect(cells.some((td) => td.textContent === "1")).toBe(true);
+});
+
+test("pct95 with a date row dimension renders groups in chronological order", () => {
+  const rows = [
+    { 平台: "iOS", 日期: "2024-06-05", "SUM(消耗)": 600 },
+    { 平台: "iOS", 日期: "2024-06-03", "SUM(消耗)": 300 },
+    { 平台: "iOS", 日期: "2024-06-04", "SUM(消耗)": 100 },
+  ];
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台", "日期"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+      dateColumns={["日期"]}
+      pct95={{ enabled: true, metric: "SUM(消耗)", threshold: 0.95 }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
+  // detail rows follow date ascending (2024-06-03 → 06-05), not the metric
+  // descending order (600, 300, 100) the 95% mode would otherwise apply
+  const dateRows = Array.from(container.querySelectorAll("tbody tr"))
+    .map((tr) => tr.textContent ?? "")
+    .filter((t) => t.includes("2024-06"));
+  expect(dateRows[0]).toContain("2024-06-03");
+  expect(dateRows[1]).toContain("2024-06-04");
+  expect(dateRows[2]).toContain("2024-06-05");
+});
+
+test("pct95 with a date row dimension sorts collapsed groups by the split metric", () => {
+  const rows = [
+    { 平台: "iOS", 日期: "2024-06-03", "SUM(消耗)": 300 },
+    { 平台: "iOS", 日期: "2024-06-04", "SUM(消耗)": 250 },
+    { 平台: "Android", 日期: "2024-06-01", "SUM(消耗)": 400 },
+    { 平台: "Android", 日期: "2024-06-02", "SUM(消耗)": 600 },
+  ];
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台", "日期"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+      dateColumns={["日期"]}
+      pct95={{ enabled: true, metric: "SUM(消耗)", threshold: 0.95 }}
+    />,
+  );
+  // everything is collapsed: non-date groups rank by the split metric
+  // descending (Android 1000 > iOS 550), not by appearance order
+  const firstRow = container.querySelector("tbody tr") as HTMLElement;
+  expect(firstRow.textContent).toContain("Android");
+
+  // expanding all keeps the chronological detail order inside each group
+  fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
+  const dateRows = Array.from(container.querySelectorAll("tbody tr"))
+    .map((tr) => tr.textContent ?? "")
+    .filter((t) => t.includes("2024-06"));
+  expect(dateRows[0]).toContain("2024-06-01");
+  expect(dateRows[1]).toContain("2024-06-02");
+  expect(dateRows[2]).toContain("2024-06-03");
+  expect(dateRows[3]).toContain("2024-06-04");
+});
+
+test("dragging a header resize handle changes the column width", () => {
+  const rows = [
+    { 平台: "iOS", "SUM(消耗)": 100 },
+    { 平台: "Android", "SUM(消耗)": 300 },
+  ];
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+    />,
+  );
+  const handle = container.querySelector(
+    '[data-resize-key="v-0"]',
+  ) as HTMLElement;
+  expect(handle).not.toBeNull();
+  const headerCell = screen.getByText("消耗").closest("th") as HTMLElement;
+  const before = parseFloat(headerCell.style.minWidth || "90");
+
+  // drag the handle 40px to the right: a boundary indicator line follows
+  // the pointer while dragging, then disappears on release
+  fireEvent.mouseDown(handle, { clientX: 100 });
+  fireEvent.mouseMove(window, { clientX: 140 });
+  const indicator = container.querySelector(
+    '[data-testid="resize-indicator"]',
+  ) as HTMLElement;
+  expect(indicator).not.toBeNull();
+  expect(indicator.style.left).toBe("139px");
+  fireEvent.mouseUp(window);
+  expect(
+    container.querySelector('[data-testid="resize-indicator"]'),
+  ).toBeNull();
+
+  const after = parseFloat(headerCell.style.minWidth);
+  expect(after).toBeGreaterThanOrEqual(before + 39);
+});
+
+test("virtualizes the body once the container has a viewport", () => {
+  const rows = Array.from({ length: 300 }, (_, i) => ({
+    平台: `p${i}`,
+    "SUM(消耗)": i,
+  }));
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+    />,
+  );
+  const scrollable = container.querySelector(
+    ".MuiTableContainer-root",
+  ) as HTMLElement;
+  expect(scrollable).not.toBeNull();
+  // give the container a viewport and scroll down; without it (jsdom default)
+  // the full body renders, so this only runs when virtualization kicks in
+  Object.defineProperty(scrollable, "clientHeight", {
+    value: 100,
+    configurable: true,
+  });
+  Object.defineProperty(scrollable, "scrollTop", {
+    value: 1000,
+    configurable: true,
+  });
+  fireEvent.scroll(scrollable);
+  const bodyRows = Array.from(container.querySelectorAll("tbody tr"));
+  // only a window around scrollTop is rendered instead of all 300 rows
+  expect(bodyRows.length).toBeLessThan(100);
+  expect(bodyRows.length).toBeGreaterThan(20);
+  const text = bodyRows.map((tr) => tr.textContent ?? "").join("|");
+  expect(text).not.toContain("p0");
+  expect(text).toContain("p40");
+  expect(text).not.toContain("p299");
+});
+
+test("detail rows use a smaller font than headers and subtotal rows", () => {
+  const rows = [
+    { 平台: "iOS", 主游戏: "游戏A", "SUM(消耗)": 100 },
+    { 平台: "iOS", 主游戏: "游戏B", "SUM(消耗)": 200 },
+  ];
+  renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台", "主游戏"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
+
+  // header cell: base size
+  const headerCell = screen.getByText("消耗").closest("th") as HTMLElement;
+  expect(headerCell.style.fontSize).toBe("0.7rem");
+
+  // subtotal row cells: base size
+  const subtotalRow = screen
+    .getByText("iOS 汇总")
+    .closest("tr") as HTMLElement;
+  const subtotalFonts = Array.from(subtotalRow.querySelectorAll("td")).map(
+    (td) => td.style.fontSize,
+  );
+
+  expect(subtotalFonts.length).toBeGreaterThan(0);
+  expect(subtotalFonts.every((f) => f === "0.7rem")).toBe(true);
+
+  // detail rows: slightly smaller
+  const detailFonts = Array.from(
+    screen.getByText("iOS 汇总").closest("table")!.querySelectorAll("tbody tr"),
+  )
+    .filter(
+      (tr) =>
+        tr.textContent?.includes("游戏A") && !tr.textContent?.includes("汇总"),
+    )
+    .flatMap((tr) => Array.from(tr.querySelectorAll("td")))
+    .map((td) => td.style.fontSize);
+  expect(detailFonts.length).toBeGreaterThan(0);
+  expect(detailFonts.every((f) => f === "0.65rem")).toBe(true);
+});
+
+test("getLayoutText copies the current visible layout, not all detail rows", () => {
+  const ref = createRef<PivotTableHandle>();
+  const rows = [
+    { 平台: "iOS", 主游戏: "游戏A", 渠道商: "渠道X", "SUM(消耗)": 100 },
+    { 平台: "iOS", 主游戏: "游戏A", 渠道商: "渠道Y", "SUM(消耗)": 50 },
+    { 平台: "iOS", 主游戏: "游戏B", 渠道商: "渠道X", "SUM(消耗)": 30 },
+    { 平台: "Android", 主游戏: "游戏C", 渠道商: "渠道X", "SUM(消耗)": 80 },
+  ];
+  renderWithProviders(
+    <PivotTable
+      ref={ref}
+      data={rows}
+      groupbyRows={["平台", "主游戏", "渠道商"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+      colTotals
+      metricsLayout="COLUMNS"
+    />,
+  );
+  // default: everything collapsed → only the top-level subtotal rows and the
+  // totals row, formatted like the table (subtotal sums, formatted values)
+  const collapsedLines = ref.current!.getLayoutText()!.split("\n");
+  expect(collapsedLines).toHaveLength(4);
+  expect(collapsedLines[0]).toBe("平台\tSUM(消耗)");
+  expect(collapsedLines[1]).toContain("iOS");
+  expect(collapsedLines[1]).toContain("180");
+  expect(collapsedLines[3]).toContain("合计");
+  expect(collapsedLines[3]).toContain("260");
+  expect(ref.current!.getLayoutText()!).not.toContain("游戏A");
+
+  // expanding reveals the detail rows in the copied layout
+  fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
+  const expanded = ref.current!.getLayoutText()!;
+  expect(expanded).toContain("游戏A");
+  expect(expanded).toContain("渠道X");
+  expect(expanded).toContain("渠道Y");
+  expect(expanded).toContain("100");
+  expect(expanded).toContain("80");
 });

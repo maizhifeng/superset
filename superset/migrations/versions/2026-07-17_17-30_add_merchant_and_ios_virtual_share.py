@@ -16,20 +16,20 @@ down_revision = "consolidate_v1"
 
 
 def upgrade():
-    if not table_has_column("profit_sharing", "商户分成"):
+    if not table_has_column("profit_sharing", "商户分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.add_column(Column("商户分成", String(255), nullable=True))
 
-    if not table_has_column("profit_sharing", "ios虚拟支付分成"):
+    if not table_has_column("profit_sharing", "ios虚拟支付分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.add_column(Column("ios虚拟支付分成", String(255), nullable=True))
 
 
 def downgrade():
-    if table_has_column("profit_sharing", "ios虚拟支付分成"):
+    if table_has_column("profit_sharing", "ios虚拟支付分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.drop_column("ios虚拟支付分成")
 
-    if table_has_column("profit_sharing", "商户分成"):
+    if table_has_column("profit_sharing", "商户分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.drop_column("商户分成")

@@ -172,3 +172,32 @@ export function setWsAuthToken(ws: WebSocket, token: string): void {
 export function getWsAuthToken(ws: WebSocket): string | undefined {
   return wsAuthTokens.get(ws);
 }
+
+// Per-WebSocket verified identity (resolved from the JWT by ws-auth).
+// null means the token was rejected; undefined means not yet verified.
+const wsVerifiedUsers = new WeakMap<WebSocket, string | null>();
+const wsAuthPending = new WeakMap<WebSocket, Promise<string | null> | null>();
+
+export function setWsVerifiedUser(
+  ws: WebSocket,
+  username: string | null,
+): void {
+  wsVerifiedUsers.set(ws, username);
+}
+
+export function getWsVerifiedUser(ws: WebSocket): string | null | undefined {
+  return wsVerifiedUsers.get(ws);
+}
+
+export function setWsAuthPending(
+  ws: WebSocket,
+  pending: Promise<string | null> | null,
+): void {
+  wsAuthPending.set(ws, pending);
+}
+
+export function getWsAuthPending(
+  ws: WebSocket,
+): Promise<string | null> | null | undefined {
+  return wsAuthPending.get(ws);
+}

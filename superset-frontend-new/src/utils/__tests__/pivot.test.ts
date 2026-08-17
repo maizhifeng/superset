@@ -3,6 +3,7 @@ import {
   buildPivotGrid,
   aggregateValues,
   displayMetricName,
+  MAX_PIVOT_ROWS,
 } from "@/utils/pivot";
 
 const rows = [
@@ -447,4 +448,222 @@ test("pct95 disabled leaves all rows intact", () => {
     pct95: undefined,
   });
   expect(grid.rowLabels).toEqual(["a", "b"]);
+});
+
+test("raw grid fields keep pre-fraction sums for totals re-derivation", () => {
+  const grid = buildPivotGrid({
+    data: rows,
+    groupbyRows: ["国家"],
+    groupbyColumns: ["平台"],
+    metrics: ["SUM(消耗)"],
+    aggregateFunction: "Sum as Fraction of Total",
+  });
+  // rendered grid is fractioned
+  expect(grid.values).toEqual([
+    [0.1, 0.2],
+    [0.3, 0.4],
+  ]);
+  // raw values/sums stay untouched, so totals can mirror the fractioned cells
+  expect(grid.rawValues).toEqual([
+    [100, 200],
+    [300, 400],
+  ]);
+  expect(grid.rawRowTotals).toEqual([300, 700]);
+  expect(grid.rawColTotals).toEqual([400, 600]);
+  expect(grid.rawGrandTotal).toBe(1000);
+});
+
+test("raw fields are present without fraction transforms", () => {
+  const grid = buildPivotGrid({
+    data: rows,
+    groupbyRows: ["国家"],
+    groupbyColumns: ["平台"],
+    metrics: ["SUM(消耗)"],
+  });
+  expect(grid.rawValues).toEqual(grid.values);
+  expect(grid.rawGrandTotal).toBe(1000);
+});
+
+test("narrow path applies Average aggregation over duplicated combos", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "iOS", 主游戏: "游戏A", "SUM(消耗)": 10, 新增: 2 },
+      { 平台: "iOS", 主游戏: "游戏A", "SUM(消耗)": 30, 新增: 4 },
+      { 平台: "iOS", 主游戏: "游戏B", "SUM(消耗)": 40, 新增: 8 },
+    ],
+    groupbyRows: ["平台", "主游戏"],
+    metrics: ["SUM(消耗)", "新增"],
+    aggregateFunction: "Average",
+  });
+  expect(grid.rowLabels).toEqual(["iOS · 游戏A", "iOS · 游戏B"]);
+  // two rows under (iOS, 游戏A): Average = (10+30)/2 = 20; (iOS, 游戏B): 40
+  expect(grid.values).toEqual([
+    [20, 3],
+    [40, 8],
+  ]);
+});
+
+test("wide path re-aggregates with Average and Min aggregations", () => {
+  const grid = buildPivotGrid({
+    wideData: {
+      rows: [
+        { 平台: "iOS", "SUM(消耗)": 10 },
+        { 平台: "iOS", "SUM(消耗)": 30 },
+      ],
+      components: { "SUM(消耗)": { agg: "sum" } },
+    },
+    groupbyRows: ["平台"],
+    metrics: ["SUM(消耗)"],
+    aggregateFunction: "Average",
+  });
+  expect(grid.values).toEqual([[20]]);
+});
+
+test("date row dimensions sort detail rows chronologically ascending", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "iOS", 日期: 20240605, "SUM(消耗)": 10 },
+      { 平台: "iOS", 日期: 20240603, "SUM(消耗)": 30 },
+      { 平台: "iOS", 日期: 20240604, "SUM(消耗)": 20 },
+    ],
+    groupbyRows: ["平台", "日期"],
+    metrics: ["SUM(消耗)"],
+    dateColumns: ["日期"],
+  });
+  expect(grid.rowLabels).toEqual([
+    "iOS · 20240603",
+    "iOS · 20240604",
+    "iOS · 20240605",
+  ]);
+  expect(grid.values).toEqual([[30], [20], [10]]);
+});
+
+test("date row dimensions accept ISO strings and unix timestamps", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 日期: "2024-06-03T00:00:00.000Z", "SUM(消耗)": 1 },
+      { 日期: "2024-06-02T00:00:00.000Z", "SUM(消耗)": 2 },
+      { 日期: 1717365600000, "SUM(消耗)": 3 },
+    ],
+    groupbyRows: ["日期"],
+    metrics: ["SUM(消耗)"],
+    dateColumns: ["日期"],
+  });
+  // 1717365600000 ms = 2024-06-03 06:00 UTC → order: 06-02, ISO 06-03, 06-03
+  expect(grid.rowLabels[0]).toBe("2024-06-02T00:00:00.000Z");
+  expect(grid.values[0]).toEqual([2]);
+});
+
+test("date column dimensions order chronologically too", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "iOS", 日期: "2024-06-04", "SUM(消耗)": 1 },
+      { 平台: "iOS", 日期: "2024-06-03", "SUM(消耗)": 2 },
+      { 平台: "iOS", 日期: "2024-06-05", "SUM(消耗)": 3 },
+    ],
+    groupbyRows: ["平台"],
+    groupbyColumns: ["日期"],
+    metrics: ["SUM(消耗)"],
+    dateColumns: ["日期"],
+  });
+  expect(grid.colHeaders[0]).toEqual(["2024-06-03", "2024-06-04", "2024-06-05"]);
+  expect(grid.values[0]).toEqual([2, 1, 3]);
+});
+
+test("non-date dimensions keep appearance order when no dateColumns given", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "Android", "SUM(消耗)": 1 },
+      { 平台: "iOS", "SUM(消耗)": 2 },
+    ],
+    groupbyRows: ["平台"],
+    metrics: ["SUM(消耗)"],
+  });
+  expect(grid.rowLabels).toEqual(["Android", "iOS"]);
+});
+
+test("date sorting preserves hierarchy grouping under a non-date ancestor", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "iOS", 日期: 20240605, "SUM(消耗)": 1 },
+      { 平台: "Android", 日期: 20240601, "SUM(消耗)": 2 },
+      { 平台: "iOS", 日期: 20240603, "SUM(消耗)": 3 },
+    ],
+    groupbyRows: ["平台", "日期"],
+    metrics: ["SUM(消耗)"],
+    dateColumns: ["日期"],
+  });
+  // 平台 keeps appearance order, dates sort ascending within each group
+  expect(grid.rowLabels).toEqual([
+    "iOS · 20240603",
+    "iOS · 20240605",
+    "Android · 20240601",
+  ]);
+});
+
+test("pct95 keeps the filter but sorts date rows chronologically, not by metric", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 日期: 20240603, "SUM(消耗)": 300 },
+      { 日期: 20240604, "SUM(消耗)": 250 },
+      { 日期: 20240605, "SUM(消耗)": 400 },
+      { 日期: 20240606, "SUM(消耗)": 50 },
+    ],
+    groupbyRows: ["日期"],
+    metrics: ["SUM(消耗)"],
+    dateColumns: ["日期"],
+    pct95: { enabled: true, metric: "SUM(消耗)", threshold: 0.95 },
+  });
+  // the 95% filter still drops the trailing low-value row (06-06) …
+  expect(grid.rowLabels).toEqual(["20240603", "20240604", "20240605"]);
+  // … but the retained rows stay in chronological ascending order
+  // (metric-descending would be 06-05, 06-03, 06-04)
+  expect(grid.values).toEqual([[300], [250], [400]]);
+});
+
+test("pct95 without date dimensions still sorts by the split metric descending", () => {
+  const grid = buildPivotGrid({
+    data: [
+      { 平台: "mobile", "SUM(新增)": 480 },
+      { 平台: "mini_game", "SUM(新增)": 500 },
+      { 平台: "oversea", "SUM(新增)": 20 },
+    ],
+    groupbyRows: ["平台"],
+    metrics: ["SUM(新增)"],
+    pct95: { enabled: true, metric: "SUM(新增)", threshold: 0.95 },
+  });
+  expect(grid.rowLabels).toEqual(["mini_game", "mobile"]);
+});
+
+test("row truncation keeps the highest-contribution combos, not an appearance slice", () => {
+  const rows = Array.from({ length: 5001 }, (_, i) => ({
+    平台: `p${i}`,
+    "SUM(消耗)": i,
+  }));
+  const grid = buildPivotGrid({
+    data: rows,
+    groupbyRows: ["平台"],
+    metrics: ["SUM(消耗)"],
+  });
+  expect(grid.truncated).toBe(true);
+  expect(grid.rowLabels).toHaveLength(MAX_PIVOT_ROWS);
+  // the lowest-value combo (p0) is dropped; display order stays appearance order
+  expect(grid.rowLabels[0]).toBe("p1");
+  expect(grid.rowLabels).not.toContain("p0");
+  expect(grid.values[0]).toEqual([1]);
+});
+
+test("row truncation does not reorder the retained combos", () => {
+  const rows = Array.from({ length: 5001 }, (_, i) => ({
+    平台: `p${i}`,
+    "SUM(消耗)": (i * 7) % 5001,
+  }));
+  const grid = buildPivotGrid({
+    data: rows,
+    groupbyRows: ["平台"],
+    metrics: ["SUM(消耗)"],
+  });
+  // kept rows stay in their original appearance order (stable filter)
+  const kept = grid.rowLabels.map((label) => Number(label.slice(1)));
+  expect([...kept].sort((a, b) => a - b)).toEqual(kept);
 });

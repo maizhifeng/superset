@@ -40,7 +40,9 @@ describe("parseAndCacheSchema", () => {
     });
 
     expect(schema).toContain("可用维度列: 日期, 主游戏, 渠道商");
-    expect(schema).toContain("可用数值列（可直接 SUM() 作为指标）: 消耗, 新增进入");
+    expect(schema).toContain(
+      "可用数值列（可直接 SUM() 作为指标）: 消耗, 新增进入",
+    );
     expect(schema).toContain("可用指标: cpa, roi_1");
     expect(schema).not.toContain("主游戏[ID]");
     expect(schema).not.toContain("消耗[ID]");
@@ -69,9 +71,7 @@ describe("parseAndCacheSchema", () => {
   test("omits numeric section when no numeric columns exist", () => {
     const schema = parseAndCacheSchema({
       result: {
-        columns: [
-          { column_name: "主游戏", groupby: true, type_generic: 1 },
-        ],
+        columns: [{ column_name: "主游戏", groupby: true, type_generic: 1 }],
         metrics: [],
       },
     });
@@ -90,10 +90,15 @@ describe("buildMetricEntry", () => {
     });
   });
 
-  test("returns known saved metrics as strings", () => {
+  test("returns schema metrics as strings", () => {
+    parseAndCacheSchema({
+      result: {
+        columns: [{ column_name: "日期", groupby: true, type_generic: 2 }],
+        metrics: [{ metric_name: "cpa" }, { metric_name: "roi_1" }],
+      },
+    });
     expect(buildMetricEntry("cpa")).toBe("cpa");
     expect(buildMetricEntry("roi_1")).toBe("roi_1");
-    expect(buildMetricEntry("ltv_1")).toBe("ltv_1");
   });
 
   test("wraps unknown metrics in SUM() aggregation", () => {
@@ -132,8 +137,23 @@ describe("buildFilters", () => {
   test("builds multiple filters with number value", () => {
     const result = buildFilters({ 渠道商: "微信小游戏", team_id: 5 });
     expect(result).toHaveLength(2);
-    expect(result[0]).toMatchObject({ subject: "渠道商", comparator: "微信小游戏" });
+    expect(result[0]).toMatchObject({
+      subject: "渠道商",
+      comparator: "微信小游戏",
+    });
     expect(result[1]).toMatchObject({ subject: "team_id", comparator: "5" });
+  });
+
+  test("builds IN filter for array values", () => {
+    const result = buildFilters({ 主游戏: ["三国", "西游"] });
+    expect(result).toEqual([
+      {
+        expressionType: "SIMPLE",
+        subject: "主游戏",
+        operator: "IN",
+        comparator: ["三国", "西游"],
+      },
+    ]);
   });
 });
 
@@ -257,8 +277,8 @@ describe("parseOrderby", () => {
   });
 });
 
-describe("excluded metrics", () => {
-  test("ltv_14 is hidden from schema output and the whitelist", () => {
+describe("schema-driven metric validation", () => {
+  test("all schema metrics are exposed and accepted", () => {
     const schema = parseAndCacheSchema({
       result: {
         columns: [{ column_name: "日期", groupby: true, type_generic: 2 }],
@@ -270,16 +290,9 @@ describe("excluded metrics", () => {
         ],
       },
     });
-    expect(schema).toContain("可用指标: ltv_1, ltv_21, cpa");
-    expect(schema).not.toContain("ltv_14");
-    // buildMetricEntry falls back to SUM(...) since ltv_14 is not in the
-    // saved-metric whitelist anymore; the column check then rejects it.
-    const entry = buildMetricEntry("ltv_14");
-    expect(entry).toEqual({
-      expressionType: "SIMPLE",
-      column: { column_name: "ltv_14" },
-      aggregate: "SUM",
-      label: "SUM(ltv_14)",
-    });
+    expect(schema).toContain("可用指标: ltv_1, ltv_14, ltv_21, cpa");
+    // Schema metrics pass verbatim
+    expect(buildMetricEntry("ltv_14")).toBe("ltv_14");
+    expect(buildMetricEntry("cpa")).toBe("cpa");
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
@@ -9,6 +9,10 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -16,14 +20,23 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import LinkIcon from "@mui/icons-material/Link";
 import LinkOffIcon from "@mui/icons-material/LinkOff";
-import FunctionsIcon from "@mui/icons-material/Functions";
 import TableChartIcon from "@mui/icons-material/TableChart";
+import AddIcon from "@mui/icons-material/Add";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CodeIcon from "@mui/icons-material/Code";
+import DownloadIcon from "@mui/icons-material/Download";
+import { useNotificationStore } from "@/store/notificationStore";
+import { downloadCsv } from "@/utils/exportCsv";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { useToolbarStore } from "@/store/toolbarStore";
+import { useDatasetFavorites } from "@/store/datasetFavorites";
+import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
 import ListPageLayout from "@/components/ListPageLayout";
 import { ConfirmModal } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
@@ -39,6 +52,12 @@ interface BindingInfo {
   databases: [string, string];
 }
 
+/** localStorage 键：记住用户选择的数据集类型（物理/虚拟）过滤条件。 */
+const KIND_FILTER_KEY = "superset-dataset-kind-filter";
+
+/** localStorage 键：记住数据集"仅看收藏"筛选开关。 */
+const DS_FAV_KEY = "superset-dataset-fav-filter";
+
 export default function DatasetList() {
   const navigate = useNavigate();
   const [federatedMap, setFederatedMap] = useState<Record<number, BindingInfo>>(
@@ -50,6 +69,62 @@ export default function DatasetList() {
     a: DatasetRow;
     b: DatasetRow;
   } | null>(null);
+  const notify = useNotificationStore((s) => s.notify);
+
+  /** 复制数据集 ID 到剪贴板。 */
+  const handleCopyId = async (id: number) => {
+    try {
+      await navigator.clipboard.writeText(String(id));
+      notify({ severity: "success", message: `已复制数据集 ID ${id}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+
+  /** 复制数据集表名（含 schema 前缀）到剪贴板。 */
+  const handleCopyTableName = async (row: DatasetRow) => {
+    const name = row.schema ? `${row.schema}.${row.table_name}` : row.table_name;
+    try {
+      await navigator.clipboard.writeText(name);
+      notify({ severity: "success", message: `已复制表名 ${name}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 生成并复制数据集对应的 SELECT 全表查询。 */
+  const handleCopySelectSql = async (row: DatasetRow) => {
+    const table = row.schema
+      ? `${row.schema}.${row.table_name}`
+      : row.table_name;
+    const sql = `SELECT * FROM ${table};`;
+    try {
+      await navigator.clipboard.writeText(sql);
+      notify({ severity: "success", message: `已复制查询 SELECT * FROM ${table}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制数据集编辑链接。 */
+  const handleCopyDatasetLink = async (id: number) => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/dataset/edit/${id}`,
+      );
+      notify({ severity: "success", message: "已复制数据集链接" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制数据集所属数据库名。 */
+  const handleCopyDbName = async (name: string) => {
+    if (!name) return;
+    try {
+      await navigator.clipboard.writeText(name);
+      notify({ severity: "success", message: `已复制数据库名 ${name}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
 
   const {
     rows,
@@ -72,11 +147,187 @@ export default function DatasetList() {
     pageSize: 25,
     errorMessage: "加载数据集失败",
   });
+  /** 复制当前加载的数据集表名（每行一个）。 */
+  const handleCopyAllTableNames = useCallback(async () => {
+    const names = rows.map((r) => r.table_name).filter(Boolean);
+    if (names.length === 0) {
+      notify({ severity: "warning", message: "暂无数据集数据" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+      notify({ severity: "success", message: `已复制 ${names.length} 个表名` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  }, [rows, notify]);
+  const [kindFilter, setKindFilter] = useState(
+    () => localStorage.getItem(KIND_FILTER_KEY) ?? "",
+  );
+  const favIds = useDatasetFavorites((s) => s.ids);
+  const toggleFavorite = useDatasetFavorites((s) => s.toggle);
+  const [favoritesOnly, setFavoritesOnly] = useState(
+    () => localStorage.getItem(DS_FAV_KEY) === "1",
+  );
+  const handleKindFilter = useCallback(
+    (value: string) => {
+      setKindFilter(value);
+    },
+    [],
+  );
+
+  // 客户端按类型 + 收藏过滤（kind 列不允许作为服务端筛选列）。
+  const visibleRows = useMemo(
+    () =>
+      rows.filter(
+        (r) =>
+          (!kindFilter || r.kind === kindFilter) &&
+          (!favoritesOnly || favIds.includes(r.id)),
+      ),
+    [rows, kindFilter, favoritesOnly, favIds],
+  );
+
+  /** 导出当前筛选后的数据集列表为 CSV。 */
+  const handleExportCsv = useCallback(() => {
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadCsv(
+      ["ID", "表名称", "模式", "数据库", "类型", "最后修改"],
+      visibleRows.map((d) => ({
+        ID: d.id,
+        表名称: d.table_name,
+        模式: d.schema ?? "",
+        数据库: d.database?.database_name ?? "",
+        类型: d.kind === "physical" ? "物理表" : "虚拟表",
+        最后修改: d.changed_on_delta_humanized ?? "",
+      })),
+      `datasets-${ts}.csv`,
+    );
+  }, [visibleRows]);
+
+  useEffect(() => {
+    if (kindFilter) localStorage.setItem(KIND_FILTER_KEY, kindFilter);
+    else localStorage.removeItem(KIND_FILTER_KEY);
+  }, [kindFilter]);
+
+  useEffect(() => {
+    if (favoritesOnly) localStorage.setItem(DS_FAV_KEY, "1");
+    else localStorage.removeItem(DS_FAV_KEY);
+  }, [favoritesOnly]);
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
   useEffect(() => {
     registerTools("dataset_list", [
+      {
+        id: "add",
+        priority: 6,
+        showOnMobile: true,
+        fabIcon: <AddIcon />,
+        fabLabel: "新建数据集",
+        action: () => navigate("/dataset/create"),
+        render: null,
+      },
+      {
+        id: "refresh",
+        priority: 5.5,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="刷新列表">
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
+              <RefreshIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        ),
+      },
+      {
+        id: "kind_filter",
+        priority: 4,
+        showOnMobile: false,
+        render: (
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="ds-kind-label">类型</InputLabel>
+            <Select
+              labelId="ds-kind-label"
+              label="类型"
+              value={kindFilter}
+              onChange={(e) => handleKindFilter(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>全部</em>
+              </MenuItem>
+              <MenuItem value="physical">物理表</MenuItem>
+              <MenuItem value="virtual">虚拟表</MenuItem>
+            </Select>
+          </FormControl>
+        ),
+      },
+      {
+        id: "fav_filter",
+        priority: 3,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={favoritesOnly ? "显示全部数据集" : "仅显示收藏的数据集"}>
+            <Button
+              size="small"
+              variant={favoritesOnly ? "contained" : "text"}
+              color={favoritesOnly ? "warning" : "inherit"}
+              startIcon={
+                favoritesOnly ? (
+                  <StarIcon sx={{ fontSize: 16 }} />
+                ) : (
+                  <StarBorderIcon sx={{ fontSize: 16 }} />
+                )
+              }
+              onClick={() => setFavoritesOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              收藏
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
+        id: "export",
+        priority: 2,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="导出当前数据集列表为 CSV">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+              onClick={handleExportCsv}
+              disabled={visibleRows.length === 0}
+              sx={{ textTransform: "none" }}
+            >
+              导出 CSV
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
+        id: "copy_tables",
+        priority: 1.75,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="复制当前加载的数据集表名列表">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
+              onClick={() => void handleCopyAllTableNames()}
+              disabled={rows.length === 0}
+              sx={{ textTransform: "none" }}
+            >
+              复制表名
+            </Button>
+          </Tooltip>
+        ),
+      },
       {
         id: "search",
         priority: 5,
@@ -93,7 +344,7 @@ export default function DatasetList() {
       },
     ]);
     return () => unregisterTools("dataset_list");
-  }, [registerTools, unregisterTools, handleSearchChange]);
+  }, [registerTools, unregisterTools, handleSearchChange, navigate, kindFilter, handleKindFilter, favoritesOnly, setFavoritesOnly, favIds, handleExportCsv, handleCopyAllTableNames, rows.length, visibleRows.length, fetchData, loading]);
 
   // Load federated bindings from extra
   useEffect(() => {
@@ -205,8 +456,61 @@ export default function DatasetList() {
   const isBound = (id: number) => !!federatedMap[id];
 
   const columns: GridColDef[] = [
-    { field: "id", headerName: "ID", width: 60 },
-    { field: "table_name", headerName: "表名称", flex: 1, minWidth: 120 },
+    {
+      field: "id",
+      headerName: "ID",
+      width: 70,
+      renderCell: (params) => (
+        <Tooltip title="复制数据集 ID">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              void handleCopyId(params.value as number);
+            }}
+            sx={{ p: 0.25, mr: 0.5 }}
+          >
+            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
+          </IconButton>
+        </Tooltip>
+      ),
+    },
+    {
+      field: "table_name",
+      headerName: "表名称",
+      flex: 1,
+      minWidth: 120,
+      renderCell: (params) => {
+        const row = params.row as DatasetRow;
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: "0.8125rem",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {params.value}
+            </Typography>
+            <Tooltip title="复制表名">
+              <IconButton
+                size="small"
+                sx={{ p: 0.25 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCopyTableName(row);
+                }}
+              >
+                <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        );
+      },
+    },
     {
       field: "schema",
       headerName: "模式",
@@ -221,8 +525,31 @@ export default function DatasetList() {
       field: "database",
       headerName: "数据库",
       flex: 0.7,
-      minWidth: 100,
-      valueGetter: (_v, row) => getDbName(row),
+      minWidth: 120,
+      renderCell: (params) => {
+        const name = getDbName(params.row);
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <span>{name}</span>
+            {name ? (
+              <Tooltip title="复制数据库名">
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void handleCopyDbName(name);
+                  }}
+                  sx={{ p: 0.25 }}
+                >
+                  <ContentCopyIcon
+                    sx={{ fontSize: 13, color: "text.disabled" }}
+                  />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Box>
+        );
+      },
     },
     {
       field: "changed_on_delta_humanized",
@@ -269,13 +596,31 @@ export default function DatasetList() {
     {
       field: "actions",
       headerName: "",
-      width: 120,
+      width: 248,
       sortable: false,
       renderCell: (params) => {
         const row = params.row;
         const id = params.id as number;
         return (
           <Box sx={{ display: "flex", gap: 0.5 }}>
+            <Tooltip title={favIds.includes(id) ? "取消收藏" : "收藏"}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(id);
+                }}
+                sx={{
+                  color: favIds.includes(id) ? "warning.main" : "text.disabled",
+                }}
+              >
+                {favIds.includes(id) ? (
+                  <StarIcon sx={{ fontSize: 16 }} />
+                ) : (
+                  <StarBorderIcon sx={{ fontSize: 16 }} />
+                )}
+              </IconButton>
+            </Tooltip>
             {isBound(id) && (
               <Tooltip title="解除绑定">
                 <IconButton
@@ -290,6 +635,39 @@ export default function DatasetList() {
                 </IconButton>
               </Tooltip>
             )}
+            <Tooltip title="复制表名">
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCopyTableName(row);
+                }}
+              >
+                <ContentCopyIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="复制链接">
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCopyDatasetLink(id);
+                }}
+              >
+                <LinkIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="复制 SELECT 查询">
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCopySelectSql(row);
+                }}
+              >
+                <CodeIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
             <Tooltip title="编辑数据集">
               <IconButton
                 size="small"
@@ -342,9 +720,14 @@ export default function DatasetList() {
       >
         <CardHeader
           title={
-            <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
-              数据集
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75 }}>
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
+                数据集
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                共 {rowCount} 项
+              </Typography>
+            </Box>
           }
           action={
             <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
@@ -368,14 +751,6 @@ export default function DatasetList() {
                 }}
               >
                 {bindMode ? "退出绑定" : "绑定数据集"}
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<FunctionsIcon />}
-                onClick={() => navigate("/dataset/create")}
-              >
-                新建数据集
               </Button>
             </Box>
           }
@@ -411,7 +786,7 @@ export default function DatasetList() {
           }
         >
           <ResponsiveDataGrid
-            rows={rows}
+            rows={visibleRows}
             columns={columns}
             loading={loading}
             paginationModel={paginationModel}

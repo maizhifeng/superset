@@ -56,10 +56,6 @@ export default {
         backgroundColor: "var(--mui-palette-surface-main)",
         boxShadow: "var(--mui-palette-shadow-card)",
         transition: `${transitions.boxShadow}, ${t("transform", timing.quick)}`,
-        "&:hover": {
-          transform: "translateY(-1px)",
-          boxShadow: "var(--mui-palette-shadow-cardHover)",
-        },
       },
     },
   },
@@ -236,6 +232,42 @@ export default {
   MuiCheckbox: {
     styleOverrides: {
       root: { transition: transitions.color },
+    },
+  },
+  MuiDataGrid: {
+    styleOverrides: {
+      root: {
+        border: "none",
+        "--DataGrid-rowBorderColor": "var(--mui-palette-border-light)",
+      },
+      columnHeaders: {
+        backgroundColor: "var(--mui-palette-surface-variant)",
+      },
+      columnHeader: {
+        borderBottom: "1px solid var(--mui-palette-divider)",
+      },
+      columnHeaderTitle: {
+        fontWeight: 600,
+        fontSize: "0.75rem",
+      },
+      row: {
+        transition: transitions.backgroundColor,
+        "&.Mui-selected": {
+          backgroundColor: "var(--mui-palette-action-selected)",
+          "&:hover": {
+            backgroundColor: "var(--mui-palette-action-selected)",
+          },
+        },
+        "&:hover": {
+          backgroundColor: "var(--mui-palette-action-hover)",
+        },
+      },
+      cell: {
+        borderColor: "var(--mui-palette-border-light)",
+      },
+      footerContainer: {
+        borderTop: "1px solid var(--mui-palette-divider)",
+      },
     },
   },
   MuiBreadcrumbs: {

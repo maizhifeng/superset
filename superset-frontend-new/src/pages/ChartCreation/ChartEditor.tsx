@@ -1,11 +1,16 @@
+import { useMemo, useCallback } from "react";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SaveIcon from "@mui/icons-material/Save";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import ChartPreview from "./ChartPreview";
 import ChartEditorForm from "./ChartEditorForm";
 import ChartTypeSelector from "./ChartTypeSelector";
@@ -43,6 +48,7 @@ export default function ChartEditor({
     datasourceId,
     vizType,
     metrics,
+    metricsList,
     groupby,
     groupbyColumns,
     sliceName,
@@ -82,12 +88,49 @@ export default function ChartEditor({
     handleChartTypeChange,
     handleSubmit,
     handleRunQuery,
+    handleCopyConfig,
+    handleCopyChartId,
+    handleCopyChartLink,
   } = useChartEditor({
     onChartSaved,
     initialData,
     compact,
     buildDashboardAdhocFilters,
   });
+
+  // big_number 预览下显示的指标名称（首个选中指标的显示名）。
+  const primaryMetricLabel = useMemo(() => {
+    const first = metrics[0];
+    if (!first) return undefined;
+    const found = metricsList.find((m) => m.metric_name === first);
+    return found ? (found.verbose_name || found.metric_name) : first;
+  }, [metrics, metricsList]);
+
+  /** 根据数据集与指标自动生成图表名称。 */
+  const handleAutoName = useCallback(() => {
+    const dsName =
+      datasets.find((d) => String(d.id) === String(datasourceId))?.table_name ?? "";
+    const parts = [dsName, primaryMetricLabel, resolvedType].filter(Boolean);
+    if (parts.length === 0) {
+      setSliceName("");
+      return;
+    }
+    setSliceName(parts.join(" · "));
+  }, [datasets, datasourceId, primaryMetricLabel, resolvedType, setSliceName]);
+
+  // Cmd/Ctrl+Enter 运行查询并刷新预览。
+  useShortcutWithHelp(
+    ["ctrl+enter", "command+enter"],
+    (e) => {
+      e.preventDefault();
+      void handleRunQuery();
+    },
+    {
+      label: "运行查询",
+      category: "explore",
+      description: "按 ⌘↵ / Ctrl+Enter 运行查询",
+    },
+  );
 
   const c = (full: number | string, comp: number | string) =>
     compact ? comp : full;
@@ -186,6 +229,15 @@ export default function ChartEditor({
             },
           }}
         />
+        <Tooltip title="根据数据集与指标自动命名">
+          <IconButton
+            size="small"
+            onClick={handleAutoName}
+            sx={{ color: "text.secondary", ml: 0.5 }}
+          >
+            <AutoAwesomeIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Tooltip>
         {datasourceId && (
           <ChartTypeSelector
             value={vizType}
@@ -263,6 +315,7 @@ export default function ChartEditor({
               chartLibReady={chartLibReady}
               option={option}
               bigNumberValue={bigNumberValue}
+              primaryMetricLabel={primaryMetricLabel}
               metricFormatMap={metricFormatMap}
               page={page}
               hasMore={hasMore}
@@ -290,7 +343,35 @@ export default function ChartEditor({
           </Button>
         </Box>
       ) : (
-        <Box sx={{ p: 2, display: "flex", justifyContent: "flex-end" }}>
+        <Box sx={{ p: 2, display: "flex", justifyContent: "flex-end", gap: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<ContentCopyIcon />}
+            onClick={() => void handleCopyConfig()}
+          >
+            复制配置
+          </Button>
+          {isEditing && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => void handleCopyChartId()}
+            >
+              复制 ID
+            </Button>
+          )}
+          {isEditing && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={() => void handleCopyChartLink()}
+            >
+              复制链接
+            </Button>
+          )}
           <Button
             variant="contained"
             size="small"

@@ -70,6 +70,7 @@ cur = conn.cursor()
 
 cur.execute('CREATE SCHEMA sqllab_test_db')
 cur.execute('CREATE SCHEMA admin_database')
+cur.execute('CREATE SCHEMA IF NOT EXISTS config')
 
 cur.close()
 conn.close()
@@ -109,6 +110,7 @@ except:
 
     cur.execute('CREATE SCHEMA IF NOT EXISTS sqllab_test_db')
     cur.execute('CREATE SCHEMA IF NOT EXISTS admin_database')
+    cur.execute('CREATE SCHEMA IF NOT EXISTS config')
 
     cur.close()
     conn.close()

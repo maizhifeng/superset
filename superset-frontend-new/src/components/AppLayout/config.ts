@@ -18,4 +18,6 @@ export const knownSections: Record<
   query_history: { label: "历史记录", listPath: "/query_history" },
   explore: { label: "探索", listPath: "/explore" },
   sqllab: { label: "SQL 实验室", listPath: "/sqllab" },
+  project: { label: "项目配置", listPath: "/project/settings" },
+  system_admin: { label: "系统管理", listPath: "/system/admin" },
 };

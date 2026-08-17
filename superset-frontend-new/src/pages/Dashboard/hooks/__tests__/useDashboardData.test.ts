@@ -137,3 +137,56 @@ test("non-federated dataset sums computed column from detail rows", async () => 
   });
   expect(fetched.totalRow["分成后流水"]).toBe(11);
 });
+
+test("a superseded getChartDataWithFilters result is dropped (race protection)", async () => {
+  const api = await import("@/api");
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+
+  // Different filter signatures produce different react-query keys, so two
+  // calls race with distinct requests.  The slower (older filter) response
+  // resolves last; its results must be dropped so the caller merges only the
+  // latest epoch's data.
+  const buildSlow = () => [{ subject: "dim", operator: "!=", comparator: "slow" }];
+  const buildFast = () => [{ subject: "dim", operator: "!=", comparator: "fast" }];
+
+  let resolveFirst: (() => void) | null = null;
+  (api.default.post as any).mockImplementationOnce(() => {
+    return new Promise((resolve) => {
+      resolveFirst = () =>
+        resolve({
+          data: { result: [{ data: [{ dim: "slow" }] }, { data: [] }] },
+        });
+    });
+  });
+  (api.default.post as any).mockImplementationOnce(() =>
+    Promise.resolve({
+      data: { result: [{ data: [{ dim: "fast" }] }, { data: [] }] },
+    }),
+  );
+
+  const first = result.current.getChartDataWithFilters([8], meta, buildSlow);
+  type BatchResult = Awaited<
+    ReturnType<ReturnType<typeof useDashboardData>["getChartDataWithFilters"]>
+  >;
+  let second: BatchResult | undefined;
+  let firstResolved: BatchResult | undefined;
+  await act(async () => {
+    // Second call bumps the epoch and resolves immediately with the fast row.
+    second = await result.current.getChartDataWithFilters(
+      [8],
+      meta,
+      buildFast,
+    );
+  });
+  expect(second?.dataMap[8]).toEqual({ data: [{ dim: "fast" }] });
+
+  // Flush the slow response after the second call has settled.
+  await act(async () => {
+    resolveFirst?.();
+    firstResolved = await first;
+  });
+
+  // The stale "slow" row must be dropped from the superseded call's result.
+  expect(firstResolved?.dataMap[8]).toBeUndefined();
+});

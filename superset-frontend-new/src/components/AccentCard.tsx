@@ -19,7 +19,19 @@ export default function AccentCard({
   children,
 }: AccentCardProps) {
   return (
-    <Card onClick={onClick} sx={{ p: 3, cursor: "pointer" }}>
+    <Card
+      onClick={onClick}
+      sx={{
+        position: "relative",
+        height: "100%",
+        p: 3,
+        cursor: "pointer",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          boxShadow: "var(--mui-palette-shadow-cardHover)",
+        },
+      }}
+    >
       {icon && (
         <Box
           sx={{

@@ -9,6 +9,7 @@ import NotificationsIcon from "@mui/icons-material/Notifications";
 import HistoryIcon from "@mui/icons-material/History";
 import SettingsIcon from "@mui/icons-material/Settings";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import PeopleIcon from "@mui/icons-material/People";
 import SecurityIcon from "@mui/icons-material/Security";
 
@@ -21,11 +22,10 @@ export const menuIconMap: Record<string, ReactNode> = {
   "database/list": <StorageIcon sx={{ fontSize: 20 }} />,
   "alert/list": <NotificationsIcon sx={{ fontSize: 20 }} />,
   query_history: <HistoryIcon sx={{ fontSize: 20 }} />,
-  project_config: <SettingsIcon sx={{ fontSize: 20 }} />,
-  channel_config: <AccountTreeIcon sx={{ fontSize: 20 }} />,
-  profit_sharing_config: <SettingsIcon sx={{ fontSize: 20 }} />,
+  project_config: <AccountTreeIcon sx={{ fontSize: 20 }} />,
   admin_users: <PeopleIcon sx={{ fontSize: 20 }} />,
   admin_roles: <SecurityIcon sx={{ fontSize: 20 }} />,
+  system_admin: <AdminPanelSettingsIcon sx={{ fontSize: 20 }} />,
 };
 
 export const defaultIcon = <SettingsIcon sx={{ fontSize: 20 }} />;

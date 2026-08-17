@@ -7,6 +7,7 @@ import api, { getDataset, getMetricFormatMap } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useRecentCharts } from "@/store/recentCharts";
 import type {
   Dataset,
   FormData,
@@ -43,9 +44,9 @@ export function autoSuggestChartType(
   groupby: string[],
 ): { vizType: string; groupby: string[] } {
   const metricCount = metrics.length;
-  if (metricCount === 0) return { vizType: "table", groupby: [] };
-  if (metricCount >= 4) return { vizType: "table", groupby: [] };
-  if (groupby.length >= 2) return { vizType: "table", groupby };
+  if (metricCount === 0) return { vizType: "pivot_table_v2", groupby: [] };
+  if (metricCount >= 4) return { vizType: "pivot_table_v2", groupby: [] };
+  if (groupby.length >= 2) return { vizType: "pivot_table_v2", groupby };
   if (groupby.length === 0) {
     if (metricCount === 1) return { vizType: "big_number", groupby: [] };
     if (metricCount >= 2) return { vizType: "line", groupby: [] };
@@ -98,10 +99,16 @@ export function useChartEditor({
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sliceId = searchParams.get("slice_id");
+  const dsParam = searchParams.get("datasource_id");
   const notify = useNotificationStore((s) => s.notify);
 
   const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [datasourceId, setDatasourceId] = useState("");
+  // 支持 ?datasource_id= 深度链接：未编辑图表时用该数据集预选。
+  const [datasourceId, setDatasourceId] = useState(() => {
+    if (sliceId) return "";
+    const v = dsParam ? Number(dsParam) : NaN;
+    return Number.isFinite(v) && v > 0 ? String(v) : "";
+  });
   const [vizType, setVizType] = useState("auto");
   const [metrics, setMetrics] = useState<string[]>([]);
   const [groupby, setGroupby] = useState<string[]>([]);
@@ -334,6 +341,7 @@ export function useChartEditor({
       .then((res) => {
         const chart = res.data?.result as ChartData | undefined;
         if (!chart) return;
+        useRecentCharts.getState().record(Number(sliceId));
         setSliceName(String(chart.slice_name ?? ""));
         setVizType(String(chart.viz_type ?? ""));
         setDatasourceId(String(chart.datasource_id ?? ""));
@@ -915,6 +923,59 @@ export function useChartEditor({
     buildMetricsPayload,
   ]);
 
+  // 复制当前图表配置（formData JSON），便于分享、调试或还原。
+  const handleCopyConfig = useCallback(() => {
+    if (!datasourceId) {
+      notify({ severity: "warning", message: "请先选择数据集" });
+      return;
+    }
+    const effectiveType = resolvedType === "auto" ? "line" : resolvedType;
+    const formData: FormData = {
+      viz_type: effectiveType,
+      datasource: `${datasourceId}__table`,
+      metrics: buildMetricsPayload(metrics),
+      groupby,
+    };
+    if (isPivot) {
+      formData.groupbyRows = groupby;
+      formData.groupbyColumns = groupbyColumns;
+      formData.aggregateFunction = DEFAULT_PIVOT_CONFIG.aggregateFunction;
+      formData.transposePivot = DEFAULT_PIVOT_CONFIG.transposePivot;
+      formData.combineMetric = DEFAULT_PIVOT_CONFIG.combineMetric;
+      formData.rowTotals = DEFAULT_PIVOT_CONFIG.rowTotals;
+      formData.colTotals = DEFAULT_PIVOT_CONFIG.colTotals;
+      formData.metricsLayout = DEFAULT_PIVOT_CONFIG.metricsLayout;
+    }
+    if (sortEntry)
+      formData.orderby = [[sortEntry.column, sortEntry.direction === "asc"]];
+    const json = JSON.stringify(
+      {
+        slice_name: sliceName || "未命名",
+        viz_type: effectiveType,
+        params: formData,
+      },
+      null,
+      2,
+    );
+    void navigator.clipboard
+      .writeText(json)
+      .then(() =>
+        notify({ severity: "success", message: "已复制图表配置 (JSON)" }),
+      )
+      .catch(() => notify({ severity: "error", message: "复制失败" }));
+  }, [
+    datasourceId,
+    resolvedType,
+    metrics,
+    groupby,
+    groupbyColumns,
+    isPivot,
+    sortEntry,
+    sliceName,
+    notify,
+    buildMetricsPayload,
+  ]);
+
   const handleRunQuery = useCallback(() => {
     setPage(0);
     setLoadingData(true);
@@ -1095,6 +1156,36 @@ export function useChartEditor({
     return () => unregisterTools("chart_editor");
   }, [registerTools, unregisterTools, handleSubmit, isEditing]);
 
+  /** 复制当前图表的 ID（编辑模式才有）。 */
+  const handleCopyChartId = useCallback(async () => {
+    if (!sliceId) {
+      notify({ severity: "warning", message: "仅在编辑模式可复制图表 ID" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(String(sliceId));
+      notify({ severity: "success", message: `已复制图表 ID ${sliceId}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  }, [sliceId, notify]);
+
+  /** 复制当前图表的直达链接（编辑模式才有）。 */
+  const handleCopyChartLink = useCallback(async () => {
+    if (!sliceId) {
+      notify({ severity: "warning", message: "仅在编辑模式可复制图表链接" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/explore?slice_id=${sliceId}`,
+      );
+      notify({ severity: "success", message: "已复制图表链接" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  }, [sliceId, notify]);
+
   return {
     datasets,
     datasourceId,
@@ -1150,5 +1241,8 @@ export function useChartEditor({
     },
     handleSubmit,
     handleRunQuery,
+    handleCopyConfig,
+    handleCopyChartId,
+    handleCopyChartLink,
   };
 }

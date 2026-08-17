@@ -18,8 +18,12 @@ function log(level: LogLevel, tag: string, msg: string, meta?: unknown): void {
 }
 
 export const logger = {
-  info: (tag: string, msg: string, meta?: unknown) => log("info", tag, msg, meta),
-  warn: (tag: string, msg: string, meta?: unknown) => log("warn", tag, msg, meta),
-  error: (tag: string, msg: string, meta?: unknown) => log("error", tag, msg, meta),
-  debug: (tag: string, msg: string, meta?: unknown) => log("debug", tag, msg, meta),
+  info: (tag: string, msg: string, meta?: unknown) =>
+    log("info", tag, msg, meta),
+  warn: (tag: string, msg: string, meta?: unknown) =>
+    log("warn", tag, msg, meta),
+  error: (tag: string, msg: string, meta?: unknown) =>
+    log("error", tag, msg, meta),
+  debug: (tag: string, msg: string, meta?: unknown) =>
+    log("debug", tag, msg, meta),
 };

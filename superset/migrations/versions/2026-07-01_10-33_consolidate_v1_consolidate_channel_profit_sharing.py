@@ -43,12 +43,12 @@ def upgrade():
     )
 
     # 3. add 白名单控制参数 to papp_metadata
-    if not table_has_column("papp_metadata", "白名单控制参数"):
+    if not table_has_column("papp_metadata", "白名单控制参数", schema="config"):
         with op.batch_alter_table("papp_metadata", schema="config") as batch_op:
             batch_op.add_column(Column("白名单控制参数", String(255), nullable=True))
 
     # 4. drop 上线时间 from papp_metadata
-    if table_has_column("papp_metadata", "上线时间"):
+    if table_has_column("papp_metadata", "上线时间", schema="config"):
         with op.batch_alter_table("papp_metadata", schema="config") as batch_op:
             batch_op.drop_column("上线时间")
 
@@ -73,46 +73,46 @@ def upgrade():
     )
 
     # 6. add 默认分成 to channel_metadata
-    if not table_has_column("channel_metadata", "默认分成"):
+    if not table_has_column("channel_metadata", "默认分成", schema="config"):
         with op.batch_alter_table("channel_metadata", schema="config") as batch_op:
             batch_op.add_column(Column("默认分成", String(255), nullable=True))
 
     # 7. rename 分成比例 -> 渠道商分成 for existing installations
-    if table_has_column("profit_sharing", "分成比例") and not table_has_column(
-        "profit_sharing", "渠道商分成"
-    ):
+    if table_has_column(
+        "profit_sharing", "分成比例", schema="config"
+    ) and not table_has_column("profit_sharing", "渠道商分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.alter_column("分成比例", new_column_name="渠道商分成")
 
     # 8. add 分成比例 (net) for existing installations
-    if not table_has_column("profit_sharing", "分成比例"):
+    if not table_has_column("profit_sharing", "分成比例", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.add_column(Column("分成比例", String(255), nullable=True))
 
 
 def downgrade():
     # remove net 分成比例 column
-    if table_has_column("profit_sharing", "分成比例"):
+    if table_has_column("profit_sharing", "分成比例", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.drop_column("分成比例")
 
     # rename 渠道商分成 back to 分成比例
-    if table_has_column("profit_sharing", "渠道商分成"):
+    if table_has_column("profit_sharing", "渠道商分成", schema="config"):
         with op.batch_alter_table("profit_sharing", schema="config") as batch_op:
             batch_op.alter_column("渠道商分成", new_column_name="分成比例")
 
     # remove columns in reverse order
-    if table_has_column("channel_metadata", "默认分成"):
+    if table_has_column("channel_metadata", "默认分成", schema="config"):
         with op.batch_alter_table("channel_metadata", schema="config") as batch_op:
             batch_op.drop_column("默认分成")
 
     drop_table("profit_sharing")
 
-    if table_has_column("papp_metadata", "上线时间"):
+    if table_has_column("papp_metadata", "上线时间", schema="config"):
         with op.batch_alter_table("papp_metadata", schema="config") as batch_op:
             batch_op.add_column(Column("上线时间", String(255), nullable=True))
 
-    if table_has_column("papp_metadata", "白名单控制参数"):
+    if table_has_column("papp_metadata", "白名单控制参数", schema="config"):
         with op.batch_alter_table("papp_metadata", schema="config") as batch_op:
             batch_op.drop_column("白名单控制参数")
 

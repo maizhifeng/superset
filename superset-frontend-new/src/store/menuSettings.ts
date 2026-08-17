@@ -41,40 +41,25 @@ const defaultItems: NavItem[] = [
   },
   {
     id: "project_config",
-    path: "/project/config",
-    label: "游戏配置",
+    path: "/project/settings",
+    label: "项目配置",
     builtIn: true,
     roles: ["Admin"],
   },
-  {
-    id: "channel_config",
-    path: "/project/channel",
-    label: "渠道商配置",
-    builtIn: true,
-    roles: ["Admin"],
-  },
-  {
-    id: "profit_sharing_config",
-    path: "/project/profit-sharing",
-    label: "分成配置",
-    builtIn: true,
-    roles: ["Admin"],
-  },
-  {
-    id: "admin_users",
-    path: "/admin/users",
-    label: "用户管理",
-    builtIn: true,
-    roles: ["Admin"],
-  },
-  {
-    id: "admin_roles",
-    path: "/admin/roles",
-    label: "角色管理",
-    builtIn: true,
-    roles: ["Admin"],
-  },
+  // 系统管理为固定入口（默认对管理员启用，不参与菜单开关），其导航项在
+  // useNavManager 中固定注入，不在此列。
 ];
+
+/** 已废弃、不再作为导航菜单项的 id（用于清理用户先前持久化的旧菜单项）。 */
+const DEPRECATED_ITEM_IDS = new Set<string>([
+  "admin_users",
+  "admin_roles",
+  "channel_config",
+  "profit_sharing_config",
+]);
+
+/** 固定入口（非可配置菜单项），从持久化的菜单设置中排除。 */
+const FIXED_ITEM_IDS = new Set<string>(["system_admin"]);
 
 const defaultEnabled: Record<string, boolean> = {
   dashboards: true,
@@ -86,10 +71,6 @@ const defaultEnabled: Record<string, boolean> = {
   "alert/list": false,
   query_history: false,
   project_config: true,
-  channel_config: true,
-  profit_sharing_config: true,
-  admin_users: true,
-  admin_roles: true,
 };
 
 interface MenuSettingsState {
@@ -98,13 +79,26 @@ interface MenuSettingsState {
   toggle: (id: string) => void;
   removeItem: (id: string) => void;
   moveItem: (id: string, direction: "up" | "down") => void;
+  /** 恢复菜单到默认项与默认可见状态。 */
+  reset: () => void;
 }
 
 function mergeDefaults(
   persisted: { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
 ): { items: NavItem[]; enabled: Record<string, boolean> } {
-  const items = persisted?.items ?? [...defaultItems];
-  const enabled = { ...(persisted?.enabled ?? defaultEnabled) };
+  const sourceItems = persisted?.items ?? [];
+  const sourceEnabled = persisted?.enabled ?? {};
+  const excluded = (id: string) =>
+    DEPRECATED_ITEM_IDS.has(id) || FIXED_ITEM_IDS.has(id);
+  // Drop deprecated / fixed-entry items so they never re-surface from
+  // persisted state or become user-configurable.
+  const items = sourceItems
+    .filter((item) => !excluded(item.id))
+    .map((item) => ({ ...item }));
+  const enabled: Record<string, boolean> = {};
+  for (const [id, val] of Object.entries(sourceEnabled)) {
+    if (!excluded(id)) enabled[id] = val;
+  }
   const knownIds = new Set(items.map((i) => i.id));
   const defaultsById = new Map(defaultItems.map((d) => [d.id, d]));
   for (const item of items) {
@@ -152,6 +146,11 @@ export const useMenuSettings = create<MenuSettingsState>()(
           const items = [...state.items];
           [items[idx], items[targetIdx]] = [items[targetIdx], items[idx]];
           return { items };
+        }),
+      reset: () =>
+        set({
+          items: defaultItems.map((item) => ({ ...item })),
+          enabled: { ...defaultEnabled },
         }),
     }),
     {

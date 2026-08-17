@@ -13,7 +13,8 @@ import GlobalSnackbar from "@/components/GlobalSnackbar";
 import AiDrawer from "@/components/AiDrawer";
 import TourGuide from "@/components/TourGuide";
 import UserMenu from "@/components/AppLayout/UserMenu";
-import StatusBar from "@/components/AppLayout/StatusBar";
+import TopBar from "@/components/AppLayout/TopBar";
+import FabStack from "@/components/AppLayout/FabStack";
 import ActivityBar from "@/components/ActivityBar/ActivityBar";
 import SidePanel from "@/components/SidePanel/SidePanel";
 import DetailOverlay from "@/components/DetailOverlay/DetailOverlay";
@@ -82,6 +83,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       label: "搜索",
       category: "global",
       description: "按 / 搜索仪表板、图表、数据集等",
+    },
+  );
+
+  // Cmd/Ctrl+K 也是常用的搜索唤醒键，与 / 等价。
+  useShortcutWithHelp(
+    ["command+k", "ctrl+k"],
+    (e) => {
+      e.preventDefault();
+      setSearchOpen((prev) => !prev);
+    },
+    {
+      label: "搜索 (Cmd/Ctrl+K)",
+      category: "global",
+      description: "按 ⌘K / Ctrl+K 搜索仪表板、图表、数据集等",
     },
   );
 
@@ -187,7 +202,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             }),
         }}
       >
-        <StatusBar tip={pageTip} />
+        <TopBar tip={pageTip} />
         <Box
           sx={{
             display: "flex",
@@ -219,6 +234,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             onClose={closeAiDrawer}
           />
         </Box>
+        <FabStack />
       </Box>
 
       {activeOverlay && (

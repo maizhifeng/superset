@@ -41,6 +41,11 @@ import type {
   FormData,
 } from "@/types/api";
 import type { ChartDataResponseResult } from "@/utils/query/types";
+import { formatLtvMultiplier } from "@/pages/Dashboard/ltvMultiplier";
+import {
+  resolveDisplayName,
+  displayLabel,
+} from "@/pages/Dashboard/compareColumns";
 
 interface GameOption {
   papp_id: string;
@@ -112,6 +117,7 @@ export default function CompareModal({
   const [primaryPappId, setPrimaryPappId] = useState<string | null>(null);
   const [periodDays, setPeriodDays] = useState(30);
   const [timeGrain, setTimeGrain] = useState("P1D");
+  const [ltvMode, setLtvMode] = useState<"raw" | "first" | "prev">("raw");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -184,6 +190,7 @@ export default function CompareModal({
       setGames([]);
       setPrimaryPappId(null);
       setMetricFormatMap({});
+      setLtvMode("raw");
       setIntraSecondaryResult(null);
       intraSecondaryAggRef.current = null;
       queryFilterSnapshot.current = null;
@@ -555,23 +562,11 @@ export default function CompareModal({
                 secondaryResult = {
                   columns: Object.keys(data[0])
                     .filter((k) => k !== "id")
-                    .map((name) => {
-                      let dn = name;
-                      if (name === timeCol)
-                        dn =
-                          timeGrain === "P1W"
-                            ? "周"
-                            : timeGrain === "P1M"
-                              ? "月"
-                              : "日期";
-                      const m = name.match(/^(SUM|AVG|COUNT|MIN|MAX)\((.+)\)$/);
-                      if (m) dn = m[2];
-                      return {
-                        name,
-                        type: "VARCHAR" as const,
-                        displayName: dn,
-                      };
-                    }),
+                    .map((name) => ({
+                      name,
+                      type: "VARCHAR" as const,
+                      displayName: resolveDisplayName(name, timeCol, timeGrain),
+                    })),
                   data,
                 };
                 break;
@@ -619,23 +614,11 @@ export default function CompareModal({
                 secondaryResult = {
                   columns: Object.keys(data[0])
                     .filter((k) => k !== "id")
-                    .map((name) => {
-                      let dn = name;
-                      if (name === timeCol)
-                        dn =
-                          timeGrain === "P1W"
-                            ? "周"
-                            : timeGrain === "P1M"
-                              ? "月"
-                              : "日期";
-                      const m = name.match(/^(SUM|AVG|COUNT|MIN|MAX)\((.+)\)$/);
-                      if (m) dn = m[2];
-                      return {
-                        name,
-                        type: "VARCHAR" as const,
-                        displayName: dn,
-                      };
-                    }),
+                    .map((name) => ({
+                      name,
+                      type: "VARCHAR" as const,
+                      displayName: resolveDisplayName(name, timeCol, timeGrain),
+                    })),
                   data,
                 };
                 break;
@@ -895,16 +878,11 @@ export default function CompareModal({
         } as unknown as ChartDataRow);
       }
 
-      const columns = colNames.map((name: string) => {
-        let displayName = name;
-        if (name === timeCol) {
-          displayName =
-            timeGrain === "P1W" ? "周" : timeGrain === "P1M" ? "月" : "日期";
-        }
-        const match = name.match(/^(SUM|AVG|COUNT|MIN|MAX)\((.+)\)$/);
-        if (match) displayName = match[2];
-        return { name, type: "VARCHAR", displayName };
-      });
+      const columns = colNames.map((name: string) => ({
+        name,
+        type: "VARCHAR",
+        displayName: resolveDisplayName(name, timeCol, timeGrain),
+      }));
 
       // Per-section aggregate queries (for cross-comparison sections)
       const sectionAggs: Record<string, ChartDataRow> = {};
@@ -933,7 +911,59 @@ export default function CompareModal({
             }
           : null;
       // Build per-section aggregate queries
-      if (selectedCchNames.length > 1) {
+      if (
+        selectedGames.length === 1 &&
+        selectedCchNames.length > 1 &&
+        selectedChannels.length > 1
+      ) {
+        // M×N sections: one aggregate per (渠道商 × 媒体) combination
+        for (const cch of selectedCchNames) {
+          for (const ch of selectedChannels) {
+            const cchRange =
+              timeCol && selectedGames[0]
+                ? resolveDateRange(selectedGames[0], extractName(cch))
+                : undefined;
+            const filters: SimpleFilter[] = cchRange
+              ? [
+                  { col: timeCol, op: ">=", val: cchRange.start },
+                  { col: timeCol, op: "<=", val: cchRange.end },
+                ]
+              : [];
+            if (gameFilter) filters.push(gameFilter);
+            filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
+            filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
+            try {
+              const res = await postChartData({
+                datasource: { id: chartDsId, type: chartDsType },
+                queries: [
+                  {
+                    result_type: "full" as const,
+                    metrics: sharedMetrics,
+                    groupby: [COL.papp_name],
+                    columns: [],
+                    filters,
+                  },
+                ],
+                result_format: "json" as const,
+                result_type: "full" as const,
+                force: true,
+              });
+              const results = (
+                Array.isArray(res.data?.result) ? res.data.result : []
+              ) as ChartDataResponseResult[];
+              for (const r of results) {
+                const data = r.data as ChartDataRow[] | undefined;
+                if (data && data.length > 0) {
+                  sectionAggs[`${extractName(cch)} × ${ch}`] = data[0];
+                  break;
+                }
+              }
+            } catch {
+              /* aggregate query failed */
+            }
+          }
+        }
+      } else if (selectedCchNames.length > 1) {
         for (const cch of selectedCchNames) {
           // Each channel section uses that channel's own launch-date window
           const cchRange =
@@ -1177,6 +1207,21 @@ export default function CompareModal({
               variant={timeGrain === g ? "filled" : "outlined"}
               color={timeGrain === g ? "secondary" : "default"}
               onClick={() => setTimeGrain(g)}
+              sx={{ cursor: "pointer", minWidth: 28 }}
+            />
+          ))}
+        </Box>
+        <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+          {(["raw", "first", "prev"] as const).map((m) => (
+            <Chip
+              key={m}
+              label={
+                m === "raw" ? "原值" : m === "first" ? "首日倍率" : "昨日倍率"
+              }
+              size="small"
+              variant={ltvMode === m ? "filled" : "outlined"}
+              color={ltvMode === m ? "secondary" : "default"}
+              onClick={() => setLtvMode(m)}
               sx={{ cursor: "pointer", minWidth: 28 }}
             />
           ))}
@@ -1527,7 +1572,9 @@ export default function CompareModal({
               selectedGames.length > 1
                 ? selectedGames.length
                 : selectedCchNames.length > 1
-                  ? selectedCchNames.length
+                  ? selectedChannels.length > 1
+                    ? selectedCchNames.length * selectedChannels.length
+                    : selectedCchNames.length
                   : selectedChannels.length;
             const showWarning = isInter && sectionCount > 4;
             return (
@@ -1633,6 +1680,17 @@ export default function CompareModal({
         {queryResult &&
           (() => {
             const columns = queryResult.columns;
+            const columnKeys = columns.map((c) => c.name);
+            const renderMetricValue = (colName: string, row: ChartDataRow) => {
+              const multiplier = formatLtvMultiplier(
+                colName,
+                row,
+                columnKeys,
+                ltvMode,
+              );
+              if (multiplier != null) return multiplier;
+              return fmtValue(colName, row[colName], metricFormatMap);
+            };
 
             if (queryResult.data.length === 0) {
               return (
@@ -1698,7 +1756,7 @@ export default function CompareModal({
             // Calculate column widths based on content type
             const colWidths = columns.map((col) => {
               const n = col.name;
-              const dn = (col as any).displayName;
+              const dn = col.displayName;
               if (n === COL.papp_name) return 180;
               if (dn === "月" || dn === "周" || dn === "日期") return 110;
               if (n === COL.ad_real_cost || n === COL.n_unum) return 80;
@@ -1717,14 +1775,14 @@ export default function CompareModal({
 
             // Compute sticky left offsets for dimension columns
             const colStickyLeft = columns.map((col, i) => {
-              const dn = (col as any).displayName ?? col.name;
+              const dn = displayLabel(col.name, col.displayName);
               if (!isDimCol(col.name, dn)) return undefined;
               let left = 0;
               for (let j = 0; j < i; j++) {
                 if (
                   isDimCol(
                     columns[j].name,
-                    (columns[j] as any).displayName ?? columns[j].name,
+                    displayLabel(columns[j].name, columns[j].displayName),
                   )
                 ) {
                   left += colWidths[j];
@@ -1771,13 +1829,11 @@ export default function CompareModal({
                     {(() => {
                       // Count dimension columns to span "合计" across all of them
                       const dimColCount = columns.filter((c) =>
-                        isDimCol(c.name, (c as any).displayName ?? c.name),
+                        isDimCol(c.name, displayLabel(c.name, c.displayName)),
                       ).length;
                       let dimColIdx = 0;
                       return columns.map((col, ci) => {
-                        const dn =
-                          (col as { displayName?: string }).displayName ??
-                          col.name;
+                        const dn = displayLabel(col.name, col.displayName);
                         if (!isDimCol(col.name, dn)) {
                           // Metric column: show aggregated value
                           return (
@@ -1786,11 +1842,7 @@ export default function CompareModal({
                               colSpan={1}
                               sx={{ ...groupSx(ci), fontWeight: 700 }}
                             >
-                              {fmtValue(
-                                col.name,
-                                parent?.[col.name] ?? "",
-                                metricFormatMap,
-                              )}
+                              {renderMetricValue(col.name, parent ?? {})}
                             </TableCell>
                           );
                         }
@@ -1837,7 +1889,7 @@ export default function CompareModal({
                       >
                         {columns.map((col, ci) => (
                           <TableCell key={col.name} sx={dataSx(ci)}>
-                            {fmtValue(col.name, row[col.name], metricFormatMap)}
+                            {renderMetricValue(col.name, row)}
                           </TableCell>
                         ))}
                       </TableRow>
@@ -1982,7 +2034,7 @@ export default function CompareModal({
                       <TableRow>
                         {columns.map((col, ci) => (
                           <TableCell key={col.name} sx={thSx(ci)}>
-                            {(col as any).displayName ?? col.name}
+                            {displayLabel(col.name, col.displayName)}
                           </TableCell>
                         ))}
                       </TableRow>
@@ -2021,7 +2073,7 @@ export default function CompareModal({
                 for (const col of columns) {
                   const isDim = isDimCol(
                     col.name,
-                    (col as any).displayName ?? col.name,
+                    displayLabel(col.name, col.displayName),
                   );
                   if (!isDim) {
                     let sum = 0,
@@ -2037,7 +2089,7 @@ export default function CompareModal({
                   }
                 }
                 for (const col of columns) {
-                  const dn = (col as any).displayName ?? col.name;
+                  const dn = displayLabel(col.name, col.displayName);
                   if (dn === "日期" || dn === "周" || dn === "月") {
                     aggRow[col.name] = "汇总";
                     break;
@@ -2053,7 +2105,7 @@ export default function CompareModal({
               const detailRows = intraSecondaryResult.data.map((r) => {
                 const row: ChartDataRow = {};
                 for (const col of columns) {
-                  const dn = (col as any).displayName ?? col.name;
+                  const dn = displayLabel(col.name, col.displayName);
                   const isTime = dn === "日期" || dn === "周" || dn === "月";
                   const raw = r[col.name];
                   if (raw != null) {
@@ -2138,7 +2190,7 @@ export default function CompareModal({
                             <TableRow>
                               {columns.map((col, ci) => (
                                 <TableCell key={col.name} sx={thSx(ci)}>
-                                  {(col as any).displayName ?? col.name}
+                                  {displayLabel(col.name, col.displayName)}
                                 </TableCell>
                               ))}
                             </TableRow>
@@ -2149,11 +2201,7 @@ export default function CompareModal({
                             <TableRow key={ri} hover>
                               {columns.map((col, ci) => (
                                 <TableCell key={col.name} sx={dataSx(ci)}>
-                                  {fmtValue(
-                                    col.name,
-                                    row[col.name],
-                                    metricFormatMap,
-                                  )}
+                                  {renderMetricValue(col.name, row)}
                                 </TableCell>
                               ))}
                             </TableRow>
@@ -2177,7 +2225,22 @@ export default function CompareModal({
                 );
               }
 
-              // 2) Single game + multiple cch_names: each cch is a section
+              // 2) Single game + multiple cch × multiple channels: M×N sections
+              if (isMultiCch && isMultiChannel) {
+                return snapCchNames.flatMap((cch) =>
+                  snapChannels.map((ch) =>
+                    makeSection(
+                      `${extractName(cch)} × ${ch}`,
+                      (r) =>
+                        String(r[COL.cch_name] ?? "") === extractName(cch) &&
+                        String(r[COL.channel_name] ?? "") === ch,
+                      "primary",
+                    ),
+                  ),
+                );
+              }
+
+              // 3) Single game + multiple cch_names: each cch is a section
               if (isMultiCch) {
                 return snapCchNames.map((cch) =>
                   makeSection(
@@ -2188,7 +2251,7 @@ export default function CompareModal({
                 );
               }
 
-              // 3) Single game + multiple channels: each channel is a section
+              // 4) Single game + multiple channels: each channel is a section
               if (isMultiChannel) {
                 return snapChannels.map((ch) =>
                   makeSection(
@@ -2199,7 +2262,7 @@ export default function CompareModal({
                 );
               }
 
-              // 4) Single game + single filter: intra-project (primary vs remaining)
+              // 5) Single game + single filter: intra-project (primary vs remaining)
               if (isIntraSnap) {
                 const game = snapGames[0];
                 const gameName = game.papp_name;
@@ -2244,7 +2307,7 @@ export default function CompareModal({
                 return [primarySection, secondarySection].filter(Boolean);
               }
 
-              // 5) Single game + no filters: single section
+              // 6) Single game + no filters: single section
               return [
                 makeSection(
                   snapGames[0]?.papp_name ?? "",

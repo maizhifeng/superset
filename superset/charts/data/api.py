@@ -80,18 +80,13 @@ class ChartDataRestApi(ChartRestApi):
     include_route_methods = {"get_data", "data", "data_from_cache", "agent_data"}
 
     @expose("/agent-data", methods=("POST",))
+    @protect()
     def agent_data(self) -> Response:
         """
-        Internal endpoint for Pi agent queries. Bypasses standard auth/CSRF
-        and uses X-Internal-Agent / X-User-Id headers for identity.
+        Chart data endpoint for the Pi agent. Requires a valid JWT (Bearer
+        token); the acting user is taken from the token so row-level security
+        and per-user permissions apply.
         """
-        username = request.headers.get("X-User-Id")
-        if not username:
-            return self.response_400()
-        user = security_manager.find_user(username=username)
-        if not user:
-            return self.response_404()
-        g.user = user
         json_body = request.json or {}
         try:
             query_context = self._create_query_context_from_form(json_body)

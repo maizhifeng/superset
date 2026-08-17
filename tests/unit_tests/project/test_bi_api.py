@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -142,3 +143,103 @@ def test_side_query_dict_orderby_roundtrip(orderby: Any) -> None:
     query_obj = make_query_obj(orderby=orderby)
     qdict = bi_api._side_query_dict(query_obj, side_limit=100)
     assert qdict["orderby"] == orderby
+
+
+def test_assign_label_relabels_empty_frame() -> None:
+    """Zero-row results must be relabelled so downstream column handling works."""
+    df = pd.DataFrame(columns=["raw_col"])
+    out = bi_api._assign_label(df, ["x", "y"])
+    assert out is not None
+    assert out.empty
+    assert list(out.columns) == ["x", "y"]
+
+
+def test_assign_label_keeps_nonempty_behavior() -> None:
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    out = bi_api._assign_label(df, ["x", "y"])
+    assert out is not None
+    assert list(out.columns) == ["x", "y"]
+    assert out["x"].tolist() == [1]
+
+
+def test_assign_label_rejects_fewer_columns() -> None:
+    df = pd.DataFrame({"a": [1]})
+    assert bi_api._assign_label(df, ["x", "y"]) is None
+
+
+def _make_sides(
+    results_by_label: dict[str, tuple[pd.DataFrame | None, bool]],
+) -> list[tuple[Any, str, str, str | None, str | None]]:
+    return [(None, f"sql_{label}", label, None, None) for label in results_by_label]
+
+
+def _mock_side_runner(
+    results_by_label: dict[str, tuple[pd.DataFrame | None, bool]],
+) -> Any:
+    def fake_side(
+        side: tuple[Any, str, str, str | None, str | None],
+        labels_expected: list[str],
+        _app: Any,
+        _user: Any,
+    ) -> tuple[str, pd.DataFrame | None, bool]:
+        del labels_expected, _app, _user
+        df, ok = results_by_label[side[2]]
+        return side[2], df, ok
+
+    return fake_side
+
+
+def _run_sides(
+    results_by_label: dict[str, tuple[pd.DataFrame | None, bool]],
+) -> tuple[list[tuple[str, pd.DataFrame]], list[str]]:
+    with (
+        patch.object(
+            bi_api, "_run_federated_side", _mock_side_runner(results_by_label)
+        ),
+        patch(  # noqa: E501
+            "flask.current_app"
+        ) as mock_app,
+        patch("flask.g") as mock_g,
+    ):
+        mock_app._get_current_object.return_value = mock_app
+        mock_g.get.return_value = None
+        return bi_api._execute_federated_sides(_make_sides(results_by_label), ["col"])
+
+
+def test_execute_federated_sides_keeps_empty_successes() -> None:
+    """Sides that execute successfully but return zero rows are successes."""
+    empty = pd.DataFrame(columns=["col"])
+    results, failed = _run_sides(
+        {
+            "aliyun": (empty, True),
+            "oversea": (empty.copy(), True),
+        }
+    )
+    assert {label for label, _ in results} == {"aliyun", "oversea"}
+    assert all(df.empty for _, df in results)
+    assert failed == []
+
+
+def test_execute_federated_sides_partial_failure() -> None:
+    """A raising side is isolated; the successful (possibly empty) side is kept."""
+    empty = pd.DataFrame(columns=["col"])
+    results, failed = _run_sides(
+        {
+            "aliyun": (empty, True),
+            "oversea": (None, False),
+        }
+    )
+    assert [label for label, _ in results] == ["aliyun"]
+    assert failed == ["oversea"]
+
+
+def test_execute_federated_sides_all_failed() -> None:
+    """Only when every side raises do we get an empty results list."""
+    results, failed = _run_sides(
+        {
+            "aliyun": (None, False),
+            "oversea": (None, False),
+        }
+    )
+    assert results == []
+    assert set(failed) == {"aliyun", "oversea"}

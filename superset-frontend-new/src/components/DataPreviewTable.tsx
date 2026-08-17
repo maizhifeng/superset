@@ -13,8 +13,14 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import LockIcon from "@mui/icons-material/Lock";
 import LockOpenIcon from "@mui/icons-material/LockOpen";
+import Button from "@mui/material/Button";
+import DownloadIcon from "@mui/icons-material/Download";
+import Tooltip from "@mui/material/Tooltip";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import { useNotificationStore } from "@/store/notificationStore";
 import type { ChartDataRow } from "@/types/api";
 import { formatMetricValue } from "@/utils/formatNumber";
+import { downloadCsv } from "@/utils/exportCsv";
 
 export type CellFormatter = (key: string, value: unknown) => string;
 
@@ -35,6 +41,8 @@ interface DataPreviewTableProps {
   page?: number;
   hasMore?: boolean;
   onPageChange?: (page: number) => void;
+  /** 在表格上方显示行数与"导出 CSV"按钮（用于有导出需求的预览场景）。 */
+  showExport?: boolean;
 }
 
 function defaultFormat(key: string, value: unknown): string {
@@ -68,7 +76,9 @@ export default function DataPreviewTable({
   page: externalPage,
   hasMore,
   onPageChange,
+  showExport,
 }: DataPreviewTableProps) {
+  const notify = useNotificationStore((s) => s.notify);
   const [sorts, setSorts] = useState<SortEntry[]>([]);
   const [page, setPage] = useState(0);
   const pageSize = 50;
@@ -174,6 +184,25 @@ export default function DataPreviewTable({
 
   const empty = rows.length === 0;
 
+  const handleExportCsv = () => {
+    if (keys.length === 0) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadCsv(keys, dataRows, `data-preview-${ts}.csv`);
+  };
+
+  /** 把当前预览行复制为 JSON 数组，便于粘贴到脚本或接口调试。 */
+  const handleCopyJson = async () => {
+    if (keys.length === 0) return;
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(dataRows, null, 2),
+      );
+      notify({ severity: "success", message: "已复制预览数据（JSON）" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+
   return (
     <TableContainer
       sx={{
@@ -184,6 +213,42 @@ export default function DataPreviewTable({
         ...(sx as object),
       }}
     >
+      {showExport && !empty && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 0.5,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            flexShrink: 0,
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+            {dataRows.length} 行
+          </Typography>
+          <Button
+            size="small"
+            startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+            onClick={handleExportCsv}
+            sx={{ textTransform: "none", p: "2px 6px", minHeight: 0 }}
+          >
+            导出 CSV
+          </Button>
+          <Tooltip title="复制当前预览行（JSON）">
+            <Button
+              size="small"
+              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
+              onClick={() => void handleCopyJson()}
+              sx={{ textTransform: "none", p: "2px 6px", minHeight: 0 }}
+            >
+              复制 JSON
+            </Button>
+          </Tooltip>
+        </Box>
+      )}
       <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, minWidth: 0 }}>
         <Table
           size="small"

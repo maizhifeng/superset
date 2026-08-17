@@ -143,3 +143,6 @@ oxc-custom-build/
 pgdata
 superset-frontend-new/config.json
 .env-prod
+
+# npm cache from superset-frontend-new build
+superset-frontend-new/.npm-cache/

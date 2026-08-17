@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
@@ -8,10 +8,24 @@ import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DashboardIcon from "@mui/icons-material/Dashboard";
+import AddIcon from "@mui/icons-material/Add";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import EditIcon from "@mui/icons-material/Edit";
+import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
+import HistoryIcon from "@mui/icons-material/History";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DownloadIcon from "@mui/icons-material/Download";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import PersonIcon from "@mui/icons-material/Person";
+import { downloadCsv } from "@/utils/exportCsv";
 import Pagination from "@mui/material/Pagination";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -24,6 +38,9 @@ import Divider from "@mui/material/Divider";
 import FilterBar from "@/components/FilterBar";
 import ListPageLayout from "@/components/ListPageLayout";
 import { useToolbarStore } from "@/store/toolbarStore";
+import { useDashboardFavorites } from "@/store/dashboardFavorites";
+import { useRecentDashboards } from "@/store/recentDashboards";
+import { useNotificationStore } from "@/store/notificationStore";
 import { ConfirmModal, Grid2 } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
@@ -31,6 +48,7 @@ import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { cardAccents } from "@/theme/notion";
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { DashboardListItem } from "@/types/api";
 
 const PAGE_SIZE = 18;
@@ -51,20 +69,192 @@ export default function DashboardList() {
     setDeleteTarget,
     handleSearchChange,
     handleDelete,
+    fetchData,
   } = usePaginatedList<DashboardListItem>({
-    endpoint: "/dashboard/",
-    filterColumn: "dashboard_title",
+    endpoint: "/dashboard/",    filterColumn: "dashboard_title",
     pageSize: PAGE_SIZE,
     errorMessage: "加载仪表板失败",
   });
+  const favIds = useDashboardFavorites((s) => s.ids);
+  const toggleFavorite = useDashboardFavorites((s) => s.toggle);
+  const notify = useNotificationStore((s) => s.notify);
+
+  /** 复制某个仪表板的直达链接。 */
+  const handleCopyDashboardLink = async (id: number) => {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/dashboard/${id}`,
+      );
+      notify({ severity: "success", message: "已复制仪表板链接" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  /** 复制某个仪表板的标题。 */
+  const handleCopyTitle = async (title: string) => {
+    if (!title) return;
+    try {
+      await navigator.clipboard.writeText(title);
+      notify({ severity: "success", message: `已复制标题 ${title}` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+  const recentItems = useRecentDashboards((s) => s.items);
+  const recentIds = useMemo(
+    () => new Set(recentItems.map((x) => x.id)),
+    [recentItems],
+  );
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [recentOnly, setRecentOnly] = useState(false);
+  const [publishFilter, setPublishFilter] = useState<"" | "published" | "draft">(
+    "",
+  );
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createName, setCreateName] = useState("新建仪表板");
   const [creating, setCreating] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
+  const getOwnerNames = (dashboard: DashboardListItem): string => {
+    const owners = dashboard.owners ?? [];
+    if (owners.length > 0) {
+      return owners
+        .map((o) =>
+          [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email,
+        )
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (dashboard.created_by?.first_name || dashboard.created_by?.last_name) {
+      return [dashboard.created_by.first_name, dashboard.created_by.last_name]
+        .filter(Boolean)
+        .join(" ");
+    }
+    return "无";
+  };
+
+  /** 导出当前筛选后的仪表板列表为 CSV。 */
+  const handleExportCsv = useCallback(() => {
+    const rowsToExport = dashboards.filter(
+      (d) =>
+        (!favoritesOnly || favIds.includes(d.id)) &&
+        (!recentOnly || recentIds.has(d.id)) &&
+        (!publishFilter ||
+          (publishFilter === "published"
+            ? d.published
+            : publishFilter === "draft"
+              ? !d.published
+              : true)),
+    );
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadCsv(
+      ["名称", "状态", "创建人", "最后修改", "链接"],
+      rowsToExport.map((d) => ({
+        名称: d.dashboard_title,
+        状态: d.published ? "已发布" : "草稿",
+        创建人: getOwnerNames(d),
+        最后修改: d.changed_on_delta_humanized ?? "",
+        链接: `${window.location.origin}/dashboard/${d.id}`,
+      })),
+      `dashboards-${ts}.csv`,
+    );
+  }, [dashboards, favoritesOnly, recentOnly, publishFilter, favIds, recentIds]);
+
+  /** 复制当前筛选后的仪表板标题（每行一个）。 */
+  const handleCopyAllTitles = useCallback(async () => {
+    const rowsToExport = dashboards.filter(
+      (d) =>
+        (!favoritesOnly || favIds.includes(d.id)) &&
+        (!recentOnly || recentIds.has(d.id)) &&
+        (!publishFilter ||
+          (publishFilter === "published"
+            ? d.published
+            : publishFilter === "draft"
+              ? !d.published
+              : true)),
+    );
+    const titles = rowsToExport.map((d) => d.dashboard_title).filter(Boolean);
+    if (titles.length === 0) {
+      notify({ severity: "warning", message: "暂无仪表板数据" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(titles.join("\n"));
+      notify({ severity: "success", message: `已复制 ${titles.length} 个标题` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  }, [dashboards, favoritesOnly, recentOnly, publishFilter, favIds, recentIds, notify]);
+
   useEffect(() => {
     registerTools("dashboard_list", [
+      {
+        id: "add",
+        priority: 6,
+        showOnMobile: true,
+        fabIcon: <AddIcon />,
+        fabLabel: "新建仪表板",
+        action: () => setCreateDialogOpen(true),
+        render: null,
+      },
+      {
+        id: "refresh",
+        priority: 5.5,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="刷新列表">
+            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+              <RefreshIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        ),
+      },
+      {
+        id: "export",
+        priority: 4.5,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="导出当前仪表板列表为 CSV">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+              onClick={handleExportCsv}
+              disabled={dashboards.length === 0}
+              sx={{ textTransform: "none" }}
+            >
+              导出 CSV
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
+        id: "copy_titles",
+        priority: 1.75,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="复制当前筛选后的仪表板标题列表">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
+              onClick={() => void handleCopyAllTitles()}
+              disabled={dashboards.length === 0}
+              sx={{ textTransform: "none" }}
+            >
+              复制标题
+            </Button>
+          </Tooltip>
+        ),
+      },
       {
         id: "search",
         priority: 5,
@@ -81,9 +271,31 @@ export default function DashboardList() {
       },
     ]);
     return () => unregisterTools("dashboard_list");
-  }, [registerTools, unregisterTools, handleSearchChange]);
+  }, [registerTools, unregisterTools, handleSearchChange, handleExportCsv, handleCopyAllTitles, dashboards.length, fetchData, loading]);
 
   const totalPages = Math.ceil(rowCount / PAGE_SIZE);
+
+  const openRenameDialog = (dashboard: DashboardListItem) => {
+    setRenameTarget({ id: dashboard.id, name: dashboard.dashboard_title });
+    setRenameName(dashboard.dashboard_title);
+    setRenameError(null);
+  };
+
+  const handleRename = async () => {
+    if (!renameTarget || !renameName.trim()) return;
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await api.put(`/dashboard/${renameTarget.id}`, {
+        dashboard_title: renameName.trim(),
+      });
+      setRenameTarget(null);
+      fetchData();
+    } catch (err: unknown) {      setRenameError(parseErrorMessage(err, "重命名失败"));
+    } finally {
+      setRenaming(false);
+    }
+  };
 
   return (
     <Box
@@ -113,14 +325,55 @@ export default function DashboardList() {
             </Typography>
           }
           action={
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<DashboardIcon />}
-              onClick={() => setCreateDialogOpen(true)}
-            >
-              新建仪表板
-            </Button>
+            <>
+              <Tooltip title="仅显示最近打开的仪表板">
+                <Button
+                  size="small"
+                  variant={recentOnly ? "contained" : "text"}
+                  color={recentOnly ? "primary" : "inherit"}
+                  startIcon={
+                    <HistoryIcon sx={{ fontSize: 16 }} />
+                  }
+                  onClick={() => setRecentOnly((v) => !v)}
+                  sx={{ textTransform: "none", mr: 0.5 }}
+                >
+                  最近
+                </Button>
+              </Tooltip>
+              <Tooltip title="仅显示收藏的仪表板">
+                <Button
+                  size="small"
+                  variant={favoritesOnly ? "contained" : "text"}
+                  color={favoritesOnly ? "warning" : "inherit"}
+                  startIcon={
+                    favoritesOnly ? (
+                      <StarIcon sx={{ fontSize: 16 }} />
+                    ) : (
+                      <StarBorderIcon sx={{ fontSize: 16 }} />
+                    )
+                  }
+                  onClick={() => setFavoritesOnly((v) => !v)}
+                  sx={{ textTransform: "none" }}
+                >
+                  收藏
+                </Button>
+              </Tooltip>
+              <FormControl size="small" sx={{ minWidth: 104, ml: 0.5 }}>
+                <InputLabel id="dash-status-label">状态</InputLabel>
+                <Select
+                  labelId="dash-status-label"
+                  label="状态"
+                  value={publishFilter}
+                  onChange={(e) => setPublishFilter(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>全部</em>
+                  </MenuItem>
+                  <MenuItem value="published">已发布</MenuItem>
+                  <MenuItem value="draft">草稿</MenuItem>
+                </Select>
+              </FormControl>
+            </>
           }
           sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
         />
@@ -154,12 +407,24 @@ export default function DashboardList() {
           }
         >
           <Grid2 container spacing={2}>
-            {dashboards.map((dashboard, i) => (
+            {dashboards
+              .filter(
+                (d) =>
+                  (!favoritesOnly || favIds.includes(d.id)) &&
+                  (!recentOnly || recentIds.has(d.id)) &&
+                  (!publishFilter ||
+                    (publishFilter === "published"
+                      ? d.published
+                      : publishFilter === "draft"
+                        ? !d.published
+                        : true)),
+              )
+              .map((dashboard, i) => (
               <Grid2 size={{ xs: 12, sm: 6, lg: 4 }} key={dashboard.id}>
                 <Paper
                   sx={{
                     p: 2.5,
-                    borderRadius: 2,
+                    borderRadius: 1.5,
                     cursor: "pointer",
                     position: "relative",
                     border: "none",
@@ -185,15 +450,37 @@ export default function DashboardList() {
                       mb: 1,
                     }}
                   >
-                    <Typography
-                      variant="subtitle1"
-                      sx={{
-                        fontWeight: 700,
-                        lineHeight: 1.3,
-                      }}
-                    >
-                      {dashboard.dashboard_title}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <Typography
+                        variant="subtitle1"
+                        sx={{
+                          fontWeight: 700,
+                          lineHeight: 1.3,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {dashboard.dashboard_title}
+                      </Typography>
+                      <Tooltip title="复制标题">
+                        <IconButton
+                          size="small"
+                          sx={{ p: 0.25, flexShrink: 0 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleCopyTitle(dashboard.dashboard_title);
+                          }}
+                        >
+                          <ContentCopyIcon
+                            sx={{
+                              fontSize: 14,
+                              color: "text.disabled",
+                            }}
+                          />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </Box>
                   <Box
                     sx={{
@@ -247,6 +534,30 @@ export default function DashboardList() {
                     )}
                   </Box>
                   <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.25,
+                      mb: 1,
+                    }}
+                  >
+                    <PersonIcon
+                      sx={{ fontSize: 13, color: "text.disabled" }}
+                    />
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{
+                        fontSize: "0.75rem",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      所有者：{getOwnerNames(dashboard)}
+                    </Typography>
+                  </Box>
+                  <Box
                     className="card-actions"
                     sx={{
                       position: "absolute",
@@ -256,6 +567,32 @@ export default function DashboardList() {
                       transition: "opacity 200ms ease",
                     }}
                   >
+                    <Tooltip
+                      title={favIds.includes(dashboard.id) ? "取消收藏" : "收藏"}
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(dashboard.id);
+                        }}
+                        sx={{
+                          bgcolor: "background.paper",
+                          boxShadow: "var(--mui-palette-shadow-sm)",
+                          mr: 0.5,
+                          color: favIds.includes(dashboard.id)
+                            ? "warning.main"
+                            : "text.disabled",
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        {favIds.includes(dashboard.id) ? (
+                          <StarIcon sx={{ fontSize: 16 }} />
+                        ) : (
+                          <StarBorderIcon sx={{ fontSize: 16 }} />
+                        )}
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="打开仪表板">
                       <IconButton
                         size="small"
@@ -271,6 +608,40 @@ export default function DashboardList() {
                         }}
                       >
                         <VisibilityIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="复制链接">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleCopyDashboardLink(dashboard.id);
+                        }}
+                        sx={{
+                          bgcolor: "background.paper",
+                          boxShadow: "var(--mui-palette-shadow-sm)",
+                          mr: 0.5,
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <ContentCopyIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="重命名">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRenameDialog(dashboard);
+                        }}
+                        sx={{
+                          bgcolor: "background.paper",
+                          boxShadow: "var(--mui-palette-shadow-sm)",
+                          mr: 0.5,
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <EditIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="删除">
@@ -337,6 +708,54 @@ export default function DashboardList() {
           />
         </ListPageLayout>
       </Card>
+      <Dialog
+        open={!!renameTarget}
+        onClose={() => {
+          if (!renaming) setRenameTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>重命名仪表板</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            label="仪表板名称"
+            value={renameName}
+            onChange={(e) => setRenameName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !renaming && renameName.trim()) {
+                e.preventDefault();
+                void handleRename();
+              }
+            }}
+            variant="outlined"
+            size="small"
+            sx={{ mt: 1 }}
+          />
+          {renameError && (
+            <Alert severity="error" sx={{ mt: 1.5, borderRadius: 2 }}>
+              {renameError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            disabled={renaming}
+            onClick={() => setRenameTarget(null)}
+          >
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            disabled={renaming || !renameName.trim()}
+            onClick={() => void handleRename()}
+          >
+            {renaming ? "保存中..." : "保存"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}

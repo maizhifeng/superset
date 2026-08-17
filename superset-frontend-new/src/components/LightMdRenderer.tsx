@@ -208,6 +208,31 @@ function processInline(text: string): React.ReactNode[] {
   let remaining = text;
   let key = 0;
 
+  // Markdown punctuation that models may escape with a backslash
+  // (e.g. `mini\_game`, `LTV\_1`, `\|`). The backslash must be dropped.
+  const ESCAPABLE = new Set([
+    "_",
+    "*",
+    "#",
+    "|",
+    "`",
+    "[",
+    "]",
+    "(",
+    ")",
+    "{",
+    "}",
+    "!",
+    "+",
+    "-",
+    "=",
+    ".",
+    "<",
+    ">",
+    "~",
+    "\\",
+  ]);
+
   while (remaining.length > 0) {
     // Inline LaTeX math $...$
     const latexMatch = remaining.match(/^\$([^$]+)\$/);
@@ -217,6 +242,16 @@ function processInline(text: string): React.ReactNode[] {
       );
       remaining = remaining.slice(latexMatch[0].length);
       continue;
+    }
+
+    // Markdown escape: backslash + escapable punctuation → punctuation
+    if (remaining.length > 1 && remaining[0] === "\\") {
+      const next = remaining[1];
+      if (ESCAPABLE.has(next)) {
+        parts.push(<Fragment key={key++}>{next}</Fragment>);
+        remaining = remaining.slice(2);
+        continue;
+      }
     }
 
     const codeMatch = remaining.match(/^`([^`]+)`/);
@@ -261,7 +296,7 @@ function processInline(text: string): React.ReactNode[] {
     if (boldMatch) {
       parts.push(
         <Box key={key++} component="strong" sx={{ fontWeight: 700 }}>
-          {boldMatch[1]}
+          {processInline(boldMatch[1])}
         </Box>,
       );
       remaining = remaining.slice(boldMatch[0].length);
@@ -412,11 +447,16 @@ export default function LightMdRenderer({ content }: LightMdRendererProps) {
         i++;
       }
       if (tableLines.length >= 2) {
+        const ESCAPED_PIPE = "\u0000";
         const parseRow = (raw: string): ReactNode[] =>
+          // Protect escaped pipes (\|) before splitting on unescaped ones
           raw
+            .replace(/\\\|/g, ESCAPED_PIPE)
             .split("|")
             .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
-            .map((cell) => processInline(cell.trim()));
+            .map((cell) =>
+              processInline(cell.trim().replaceAll(ESCAPED_PIPE, "|")),
+            );
 
         const headerCells = parseRow(tableLines[0]);
         // tableLines[1] is the alignment separator (|---|); skip it

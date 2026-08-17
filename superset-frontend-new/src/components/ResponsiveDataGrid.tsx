@@ -13,6 +13,7 @@ import Checkbox from "@mui/material/Checkbox";
 import DeleteIcon from "@mui/icons-material/Delete";
 import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
 import Pagination from "@mui/material/Pagination";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useMediaQuery, useTheme } from "@mui/material";
@@ -283,6 +284,7 @@ export default function ResponsiveDataGrid<R = any>({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(selectedIdsProp ?? []),
   );
+  const [jumpPage, setJumpPage] = useState("");
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
   const registerTools = useToolbarStore((s) => s.registerTools);
@@ -389,6 +391,8 @@ export default function ResponsiveDataGrid<R = any>({
             sx={{
               display: "flex",
               justifyContent: "center",
+              alignItems: "center",
+              gap: 1.5,
               py: 2,
               pr: { xs: 7, sm: 0 },
             }}
@@ -400,6 +404,24 @@ export default function ResponsiveDataGrid<R = any>({
               color="primary"
               shape="rounded"
               size="small"
+            />
+            <TextField
+              size="small"
+              type="number"
+              value={jumpPage}
+              onChange={(e) => setJumpPage(e.target.value)}
+              placeholder={`跳转到 1-${totalPages}`}
+              slotProps={{ htmlInput: { min: 1, max: totalPages } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const n = Number(jumpPage);
+                  if (n >= 1 && n <= totalPages) {
+                    gridProps.onPaginationModelChange?.({ page: n - 1, pageSize }, {} as never);
+                    setJumpPage("");
+                  }
+                }
+              }}
+              sx={{ width: 110, "& .MuiInputBase-input": { py: 0.9 } }}
             />
           </Box>
         )}

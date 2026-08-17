@@ -2,12 +2,17 @@ import { useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import CloseIcon from "@mui/icons-material/Close";
+import DownloadIcon from "@mui/icons-material/Download";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import Chip from "@mui/material/Chip";
+import { useNotificationStore } from "@/store/notificationStore";
 import DataPreviewTable from "@/components/DataPreviewTable";
 import type { CellFormatter } from "@/components/DataPreviewTable";
 import type { CompareDimension } from "@/pages/Dashboard/ChartCard";
+import { downloadCsv } from "@/utils/exportCsv";
 
 interface MirrorTableProps {
   dimensions: CompareDimension[];
@@ -38,6 +43,36 @@ export default function MirrorTable({
     }
     return raw;
   }
+
+  const handleExport = () => {
+    const raw = data?.data;
+    const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+    if (rows.length === 0) return;
+    const cols = Object.keys(rows[0]).filter((k) => k !== "__isSummary");
+    downloadCsv(cols, rows, "compare-data.csv");
+  };
+
+  const notify = useNotificationStore((s) => s.notify);
+  const handleCopyMarkdown = async () => {
+    const raw = data?.data;
+    const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+    if (rows.length === 0) return;
+    const cols = Object.keys(rows[0]).filter((k) => k !== "__isSummary");
+    const esc = (v: unknown): string =>
+      String(v ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+    const text = [
+      `| ${cols.join(" | ")} |`,
+      `| ${cols.map(() => "---").join(" | ")} |`,
+      ...rows.map((r) => `| ${cols.map((c) => esc(r[c])).join(" | ")} |`),
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      notify({ severity: "success", message: "已复制对比结果为 Markdown" });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  };
+
   return (
     <Box
       sx={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}
@@ -77,6 +112,32 @@ export default function MirrorTable({
             }}
           />
         ))}
+        <Tooltip title="复制为 Markdown">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => void handleCopyMarkdown()}
+              aria-label="复制为 Markdown"
+              disabled={!(Array.isArray(data?.data) && data.data.length > 0)}
+              sx={{ p: 0.25 }}
+            >
+              <ContentCopyIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="导出为 CSV">
+          <span>
+            <IconButton
+              size="small"
+              onClick={handleExport}
+              aria-label="导出为 CSV"
+              disabled={!(Array.isArray(data?.data) && data.data.length > 0)}
+              sx={{ p: 0.25 }}
+            >
+              <DownloadIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </span>
+        </Tooltip>
         <IconButton size="small" onClick={onClose} sx={{ p: 0.25, ml: "auto" }}>
           <CloseIcon sx={{ fontSize: 14 }} />
         </IconButton>

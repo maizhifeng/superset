@@ -18,6 +18,8 @@ import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
 import HelpOutlinedIcon from "@mui/icons-material/HelpOutlined";
+import EditIcon from "@mui/icons-material/Edit";
+import CloseIcon from "@mui/icons-material/Close";
 import InputAdornment from "@mui/material/InputAdornment";
 import CircularProgress from "@mui/material/CircularProgress";
 import TextField from "@mui/material/TextField";
@@ -63,6 +65,9 @@ export default function ChannelConfig() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  // Rows currently in edit mode. By default rows render as plain text to keep
+  // the initial paint light; form controls mount only when a row is activated.
+  const [editingIds, setEditingIds] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -145,25 +150,50 @@ export default function ChannelConfig() {
     }
   }, [fetchRows]);
 
-  const handleSave = useCallback(async (row: ChannelRow) => {
-    setSaving((prev) => ({ ...prev, [row.channel_id]: true }));
-    setError(null);
-    setSuccess(null);
-    try {
-      await api.put(`/project/channel/${row.channel_id}`, {
-        channel_name: row.channel_name,
-        updated_at: row.updated_at,
-        白名单控制参数: row.白名单控制参数,
-        默认分成: row.默认分成,
-        ios虚拟支付分成: row.ios虚拟支付分成,
-      });
-      setSuccess(`已保存 ${row.channel_name}`);
-    } catch (err: unknown) {
-      setError(parseErrorMessage(err, "保存失败"));
-    } finally {
-      setSaving((prev) => ({ ...prev, [row.channel_id]: false }));
-    }
+  const toggleEdit = useCallback((id: string) => {
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
+
+  const exitEdit = useCallback((id: string) => {
+    setEditingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleSave = useCallback(
+    async (row: ChannelRow) => {
+      setSaving((prev) => ({ ...prev, [row.channel_id]: true }));
+      setError(null);
+      setSuccess(null);
+      try {
+        await api.put(`/project/channel/${row.channel_id}`, {
+          channel_name: row.channel_name,
+          updated_at: row.updated_at,
+          白名单控制参数: row.白名单控制参数,
+          默认分成: row.默认分成,
+          ios虚拟支付分成: row.ios虚拟支付分成,
+        });
+        setSuccess(`已保存 ${row.channel_name}`);
+        exitEdit(row.channel_id);
+      } catch (err: unknown) {
+        setError(parseErrorMessage(err, "保存失败"));
+      } finally {
+        setSaving((prev) => ({ ...prev, [row.channel_id]: false }));
+      }
+    },
+    [exitEdit],
+  );
 
   const updateWhitelist = useCallback((channelId: string, value: string) => {
     setRows((prev) =>
@@ -189,6 +219,24 @@ export default function ChannelConfig() {
     );
   }, []);
 
+  const renderText = useCallback(
+    (value: string | undefined, strong = false) => (
+      <Typography
+        sx={{
+          fontSize: "0.75rem",
+          px: 1,
+          py: 0.5,
+          textAlign: "center",
+          fontWeight: strong ? 600 : 400,
+          color: strong ? "text.secondary" : "text.primary",
+        }}
+      >
+        {value ?? ""}
+      </Typography>
+    ),
+    [],
+  );
+
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const handleChangePage = useCallback(
@@ -203,7 +251,8 @@ export default function ChannelConfig() {
     [],
   );
   const [filterName, setFilterName] = useState<string | null>(null);
-  const [whitelistOnly, setWhitelistOnly] = useState(false);
+  // 默认仅展示白名单渠道，可手动关闭以查看全部
+  const [whitelistOnly, setWhitelistOnly] = useState(true);
   const filteredRows = rows
     .filter((r) => !whitelistOnly || r.白名单控制参数 === "Y")
     .filter((r) => !filterName || r.channel_name === filterName);
@@ -424,32 +473,35 @@ export default function ChannelConfig() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {visibleRows.map((row) => (
+                      {visibleRows.map((row) => {
+                        const editing = editingIds.has(row.channel_id);
+                        return (
                         <TableRow key={row.channel_id}>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.channel_id}
-                            </Typography>
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.channel_name}
-                            </Typography>
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.updated_at}
-                            </Typography>
-                          </TableCell>
-                          <TableCell
-                            sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
+                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
                           >
+                            {row.channel_id}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
+                            {row.channel_name}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                          <Typography
+                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                          >
+                            {row.updated_at}
+                          </Typography>
+                        </TableCell>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
+                        >
+                          {editing ? (
                             <TextField
                               size="small"
                               variant="standard"
@@ -483,10 +535,14 @@ export default function ChannelConfig() {
                               }}
                               sx={{ "& input": { textAlign: "center" } }}
                             />
-                          </TableCell>
-                          <TableCell
-                            sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
-                          >
+                          ) : (
+                            renderText(row.默认分成)
+                          )}
+                        </TableCell>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
+                        >
+                          {editing ? (
                             <TextField
                               size="small"
                               variant="standard"
@@ -520,10 +576,14 @@ export default function ChannelConfig() {
                               }}
                               sx={{ "& input": { textAlign: "center" } }}
                             />
-                          </TableCell>
-                          <TableCell
-                            sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
-                          >
+                          ) : (
+                            renderText(row.ios虚拟支付分成)
+                          )}
+                        </TableCell>
+                        <TableCell
+                          sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
+                        >
+                          {editing ? (
                             <Checkbox
                               size="small"
                               checked={row.白名单控制参数 === "Y"}
@@ -534,19 +594,55 @@ export default function ChannelConfig() {
                                 )
                               }
                             />
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <IconButton
-                              size="small"
-                              onClick={() => void handleSave(row)}
-                              disabled={saving[row.channel_id]}
-                              color="primary"
-                            >
-                              <SaveIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
+                          ) : (
+                            renderText(
+                              row.白名单控制参数 === "Y" ? "白名单" : "",
+                              true,
+                            )
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "center",
+                              gap: 0.25,
+                            }}
+                          >
+                            {editing ? (
+                              <>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => void handleSave(row)}
+                                  disabled={saving[row.channel_id]}
+                                  color="primary"
+                                  aria-label="保存"
+                                >
+                                  <SaveIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => exitEdit(row.channel_id)}
+                                  disabled={saving[row.channel_id]}
+                                  aria-label="取消编辑"
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              </>
+                            ) : (
+                              <IconButton
+                                size="small"
+                                onClick={() => toggleEdit(row.channel_id)}
+                                aria-label="编辑"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Box>
+                        </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

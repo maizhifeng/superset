@@ -9,7 +9,6 @@ import StorageIcon from "@mui/icons-material/Storage";
 import DocViewer from "@/components/DocViewer";
 import { getDocTitle } from "@/components/docCatalog";
 import SmartInput from "@/components/AiDrawer/SmartInput";
-import { useAiConfigStore } from "@/config/aiConfig";
 import { useInsight } from "@/pages/Dashboard/hooks/useInsight";
 import { useDrawerStore } from "@/store/drawerState";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -23,13 +22,13 @@ import type { KnowledgeCard } from "@/types/ai";
 import type { AiDrawerProps } from "./types";
 
 const DAILY_REPORT_PROMPT =
-  "请生成昨日数据日报。先调用 get_dataset_schema 获取当前数据集的可用维度列和指标，然后由你自行决定查询方式与报告结构，与昨日数据对比前日变化，输出数据有据、结论清晰的完整日报。日报按以下四个视角组织，每个视角输出近 7 天重点指标变化趋势（结合昨日 vs 前日对比，指出趋势与异常），可补充你认为有价值的分析角度：1. 平台维度（新增进入、消耗、充值流水）；2. 主游戏维度（新增进入、消耗、cpa、ltv_1~ltv_7）；3. 重点主游戏下渠道商维度（按消耗或新增进入排名靠前的主游戏，其下各渠道商）；4. 平台+媒体维度。指标与列名必须逐字使用 schema 中的确切名称，不得改写（如「新增进入」不能写成「新增用户」）。禁止 LaTeX。";
+  "请生成昨日数据日报。系统会预先获取各分析视角的数据供你使用，无需调用任何工具。报告需覆盖系统提供的全部分析视角，每个视角输出近 7 天重点指标变化趋势（结合昨日 vs 前日对比，指出趋势与异常），可补充你认为有价值的分析角度。结论需有数据依据，禁止 LaTeX。";
 
 const WEEKLY_REPORT_PROMPT =
-  "请生成上周数据周报。先调用 get_dataset_schema 获取当前数据集的可用维度列和指标，然后由你自行决定分析维度、对比方式与报告结构（可选角度如项目、渠道商、媒体、平台、团队、趋势等，选择你认为最有洞察的），与上周数据对比前周变化，输出数据有据、结论清晰的完整周报。禁止 LaTeX。";
+  "请生成上周数据周报。系统会预先获取各分析视角的数据供你使用，无需调用任何工具。报告应覆盖平台、主游戏、渠道商、媒体等分析视角，结合上周数据对比前周变化，输出数据有据、结论清晰的完整周报。禁止 LaTeX。";
 
 const DICT_PROMPT =
-  "请介绍当前广告投放数据集的数据字典：调用 get_dataset_schema 获取可用的维度列和指标，说明各字段的业务含义（日期、主游戏、渠道商、媒体、平台、团队、消耗、新增进入、CPA、ROI、LTV 等）。";
+  "请基于系统提供的数据介绍当前广告投放数据集的数据字典：结合数据中的列名与指标，说明各字段的业务含义（日期、主游戏、渠道商、媒体、平台、团队、消耗、新增进入、CPA、ROI、LTV 等）。";
 
 const knowledgeCards: KnowledgeCard[] = [
   {
@@ -79,10 +78,10 @@ export default function AiDrawer({
 }: AiDrawerProps) {
   const pi = usePiAgent();
   const notify = useNotificationStore((s) => s.notify);
-  const { activePreset } = useAiConfigStore();
   const drawerWidth = useDrawerStore((s) => s.drawerWidth);
   const setDrawerWidth = useDrawerStore((s) => s.setDrawerWidth);
   const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
+  const initialQuestion = useDrawerStore((s) => s.initialQuestion);
   const insight = useInsight();
   const sessions = useAgentStore((s) => s.sessions);
   const createSession = useAgentStore((s) => s.createSession);
@@ -192,8 +191,8 @@ export default function AiDrawer({
       ? pi.currentModel
       : undefined
     : chartMeta
-      ? `${chartMeta.slice_name || `#${chartId}`} · ${activePreset.model}`
-      : activePreset.model;
+      ? `${chartMeta.slice_name || `#${chartId}`} · ${pi.currentModel}`
+      : pi.currentModel;
 
   return (
     <Box
@@ -289,6 +288,8 @@ export default function AiDrawer({
               }}
             >
               <SmartInput
+                key={initialQuestion || "assistant"}
+                initialValue={initialQuestion}
                 onSend={(t) => handleSend(t)}
                 onStop={pi.abort}
                 streaming={pi.isRunning}

@@ -18,6 +18,8 @@ import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
 import HelpOutlinedIcon from "@mui/icons-material/HelpOutlined";
+import EditIcon from "@mui/icons-material/Edit";
+import CloseIcon from "@mui/icons-material/Close";
 import CircularProgress from "@mui/material/CircularProgress";
 import Tooltip from "@mui/material/Tooltip";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -49,6 +51,9 @@ export default function ProjectConfig() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  // Rows currently in edit mode. By default rows render as plain text to keep
+  // the initial paint light; form controls mount only when a row is activated.
+  const [editingIds, setEditingIds] = useState<ReadonlySet<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -111,23 +116,48 @@ export default function ProjectConfig() {
     }
   }, [fetchRows]);
 
-  const handleSave = useCallback(async (row: PappRow) => {
-    setSaving((prev) => ({ ...prev, [row.papp_id]: true }));
-    setError(null);
-    setSuccess(null);
-    try {
-      await api.put(`/project/papp/${row.papp_id}`, {
-        papp_name: row.papp_name,
-        updated_at: row.updated_at,
-        白名单控制参数: row.白名单控制参数,
-      });
-      setSuccess(`已保存 ${row.papp_name}`);
-    } catch (err: unknown) {
-      setError(parseErrorMessage(err, "保存失败"));
-    } finally {
-      setSaving((prev) => ({ ...prev, [row.papp_id]: false }));
-    }
+  const toggleEdit = useCallback((id: string) => {
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
+
+  const exitEdit = useCallback((id: string) => {
+    setEditingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleSave = useCallback(
+    async (row: PappRow) => {
+      setSaving((prev) => ({ ...prev, [row.papp_id]: true }));
+      setError(null);
+      setSuccess(null);
+      try {
+        await api.put(`/project/papp/${row.papp_id}`, {
+          papp_name: row.papp_name,
+          updated_at: row.updated_at,
+          白名单控制参数: row.白名单控制参数,
+        });
+        setSuccess(`已保存 ${row.papp_name}`);
+        exitEdit(row.papp_id);
+      } catch (err: unknown) {
+        setError(parseErrorMessage(err, "保存失败"));
+      } finally {
+        setSaving((prev) => ({ ...prev, [row.papp_id]: false }));
+      }
+    },
+    [exitEdit],
+  );
 
   const updateWhitelist = useCallback((pappId: string, checked: boolean) => {
     setRows((prev) =>
@@ -136,6 +166,24 @@ export default function ProjectConfig() {
       ),
     );
   }, []);
+
+  const renderText = useCallback(
+    (value: string | undefined, strong = false) => (
+      <Typography
+        sx={{
+          fontSize: "0.75rem",
+          px: 1,
+          py: 0.5,
+          textAlign: "center",
+          fontWeight: strong ? 600 : 400,
+          color: strong ? "text.secondary" : "text.primary",
+        }}
+      >
+        {value ?? ""}
+      </Typography>
+    ),
+    [],
+  );
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -151,7 +199,8 @@ export default function ProjectConfig() {
     [],
   );
   const [filterName, setFilterName] = useState<string | null>(null);
-  const [whitelistOnly, setWhitelistOnly] = useState(false);
+  // 默认仅展示白名单游戏，可手动关闭以查看全部
+  const [whitelistOnly, setWhitelistOnly] = useState(true);
   const filteredRows = rows
     .filter((r) => !whitelistOnly || r.白名单控制参数 === "Y")
     .filter((r) => !filterName || r.papp_name === filterName);
@@ -337,7 +386,9 @@ export default function ProjectConfig() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {visibleRows.map((row) => (
+                      {visibleRows.map((row) => {
+                        const editing = editingIds.has(row.papp_id);
+                        return (
                         <TableRow key={row.papp_id}>
                           <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                             <Typography
@@ -363,26 +414,63 @@ export default function ProjectConfig() {
                           <TableCell
                             sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
                           >
-                            <Checkbox
-                              size="small"
-                              checked={row.白名单控制参数 === "Y"}
-                              onChange={(_, checked) =>
-                                updateWhitelist(row.papp_id, checked)
-                              }
-                            />
+                            {editing ? (
+                              <Checkbox
+                                size="small"
+                                checked={row.白名单控制参数 === "Y"}
+                                onChange={(_, checked) =>
+                                  updateWhitelist(row.papp_id, checked)
+                                }
+                              />
+                            ) : (
+                              renderText(
+                                row.白名单控制参数 === "Y" ? "白名单" : "",
+                                true,
+                              )
+                            )}
                           </TableCell>
                           <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <IconButton
-                              size="small"
-                              onClick={() => void handleSave(row)}
-                              disabled={saving[row.papp_id]}
-                              color="primary"
+                            <Box
+                              sx={{
+                                display: "flex",
+                                justifyContent: "center",
+                                gap: 0.25,
+                              }}
                             >
-                              <SaveIcon fontSize="small" />
-                            </IconButton>
+                              {editing ? (
+                                <>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => void handleSave(row)}
+                                    disabled={saving[row.papp_id]}
+                                    color="primary"
+                                    aria-label="保存"
+                                  >
+                                    <SaveIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => exitEdit(row.papp_id)}
+                                    disabled={saving[row.papp_id]}
+                                    aria-label="取消编辑"
+                                  >
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </>
+                              ) : (
+                                <IconButton
+                                  size="small"
+                                  onClick={() => toggleEdit(row.papp_id)}
+                                  aria-label="编辑"
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </Box>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

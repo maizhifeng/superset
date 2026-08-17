@@ -11,12 +11,11 @@
 │  │                              │  │  (同一 Node.js 容器)          ││
 │  │  Flask Backend               │  │                              ││
 │  │  ├── /api/v1/chart/agent-data│  │  ├── Vite Dev Server (9000) ││
-│  │  │   (internal, no CSRF)    │  │  │   └── React Frontend     ││
+│  │  │   (@protect, JWT Bearer)  │  │  │   └── React Frontend     ││
 │  │  ├── /llm/chat/completions   │  │  │       PiAgentClient      ││
 │  │  │                           │  │  │       ↕ WebSocket        ││
-│  │  │  (X-Internal-Agent        │  │  ├── Pi Agent Service      ││
-│  │  │   + X-User-Id header      │  │  │   (port 3001, background)││
-│  │  │   + g.user bypass)        │  │  │                          ││
+│  │  │  (acting user = JWT sub,  │  │  ├── Pi Agent Service      ││
+│  │  │   g.user set by FAB)      │  │  │   (port 3001, background)││
 │  │  └── RBAC via g.user         │  │  │  @earendil-works/        ││
 │  └──────────────────────────────┘  │  │   pi-coding-agent SDK    ││
 │                                    │  │                           ││
@@ -45,7 +44,7 @@ Pi agent 与 Vite 共用 `superset-node` 容器，通过 `docker/docker-frontend
 | 前端通信协议 | WebSocket，Vite proxy 转发 `/agent/ws` → `ws://localhost:3001` |
 | LLM 提供方 | 直连 `http://host.docker.internal:1234/v1`，`api: "openai-completions"` |
 | Tool → Flask | Pi agent tool 中 `fetch("http://superset-light:8088/api/v1/chart/agent-data")` |
-| Flask 认证 | 新 endpoint `/agent-data`，无 `@protect()`，CSRF 已 exempt，`g.user = security_manager.find_user(username=X-User-Id)` |
+| Flask 认证 | 新 endpoint `/agent-data`，`@protect()` + JWT Bearer，`g.user` 由 FAB 从 token 解析（acting user = JWT sub，行级安全逐用户生效）；无 `X-User-Id`/`X-Internal-Agent` 头旁路 |
 | 前端迁移策略 | 增量替换：保留 UI 组件 + Zustand store，替换 `streamWithTools()` |
 | 初始 tools | 仅 `query_superset` |
 | 容器环境 | 多容器 docker-compose，Node.js 22，Flask dev mode |
@@ -116,7 +115,9 @@ superset/
   { type: "error", message: "...", retryable: true/false }
 ```
 
-## 6. 系统提示词结构（system-prompt.ts 约 160 行）
+## 6. 系统提示词结构（system-prompt.ts 由 agent-config.json 数据驱动生成）
+
+提示词由 `buildSystemPrompt()` 从 `agent-config.json`（`AGENT_CONFIG_PATH` 可覆盖）渲染，指标白名单、日报分析视角、业务规则均为配置化，无需改代码即可调整：
 
 | 章节 | 内容 |
 |------|------|
@@ -181,8 +182,9 @@ superset/
 | 方面 | 详情 |
 |------|------|
 | 端点 | `POST /api/v1/chart/agent-data` |
-| 认证 | `X-User-Id` header → `security_manager.find_user(username=...)` → `g.user` |
-| CSRF | 已 exempt：`csrf.exempt("superset.charts.data.api.agent_data")` |
+| 认证 | `@protect()`：要求有效 JWT Bearer token，`g.user` 由 FAB 从 token 解析（`load_user_jwt` 按 `sub` 加载用户） |
+| CSRF | JWT 存 header 不存 cookie，无 session 型 CSRF 风险（fork 已全局 `WTF_CSRF_ENABLED = False`） |
+| 身份可信来源 | Pi agent 服务在 WS 层调用 `/api/v1/me/` 校验 token（`ws-auth.ts`），`new_session`/`prompt` 未认证一律拒绝；客户端提交的 `user_id` 不再作为身份依据 |
 | 查询 | 复用 `ChartDataCommand(query_context)` + `_create_query_context_from_form()` |
 | 数据流 | JSON body → QueryContext → validate → SQL → PostgreSQL → JSON result |
 | 依赖 | `include_route_methods` 必须包含 `"agent_data"` |
@@ -194,6 +196,7 @@ superset/
 |------|------|--------|
 | `LLM_BASE_URL` | Pi agent → LLM 地址 | `http://host.docker.internal:1234/v1` |
 | `LLM_MODEL` | LLM 模型 ID | `gemma-4-e2b-it` |
+| `AGENT_CONFIG_PATH` | Agent 业务配置（指标/日报视角/业务规则 JSON） | `agents/pi-agent-server/agent-config.json` |
 | `FLASK_INTERNAL_URL` | Pi agent → Flask 内部调用 | `http://superset-light:8088` |
 | `WS_PORT` | Pi agent WebSocket 端口 | `3001` |
 | `VITE_PI_AGENT_WS_URL` | 前端 WebSocket（开发用） | `ws://localhost:9000/agent/ws`（Vite proxy） |
@@ -262,7 +265,7 @@ superset/
 | prompt 发送 + 流式输出 | ✅ 通过（text_delta 事件，闪烁光标） |
 | tool_execution 正常 | ✅ 通过（query_superset 调用 Flask 并返回数据） |
 | 结果渲染 | ✅ 通过（MUI Table + MarkdownRenderer） |
-| 用户上下文传递 | ✅ 通过（`X-User-Id` → `g.user`） |
+| 用户上下文传递 | ✅ 通过（JWT Bearer → `/api/v1/me/` 校验 → `g.user`，WS 层拒绝未认证连接） |
 | 快捷按钮（数据分析/查询/报表/对比） | ✅ 通过（消息队列等待 session_created） |
 | 生成报表模板 | ✅ 通过（双周对比 + 渠道/媒体明细 + 优化建议） |
 | CSRF 豁免 | ✅ 通过（新端点 `/agent-data`，无 `@protect`） |

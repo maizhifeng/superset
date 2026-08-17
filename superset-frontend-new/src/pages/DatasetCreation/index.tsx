@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -13,6 +14,11 @@ import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { Database, TableResult } from "@/types/api";
 
 export default function DatasetCreation() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initDatabase = Number(searchParams.get("database")) || "";
+  const initSchema = searchParams.get("schema") ?? "";
+  const initTable = searchParams.get("table") ?? "";
   const [databases, setDatabases] = useState<Database[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
   const [tables, setTables] = useState<TableResult[]>([]);
@@ -23,10 +29,21 @@ export default function DatasetCreation() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [createdId, setCreatedId] = useState<number | null>(null);
 
-  const [databaseId, setDatabaseId] = useState<number | "">("");
-  const [schema, setSchema] = useState("");
-  const [tableName, setTableName] = useState("");
+  const [databaseId, setDatabaseId] = useState<number | "">(initDatabase);
+  const [schema, setSchema] = useState(initSchema);
+  const [tableName, setTableName] = useState(initTable);
+
+  // 从 URL 参数预填（兜底首帧渲染时序：参数字典可能晚于首帧可用）。
+  useEffect(() => {
+    if (searchParams.get("database")) {
+      setDatabaseId(Number(searchParams.get("database")) || "");
+    }
+    if (searchParams.get("schema")) setSchema(searchParams.get("schema")!);
+    if (searchParams.get("table")) setTableName(searchParams.get("table")!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     api
@@ -92,7 +109,11 @@ export default function DatasetCreation() {
     };
 
     try {
-      await api.post("/dataset/", payload);
+      const res = await api.post<{ id?: number }>("/dataset/", payload);
+      const createdId = res.data?.id;
+      if (createdId != null) {
+        setCreatedId(createdId);
+      }
       setSubmitSuccess(true);
       setTableName("");
       setSchema("");
@@ -128,7 +149,21 @@ export default function DatasetCreation() {
     <Box sx={{ p: 3 }}>
       <PageHeader title="创建数据集" />
       {submitSuccess && (
-        <Alert severity="success" sx={{ mb: 2 }}>
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          action={
+            createdId != null ? (
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => navigate(`/dataset/edit/${createdId}`)}
+              >
+                立即打开编辑
+              </Button>
+            ) : undefined
+          }
+        >
           数据集创建成功
         </Alert>
       )}
@@ -186,8 +221,10 @@ export default function DatasetCreation() {
             freeSolo
             options={tables.map((t) => t.value)}
             loading={tablesLoading}
+            value={tableName || null}
             inputValue={tableName}
             onInputChange={(_, v) => setTableName(v)}
+            onChange={(_, v) => setTableName(v ?? "")}
             renderOption={(props, option) => {
               const t = tables.find((x) => x.value === option);
               return (

@@ -611,11 +611,15 @@ def _run_federated_query(  # noqa: C901
         )
 
     # Execute all sides with per-side error isolation.
-    side_results = _execute_federated_sides(side_configs, labels_expected)
+    side_results, _failed_labels = _execute_federated_sides(
+        side_configs, labels_expected
+    )
     if not side_results:
         raise QueryObjectValidationError("All federated database sides failed")
 
-    # Merge all successful side results.
+    # Merge all successful side results.  Zero-row sides are kept so a query
+    # that legitimately matches no rows yields an empty result instead of
+    # surfacing as a hard failure.
     if len(side_results) == 1:
         merged_df = side_results[0][1]
     else:
@@ -624,9 +628,9 @@ def _run_federated_query(  # noqa: C901
             [label for label, _ in side_results],
         )
 
+    if "_db_source" in merged_df.columns:
+        merged_df = merged_df.drop(columns=["_db_source"])
     if not merged_df.empty:
-        if "_db_source" in merged_df.columns:
-            merged_df = merged_df.drop(columns=["_db_source"])
         merged_df = merged_df[labels_expected]
 
         # Re-aggregate: when both databases contribute rows for the same
@@ -766,8 +770,12 @@ def _assign_label(
     df: pd.DataFrame,
     labels_expected: list[str],
 ) -> pd.DataFrame | None:
-    if df is None or df.empty:
+    if df is None:
         return df
+    if df.empty:
+        # Relabel a zero-row result to the expected labels so downstream
+        # column handling stays consistent even when a side has no data.
+        return df.reindex(columns=labels_expected)
     if len(df.columns) < len(labels_expected):
         return None
     if len(df.columns) > len(labels_expected):
@@ -781,7 +789,7 @@ def _run_federated_side(
     labels_expected: list[str],
     _app: Any,
     _user: Any,
-) -> tuple[str, pd.DataFrame | None]:
+) -> tuple[str, pd.DataFrame | None, bool]:
     from flask import g
 
     db_conn, sql, db_label, catalog, schema = side
@@ -797,11 +805,15 @@ def _run_federated_side(
                 schema,
                 sql,
             )
-            return db_label, db_conn.get_df(
-                sql=sql,
-                catalog=catalog,
-                schema=schema,
-                mutator=lambda df: _assign_label(df, labels_expected),
+            return (
+                db_label,
+                db_conn.get_df(
+                    sql=sql,
+                    catalog=catalog,
+                    schema=schema,
+                    mutator=lambda df: _assign_label(df, labels_expected),
+                ),
+                True,
             )
     except Exception as ex:
         logger.error(
@@ -810,19 +822,21 @@ def _run_federated_side(
             ex,
             exc_info=True,
         )
-        return db_label, None
+        return db_label, None, False
 
 
 def _execute_federated_sides(
     sides: list[tuple[Any, str, str, str | None, str | None]],
     labels_expected: list[str],
-) -> list[tuple[str, pd.DataFrame]]:
+) -> tuple[list[tuple[str, pd.DataFrame]], list[str]]:
     """Execute multiple database sides with per-side error isolation.
 
     Each side runs in its own thread.  A single side failure does not
-    affect other sides.  Returns (label, DataFrame) pairs for all
-    successful sides that produced data.  Raises only when every side
-    fails — partial success is accepted.
+    affect other sides.  Returns ``(results, failed_labels)``: ``results``
+    holds every side that executed successfully — including zero-row
+    results, which are legitimate (e.g. a filter matches no rows) —
+    while ``failed_labels`` holds the sides that raised.  An empty
+    ``results`` list means every side errored.
     """
     from flask import current_app, g
 
@@ -837,7 +851,7 @@ def _execute_federated_sides(
     )
 
     if not sides:
-        return []
+        return [], []
 
     with ThreadPoolExecutor(max_workers=min(len(sides), 5)) as pool:
         futures = {
@@ -845,11 +859,18 @@ def _execute_federated_sides(
             for s in sides
         }
         results: list[tuple[str, pd.DataFrame]] = []
+        failed: list[str] = []
         for future in as_completed(futures):
-            label, df = future.result()
-            if df is not None and not df.empty:
+            label, df, ok = future.result()
+            if ok and df is not None:
                 results.append((label, df))
+                if df.empty:
+                    logger.warning(
+                        "Federated side [%s] returned no rows",
+                        label,
+                    )
             else:
+                failed.append(label)
                 logger.warning(
                     "Federated side [%s] contributed no data",
                     label,
@@ -858,7 +879,6 @@ def _execute_federated_sides(
     succeeded = len(results)
     total = len(sides)
     if succeeded < total:
-        failed = [s[2] for s in sides if s[2] not in {r[0] for r in results}]
         logger.warning(
             "Federated query: %d/%d sides succeeded (failed: %s)",
             succeeded,
@@ -868,7 +888,7 @@ def _execute_federated_sides(
     else:
         logger.info("Federated query: all %d sides succeeded", total)
 
-    return results
+    return results, failed
 
 
 @bi_blueprint.route(

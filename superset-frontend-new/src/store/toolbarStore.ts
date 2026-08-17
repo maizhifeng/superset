@@ -8,6 +8,7 @@ export interface ToolEntry {
   showOnMobile: boolean;
   primary?: boolean;
   fabIcon?: ReactNode;
+  fabRender?: ReactNode;
   fabLabel?: string;
   action?: () => void;
   fabColor?:
@@ -58,6 +59,6 @@ export function useFabTools() {
   const registry = useToolbarStore((s) => s.registry);
   return Object.values(registry)
     .flat()
-    .filter((t) => t.fabIcon)
+    .filter((t) => t.fabIcon || t.fabRender)
     .sort((a, b) => a.priority - b.priority);
 }

@@ -18,6 +18,8 @@ import TablePagination from "@mui/material/TablePagination";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
+import EditIcon from "@mui/icons-material/Edit";
+import CloseIcon from "@mui/icons-material/Close";
 import CircularProgress from "@mui/material/CircularProgress";
 import InputAdornment from "@mui/material/InputAdornment";
 import Select from "@mui/material/Select";
@@ -76,6 +78,9 @@ export default function ProfitSharingConfig() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState<Record<number, boolean>>({});
+  // Rows currently in edit mode. By default rows render as plain text to keep
+  // the initial paint light; form controls mount only when a row is activated.
+  const [editingIds, setEditingIds] = useState<ReadonlySet<number>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -141,28 +146,53 @@ export default function ProfitSharingConfig() {
     }
   }, [rows]);
 
-  const handleSave = useCallback(async (row: WhitelistRow) => {
-    setSaving((prev) => ({ ...prev, [row.id]: true }));
-    setError(null);
-    setSuccess(null);
-    try {
-      await api.put(`/project/profit-sharing/${row.id}`, {
-        上线时间: row.上线时间,
-        渠道商分成: row.渠道商分成,
-        分成比例: row.分成比例,
-        研发分成: row.研发分成,
-        IP分成: row.IP分成,
-        分成方式: row.分成方式,
-        商户分成: row.商户分成,
-        ios虚拟支付分成: row.ios虚拟支付分成,
-      });
-      setSuccess(`已保存`);
-    } catch (err: unknown) {
-      setError(parseErrorMessage(err, "保存失败"));
-    } finally {
-      setSaving((prev) => ({ ...prev, [row.id]: false }));
-    }
+  const toggleEdit = useCallback((id: number) => {
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
+
+  const exitEdit = useCallback((id: number) => {
+    setEditingIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleSave = useCallback(
+    async (row: WhitelistRow) => {
+      setSaving((prev) => ({ ...prev, [row.id]: true }));
+      setError(null);
+      setSuccess(null);
+      try {
+        await api.put(`/project/profit-sharing/${row.id}`, {
+          上线时间: row.上线时间,
+          渠道商分成: row.渠道商分成,
+          分成比例: row.分成比例,
+          研发分成: row.研发分成,
+          IP分成: row.IP分成,
+          分成方式: row.分成方式,
+          商户分成: row.商户分成,
+          ios虚拟支付分成: row.ios虚拟支付分成,
+        });
+        setSuccess(`已保存`);
+        exitEdit(row.id);
+      } catch (err: unknown) {
+        setError(parseErrorMessage(err, "保存失败"));
+      } finally {
+        setSaving((prev) => ({ ...prev, [row.id]: false }));
+      }
+    },
+    [exitEdit],
+  );
 
   const updateField = useCallback(
     (
@@ -181,6 +211,24 @@ export default function ProfitSharingConfig() {
         prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
       );
     },
+    [],
+  );
+
+  const renderText = useCallback(
+    (value: string | undefined, strong = false) => (
+      <Typography
+        sx={{
+          fontSize: "0.75rem",
+          px: 1,
+          py: 0.5,
+          textAlign: "center",
+          fontWeight: strong ? 600 : 400,
+          color: strong ? "text.secondary" : "text.primary",
+        }}
+      >
+        {value ?? ""}
+      </Typography>
+    ),
     [],
   );
 
@@ -450,7 +498,9 @@ export default function ProfitSharingConfig() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {visibleRows.map((row) => (
+                    {visibleRows.map((row) => {
+                      const editing = editingIds.has(row.id);
+                      return (
                       <TableRow key={row.id}>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <Typography
@@ -483,6 +533,7 @@ export default function ProfitSharingConfig() {
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -516,10 +567,14 @@ export default function ProfitSharingConfig() {
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
+                          ) : (
+                            renderText(row.商户分成)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -553,10 +608,14 @@ export default function ProfitSharingConfig() {
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
+                          ) : (
+                            renderText(row.ios虚拟支付分成)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -590,10 +649,14 @@ export default function ProfitSharingConfig() {
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
+                          ) : (
+                            renderText(row.渠道商分成)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -627,10 +690,14 @@ export default function ProfitSharingConfig() {
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
+                          ) : (
+                            renderText(row.研发分成)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 90 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -664,6 +731,9 @@ export default function ProfitSharingConfig() {
                             }}
                             sx={{ "& input": { textAlign: "center" } }}
                           />
+                          ) : (
+                            renderText(row.IP分成)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 100 }}
@@ -694,6 +764,7 @@ export default function ProfitSharingConfig() {
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
                         >
+                          {editing ? (
                           <Select
                             size="small"
                             variant="standard"
@@ -716,10 +787,14 @@ export default function ProfitSharingConfig() {
                               </MenuItem>
                             ))}
                           </Select>
+                          ) : (
+                            renderText(row.分成方式)
+                          )}
                         </TableCell>
                         <TableCell
                           sx={{ p: 0.5, textAlign: "center", minWidth: 70 }}
                         >
+                          {editing ? (
                           <TextField
                             size="small"
                             variant="standard"
@@ -742,19 +817,52 @@ export default function ProfitSharingConfig() {
                               "& input": { textAlign: "center", minWidth: 0 },
                             }}
                           />
+                          ) : (
+                            renderText(row.上线时间)
+                          )}
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <IconButton
-                            size="small"
-                            onClick={() => void handleSave(row)}
-                            disabled={saving[row.id]}
-                            color="primary"
+                          <Box
+                            sx={{
+                              display: "flex",
+                              justifyContent: "center",
+                              gap: 0.25,
+                            }}
                           >
-                            <SaveIcon fontSize="small" />
-                          </IconButton>
+                            {editing ? (
+                              <>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => void handleSave(row)}
+                                  disabled={saving[row.id]}
+                                  color="primary"
+                                  aria-label="保存"
+                                >
+                                  <SaveIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton
+                                  size="small"
+                                  onClick={() => exitEdit(row.id)}
+                                  disabled={saving[row.id]}
+                                  aria-label="取消编辑"
+                                >
+                                  <CloseIcon fontSize="small" />
+                                </IconButton>
+                              </>
+                            ) : (
+                              <IconButton
+                                size="small"
+                                onClick={() => toggleEdit(row.id)}
+                                aria-label="编辑"
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Box>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

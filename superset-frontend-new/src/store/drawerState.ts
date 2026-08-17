@@ -4,10 +4,12 @@ import type { ChartData, DashboardFilterValue } from "@/types/api";
 export type AiDrawerMode = "assistant" | "insight";
 
 interface OpenInsightOpts {
-  chartId: number;
+  chartId?: number;
   chartMeta?: ChartData;
   filters?: Record<string, DashboardFilterValue>;
   dashboardId?: string;
+  /** 打开助手时预填到输入框的提问。 */
+  initialQuestion?: string;
 }
 
 interface DrawerState {
@@ -17,6 +19,7 @@ interface DrawerState {
   insightChartId: number | null;
   insightChartMeta: ChartData | undefined;
   insightFilters: Record<string, DashboardFilterValue>;
+  initialQuestion: string;
   openAiDrawer: (mode: AiDrawerMode, insightOpts?: OpenInsightOpts) => void;
   closeAiDrawer: () => void;
   setDrawerWidth: (width: number) => void;
@@ -32,6 +35,7 @@ export const useDrawerStore = create<DrawerState>()((set) => ({
   insightChartId: null,
   insightChartMeta: undefined,
   insightFilters: {},
+  initialQuestion: "",
 
   openAiDrawer: (mode, insightOpts) =>
     set({
@@ -40,6 +44,7 @@ export const useDrawerStore = create<DrawerState>()((set) => ({
       insightChartId: insightOpts?.chartId ?? null,
       insightChartMeta: insightOpts?.chartMeta ?? undefined,
       insightFilters: insightOpts?.filters ?? {},
+      initialQuestion: insightOpts?.initialQuestion ?? "",
     }),
 
   closeAiDrawer: () =>
@@ -48,6 +53,7 @@ export const useDrawerStore = create<DrawerState>()((set) => ({
       insightChartId: null,
       insightChartMeta: undefined,
       insightFilters: {},
+      initialQuestion: "",
     }),
 
   setDrawerWidth: (width) => set({ drawerWidth: width }),

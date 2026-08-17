@@ -1,4 +1,4 @@
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
 import Divider from "@mui/material/Divider";
@@ -9,7 +9,6 @@ import ListItemText from "@mui/material/ListItemText";
 import Typography from "@mui/material/Typography";
 import Avatar from "@mui/material/Avatar";
 import Logout from "@mui/icons-material/Logout";
-import SettingsIcon from "@mui/icons-material/Settings";
 
 interface NavItem {
   id: string;
@@ -36,8 +35,6 @@ export default function MobileDrawer({
   username,
   onLogout,
 }: MobileDrawerProps) {
-  const navigate = useNavigate();
-
   return (
     <Drawer
       anchor="left"
@@ -115,21 +112,6 @@ export default function MobileDrawer({
               </Typography>
             </Box>
           </Box>
-          <ListItemButton
-            onClick={() => {
-              navigate("/settings");
-              onClose();
-            }}
-            sx={{ borderRadius: 1, mb: 0.5 }}
-          >
-            <SettingsIcon
-              sx={{ fontSize: 18, mr: 1, color: "text.secondary" }}
-            />
-            <ListItemText
-              primary="设置"
-              slotProps={{ primary: { sx: { fontSize: "0.8125rem" } } }}
-            />
-          </ListItemButton>
           <ListItemButton onClick={onLogout} sx={{ borderRadius: 1 }}>
             <Logout sx={{ fontSize: 18, mr: 1, color: "text.secondary" }} />
             <ListItemText
