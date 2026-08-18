@@ -141,13 +141,16 @@ export default function DatabaseList() {
   const [favoritesOnly, setFavoritesOnly] = useState(
     () => localStorage.getItem(FAV_KEY) === "1",
   );
+  const [sqllabOnly, setSqllabOnly] = useState(false);
   const [backendFilter, setBackendFilter] = useState(
     () => localStorage.getItem(BACKEND_FILTER_KEY) ?? "",
   );
   const visibleRows = (backendFilter
     ? rows.filter((r) => r.backend === backendFilter)
     : rows
-  ).filter((r) => !favoritesOnly || favIds.includes(r.id));
+  )
+    .filter((r) => !favoritesOnly || favIds.includes(r.id))
+    .filter((r) => !sqllabOnly || r.expose_in_sqllab);
   const backendOptions = Array.from(
     new Set(rows.map((r) => r.backend).filter(Boolean)),
   );
@@ -268,6 +271,25 @@ export default function DatabaseList() {
         ),
       },
       {
+        id: "sqllab_filter",
+        priority: 2.75,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={sqllabOnly ? "显示全部数据库" : "仅显示 SQL 实验室可用的数据库"}>
+            <Button
+              size="small"
+              variant={sqllabOnly ? "contained" : "text"}
+              color={sqllabOnly ? "info" : "inherit"}
+              startIcon={<CodeIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setSqllabOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              SQL 实验室
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "export",
         priority: 2,
         showOnMobile: false,
@@ -321,7 +343,7 @@ export default function DatabaseList() {
       },
     ]);
     return () => unregisterTools("database_list");
-  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, handleExportCsv, handleCopyAllNames, visibleRows.length, fetchData, loading]);
+  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, handleExportCsv, handleCopyAllNames, visibleRows.length, fetchData, loading]);
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
