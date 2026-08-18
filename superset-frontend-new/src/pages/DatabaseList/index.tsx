@@ -172,6 +172,21 @@ export default function DatabaseList() {
     }
   }, [visibleRows, notify]);
 
+  /** 复制当前筛选后的后端名（去重，逗号分隔）。 */
+  const handleCopyAllBackends = useCallback(async () => {
+    const bks = Array.from(new Set(visibleRows.map((r) => r.backend).filter(Boolean)));
+    if (bks.length === 0) {
+      notify({ severity: "warning", message: "暂无后端数据" });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(bks.join(", "));
+      notify({ severity: "success", message: `已复制 ${bks.length} 种后端` });
+    } catch {
+      notify({ severity: "error", message: "复制失败" });
+    }
+  }, [visibleRows, notify]);
+
   /** 导出当前筛选后的数据库列表为 CSV。 */
   const handleExportCsv = useCallback(() => {
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -349,6 +364,25 @@ export default function DatabaseList() {
         ),
       },
       {
+        id: "copy_backends",
+        priority: 1.7,
+        showOnMobile: false,
+        render: (
+          <Tooltip title="复制所有后端引擎名（去重）">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
+              onClick={() => void handleCopyAllBackends()}
+              disabled={visibleRows.length === 0}
+              sx={{ textTransform: "none" }}
+            >
+              复制后端
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "search",
         priority: 5,
         showOnMobile: false,
@@ -364,7 +398,7 @@ export default function DatabaseList() {
       },
     ]);
     return () => unregisterTools("database_list");
-  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, dmlOnly, setDmlOnly, handleExportCsv, handleCopyAllNames, visibleRows.length, fetchData, loading]);
+  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, dmlOnly, setDmlOnly, handleExportCsv, handleCopyAllNames, handleCopyAllBackends, visibleRows.length, fetchData, loading]);
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
