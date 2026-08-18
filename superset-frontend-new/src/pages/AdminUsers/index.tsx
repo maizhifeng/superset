@@ -31,6 +31,7 @@ import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import LockIcon from "@mui/icons-material/Lock";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import MailIcon from "@mui/icons-material/Mail";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -100,6 +101,10 @@ export default function AdminUsers() {
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
 
+  const [activeOnly, setActiveOnly] = useState(false);
+  const filteredRows = activeOnly
+    ? rows.filter((r) => r.active ?? r.is_active)
+    : rows;
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [editTarget, setEditTarget] = useState<AdminUser | null>(null);
   const [editRoles, setEditRoles] = useState<number[]>([]);
@@ -174,11 +179,11 @@ export default function AdminUsers() {
   };
   /** 导出当前加载的用户列表为 CSV。 */
   const handleExportCsv = useCallback(() => {
-    if (rows.length === 0) return;
+    if (filteredRows.length === 0) return;
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadCsv(
       ["ID", "用户名", "邮箱", "状态", "最近登录", "角色"],
-      rows.map((r) => ({
+      filteredRows.map((r) => ({
         ID: r.id,
         用户名: r.username,
         邮箱: r.email,
@@ -188,11 +193,11 @@ export default function AdminUsers() {
       })),
       `users-${ts}.csv`,
     );
-  }, [rows]);
+  }, [filteredRows]);
 
   /** 复制当前加载的用户名（每行一个）。 */
   const handleCopyAllUsernames = useCallback(async () => {
-    const names = rows.map((r) => r.username).filter(Boolean);
+    const names = filteredRows.map((r) => r.username).filter(Boolean);
     if (names.length === 0) {
       notify({ severity: "warning", message: "暂无用户数据" });
       return;
@@ -203,10 +208,10 @@ export default function AdminUsers() {
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
-  }, [rows, notify]);
+  }, [filteredRows, notify]);
   /** 复制当前加载的用户邮箱（每行一个）。 */
   const handleCopyAllEmails = useCallback(async () => {
-    const emails = rows.map((r) => r.email).filter(Boolean);
+    const emails = filteredRows.map((r) => r.email).filter(Boolean);
     if (emails.length === 0) {
       notify({ severity: "warning", message: "暂无邮箱数据" });
       return;
@@ -217,7 +222,7 @@ export default function AdminUsers() {
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
-  }, [rows, notify]);
+  }, [filteredRows, notify]);
   /** 生成一个随机初始密码并填入创建表单。 */
   const generatePassword = () => {
     const chars =
@@ -275,6 +280,25 @@ export default function AdminUsers() {
         ),
       },
       {
+        id: "active_filter",
+        priority: 2.5,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={activeOnly ? "显示全部用户" : "仅显示活跃用户"}>
+            <Button
+              size="small"
+              variant={activeOnly ? "contained" : "text"}
+              color={activeOnly ? "success" : "inherit"}
+              startIcon={<CheckCircleIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setActiveOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              活跃
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "export",
         priority: 2,
         showOnMobile: false,
@@ -285,7 +309,7 @@ export default function AdminUsers() {
               variant="outlined"
               startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
               onClick={handleExportCsv}
-              disabled={rows.length === 0}
+              disabled={filteredRows.length === 0}
               sx={{ textTransform: "none" }}
             >
               导出 CSV
@@ -304,7 +328,7 @@ export default function AdminUsers() {
               variant="outlined"
               startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
               onClick={() => void handleCopyAllUsernames()}
-              disabled={rows.length === 0}
+              disabled={filteredRows.length === 0}
               sx={{ textTransform: "none" }}
             >
               复制用户名
@@ -323,7 +347,7 @@ export default function AdminUsers() {
               variant="outlined"
               startIcon={<MailIcon sx={{ fontSize: 15 }} />}
               onClick={() => void handleCopyAllEmails()}
-              disabled={rows.length === 0}
+              disabled={filteredRows.length === 0}
               sx={{ textTransform: "none" }}
             >
               复制邮箱
@@ -347,7 +371,7 @@ export default function AdminUsers() {
       },
     ]);
     return () => unregisterTools("admin_users");
-  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllUsernames, handleCopyAllEmails, rows.length]);
+  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllUsernames, handleCopyAllEmails, activeOnly, setActiveOnly, filteredRows.length]);
 
   const columns: GridColDef[] = [
     {
@@ -594,7 +618,7 @@ export default function AdminUsers() {
     <ListPageLayout
       loading={loading}
       error={error}
-      hasData={rows.length > 0}
+      hasData={filteredRows.length > 0}
       emptyState={
         <>
           <EmptyState
@@ -619,7 +643,7 @@ export default function AdminUsers() {
     >
       <PageHeader title="用户管理" />
       <ResponsiveDataGrid
-        rows={rows}
+        rows={filteredRows}
         columns={columns}
         loading={loading}
         autoHeight
