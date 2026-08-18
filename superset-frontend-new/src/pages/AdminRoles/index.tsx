@@ -20,6 +20,7 @@ import FileCopyIcon from "@mui/icons-material/FileCopy";
 import CodeIcon from "@mui/icons-material/Code";
 import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import PeopleIcon from "@mui/icons-material/People";
 import DownloadIcon from "@mui/icons-material/Download";
 import { downloadCsv } from "@/utils/exportCsv";
 import type { GridColDef } from "@mui/x-data-grid";
@@ -64,6 +65,10 @@ export default function AdminRoles() {
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
   const notify = useNotificationStore((s) => s.notify);
+  const [hasUsersOnly, setHasUsersOnly] = useState(false);
+  const filteredRoles = hasUsersOnly
+    ? rows.filter((r) => (r.user_ids?.length ?? 0) > 0)
+    : rows;
 
   /** 复制角色名到剪贴板。 */
   const handleCopyRoleName = async (name: string) => {
@@ -107,11 +112,11 @@ export default function AdminRoles() {
 
   /** 导出当前加载的角色列表为 CSV。 */
   const handleExportCsv = useCallback(() => {
-    if (rows.length === 0) return;
+    if (filteredRoles.length === 0) return;
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadCsv(
       ["ID", "角色名称", "用户数", "权限数"],
-      rows.map((r) => ({
+      filteredRoles.map((r) => ({
         ID: r.id,
         角色名称: r.name,
         用户数: r.user_ids?.length ?? 0,
@@ -119,12 +124,12 @@ export default function AdminRoles() {
       })),
       `roles-${ts}.csv`,
     );
-  }, [rows]);
+  }, [filteredRoles]);
 
   /** 复制所有角色的权限 id（去重、逗号分隔）。 */
   const handleCopyAllPermissionIds = useCallback(async () => {
     const ids = Array.from(
-      new Set(rows.flatMap((r) => r.permission_ids ?? [])),
+      new Set(filteredRoles.flatMap((r) => r.permission_ids ?? [])),
     );
     if (ids.length === 0) {
       notify({ severity: "warning", message: "暂无权限数据" });
@@ -136,11 +141,11 @@ export default function AdminRoles() {
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
-  }, [rows, notify]);
+  }, [filteredRoles, notify]);
 
   /** 复制当前加载的角色名（每行一个）。 */
   const handleCopyAllRoleNames = useCallback(async () => {
-    const names = rows.map((r) => r.name).filter(Boolean);
+    const names = filteredRoles.map((r) => r.name).filter(Boolean);
     if (names.length === 0) {
       notify({ severity: "warning", message: "暂无角色数据" });
       return;
@@ -151,7 +156,7 @@ export default function AdminRoles() {
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
-  }, [rows, notify]);
+  }, [filteredRoles, notify]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -191,6 +196,25 @@ export default function AdminRoles() {
         ),
       },
       {
+        id: "users_filter",
+        priority: 2.5,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={hasUsersOnly ? "显示全部角色" : "仅显示有用户分配的角色"}>
+            <Button
+              size="small"
+              variant={hasUsersOnly ? "contained" : "text"}
+              color={hasUsersOnly ? "info" : "inherit"}
+              startIcon={<PeopleIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setHasUsersOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              有用户
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "export",
         priority: 2,
         showOnMobile: false,
@@ -201,7 +225,7 @@ export default function AdminRoles() {
               variant="outlined"
               startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
               onClick={handleExportCsv}
-              disabled={rows.length === 0}
+              disabled={filteredRoles.length === 0}
               sx={{ textTransform: "none" }}
             >
               导出 CSV
@@ -220,7 +244,7 @@ export default function AdminRoles() {
               variant="outlined"
               startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
               onClick={() => void handleCopyAllRoleNames()}
-              disabled={rows.length === 0}
+              disabled={filteredRoles.length === 0}
               sx={{ textTransform: "none" }}
             >
               复制角色名
@@ -239,7 +263,7 @@ export default function AdminRoles() {
               variant="outlined"
               startIcon={<FormatListNumberedIcon sx={{ fontSize: 15 }} />}
               onClick={() => void handleCopyAllPermissionIds()}
-              disabled={rows.length === 0}
+              disabled={filteredRoles.length === 0}
               sx={{ textTransform: "none" }}
             >
               复制权限 ID
@@ -263,7 +287,7 @@ export default function AdminRoles() {
       },
     ]);
     return () => unregisterTools("admin_roles");
-  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllRoleNames, handleCopyAllPermissionIds, rows.length]);
+  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllRoleNames, handleCopyAllPermissionIds, hasUsersOnly, setHasUsersOnly, filteredRoles.length]);
 
   const columns: GridColDef[] = [
     {
@@ -424,7 +448,7 @@ export default function AdminRoles() {
     <ListPageLayout
       loading={loading}
       error={error}
-      hasData={rows.length > 0}
+      hasData={filteredRoles.length > 0}
       emptyState={
         <>
           <EmptyState
@@ -449,7 +473,7 @@ export default function AdminRoles() {
     >
       <PageHeader title="角色管理" />
       <ResponsiveDataGrid
-        rows={rows}
+        rows={filteredRoles}
         columns={columns}
         loading={loading}
         autoHeight
