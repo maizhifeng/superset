@@ -113,8 +113,21 @@ export default function SearchOverlay({
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const [recentHits, setRecentHits] = useState<Hit[]>([]);
+  const [recentSqlQueries, setRecentSqlQueries] = useState<string[]>([]);
 
   const trimmed = query.trim();
+
+  // 读取 SQL Lab 最近执行的查询列表。
+  useEffect(() => {
+    if (!open || trimmed) return;
+    try {
+      const raw = localStorage.getItem("superset-sql-lab-recent-queries");
+      const arr = raw ? (JSON.parse(raw) as string[]) : [];
+      setRecentSqlQueries(Array.isArray(arr) ? arr.slice(0, 3) : []);
+    } catch {
+      setRecentSqlQueries([]);
+    }
+  }, [open, trimmed]);
 
   // 静态命令：按键入词过滤并始终展示，支持键盘导航跳转到常用模块。
   const commandHits = useMemo(() => {
@@ -552,6 +565,52 @@ export default function SearchOverlay({
                     />
                   </ListItemButton>
                 ))}
+              </List>
+            </Box>
+          )}
+          {!trimmed && recentSqlQueries.length > 0 && (
+            <Box sx={{ mt: 1 }}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", px: 1, pt: 0.5, fontWeight: 600 }}
+              >
+                最近的查询
+              </Typography>
+              <List dense>
+                {recentSqlQueries.map((q, i) => {
+                  const oneLine = q.split("\n").filter(Boolean).join(" ").slice(0, 80);
+                  return (
+                    <ListItemButton
+                      key={`${q}-${i}`}
+                      dense
+                      onClick={() => {
+                        onClose();
+                        navigate("/sqllab", { state: { initialSql: q } });
+                      }}
+                      sx={{ borderRadius: 1.5 }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 30 }}>
+                        <CodeIcon sx={{ fontSize: 18, color: "secondary.main" }} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {oneLine || q}
+                          </Typography>
+                        }
+                      />
+                    </ListItemButton>
+                  );
+                })}
               </List>
             </Box>
           )}
