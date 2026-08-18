@@ -6,6 +6,10 @@ import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -168,13 +172,17 @@ export default function SavedQueryList() {
   const [favoritesOnly, setFavoritesOnly] = useState(
     () => localStorage.getItem(SQ_FAV_KEY) === "1",
   );
+  const [dbFilter, setDbFilter] = useState("");
   useEffect(() => {
     if (favoritesOnly) localStorage.setItem(SQ_FAV_KEY, "1");
     else localStorage.removeItem(SQ_FAV_KEY);
   }, [favoritesOnly]);
-  const displayRows = favoritesOnly
-    ? rows.filter((r) => favIds.includes(r.id))
-    : rows;
+  const displayRows = rows
+    .filter((r) => !favoritesOnly || favIds.includes(r.id))
+    .filter((r) => !dbFilter || r.database?.database_name === dbFilter);
+  const databaseOptions = Array.from(
+    new Set(rows.map((r) => r.database?.database_name).filter(Boolean)),
+  );
 
   /** 复制当前加载的查询标签（每行一个）。 */
   const handleCopyAllLabels = useCallback(async () => {
@@ -338,6 +346,31 @@ export default function SavedQueryList() {
         ),
       },
       {
+        id: "db_filter",
+        priority: 1.8,
+        showOnMobile: false,
+        render: databaseOptions.length > 0 ? (
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel id="sq-db-label">数据库</InputLabel>
+            <Select
+              labelId="sq-db-label"
+              label="数据库"
+              value={dbFilter}
+              onChange={(e) => setDbFilter(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>全部</em>
+              </MenuItem>
+              {databaseOptions.map((d) => (
+                <MenuItem key={d} value={d}>
+                  {d}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ) : null,
+      },
+      {
         id: "search",
         priority: 5,
         showOnMobile: false,
@@ -353,7 +386,7 @@ export default function SavedQueryList() {
       },
     ]);
     return () => unregisterTools("saved_query_list");
-  }, [registerTools, unregisterTools, handleSearchChange, handleExportCsv, handleCopyAllLabels, favoritesOnly, setFavoritesOnly, favIds, displayRows.length, rows.length, fetchData, loading, navigate]);
+  }, [registerTools, unregisterTools, handleSearchChange, handleExportCsv, handleCopyAllLabels, favoritesOnly, setFavoritesOnly, favIds, dbFilter, setDbFilter, databaseOptions, displayRows.length, rows.length, fetchData, loading, navigate]);
 
   const columns: GridColDef[] = [
     {
