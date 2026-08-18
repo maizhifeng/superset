@@ -5,6 +5,10 @@ import Alert from "@mui/material/Alert";
 import IconButton from "@mui/material/IconButton";
 import Button from "@mui/material/Button";
 import Tooltip from "@mui/material/Tooltip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -69,13 +73,15 @@ export default function AlertReportList() {
     () => localStorage.getItem(AR_FAV_KEY) === "1",
   );
   const [activeOnly, setActiveOnly] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<"" | "alert" | "report">("");
   useEffect(() => {
     if (favoritesOnly) localStorage.setItem(AR_FAV_KEY, "1");
     else localStorage.removeItem(AR_FAV_KEY);
   }, [favoritesOnly]);
   const displayRows = rows
     .filter((r) => !favoritesOnly || favIds.includes(r.id))
-    .filter((r) => !activeOnly || r.active);
+    .filter((r) => !activeOnly || r.active)
+    .filter((r) => !typeFilter || r.type === typeFilter);
   const notify = useNotificationStore((s) => s.notify);
   /** 复制当前加载的警报/报告名（每行一个）。 */
   const handleCopyAllNames = useCallback(async () => {
@@ -237,6 +243,28 @@ export default function AlertReportList() {
         ),
       },
       {
+        id: "type_filter",
+        priority: 1.75,
+        showOnMobile: false,
+        render: (
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <InputLabel id="alert-type-label">类型</InputLabel>
+            <Select
+              labelId="alert-type-label"
+              label="类型"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <MenuItem value="">
+                <em>全部</em>
+              </MenuItem>
+              <MenuItem value="alert">警报</MenuItem>
+              <MenuItem value="report">报告</MenuItem>
+            </Select>
+          </FormControl>
+        ),
+      },
+      {
         id: "copy_names",
         priority: 2,
         showOnMobile: false,
@@ -271,7 +299,7 @@ export default function AlertReportList() {
       },
     ]);
     return () => unregisterTools("alert_report_list");
-  }, [registerTools, unregisterTools, handleSearchChange, favoritesOnly, setFavoritesOnly, favIds, activeOnly, setActiveOnly, handleCopyAllNames, displayRows.length]);
+  }, [registerTools, unregisterTools, handleSearchChange, favoritesOnly, setFavoritesOnly, favIds, activeOnly, setActiveOnly, typeFilter, setTypeFilter, handleCopyAllNames, displayRows.length]);
 
   const columns: GridColDef[] = [
     {
