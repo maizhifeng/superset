@@ -17,6 +17,7 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import PeopleIcon from "@mui/icons-material/People";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import SummarizeIcon from "@mui/icons-material/Summarize";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import Typography from "@mui/material/Typography";
 import { useNotificationStore } from "@/store/notificationStore";
 import type { GridColDef } from "@mui/x-data-grid";
@@ -67,13 +68,14 @@ export default function AlertReportList() {
   const [favoritesOnly, setFavoritesOnly] = useState(
     () => localStorage.getItem(AR_FAV_KEY) === "1",
   );
+  const [activeOnly, setActiveOnly] = useState(false);
   useEffect(() => {
     if (favoritesOnly) localStorage.setItem(AR_FAV_KEY, "1");
     else localStorage.removeItem(AR_FAV_KEY);
   }, [favoritesOnly]);
-  const displayRows = favoritesOnly
-    ? rows.filter((r) => favIds.includes(r.id))
-    : rows;
+  const displayRows = rows
+    .filter((r) => !favoritesOnly || favIds.includes(r.id))
+    .filter((r) => !activeOnly || r.active);
   const notify = useNotificationStore((s) => s.notify);
   /** 复制当前加载的警报/报告名（每行一个）。 */
   const handleCopyAllNames = useCallback(async () => {
@@ -216,6 +218,25 @@ export default function AlertReportList() {
         ),
       },
       {
+        id: "active_filter",
+        priority: 2.25,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={activeOnly ? "显示全部警报" : "仅显示活跃的警报"}>
+            <Button
+              size="small"
+              variant={activeOnly ? "contained" : "text"}
+              color={activeOnly ? "success" : "inherit"}
+              startIcon={<CheckCircleIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setActiveOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              活跃
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "copy_names",
         priority: 2,
         showOnMobile: false,
@@ -250,7 +271,7 @@ export default function AlertReportList() {
       },
     ]);
     return () => unregisterTools("alert_report_list");
-  }, [registerTools, unregisterTools, handleSearchChange, favoritesOnly, setFavoritesOnly, favIds, handleCopyAllNames, displayRows.length]);
+  }, [registerTools, unregisterTools, handleSearchChange, favoritesOnly, setFavoritesOnly, favIds, activeOnly, setActiveOnly, handleCopyAllNames, displayRows.length]);
 
   const columns: GridColDef[] = [
     {
