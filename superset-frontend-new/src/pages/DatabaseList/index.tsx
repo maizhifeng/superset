@@ -23,8 +23,8 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import LinkIcon from "@mui/icons-material/Link";
 import CodeIcon from "@mui/icons-material/Code";
-import StorageIcon from "@mui/icons-material/Storage";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import StorageIcon from "@mui/icons-material/Storage";
 import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -142,6 +142,7 @@ export default function DatabaseList() {
     () => localStorage.getItem(FAV_KEY) === "1",
   );
   const [sqllabOnly, setSqllabOnly] = useState(false);
+  const [dmlOnly, setDmlOnly] = useState(false);
   const [backendFilter, setBackendFilter] = useState(
     () => localStorage.getItem(BACKEND_FILTER_KEY) ?? "",
   );
@@ -150,7 +151,8 @@ export default function DatabaseList() {
     : rows
   )
     .filter((r) => !favoritesOnly || favIds.includes(r.id))
-    .filter((r) => !sqllabOnly || r.expose_in_sqllab);
+    .filter((r) => !sqllabOnly || r.expose_in_sqllab)
+    .filter((r) => !dmlOnly || r.allow_dml);
   const backendOptions = Array.from(
     new Set(rows.map((r) => r.backend).filter(Boolean)),
   );
@@ -290,6 +292,25 @@ export default function DatabaseList() {
         ),
       },
       {
+        id: "dml_filter",
+        priority: 2.65,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={dmlOnly ? "显示全部数据库" : "仅显示允许 DML 的数据库"}>
+            <Button
+              size="small"
+              variant={dmlOnly ? "contained" : "text"}
+              color={dmlOnly ? "success" : "inherit"}
+              startIcon={<CheckCircleIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setDmlOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              DML
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "export",
         priority: 2,
         showOnMobile: false,
@@ -343,7 +364,7 @@ export default function DatabaseList() {
       },
     ]);
     return () => unregisterTools("database_list");
-  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, handleExportCsv, handleCopyAllNames, visibleRows.length, fetchData, loading]);
+  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, dmlOnly, setDmlOnly, handleExportCsv, handleCopyAllNames, visibleRows.length, fetchData, loading]);
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
