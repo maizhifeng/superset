@@ -66,9 +66,10 @@ export default function AdminRoles() {
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
   const notify = useNotificationStore((s) => s.notify);
   const [hasUsersOnly, setHasUsersOnly] = useState(false);
-  const filteredRoles = hasUsersOnly
-    ? rows.filter((r) => (r.user_ids?.length ?? 0) > 0)
-    : rows;
+  const [hasPermsOnly, setHasPermsOnly] = useState(false);
+  const filteredRoles = rows
+    .filter((r) => !hasUsersOnly || (r.user_ids?.length ?? 0) > 0)
+    .filter((r) => !hasPermsOnly || (r.permission_ids?.length ?? 0) > 0);
 
   /** 复制角色名到剪贴板。 */
   const handleCopyRoleName = async (name: string) => {
@@ -215,6 +216,25 @@ export default function AdminRoles() {
         ),
       },
       {
+        id: "perms_filter",
+        priority: 2.4,
+        showOnMobile: false,
+        render: (
+          <Tooltip title={hasPermsOnly ? "显示全部角色" : "仅显示有权限分配的角色"}>
+            <Button
+              size="small"
+              variant={hasPermsOnly ? "contained" : "text"}
+              color={hasPermsOnly ? "warning" : "inherit"}
+              startIcon={<SecurityIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setHasPermsOnly((v) => !v)}
+              sx={{ textTransform: "none", minWidth: 90 }}
+            >
+              有权限
+            </Button>
+          </Tooltip>
+        ),
+      },
+      {
         id: "export",
         priority: 2,
         showOnMobile: false,
@@ -287,7 +307,7 @@ export default function AdminRoles() {
       },
     ]);
     return () => unregisterTools("admin_roles");
-  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllRoleNames, handleCopyAllPermissionIds, hasUsersOnly, setHasUsersOnly, filteredRoles.length]);
+  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllRoleNames, handleCopyAllPermissionIds, hasUsersOnly, setHasUsersOnly, hasPermsOnly, setHasPermsOnly, filteredRoles.length]);
 
   const columns: GridColDef[] = [
     {
