@@ -13,6 +13,7 @@ import InputLabel from "@mui/material/InputLabel";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import DeleteIcon from "@mui/icons-material/Delete";
+import TagIcon from "@mui/icons-material/Tag";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import AddIcon from "@mui/icons-material/Add";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
@@ -625,6 +626,30 @@ export default function DashboardList() {
                         }}
                       >
                         <ContentCopyIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="复制 ID">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void (async () => {
+                            try {
+                              await navigator.clipboard.writeText(String(dashboard.id));
+                              notify({ severity: "success", message: `已复制仪表板 ID ${dashboard.id}` });
+                            } catch {
+                              notify({ severity: "error", message: "复制失败" });
+                            }
+                          })();
+                        }}
+                        sx={{
+                          bgcolor: "background.paper",
+                          boxShadow: "var(--mui-palette-shadow-sm)",
+                          mr: 0.5,
+                          "&:hover": { bgcolor: "action.hover" },
+                        }}
+                      >
+                        <TagIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="重命名">
