@@ -46,6 +46,12 @@ const defaultItems: NavItem[] = [
     builtIn: true,
     roles: ["Admin"],
   },
+  {
+    id: "daily_briefing",
+    path: "/briefing/daily",
+    label: "每日简报",
+    builtIn: true,
+  },
   // 系统管理为固定入口（默认对管理员启用，不参与菜单开关），其导航项在
   // useNavManager 中固定注入，不在此列。
 ];
@@ -71,6 +77,7 @@ const defaultEnabled: Record<string, boolean> = {
   "alert/list": false,
   query_history: false,
   project_config: true,
+  daily_briefing: true,
 };
 
 interface MenuSettingsState {

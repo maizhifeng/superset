@@ -12,6 +12,7 @@ import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import PeopleIcon from "@mui/icons-material/People";
 import SecurityIcon from "@mui/icons-material/Security";
+import ArticleIcon from "@mui/icons-material/Article";
 
 export const menuIconMap: Record<string, ReactNode> = {
   dashboards: <DashboardIcon sx={{ fontSize: 20 }} />,
@@ -23,6 +24,7 @@ export const menuIconMap: Record<string, ReactNode> = {
   "alert/list": <NotificationsIcon sx={{ fontSize: 20 }} />,
   query_history: <HistoryIcon sx={{ fontSize: 20 }} />,
   project_config: <AccountTreeIcon sx={{ fontSize: 20 }} />,
+  daily_briefing: <ArticleIcon sx={{ fontSize: 20 }} />,
   admin_users: <PeopleIcon sx={{ fontSize: 20 }} />,
   admin_roles: <SecurityIcon sx={{ fontSize: 20 }} />,
   system_admin: <AdminPanelSettingsIcon sx={{ fontSize: 20 }} />,

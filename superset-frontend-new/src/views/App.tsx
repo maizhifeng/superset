@@ -29,6 +29,8 @@ const SavedQueryList = lazy(() => import("@/pages/SavedQueryList"));
 const AlertReportList = lazy(() => import("@/pages/AlertReportList"));
 const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
 const SystemAdmin = lazy(() => import("@/pages/SystemAdmin"));
+const DailyReportList = lazy(() => import("@/pages/DailyBriefing"));
+const DailyReportDetail = lazy(() => import("@/pages/DailyBriefing/detail"));
 
 interface RouteConfig {
   path: string;
@@ -49,7 +51,11 @@ const routes: RouteConfig[] = [
   { path: "/dataset/list", Component: DatasetList, layout: "default" },
   { path: "/dataset/create", Component: DatasetCreation, layout: "default" },
   { path: "/dataset/edit/:id", Component: DatasetEdit, layout: "default" },
-  { path: "/project/settings", Component: ProjectConfigCenter, layout: "default" },
+  {
+    path: "/project/settings",
+    Component: ProjectConfigCenter,
+    layout: "default",
+  },
   {
     path: "/saved_query/list",
     Component: SavedQueryList,
@@ -58,10 +64,18 @@ const routes: RouteConfig[] = [
   { path: "/alert/list", Component: AlertReportList, layout: "default" },
   { path: "/query_history", Component: QueryHistoryList, layout: "default" },
   { path: "/system/admin", Component: SystemAdmin, layout: "default" },
+  { path: "/briefing/daily", Component: DailyReportList, layout: "default" },
+  {
+    path: "/briefing/daily/:id",
+    Component: DailyReportDetail,
+    layout: "default",
+  },
 ];
 
 // Redirect legacy routes to their consolidated tabbed pages.
 const legacyRedirects: { path: string; to: string }[] = [
+  // Top-level report entry redirects to the daily briefing list.
+  { path: "/report", to: "/briefing/daily" },
   { path: "/settings", to: "/system/admin?tab=menu" },
   { path: "/admin/users", to: "/system/admin?tab=users" },
   { path: "/admin/roles", to: "/system/admin?tab=roles" },
@@ -185,7 +199,11 @@ export default function App() {
         })}
 
         {legacyRedirects.map(({ path, to }) => (
-          <Route key={path} path={path} element={<Navigate to={to} replace />} />
+          <Route
+            key={path}
+            path={path}
+            element={<Navigate to={to} replace />}
+          />
         ))}
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -990,6 +990,13 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             csrf.exempt("superset.project.bi.api.chart_data")
             csrf.exempt("superset.project.bi.api.filter_values")
             csrf.exempt("superset.project.bi.api.federated_datasets")
+            # Daily report config management endpoints
+            csrf.exempt("superset.project.daily_report.api.create_config")
+            csrf.exempt("superset.project.daily_report.api.update_config")
+            csrf.exempt("superset.project.daily_report.api.delete_config_route")
+            # Daily report job endpoints
+            csrf.exempt("superset.project.daily_report.api.create_job")
+            csrf.exempt("superset.project.daily_report.api.cancel_job_route")
 
     def configure_async_queries(self) -> None:
         if feature_flag_manager.is_feature_enabled("GLOBAL_ASYNC_QUERIES"):
@@ -1025,6 +1032,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.project.bi.api import bi_blueprint
 
         self.superset_app.register_blueprint(bi_blueprint)
+
+        # Register daily report blueprint
+        from superset.project.daily_report.api import daily_report_blueprint
+
+        self.superset_app.register_blueprint(daily_report_blueprint)
 
     def setup_mui_static_routes(self) -> None:
         """Serve MUI frontend static assets from /app/mui-static/assets/
