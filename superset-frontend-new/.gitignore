@@ -4,6 +4,11 @@ dist/
 *.tsbuildinfo
 .playwright-mcp/
 
+# Generated test/perf artifacts
+test-results/
+playwright-report/
+perf-report*.json
+
 # Local dev certificates - generate with mkcert or use @vitejs/plugin-basic-ssl
 certs/
 public/rootCA.pem

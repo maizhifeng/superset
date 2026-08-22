@@ -3,7 +3,10 @@ import { renderHook, act } from "@testing-library/react";
 import {
   useDashboardData,
   parseChartConfig,
+  upsertRows,
 } from "@/pages/Dashboard/hooks/useDashboardData";
+import { queryClient } from "@/api/queryClient";
+import type { ChartDataRow } from "@/types/api";
 
 vi.mock("@/api", () => ({
   default: {
@@ -16,6 +19,9 @@ vi.mock("@/api", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The module-level queryClient persists across tests; stale entries would
+  // satisfy fetchQuery without touching the network.
+  queryClient.clear();
 });
 
 test("parseChartConfig parses form_data string", () => {
@@ -187,6 +193,200 @@ test("a superseded getChartDataWithFilters result is dropped (race protection)",
     firstResolved = await first;
   });
 
-  // The stale "slow" row must be dropped from the superseded call's result.
-  expect(firstResolved?.dataMap[8]).toBeUndefined();
+  // The superseded call must report nothing at all — a partial result would
+  // mix old- and new-condition charts when the caller merges it.
+  expect(firstResolved).toBeNull();
+});
+
+test("overlapping forced fetches with different filters never share a response", async () => {
+  const api = await import("@/api");
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+
+  const buildSlow = () => [
+    { subject: "dim", operator: "==", comparator: "slow" },
+  ];
+  const buildFast = () => [
+    { subject: "dim", operator: "==", comparator: "fast" },
+  ];
+
+  // First (older filter) request hangs until the newer one has fully
+  // settled, reproducing the in-flight overlap of rapid filter changes.
+  let resolveSlow: (v: unknown) => void = () => {};
+  const slowPromise = new Promise((resolve) => {
+    resolveSlow = resolve;
+  });
+  (api.default.post as any)
+    .mockImplementationOnce(() => slowPromise)
+    .mockImplementationOnce(() =>
+      Promise.resolve({
+        data: { result: [{ data: [{ dim: "fast" }] }, { data: [] }] },
+      }),
+    );
+
+  type BatchResult = Awaited<
+    ReturnType<ReturnType<typeof useDashboardData>["getChartDataWithFilters"]>
+  >;
+  const first = result.current.getChartDataWithFilters(
+    [8],
+    meta,
+    buildSlow,
+    true,
+  );
+  let second: BatchResult | undefined;
+  let firstResult: BatchResult | undefined;
+  await act(async () => {
+    // Distinct filter signatures must produce distinct react-query keys, so
+    // the newer forced fetch starts its own request instead of joining the
+    // older one and resolving with its (previous-condition) response.
+    second = await result.current.getChartDataWithFilters(
+      [8],
+      meta,
+      buildFast,
+      true,
+    );
+  });
+  expect(second?.dataMap[8]).toEqual({ data: [{ dim: "fast" }] });
+
+  await act(async () => {
+    resolveSlow({
+      data: { result: [{ data: [{ dim: "slow" }] }, { data: [] }] },
+    });
+    firstResult = await first;
+  });
+  expect(firstResult).toBeNull();
+});
+
+test("forced fetch refetches even when a fresh cache entry exists", async () => {
+  const api = await import("@/api");
+  (api.default.post as any).mockResolvedValue({
+    data: { result: [{ data: [{ dim: "v1" }] }, { data: [] }] },
+  });
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+  const buildFn = () => [{ subject: "dim", operator: "==", comparator: "x" }];
+
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn);
+  });
+  expect(api.default.post).toHaveBeenCalledTimes(1);
+
+  // Same filters, forced: the cached payload must be dropped and the network
+  // hit again (this is what keeps saved/refreshed charts from showing stale
+  // data under an unchanged filter signature).
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn, true);
+  });
+  expect(api.default.post).toHaveBeenCalledTimes(2);
+});
+
+test("repeated non-forced fetch with unchanged filters is served from cache", async () => {
+  const api = await import("@/api");
+  (api.default.post as any).mockResolvedValue({
+    data: { result: [{ data: [{ dim: "v1" }] }, { data: [] }] },
+  });
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+  const buildFn = () => [{ subject: "dim", operator: "==", comparator: "x" }];
+
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn);
+  });
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn);
+  });
+  expect(api.default.post).toHaveBeenCalledTimes(1);
+});
+
+test("changing the end time while the start-time fetch is in flight lands both filters", async () => {
+  const api = await import("@/api");
+  const { result } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as any };
+
+  // Mimics useDashboardFilters.buildAdhocFilters bound to a mutable time
+  // range: the end date changes while the start-date request is in flight.
+  const timeRange = { start: "2024/01/01", end: null as string | null };
+  const buildFn = () => {
+    const filters = [
+      { subject: "day", operator: ">=", comparator: timeRange.start },
+    ];
+    if (timeRange.end)
+      filters.push({
+        subject: "day",
+        operator: "<=",
+        comparator: timeRange.end,
+      });
+    return filters;
+  };
+
+  const capturedFilters: unknown[][] = [];
+  let resolveStartFetch: (v: unknown) => void = () => {};
+  (api.default.post as any)
+    .mockImplementationOnce((_url: string, body: any) => {
+      capturedFilters.push(body.queries[0].filters);
+      return new Promise((resolve) => {
+        resolveStartFetch = resolve;
+      });
+    })
+    .mockImplementationOnce((_url: string, body: any) => {
+      capturedFilters.push(body.queries[0].filters);
+      return Promise.resolve({
+        data: { result: [{ data: [{ dim: "both" }] }, { data: [] }] },
+      });
+    });
+
+  type BatchResult = Awaited<
+    ReturnType<ReturnType<typeof useDashboardData>["getChartDataWithFilters"]>
+  >;
+  // Change the start time -> forced fetch fires with only the lower bound.
+  const startRound = result.current.getChartDataWithFilters(
+    [8],
+    meta,
+    buildFn,
+    true,
+  );
+  await act(async () => {});
+  expect(capturedFilters[0]).toEqual([{ col: "day", op: ">=", val: "2024/01/01" }]);
+
+  // Change the end time mid-flight -> the second forced fetch must carry BOTH
+  // bounds under its own cache key instead of joining the first request.
+  timeRange.end = "2024/01/31";
+  let endRound: BatchResult | undefined;
+  await act(async () => {
+    endRound = await result.current.getChartDataWithFilters(
+      [8],
+      meta,
+      buildFn,
+      true,
+    );
+  });
+  expect(capturedFilters[1]).toEqual([
+    { col: "day", op: ">=", val: "2024/01/01" },
+    { col: "day", op: "<=", val: "2024/01/31" },
+  ]);
+  expect(endRound?.dataMap[8]).toEqual({ data: [{ dim: "both" }] });
+
+  // The stale start-only response lands last and must be discarded entirely.
+  let startResult: BatchResult | undefined;
+  await act(async () => {
+    resolveStartFetch({
+      data: { result: [{ data: [{ dim: "start-only" }] }, { data: [] }] },
+    });
+    startResult = await startRound;
+  });
+  expect(startResult).toBeNull();
+});
+
+test("upsertRows sets rows when produced and deletes stale entries", () => {
+  const prev: Record<number, ChartDataRow[][]> = {
+    1: [[{ dim: "old" }]],
+  };
+  const withRows = upsertRows(prev, 2, [[{ dim: "new" }]]);
+  expect(withRows[2]).toEqual([[{ dim: "new" }]]);
+  expect(withRows[1]).toEqual(prev[1]);
+
+  const withoutRows = upsertRows(withRows, 2, undefined);
+  expect(withoutRows[2]).toBeUndefined();
+  // Input is never mutated.
+  expect(prev[2]).toBeUndefined();
 });

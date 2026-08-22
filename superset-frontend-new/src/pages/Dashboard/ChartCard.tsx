@@ -304,7 +304,7 @@ function ChartCard({
       // subtotal/totals rows) instead of the full detail dataset.
       const pivotText =
         vizType === "pivot_table_v2"
-          ? pivotRef.current?.getLayoutText() ?? null
+          ? (pivotRef.current?.getLayoutText() ?? null)
           : null;
       const text = pivotText ?? getTextContent(processedData);
       if (!text) {
@@ -457,7 +457,14 @@ function ChartCard({
     [vizType, processedData, metricFormatMap, theme.palette.chart, cardSize],
   );
 
-  const pivotProps: PivotTableProps | null = useMemo(() => {
+  // Aggregation inputs only.  Kept in a dedicated memo so display-only
+  // fields (formatCell) and the backend totals/subtotals that arrive after
+  // the grid during a load do not change these identities — PivotTable keys
+  // its client-side aggregation on them.
+  const pivotGridInputs: Omit<
+    PivotTableProps,
+    "formatCell" | "totalRows" | "subtotalRows"
+  > | null = useMemo(() => {
     if (vizType !== "pivot_table_v2") return null;
     const rawMeta = meta as ChartData | undefined;
     const raw = rawMeta?.params || rawMeta?.form_data || "{}";
@@ -494,8 +501,6 @@ function ChartCard({
         ? (fd.groupbyColumns as string[])
         : [],
       metrics: metricsList.filter(Boolean),
-      totalRows: pivotTotalRows,
-      subtotalRows: pivotSubtotalRows,
       // Saved form_data wins over the defaults, so explore-side customizations
       // (aggregate function, transpose, totals, metric layout) render on the
       // dashboard instead of being silently overridden.
@@ -512,11 +517,9 @@ function ChartCard({
         (fd.rowTotals as boolean | undefined) ?? DEFAULT_PIVOT_CONFIG.rowTotals,
       colTotals:
         (fd.colTotals as boolean | undefined) ?? DEFAULT_PIVOT_CONFIG.colTotals,
-      metricsLayout: (fd.metricsLayout as
-        | "ROWS"
-        | "COLUMNS"
-        | undefined) ?? DEFAULT_PIVOT_CONFIG.metricsLayout,
-      formatCell: tableFormatCell,
+      metricsLayout:
+        (fd.metricsLayout as "ROWS" | "COLUMNS" | undefined) ??
+        DEFAULT_PIVOT_CONFIG.metricsLayout,
       dateColumns,
       wideData: hasWideData
         ? {
@@ -536,17 +539,17 @@ function ChartCard({
             }
           : undefined,
     };
-  }, [
-    vizType,
-    meta,
-    tableFormatCell,
-    pivotTotalRows,
-    pivotSubtotalRows,
-    data,
-    pct95Active,
-    effectiveSortMetric,
-    pct95Threshold,
-  ]);
+  }, [vizType, meta, data, pct95Active, effectiveSortMetric, pct95Threshold]);
+
+  const pivotProps: PivotTableProps | null = useMemo(() => {
+    if (!pivotGridInputs) return null;
+    return {
+      ...pivotGridInputs,
+      formatCell: tableFormatCell,
+      totalRows: pivotTotalRows,
+      subtotalRows: pivotSubtotalRows,
+    };
+  }, [pivotGridInputs, tableFormatCell, pivotTotalRows, pivotSubtotalRows]);
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);
@@ -1021,7 +1024,11 @@ function ChartCard({
                   ) : vizType === "pivot_table_v2" &&
                     data?.data &&
                     pivotProps ? (
-                    <PivotTable ref={pivotRef} data={data.data} {...pivotProps} />
+                    <PivotTable
+                      ref={pivotRef}
+                      data={data.data}
+                      {...pivotProps}
+                    />
                   ) : option && chartLibReady ? (
                     <ReactEChartsCore
                       echarts={getECharts()}
@@ -1056,6 +1063,13 @@ export default memo(ChartCard, (prev, next) => {
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&
     prev.totalRow === next.totalRow &&
+    // Pivot totals/subtotals and format maps update independently of the
+    // detail payload; ignoring them would freeze totals at a previous
+    // filter state.
+    prev.pivotTotalRows === next.pivotTotalRows &&
+    prev.pivotSubtotalRows === next.pivotSubtotalRows &&
+    prev.metricFormatMap === next.metricFormatMap &&
+    prev.cardSize === next.cardSize &&
     prev.intervalSeconds === next.intervalSeconds &&
     prev.page === next.page &&
     prev.hasMore === next.hasMore &&

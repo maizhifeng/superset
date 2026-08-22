@@ -536,6 +536,10 @@ export function useChartEditor({
         const cached = wideCacheRef.current;
         if (cached && cached.key === wideKey) {
           setChartData(cached.payload);
+          // Wide payloads re-aggregate totals client-side; leftover rows from
+          // an earlier legacy query belong to a previous condition.
+          setChartTotalsRows(null);
+          setChartSubtotalRows(null);
           setLoadingData(false);
           return;
         }
@@ -567,6 +571,10 @@ export function useChartEditor({
             } else {
               setChartData({});
             }
+            // Wide payloads re-aggregate totals client-side; leftover rows
+            // from an earlier legacy query belong to a previous condition.
+            setChartTotalsRows(null);
+            setChartSubtotalRows(null);
           })
           .catch(() => {
             if (controller.signal.aborted) return;

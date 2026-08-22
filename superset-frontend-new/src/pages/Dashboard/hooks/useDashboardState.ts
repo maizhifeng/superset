@@ -17,7 +17,11 @@ import { useDrawerStore } from "@/store/drawerState";
 import { PRESET_INTERVALS } from "@/pages/Dashboard/constants";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useRecentDashboards } from "@/store/recentDashboards";
-import { useDashboardData } from "@/pages/Dashboard/hooks/useDashboardData";
+import {
+  useDashboardData,
+  upsertRows,
+  chartDatasourceId,
+} from "@/pages/Dashboard/hooks/useDashboardData";
 import { useDashboardCompare } from "@/pages/Dashboard/hooks/useDashboardCompare";
 import { useDashboardLayout } from "@/pages/Dashboard/hooks/useDashboardLayout";
 import useDashboardToolbar from "@/pages/Dashboard/useDashboardToolbar";
@@ -290,21 +294,19 @@ export function useDashboardState() {
         );
         setMetricFormatMaps(fmtMaps);
         await new Promise((resolve) => setTimeout(resolve, 20));
-        const {
-          dataMap,
-          totalRowMap,
-          pivotTotalRowsMap,
-          pivotSubtotalRowsMap,
-        } = await getChartDataWithFilters(
+        const result = await getChartDataWithFilters(
           chartIds,
           metaMap,
           buildAdhocFiltersRef.current,
           false,
         );
-        setChartData(dataMap);
-        setTotalRows(totalRowMap);
-        setPivotTotalRows(pivotTotalRowsMap);
-        setPivotSubtotalRows(pivotSubtotalRowsMap);
+        // Superseded by a newer fetch (e.g. the user already changed a
+        // filter): keep the state that newer fetch is about to write.
+        if (!result) return;
+        setChartData(result.dataMap);
+        setTotalRows(result.totalRowMap);
+        setPivotTotalRows(result.pivotTotalRowsMap);
+        setPivotSubtotalRows(result.pivotSubtotalRowsMap);
       }
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "加载仪表板失败"));
@@ -353,6 +355,10 @@ export function useDashboardState() {
   const chartMetaRef = useRef(chartMeta);
   chartMetaRef.current = chartMeta;
   const refreshChartsRef = useRef<(...args: unknown[]) => void>(() => {});
+  const refreshSeqRef = useRef(0);
+  // Per-chart sequence of the refresh round that last turned its loading flag
+  // on, so a superseded round only clears the charts it still owns.
+  const loadSeqByChartRef = useRef<Record<number, number>>({});
   const [intervalSeconds, setIntervalSeconds] = useState(600);
 
   const cycleInterval = useCallback(() => {
@@ -383,14 +389,33 @@ export function useDashboardState() {
     async (chartId: number, page?: number) => {
       setChartLoading((prev) => ({ ...prev, [chartId]: true }));
       try {
+        // Snapshot the active filter signature so a response that lands after
+        // the filters changed again (auto-refresh / pagination racing a filter
+        // edit) is discarded instead of reverting the chart to older
+        // conditions.  A queued refresh owns the chart in that case.
+        const chart = chartMetaRef.current[chartId];
+        const dsId = chart ? chartDatasourceId(chart) : 0;
+        const sigAtStart = JSON.stringify(buildAdhocFiltersRef.current(dsId));
         const result = await refreshChartData(
           chartId,
           chartMetaRef.current,
           buildAdhocFiltersRef.current,
           page,
         );
+        if (JSON.stringify(buildAdhocFiltersRef.current(dsId)) !== sigAtStart)
+          return;
         if (result) {
           setChartData((prev) => ({ ...prev, [chartId]: result.data }));
+          // Keep the totals in sync with the fresh detail rows; row sets the
+          // latest fetch did not produce (wide-table path) drop their stale
+          // entries instead of surviving from an earlier condition.
+          setTotalRows((prev) => ({ ...prev, [chartId]: result.totalRow }));
+          setPivotTotalRows((prev) =>
+            upsertRows(prev, chartId, result.pivotTotalRows),
+          );
+          setPivotSubtotalRows((prev) =>
+            upsertRows(prev, chartId, result.pivotSubtotalRows),
+          );
           if (result.hasMore !== undefined)
             setChartHasMore((prev) => ({
               ...prev,
@@ -404,7 +429,14 @@ export function useDashboardState() {
         setChartLoading((prev) => ({ ...prev, [chartId]: false }));
       }
     },
-    [refreshChartData, buildAdhocFiltersRef, setChartData],
+    [
+      refreshChartData,
+      buildAdhocFiltersRef,
+      setChartData,
+      setTotalRows,
+      setPivotTotalRows,
+      setPivotSubtotalRows,
+    ],
   );
 
   const handleChartPageChange = useCallback(
@@ -439,26 +471,56 @@ export function useDashboardState() {
           Object.entries(prev).filter(([k]) => !ids.includes(Number(k))),
         ),
       );
+      // Monotonic sequence for this refresh round: a superseded round must
+      // only clear the loading flags of the charts it still owns.
+      const seq = ++refreshSeqRef.current;
+      for (const id of ids) loadSeqByChartRef.current[id] = seq;
       try {
-        const { dataMap, totalRowMap, pivotTotalRowsMap } =
-          await getChartDataWithFilters(ids, meta, undefined, true);
+        const result = await getChartDataWithFilters(
+          ids,
+          meta,
+          undefined,
+          true,
+        );
+        // Superseded by a newer refresh (rapid filter changes): skip the
+        // merge so the newer fetch's data is not mixed with ours.
+        if (!result) return;
+        const {
+          dataMap,
+          totalRowMap,
+          pivotTotalRowsMap,
+          pivotSubtotalRowsMap,
+        } = result;
         setChartData((prev) => ({ ...prev, ...dataMap }));
         setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
         setPivotTotalRows((prev) => ({ ...prev, ...pivotTotalRowsMap }));
+        setPivotSubtotalRows((prev) => ({ ...prev, ...pivotSubtotalRowsMap }));
         const cc = compareConfigRef.current;
         if (cc?.enabled) {
           const freshData = dataMap[cc.chartId];
           void fetchMirrorRef.current(cc.chartId, cc.dimensions, freshData);
         }
       } finally {
-        setChartLoading((prev) => {
-          const next = { ...prev };
-          for (const id of ids) next[id] = false;
-          return next;
-        });
+        // Only clear the charts this round still owns: charts taken over by
+        // a newer round keep that round's in-flight state.
+        const owned = ids.filter((id) => loadSeqByChartRef.current[id] === seq);
+        for (const id of owned) delete loadSeqByChartRef.current[id];
+        if (owned.length > 0) {
+          setChartLoading((prev) => {
+            const next = { ...prev };
+            for (const id of owned) next[id] = false;
+            return next;
+          });
+        }
       }
     },
-    [getChartDataWithFilters, setChartData, setTotalRows, setPivotTotalRows],
+    [
+      getChartDataWithFilters,
+      setChartData,
+      setTotalRows,
+      setPivotTotalRows,
+      setPivotSubtotalRows,
+    ],
   );
 
   refreshChartsRef.current = (...args) =>
@@ -493,14 +555,39 @@ export function useDashboardState() {
         if (chart) {
           const newMeta = { ...chartMetaRef.current, [chartId]: chart };
           setChartMeta(newMeta);
-          const { dataMap } = await getChartDataWithFilters([chartId], newMeta);
-          setChartData((prev) => ({ ...prev, ...dataMap }));
+          // Force: the definition just changed, so a cached payload for the
+          // same filter signature would show the previous chart version.
+          const result = await getChartDataWithFilters(
+            [chartId],
+            newMeta,
+            undefined,
+            true,
+          );
+          if (!result) return;
+          setChartData((prev) => ({ ...prev, ...result.dataMap }));
+          setTotalRows((prev) => ({ ...prev, ...result.totalRowMap }));
+          setPivotTotalRows((prev) => ({
+            ...prev,
+            ...result.pivotTotalRowsMap,
+          }));
+          setPivotSubtotalRows((prev) => ({
+            ...prev,
+            ...result.pivotSubtotalRowsMap,
+          }));
         }
       } catch {
         /* refresh failed */
       }
     },
-    [setSearchParams, setChartMeta, getChartDataWithFilters, setChartData],
+    [
+      setSearchParams,
+      setChartMeta,
+      getChartDataWithFilters,
+      setChartData,
+      setTotalRows,
+      setPivotTotalRows,
+      setPivotSubtotalRows,
+    ],
   );
 
   const handleCloseDrawer = useCallback(() => {
@@ -511,36 +598,62 @@ export function useDashboardState() {
   }, [setSearchParams]);
 
   const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Scope accumulated across rapid filter changes.  Each change appends its
+  // affected charts, so replacing the debounce timer never drops an earlier
+  // change's charts (they would otherwise keep showing pre-change data).
+  const pendingRefreshScopeRef = useRef<{ all: boolean; ids: Set<number> }>({
+    all: false,
+    ids: new Set(),
+  });
+
+  const queueFilterRefresh = useCallback((affectedIds?: Set<number>) => {
+    const pending = pendingRefreshScopeRef.current;
+    if (affectedIds) {
+      for (const cid of affectedIds) pending.ids.add(cid);
+    } else {
+      pending.all = true;
+      pending.ids.clear();
+    }
+    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
+    filterTimerRef.current = setTimeout(() => {
+      const pendingNow = pendingRefreshScopeRef.current;
+      const ids = pendingNow.all ? undefined : new Set(pendingNow.ids);
+      pendingRefreshScopeRef.current = { all: false, ids: new Set() };
+      refreshChartsRef.current(ids);
+    }, 300);
+  }, []);
+
+  /** Immediately light the loading flags of every chart pending a refresh. */
+  const lightPendingCharts = useCallback(() => {
+    const pending = pendingRefreshScopeRef.current;
+    const ids = pending.all
+      ? Object.keys(chartMetaRef.current).map(Number)
+      : Array.from(pending.ids);
+    setChartLoading((prev) => {
+      const next = { ...prev };
+      for (const cid of ids) next[cid] = true;
+      return next;
+    });
+  }, []);
 
   const handleFilterChange = useCallback(
     (filterId: string, value: unknown) => {
       setFilter(filterId, value);
-      if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
       const changedFilter = filtersRef.current.find((f) => f.id === filterId);
       const affectedIds = changedFilter?.chartsInScope?.length
         ? new Set(changedFilter.chartsInScope)
         : undefined;
-      setChartLoading((prev) => {
-        const next = { ...prev };
-        const ids = affectedIds
-          ? Array.from(affectedIds)
-          : Object.keys(chartMetaRef.current).map(Number);
-        for (const cid of ids) next[cid] = true;
-        return next;
-      });
-      filterTimerRef.current = setTimeout(
-        () => refreshChartsRef.current(affectedIds),
-        300,
-      );
+      queueFilterRefresh(affectedIds);
+      lightPendingCharts();
     },
-    [setFilter],
+    [setFilter, queueFilterRefresh, lightPendingCharts],
   );
 
   const handleClearAll = useCallback(() => {
     clearAll();
-    if (filterTimerRef.current) clearTimeout(filterTimerRef.current);
-    filterTimerRef.current = setTimeout(() => refreshChartsRef.current(), 300);
-  }, [clearAll]);
+    queueFilterRefresh(undefined);
+    lightPendingCharts();
+  }, [clearAll, queueFilterRefresh, lightPendingCharts]);
 
   const handleOpenInsight = useCallback(
     (chartId: number) => {
@@ -639,14 +752,16 @@ export function useDashboardState() {
       await layout.saveLayout();
       if (chartMetaData) {
         try {
+          const result = await getChartDataWithFilters([chart.id], {
+            [chart.id]: chartMetaData,
+          });
+          if (!result) return;
           const {
             dataMap,
             totalRowMap,
             pivotTotalRowsMap,
             pivotSubtotalRowsMap,
-          } = await getChartDataWithFilters([chart.id], {
-            [chart.id]: chartMetaData,
-          });
+          } = result;
           setChartData((prev) => ({ ...prev, ...dataMap }));
           setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
           setPivotTotalRows((prev) => ({ ...prev, ...pivotTotalRowsMap }));
