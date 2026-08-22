@@ -164,26 +164,71 @@ interface ComboEntry {
   metric: string;
 }
 
+/** Aggregates whose result depends on value order/rank, not just sums. */
+const NEEDS_RAW_VALUES = new Set([
+  "Median",
+  "Sample Variance",
+  "Sample Standard Deviation",
+]);
+
 interface WideAcc {
   num: number;
   den: number;
-  values: number[];
+  /** Number of finite raw values observed (non-ratio metrics). */
+  count: number;
+  sum: number;
+  min: number;
+  max: number;
+  /**
+   * Raw values, retained only for order-sensitive aggregates (median /
+   * variance / standard deviation).  ``null`` otherwise so combinable
+   * aggregates avoid allocating one array entry per source row.
+   */
+  values: number[] | null;
 }
 
 type WideAccMap = Map<string, Map<string, Map<string, WideAcc>>>;
 
-function distinctTuples(rows: ChartDataRow[], dims: string[]): string[][] {
-  const seen = new Set<string>();
-  const result: string[][] = [];
-  for (const row of rows) {
-    const tuple = dims.map((d) => String(row[d] ?? ""));
-    const key = tuple.join("\u0000");
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(tuple);
-    }
+function newWideAcc(needsValues: boolean): WideAcc {
+  return {
+    num: 0,
+    den: 0,
+    count: 0,
+    sum: 0,
+    min: Infinity,
+    max: -Infinity,
+    values: needsValues ? [] : null,
+  };
+}
+
+function accAddValue(a: WideAcc, v: number): void {
+  a.count += 1;
+  a.sum += v;
+  if (v < a.min) a.min = v;
+  if (v > a.max) a.max = v;
+  a.values?.push(v);
+}
+
+/** Reduce an accumulator to its aggregate with ``aggregateValues`` semantics. */
+function finishAccValue(a: WideAcc, aggFn: string): number {
+  switch (aggFn) {
+    case "Sum":
+      return a.sum;
+    case "Average":
+      return a.sum / a.count;
+    case "Count":
+      return a.count;
+    case "Min":
+      return a.min;
+    case "Max":
+      return a.max;
+    default:
+      // Order-sensitive statistics read the raw values; unknown functions
+      // fall back to Sum semantics, matching AGG_FNS.
+      return NEEDS_RAW_VALUES.has(aggFn)
+        ? aggregateValues(a.values ?? [], aggFn)
+        : a.sum;
   }
-  return result;
 }
 
 // Numeric sort key for a date-dimension value: YYYYMMDD integers, Unix
@@ -246,52 +291,149 @@ function sortTuples(
 }
 
 /**
- * Re-aggregate rows into per-(row-combo, col-combo, metric) buckets.
- *
- * Works for both the legacy pre-aggregated rows (one row per combo, no
- * ``components``) and the day-granularity wide table (``components`` defines
- * which metrics are ratio columns split into ``label__num`` / ``label__den``).
+ * Everything the grid needs, collected in a single pass over the rows.
  */
-function aggregateRows(
+interface CollectedBuckets {
+  /** Full row-combo key → column key → metric → accumulator. */
+  mainAcc: WideAccMap;
+  /** Column key → metric → accumulator for the totals row (when requested). */
+  totalAcc: Map<string, Map<string, WideAcc>> | null;
+  /** Per collapsed-group level L: prefix key → column key → metric → acc. */
+  subAccs: Array<Map<string, Map<string, Map<string, WideAcc>>>>;
+  /** Distinct tuples in first-appearance order, keyed by their join key. */
+  rowTuples: Map<string, string[]>;
+  colTuples: Map<string, string[]>;
+  /** Per collapsed-group level L: prefix key → prefix tuple. */
+  subTuples: Array<Map<string, string[]>>;
+}
+
+/**
+ * One scan over the wide rows collecting every bucket the grid needs: the
+ * main (row × column × metric) cells, the totals row (column-only grouping),
+ * one bucket set per collapsed-group subtotal level, and the distinct
+ * dimension tuples in appearance order.  Collecting them together keeps the
+ * cost at a single pass instead of one per totals/subtotal level.
+ */
+function collectBuckets(
   rows: ChartDataRow[],
   rowDims: string[],
   colDims: string[],
   metrics: string[],
   components: Record<string, WideMetricComponent>,
-): WideAccMap {
-  const acc: WideAccMap = new Map();
+  needsValues: boolean,
+  computeTotals: boolean,
+): CollectedBuckets {
+  const mainAcc: WideAccMap = new Map();
+  const totalAcc = computeTotals
+    ? new Map<string, Map<string, WideAcc>>()
+    : null;
+  const subLevels = Math.max(rowDims.length - 1, 0);
+  const subAccs: CollectedBuckets["subAccs"] = [];
+  const subTuples: CollectedBuckets["subTuples"] = [];
+  for (let l = 0; l < subLevels; l += 1) {
+    subAccs.push(new Map());
+    subTuples.push(new Map());
+  }
+  const rowTuples = new Map<string, string[]>();
+  const colTuples = new Map<string, string[]>();
+
+  // Reused scratch buffers so the hot loop does not allocate per row.
+  const targets: Array<Map<string, WideAcc>> = [];
+  const subByMetric: Array<Map<string, WideAcc>> = [];
+  const rowParts: string[] = [];
+  const subKeys: string[] = [];
+
   for (const row of rows) {
-    const rowKey = rowDims.map((d) => String(row[d] ?? "")).join("\u0000");
-    const colKey = colDims.map((d) => String(row[d] ?? "")).join("\u0000");
-    let byCol = acc.get(rowKey);
+    // Row key plus the prefix keys of every collapsed-group level, built in
+    // one walk over the dimensions (level L groups by rowDims[0..L]).
+    rowParts.length = 0;
+    subKeys.length = 0;
+    let rowKey = "";
+    for (let i = 0; i < rowDims.length; i += 1) {
+      const s = String(row[rowDims[i]] ?? "");
+      rowParts.push(s);
+      rowKey = i === 0 ? s : `${rowKey}\u0000${s}`;
+      if (i < subLevels) subKeys.push(rowKey);
+    }
+    let colKey = "";
+    for (let i = 0; i < colDims.length; i += 1) {
+      const s = String(row[colDims[i]] ?? "");
+      colKey = i === 0 ? s : `${colKey}\u0000${s}`;
+    }
+
+    if (!rowTuples.has(rowKey)) rowTuples.set(rowKey, [...rowParts]);
+    if (!colTuples.has(colKey)) {
+      colTuples.set(
+        colKey,
+        colDims.map((d) => String(row[d] ?? "")),
+      );
+    }
+
+    let byCol = mainAcc.get(rowKey);
     if (!byCol) {
       byCol = new Map();
-      acc.set(rowKey, byCol);
+      mainAcc.set(rowKey, byCol);
     }
     let byMetric = byCol.get(colKey);
     if (!byMetric) {
       byMetric = new Map();
       byCol.set(colKey, byMetric);
     }
+
+    targets.length = 0;
+    targets.push(byMetric);
+    if (totalAcc) {
+      let t = totalAcc.get(colKey);
+      if (!t) {
+        t = new Map();
+        totalAcc.set(colKey, t);
+      }
+      targets.push(t);
+    }
+    subByMetric.length = 0;
+    for (let l = 0; l < subLevels; l += 1) {
+      const k = subKeys[l];
+      let m = subAccs[l].get(k);
+      if (!m) {
+        m = new Map();
+        subAccs[l].set(k, m);
+      }
+      let mm = m.get(colKey);
+      if (!mm) {
+        mm = new Map();
+        m.set(colKey, mm);
+      }
+      subByMetric.push(mm);
+      targets.push(mm);
+      const kt = subTuples[l];
+      if (!kt.has(k)) kt.set(k, rowParts.slice(0, l + 1));
+    }
+
     for (const m of metrics) {
       const meta = components[m];
-      let a = byMetric.get(m);
-      if (!a) {
-        a = { num: 0, den: 0, values: [] };
-        byMetric.set(m, a);
-      }
-      if (meta?.agg === "ratio") {
-        const n = Number(row[meta.num ?? ""]);
-        const d = Number(row[meta.den ?? ""]);
-        if (Number.isFinite(n)) a.num += n;
-        if (Number.isFinite(d)) a.den += d;
-      } else {
-        const v = Number(row[m]);
-        if (Number.isFinite(v)) a.values.push(v);
+      const isRatio = meta?.agg === "ratio";
+      const numCol = isRatio ? (meta.num ?? "") : "";
+      const denCol = isRatio ? (meta.den ?? "") : "";
+      for (const bucket of targets) {
+        let a = bucket.get(m);
+        if (!a) {
+          a = newWideAcc(needsValues);
+          bucket.set(m, a);
+        }
+        if (isRatio) {
+          const n = Number(row[numCol]);
+          const d = Number(row[denCol]);
+          if (Number.isFinite(n)) a.num += n;
+          if (Number.isFinite(d)) a.den += d;
+        } else {
+          const v = Number(row[m]);
+          if (Number.isFinite(v)) accAddValue(a, v);
+        }
       }
     }
   }
-  return acc;
+
+  return { mainAcc, totalAcc, subAccs, rowTuples, colTuples, subTuples };
 }
 
 function cellValue(
@@ -301,8 +443,8 @@ function cellValue(
 ): number | null {
   if (!acc) return null;
   if (meta?.agg === "ratio") return acc.den !== 0 ? acc.num / acc.den : null;
-  if (acc.values.length === 0) return null;
-  return aggregateValues(acc.values, aggFn);
+  if (acc.count === 0) return null;
+  return finishAccValue(acc, aggFn);
 }
 
 /**
@@ -331,7 +473,7 @@ function rowComboValue(
       num += a.num;
       den += a.den;
     } else {
-      for (const v of a.values) total += v;
+      total += a.sum;
     }
   }
   if (!found) return 0;
@@ -465,17 +607,27 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
 
   const metricOnRows = metricsLayout === "ROWS";
   const aggFn = aggregateFunction.replace(FRACTION_SUFFIX, "");
-  const acc = aggregateRows(rows, rowDims, colDims, metrics, components);
+  const {
+    mainAcc: acc,
+    totalAcc,
+    subAccs,
+    rowTuples,
+    colTuples,
+    subTuples,
+  } = collectBuckets(
+    rows,
+    rowDims,
+    colDims,
+    metrics,
+    components,
+    NEEDS_RAW_VALUES.has(aggFn),
+    computeTotals,
+  );
 
-  let rowCombos = sortTuples(distinctTuples(rows, rowDims), rowDims, dateColumns);
+  let rowCombos = sortTuples([...rowTuples.values()], rowDims, dateColumns);
   if (pct95?.enabled && pct95.metric) {
     const metricValue = (combo: string[]) =>
-      rowComboValue(
-        acc,
-        combo,
-        pct95.metric,
-        components[pct95.metric],
-      );
+      rowComboValue(acc, combo, pct95.metric, components[pct95.metric]);
     const kept = pct95KeptKeys(rowCombos, metricValue, pct95.threshold);
     rowCombos = rowCombos.filter((c) => kept.has(c.join("\u0000")));
     const hasDateRowDim = dateColumns.some((d) => rowDims.includes(d));
@@ -494,7 +646,7 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
       );
     }
   }
-  const colCombos = sortTuples(distinctTuples(rows, colDims), colDims, dateColumns);
+  const colCombos = sortTuples([...colTuples.values()], colDims, dateColumns);
 
   const effectiveColCombos: ComboEntry[] = metricOnRows
     ? colCombos.map((combo) => ({ combo, metric: "" }))
@@ -603,13 +755,12 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
   if (!computeTotals) return base;
 
   // Totals row: grouped by the column dimensions only.
-  const totalAcc = aggregateRows(rows, [], colDims, metrics, components);
   const totalRows: ChartDataRow[] = colCombos.map((combo) => {
     const row: ChartDataRow = {};
     colDims.forEach((d, i) => {
       row[d] = combo[i];
     });
-    const byMetric = totalAcc.get("")?.get(combo.join("\u0000"));
+    const byMetric = totalAcc?.get(combo.join("\u0000"));
     for (const m of metrics) {
       const v = cellValue(components[m], byMetric?.get(m), aggFn);
       if (v !== null) row[m] = v;
@@ -618,19 +769,20 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
   });
 
   // Subtotal rows: one level per collapsed group (rowDims[0..L] + colDims).
+  // The column tuples are identical to ``colCombos`` (same distinct pass), so
+  // the sorted combos are reused instead of being recomputed per level.
   const subtotalRows: ChartDataRow[][] = [];
   for (let level = 0; level < rowDims.length - 1; level += 1) {
     const dims = rowDims.slice(0, level + 1);
-    const levelAcc = aggregateRows(rows, dims, colDims, metrics, components);
-    const combos = sortTuples(distinctTuples(rows, dims), dims, dateColumns);
-    const colTuples = sortTuples(
-      distinctTuples(rows, colDims),
-      colDims,
+    const levelAcc = subAccs[level];
+    const combos = sortTuples(
+      [...(subTuples[level]?.values() ?? [])],
+      dims,
       dateColumns,
     );
     const rowsOut: ChartDataRow[] = [];
     for (const combo of combos) {
-      for (const colCombo of colTuples) {
+      for (const colCombo of colCombos) {
         const out: ChartDataRow = {};
         dims.forEach((d, i) => {
           out[d] = combo[i];
