@@ -668,7 +668,9 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
             return False, 0
 
         user = self.find_user(username=username)
-        if user is None or user.fail_login_count < lockout_threshold:
+        # fail_login_count is nullable (NULL until the first failed login), so
+        # coalesce before comparing against the threshold.
+        if user is None or (user.fail_login_count or 0) < lockout_threshold:
             return False, 0
 
         cache_key = self._get_lockout_cache_key(username)
