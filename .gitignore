@@ -146,3 +146,6 @@ superset-frontend-new/config.json
 
 # npm cache from superset-frontend-new build
 superset-frontend-new/.npm-cache/
+
+# Windows NTFS zone-tag junk copied with files from WSL/Windows
+*:Zone.Identifier
