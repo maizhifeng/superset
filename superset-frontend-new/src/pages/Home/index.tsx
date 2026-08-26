@@ -1,4 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -95,7 +101,10 @@ const links: HomeLink[] = [
 ];
 
 /** 按模块填充实时数量徽标。 */
-function applyCounts(links: HomeLink[], stats: ReturnType<typeof useHomeStats>): HomeLink[] {
+function applyCounts(
+  links: HomeLink[],
+  stats: ReturnType<typeof useHomeStats>,
+): HomeLink[] {
   const countByPath: Record<string, number> = {
     "/chart/list": stats.charts,
     "/dashboard/list": stats.dashboards,
@@ -274,12 +283,12 @@ function RecentDashboards({
                 }}
                 sx={{ p: 0.25 }}
               >
-                <ContentCopyIcon sx={{ fontSize: 15, color: "text.disabled" }} />
+                <ContentCopyIcon
+                  sx={{ fontSize: 15, color: "text.disabled" }}
+                />
               </IconButton>
             </Tooltip>
-            <Tooltip
-              title={favIds.includes(d.id) ? "取消收藏" : "收藏"}
-            >
+            <Tooltip title={favIds.includes(d.id) ? "取消收藏" : "收藏"}>
               <IconButton
                 size="small"
                 onClick={(e) => {
@@ -291,7 +300,9 @@ function RecentDashboards({
                 {favIds.includes(d.id) ? (
                   <StarIcon sx={{ fontSize: 15, color: "warning.main" }} />
                 ) : (
-                  <StarBorderIcon sx={{ fontSize: 15, color: "text.disabled" }} />
+                  <StarBorderIcon
+                    sx={{ fontSize: 15, color: "text.disabled" }}
+                  />
                 )}
               </IconButton>
             </Tooltip>
@@ -383,11 +394,7 @@ function QuickActions() {
 }
 
 /** 最近更新的数据集：把最近修改的数据集作为首页快捷入口。 */
-function RecentDatasets({
-  stats,
-}: {
-  stats: ReturnType<typeof useHomeStats>;
-}) {
+function RecentDatasets({ stats }: { stats: ReturnType<typeof useHomeStats> }) {
   const navigate = useNavigate();
   const notify = useNotificationStore((s) => s.notify);
 
@@ -499,11 +506,7 @@ function RecentDatasets({
 }
 
 /** 最近更新的图表：把最近修改的图表作为首页快捷入口。 */
-function RecentCharts({
-  stats,
-}: {
-  stats: ReturnType<typeof useHomeStats>;
-}) {
+function RecentCharts({ stats }: { stats: ReturnType<typeof useHomeStats> }) {
   const navigate = useNavigate();
 
   if (stats.loading || stats.recentCharts.length === 0) return null;
@@ -589,21 +592,35 @@ function RecentCharts({
 }
 
 /** 滚动后回到页面顶部的小浮层。 */
-function BackToTop() {
+function BackToTop({
+  scrollRef,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+}) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const onScroll = () => setVisible(window.scrollY > 400);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    // AppLayout 裁剪了 window 级滚动，页面在自己的滚动容器内滚动。
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => setVisible(el.scrollTop > 400);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [scrollRef]);
   if (!visible) return null;
   return (
     <Fab
       size="small"
       color="primary"
       aria-label="返回顶部"
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      sx={{ position: "fixed", right: 24, bottom: 24, zIndex: (t) => t.zIndex.fab }}
+      onClick={() =>
+        scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+      }
+      sx={{
+        position: "fixed",
+        right: 24,
+        bottom: 24,
+        zIndex: (t) => t.zIndex.fab,
+      }}
     >
       <KeyboardArrowUpIcon />
     </Fab>
@@ -611,18 +628,18 @@ function BackToTop() {
 }
 
 /** 首页顶部的一行关键数量统计。 */
-function StatStrip({
-  stats,
-}: {
-  stats: ReturnType<typeof useHomeStats>;
-}) {
+function StatStrip({ stats }: { stats: ReturnType<typeof useHomeStats> }) {
   const navigate = useNavigate();
   const items: { label: string; value: number; path: string }[] = [
     { label: "仪表板数", value: stats.dashboards, path: "/dashboard/list" },
     { label: "图表数", value: stats.charts, path: "/chart/list" },
     { label: "数据集数", value: stats.datasets, path: "/dataset/list" },
     { label: "数据库数", value: stats.databases, path: "/database/list" },
-    { label: "已保存查询数", value: stats.savedQueries, path: "/saved_query/list" },
+    {
+      label: "已保存查询数",
+      value: stats.savedQueries,
+      path: "/saved_query/list",
+    },
   ];
   const notify = useNotificationStore((s) => s.notify);
   const handleCopySummary = async () => {
@@ -684,25 +701,29 @@ function StatStrip({
 
 export default function Home() {
   const stats = useHomeStats();
+  // AppLayout 在各级裁剪溢出内容，页面需要自带滚动容器才能向下滚动。
+  const scrollRef = useRef<HTMLDivElement>(null);
   return (
-    <Box sx={{ p: 3, maxWidth: "lg", mx: "auto" }}>
-      <PageHeader title="欢迎使用 Starfly" subtitle="选择一个模块开始使用" />
-      <BackToTop />
-      <StatStrip stats={stats} />
-      <QuickActions />
-      <FavoriteCharts />
-      <FavoriteDatasets />
-      <FavoriteDatabases />
-      <FavoriteSavedQueries />
-      <FavoriteAlerts />
-      <FavoriteDashboards />
-      <RecentlyViewedCharts />
-      <RecentlyViewedDashboards />
-      <RecentDashboards stats={stats} />
-      <RecentDatasets stats={stats} />
-      <RecentCharts stats={stats} />
-      <RecentQueries />
-      <ModuleGrid stats={stats} />
+    <Box ref={scrollRef} sx={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <Box sx={{ p: 3, maxWidth: "lg", mx: "auto" }}>
+        <PageHeader title="欢迎使用 Starfly" subtitle="选择一个模块开始使用" />
+        <BackToTop scrollRef={scrollRef} />
+        <StatStrip stats={stats} />
+        <QuickActions />
+        <FavoriteCharts />
+        <FavoriteDatasets />
+        <FavoriteDatabases />
+        <FavoriteSavedQueries />
+        <FavoriteAlerts />
+        <FavoriteDashboards />
+        <RecentlyViewedCharts />
+        <RecentlyViewedDashboards />
+        <RecentDashboards stats={stats} />
+        <RecentDatasets stats={stats} />
+        <RecentCharts stats={stats} />
+        <RecentQueries />
+        <ModuleGrid stats={stats} />
+      </Box>
     </Box>
   );
 }
@@ -732,7 +753,9 @@ function RecentlyViewedCharts() {
           .catch(() => null),
       ),
     )
-      .then((res) => setItems(res.filter((x): x is { id: number; title: string } => !!x)))
+      .then((res) =>
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
+      )
       .catch(() => setItems([]));
     return () => controller.abort();
   }, [recentItems]);
@@ -843,9 +866,12 @@ function RecentlyViewedDashboards() {
     Promise.all(
       recentItems.map((item) =>
         api
-          .get<{ result: { dashboard_title?: string } }>(`/dashboard/${item.id}`, {
-            signal: controller.signal,
-          })
+          .get<{ result: { dashboard_title?: string } }>(
+            `/dashboard/${item.id}`,
+            {
+              signal: controller.signal,
+            },
+          )
           .then((res) => ({
             id: item.id,
             title: res.data.result?.dashboard_title ?? `仪表板 ${item.id}`,
@@ -853,7 +879,9 @@ function RecentlyViewedDashboards() {
           .catch(() => null),
       ),
     )
-      .then((res) => setItems(res.filter((x): x is { id: number; title: string } => !!x)))
+      .then((res) =>
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
+      )
       .catch(() => setItems([]));
     return () => controller.abort();
   }, [recentItems]);
@@ -975,7 +1003,9 @@ function FavoriteDashboards() {
           .catch(() => null),
       ),
     )
-      .then((res) => setItems(res.filter((x): x is { id: number; title: string } => !!x)))
+      .then((res) =>
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
+      )
       .catch(() => setItems([]));
     return () => controller.abort();
   }, [favIds]);
@@ -1086,9 +1116,7 @@ function FavoriteCharts() {
       ),
     )
       .then((res) =>
-        setItems(
-          res.filter((x): x is { id: number; title: string } => !!x),
-        ),
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
       )
       .catch(() => setItems([]));
     return () => controller.abort();
@@ -1200,9 +1228,7 @@ function FavoriteDatasets() {
       ),
     )
       .then((res) =>
-        setItems(
-          res.filter((x): x is { id: number; title: string } => !!x),
-        ),
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
       )
       .catch(() => setItems([]));
     return () => controller.abort();
@@ -1314,9 +1340,7 @@ function FavoriteDatabases() {
       ),
     )
       .then((res) =>
-        setItems(
-          res.filter((x): x is { id: number; title: string } => !!x),
-        ),
+        setItems(res.filter((x): x is { id: number; title: string } => !!x)),
       )
       .catch(() => setItems([]));
     return () => controller.abort();
@@ -1406,9 +1430,9 @@ function FavoriteSavedQueries() {
   const navigate = useNavigate();
   const favIds = useSavedQueryFavorites((s) => s.ids);
   const toggleFavorite = useSavedQueryFavorites((s) => s.toggle);
-  const [items, setItems] = useState<{ id: number; title: string; sql?: string }[]>(
-    [],
-  );
+  const [items, setItems] = useState<
+    { id: number; title: string; sql?: string }[]
+  >([]);
 
   useEffect(() => {
     if (favIds.length === 0) {
@@ -1419,9 +1443,12 @@ function FavoriteSavedQueries() {
     Promise.all(
       favIds.map((id) =>
         api
-          .get<{ result?: { label?: string; sql?: string } }>(`/saved_query/${id}`, {
-            signal: controller.signal,
-          })
+          .get<{ result?: { label?: string; sql?: string } }>(
+            `/saved_query/${id}`,
+            {
+              signal: controller.signal,
+            },
+          )
           .then((res) => ({
             id,
             title: res.data.result?.label ?? `查询 ${id}`,
@@ -1547,9 +1574,7 @@ function FavoriteAlerts() {
       ),
     )
       .then((res) =>
-        setItems(
-          res.filter(Boolean) as { id: number; title: string }[],
-        ),
+        setItems(res.filter(Boolean) as { id: number; title: string }[]),
       )
       .catch(() => setItems([]));
     return () => controller.abort();
