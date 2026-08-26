@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# Vendored agent-skill tooling (superset-frontend-new/agents) follows its
+# own conventions and is not held to the repo lint standards.
+exclude: ^superset-frontend-new/agents/
 repos:
   - repo: https://github.com/MarcoGorelli/auto-walrus
     rev: 0.3.4

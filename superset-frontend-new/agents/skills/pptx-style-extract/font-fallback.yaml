@@ -1,0 +1,129 @@
+# 商业字体降级映射表（随 skill 分发，E5：初始 20+ 族）
+#
+# 消费方：L4 字体角色分配。直读本文件文本即可，不依赖 yaml 库。
+# 命中 families[].match 中任一名字（含碎片化变体）→ 降级链写进 fontFamily 栈：
+# 原始名留栈首，fallback 依序追加，末位永远可加系统兜底
+# `"PingFang SC", "Microsoft YaHei", sans-serif`。
+# 查无对应 → 按 dsm-v1-spec.md 的气质候选清单选近似体 + 记 gaps，不编造。
+# 匹配纪律：先做字体名归一化聚类（中文名/拉丁名、weight 后缀剥离、31 字符截断），
+# 再拿聚类后的 family 与 match 逐条比对（大小写不敏感、忽略空格/连字符）。
+
+version: 2
+
+# fallback 用到的 web 字体探测状态（镜像 https://miaoda.feishu.cn/fonts/css2）。
+# verified: true = 该镜像已 curl 验证返回 @font-face（2026-08-06）。
+# 状态过期不影响正确性：L4 对 verified 为 false 或存疑的字体按 dsm-v1-spec 字体条款
+# 重新 curl 验证后再用，加载不到降到下一档。
+web-fonts:
+  "Noto Sans SC":         {verified: true}
+  "Noto Serif SC":        {verified: true}
+  "ZCOOL XiaoWei":        {verified: true}
+  "ZCOOL QingKe HuangYou": {verified: true}
+  "Ma Shan Zheng":        {verified: true}
+  "Inter":                {verified: true}
+  "Montserrat":           {verified: true}
+  "Barlow":               {verified: true}
+  "Jost":                 {verified: true}
+  "Nunito Sans":          {verified: true}
+  "Roboto Condensed":     {verified: true}
+  "Arial":                {verified: system}   # 系统字体，不走镜像
+
+families:
+  # ---- 方正系 ----
+  - family: 方正兰亭黑
+    match: [方正兰亭黑Pro_GB18030, FZLanTingHeiPro, FZLanTingHeiPro_GB18030, FZLTHProS-R--GB1-0, FZLTHProS, 方正兰亭黑]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 方正兰亭圆
+    match: [方正兰亭圆, FZLanTingYuan, FZLTYuanS]
+    category: rounded
+    fallback: ["ZCOOL XiaoWei", "Noto Sans SC"]
+  - family: 方正准圆
+    match: [方正准圆, FZZhunYuan, FZY3JW]
+    category: rounded
+    fallback: ["ZCOOL XiaoWei", "Noto Sans SC"]
+  - family: 方正书宋/宋体系
+    match: [方正书宋, FZShuSong, 方正宋体, FZSongS]
+    category: serif
+    fallback: ["Noto Serif SC"]
+
+  # ---- 汉仪系 ----
+  - family: 汉仪旗黑
+    match: [汉仪旗黑, HYQiHei, HYQiHeiX]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 汉仪文黑
+    match: [汉仪文黑, HYWenHei]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 汉仪菱心体
+    match: [汉仪菱心体, HYLingXin]
+    category: display
+    fallback: ["ZCOOL QingKe HuangYou", "Noto Sans SC"]
+  - family: 汉仪粗黑
+    match: [汉仪粗黑, HYCuHei]
+    category: display
+    fallback: ["Noto Sans SC"]
+    weight-hint: 900
+
+  # ---- 系统/厂商中文 ----
+  - family: 苹方
+    match: [苹方, PingFang SC, PingFangSC, 苹方-简]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 微软雅黑
+    match: [微软雅黑, Microsoft YaHei, MicrosoftYaHei, 微软雅黑 UI]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 等线
+    match: [等线, DengXian, 等线 Light, DengXian Light]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 华文黑体
+    match: [华文黑体, STHeiti, 华文细黑, STXihei]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 华文宋体/楷体
+    match: [华文宋体, STSong, 华文楷体, STKaiti, 楷体, KaiTi]
+    category: serif
+    fallback: ["Noto Serif SC"]   # 手写楷气质另可选 Ma Shan Zheng，按场景判断
+  - family: 思源黑体
+    match: [思源黑体, Source Han Sans, Source Han Sans SC, SourceHanSansSC, 思源黑体 CN]
+    category: sans
+    fallback: ["Noto Sans SC"]    # 同源设计，无损替换
+  - family: 思源宋体
+    match: [思源宋体, Source Han Serif, Source Han Serif SC, SourceHanSerifSC]
+    category: serif
+    fallback: ["Noto Serif SC"]   # 同源设计，无损替换
+
+  # ---- 互联网厂商定制体 ----
+  - family: 阿里巴巴普惠体
+    match: [阿里巴巴普惠体, Alibaba PuHuiTi, AlibabaPuHuiTi]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 字节跳动定制体
+    match: [Byte Sans, ByteDance Sans, Douyin Sans]
+    category: sans
+    fallback: ["Noto Sans SC"]
+  - family: 小米/OPPO/荣耀定制体
+    match: [MiSans, OPPO Sans, HarmonyOS Sans, HONOR Sans]
+    category: sans
+    fallback: ["Noto Sans SC"]
+
+  # ---- 拉丁商业体 ----
+  - family: Helvetica Neue
+    match: [Helvetica Neue, HelveticaNeue, Helvetica Neue Medium, Helvetica]
+    category: sans-latin
+    fallback: ["Inter", "Arial"]
+  - family: Gotham / Proxima Nova
+    match: [Gotham, Proxima Nova, ProximaNova]
+    category: sans-latin
+    fallback: ["Montserrat", "Inter"]
+  - family: DIN
+    match: [DIN, DIN Pro, DIN Next, FF DIN]
+    category: sans-latin
+    fallback: ["Barlow", "Roboto Condensed"]
+  - family: Futura / Avenir
+    match: [Futura, Avenir, Avenir Next]
+    category: sans-latin
+    fallback: ["Jost", "Nunito Sans"]
