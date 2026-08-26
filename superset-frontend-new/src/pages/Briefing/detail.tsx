@@ -10,8 +10,6 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
 import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
@@ -21,6 +19,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import LinearProgress from "@mui/material/LinearProgress";
 import Collapse from "@mui/material/Collapse";
+import Fade from "@mui/material/Fade";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
@@ -38,9 +37,20 @@ import { useNotificationStore } from "@/store/notificationStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import type { EChartsOption } from "echarts";
 import { supersetPalette } from "@/theme/palette";
+import { duration as durationTokens, ease as easeTokens } from "@/theme/tokens";
 import api from "@/api";
 import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
+import {
+  ALERT_LEVEL_COLOR,
+  BRIEFING_CHART_CHROME,
+  BRIEFING_CHART_COLORS,
+  CALLOUT_BG,
+  JOB_STATUS_COLOR,
+  JOB_STATUS_LABEL,
+  briefingTable,
+  type JobStatus,
+} from "./reportStyles";
 import {
   normalizeReportType,
   paramsFromConfig,
@@ -49,12 +59,15 @@ import {
   type ReportType,
 } from "./params";
 
-const TEXT_MUTED = supersetPalette.text.secondary;
-const DIVIDER = supersetPalette.divider;
-const COLOR_SUCCESS = supersetPalette.success.main;
-const COLOR_ERROR = supersetPalette.error.main;
-const COLOR_PRIMARY = supersetPalette.primary.main;
-const COLOR_INFO = supersetPalette.info.main;
+// Chart chrome derives from the shared briefing tokens; the dark terminal
+// panel below keeps two local neutrals because the palette is light-only and
+// the log view intentionally reads as a terminal surface.
+const TEXT_MUTED = BRIEFING_CHART_CHROME.axisLabel;
+const DIVIDER = BRIEFING_CHART_CHROME.gridLine;
+const TERMINAL_BG = "#0d1117";
+const TERMINAL_TEXT = "#c9d1d9";
+const TERMINAL_MUTED = "#8b949e";
+const TERMINAL_HOVER = "rgba(255,255,255,0.04)";
 
 interface CoreMetrics {
   spend?: number;
@@ -201,25 +214,15 @@ interface JobInfo {
   result?: DailyReportResult;
 }
 
-type JobStatus = "idle" | "running" | "done" | "error" | "cancelled";
-
 const SPEND_LABEL = "返点后消耗";
 const USERS_LABEL = "新增进入";
 // Drill-down views only show the leading series to avoid long-tail clutter.
 const MAX_DRILL_SERIES = 10;
 
-const LEVEL_COLOR: Record<string, "error" | "warning" | "info"> = {
-  critical: "error",
-  warning: "warning",
-  error: "error",
-  info: "info",
-};
-
+// Log lines can carry a success level that report alerts never emit.
 const LOG_LEVEL_COLOR: Record<string, string> = {
-  error: "#ef5350",
-  warning: "#ed6c02",
-  success: "#2e7d32",
-  info: "#0288d1",
+  ...ALERT_LEVEL_COLOR,
+  success: supersetPalette.status.success,
 };
 
 function formatNumber(value: number | undefined, digits = 1): string {
@@ -234,7 +237,57 @@ function formatPercent(value: number | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-function MetricCard({
+/**
+ * Editorial chapter marker: warm index chip + serif title + hairline rule.
+ * Repeated for every report section so the numbering becomes the page's
+ * signature element.
+ */
+function ReportSectionHeader({
+  index,
+  title,
+  caption,
+}: {
+  index: number;
+  title: string;
+  caption?: string;
+}) {
+  return (
+    <Box sx={{ mb: 0.75 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+        <Box
+          sx={{
+            display: "grid",
+            placeItems: "center",
+            minWidth: 26,
+            height: 26,
+            px: 0.75,
+            borderRadius: 1,
+            bgcolor: supersetPalette.primary.container,
+            color: supersetPalette.primary.onContainer,
+            fontSize: "0.8125rem",
+            fontWeight: 700,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {String(index).padStart(2, "0")}
+        </Box>
+        <Typography variant="h6">{title}</Typography>
+        <Box sx={{ flex: 1, height: 1, bgcolor: DIVIDER }} aria-hidden />
+      </Box>
+      {caption && (
+        <Typography
+          variant="caption"
+          sx={{ color: TEXT_MUTED, display: "block", mt: 0.25 }}
+        >
+          {caption}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/** Flat stat cell for the core-metric band — no card chrome, hairline only. */
+function StatTile({
   label,
   value,
   display,
@@ -250,30 +303,43 @@ function MetricCard({
   neutral?: boolean;
 }) {
   return (
-    <Card sx={{ height: "100%" }}>
-      <CardContent>
-        <Typography variant="caption" color="text.secondary">
-          {label}
+    <Box
+      sx={{
+        px: 2,
+        py: 1.5,
+        display: "flex",
+        flexDirection: "column",
+        gap: 0.25,
+      }}
+    >
+      <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+        {label}
+      </Typography>
+      <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+        <Typography
+          sx={{
+            fontSize: "1.5rem",
+            fontWeight: 700,
+            lineHeight: 1.2,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {value}
         </Typography>
-        <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 0.5 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {value}
-          </Typography>
-          {delta !== undefined && delta !== null && (
-            <DeltaBadge
-              value={delta}
-              higherIsBetter={higherIsBetter}
-              neutral={neutral}
-            />
-          )}
-        </Box>
-        {display && (
-          <Typography variant="caption" color="text.secondary">
-            {display}
-          </Typography>
+        {delta !== undefined && delta !== null && (
+          <DeltaBadge
+            value={delta}
+            higherIsBetter={higherIsBetter}
+            neutral={neutral}
+          />
         )}
-      </CardContent>
-    </Card>
+      </Box>
+      {display && (
+        <Typography variant="caption" color="text.secondary">
+          {display}
+        </Typography>
+      )}
+    </Box>
   );
 }
 
@@ -303,16 +369,7 @@ function DailySubTable({ rows }: { rows: DailyTrendRow[] }) {
               "ROI1",
               "ROI1环比",
             ].map((c) => (
-              <th
-                key={c}
-                style={{
-                  padding: "5px 8px",
-                  borderBottom: "1px solid rgba(128,128,128,0.2)",
-                  fontWeight: 600,
-                  color: "text.secondary",
-                  whiteSpace: "nowrap",
-                }}
-              >
+              <th key={c} style={briefingTable.headCell("5px 8px")}>
                 {c}
               </th>
             ))}
@@ -326,32 +383,57 @@ function DailySubTable({ rows }: { rows: DailyTrendRow[] }) {
             const roiDelta =
               prev && prev.roi1 ? (row.roi1 - prev.roi1) / prev.roi1 : null;
             return (
-              <tr
-                key={row.date}
-                style={{ borderBottom: "1px solid rgba(128,128,128,0.08)" }}
-              >
-                <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
+              <tr key={row.date} style={briefingTable.zebraRow(i)}>
+                <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
                   {row.label ?? row.date}
                 </td>
-                <td style={{ padding: "5px 8px" }}>{formatNumber(row.spend)}</td>
-                <td style={{ padding: "5px 8px" }}>
+                <td
+                  style={briefingTable.bodyCell({
+                    numeric: true,
+                    padding: "5px 8px",
+                  })}
+                >
+                  {formatNumber(row.spend)}
+                </td>
+                <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
                   <DeltaBadge value={spendDelta} higherIsBetter={false} />
                 </td>
-                <td style={{ padding: "5px 8px" }}>
+                <td
+                  style={briefingTable.bodyCell({
+                    numeric: true,
+                    padding: "5px 8px",
+                  })}
+                >
                   {formatNumber(row.new_users, 0)}
                 </td>
-                <td style={{ padding: "5px 8px" }}>
+                <td
+                  style={briefingTable.bodyCell({
+                    numeric: true,
+                    padding: "5px 8px",
+                  })}
+                >
                   {formatNumber(row.cpa, 1)}
                 </td>
                 {ltvDays.map((d) => (
-                  <td key={d} style={{ padding: "5px 8px" }}>
+                  <td
+                    key={d}
+                    style={briefingTable.bodyCell({
+                      numeric: true,
+                      padding: "5px 8px",
+                    })}
+                  >
                     {formatNumber(ltvValue(row, d), 2)}
                   </td>
                 ))}
-                <td style={{ padding: "5px 8px" }}>
+                <td
+                  style={briefingTable.bodyCell({
+                    numeric: true,
+                    padding: "5px 8px",
+                  })}
+                >
                   {formatPercent(row.roi1)}
                 </td>
-                <td style={{ padding: "5px 8px" }}>
+                <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
                   <DeltaBadge value={roiDelta} higherIsBetter />
                 </td>
               </tr>
@@ -426,64 +508,58 @@ function ProjectComboTable({
                 "ROI1",
                 "达成",
               ].map((c) => (
-                <th
-                  key={c}
-                  style={{
-                    padding: "6px 8px",
-                    borderBottom: "1px solid rgba(128,128,128,0.2)",
-                    fontWeight: 600,
-                    color: "text.secondary",
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <th key={c} style={briefingTable.headCell()}>
                   {c}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {projects.map((p) => {
+            {projects.map((p, idx) => {
               const achieved = (p.roi1 ?? 0) >= breakevenLine;
               const pprev = p.prev;
+              const num = briefingTable.bodyCell({ numeric: true });
               return (
                 <Fragment key={`${p.project}-${p.channel}-${p.region}`}>
-                  <tr>
-                    <td style={{ padding: "6px 8px" }}>{p.project}</td>
-                    <td style={{ padding: "6px 8px" }}>{p.channel || "-"}</td>
-                    <td style={{ padding: "6px 8px" }}>{p.region || "-"}</td>
-                    <td style={{ padding: "6px 8px" }}>
+                  <tr style={briefingTable.zebraRow(idx)}>
+                    <td style={briefingTable.bodyCell()}>{p.project}</td>
+                    <td style={briefingTable.bodyCell()}>{p.channel || "-"}</td>
+                    <td style={briefingTable.bodyCell()}>{p.region || "-"}</td>
+                    <td style={num}>
                       <MetricCell
                         value={formatNumber(p.spend)}
                         delta={showDaily ? pct(p.spend, pprev?.spend) : null}
                         neutral
                       />
                     </td>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={num}>
                       <MetricCell
                         value={String(p.new_users)}
-                        delta={showDaily ? pct(p.new_users, pprev?.new_users) : null}
+                        delta={
+                          showDaily ? pct(p.new_users, pprev?.new_users) : null
+                        }
                       />
                     </td>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={num}>
                       <MetricCell
                         value={formatNumber(p.cpa, 1)}
                         delta={showDaily ? pct(p.cpa, pprev?.cpa) : null}
                         higherIsBetter={false}
                       />
                     </td>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={num}>
                       <MetricCell
                         value={formatNumber(p.ltv1, 2)}
                         delta={showDaily ? pct(p.ltv1, pprev?.ltv1) : null}
                       />
                     </td>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={num}>
                       <MetricCell
                         value={formatPercent(p.roi1)}
                         delta={showDaily ? pct(p.roi1, pprev?.roi1) : null}
                       />
                     </td>
-                    <td style={{ padding: "6px 8px" }}>
+                    <td style={briefingTable.bodyCell()}>
                       <Chip
                         size="small"
                         color={achieved ? "success" : "default"}
@@ -496,7 +572,10 @@ function ProjectComboTable({
                     <tr>
                       <td
                         colSpan={9}
-                        style={{ padding: 0, background: "rgba(184,101,58,0.04)" }}
+                        style={{
+                          padding: 0,
+                          background: supersetPalette.bg.muted,
+                        }}
                       >
                         <Box
                           sx={{
@@ -546,10 +625,10 @@ function DeltaBadge({
   }
   const up = value >= 0;
   const color = neutral
-    ? "#616161"
+    ? supersetPalette.text.secondary
     : up === higherIsBetter
-      ? "#2e7d32"
-      : "#d32f2f";
+      ? supersetPalette.status.success
+      : supersetPalette.status.error;
   const arrow = up ? "▲" : "▼";
   return (
     <Typography variant="body2" sx={{ color, fontWeight: 600 }}>
@@ -598,6 +677,7 @@ function TrendChart({
     grid: { left: 96, right: 104, top: 48, bottom: 28 },
     tooltip: {
       trigger: "axis",
+      confine: true,
       formatter: (params: any) => {
         const list = Array.isArray(params) ? params : [params];
         const lines = list.map((p: any) => {
@@ -615,6 +695,7 @@ function TrendChart({
     },
     legend: {
       data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
+      type: "scroll",
       top: 8,
       textStyle: { color: TEXT_MUTED, fontSize: 12 },
       itemWidth: 14,
@@ -623,7 +704,15 @@ function TrendChart({
     xAxis: {
       type: "category",
       data: dates,
-      axisLabel: { color: TEXT_MUTED, fontSize: 11 },
+      axisLabel: {
+        color: TEXT_MUTED,
+        fontSize: 11,
+        // Long histories crowd the axis; let ECharts thin labels out and
+        // tilt them once buckets get numerous.
+        interval: "auto",
+        rotate: dates.length > 8 ? 30 : 0,
+        hideOverlap: true,
+      },
       axisLine: { lineStyle: { color: DIVIDER } },
     },
     yAxis: [
@@ -631,7 +720,10 @@ function TrendChart({
         type: "value",
         name: "消耗",
         nameTextStyle: { color: TEXT_MUTED, fontSize: 11 },
-        axisLabel: { color: TEXT_MUTED, formatter: (v: number) => formatNumber(v) },
+        axisLabel: {
+          color: TEXT_MUTED,
+          formatter: (v: number) => formatNumber(v),
+        },
         splitLine: { lineStyle: { color: DIVIDER } },
       },
       {
@@ -640,7 +732,10 @@ function TrendChart({
         nameTextStyle: { color: TEXT_MUTED, fontSize: 11 },
         position: "left",
         offset: 56,
-        axisLabel: { color: TEXT_MUTED, formatter: (v: number) => formatNumber(v, 0) },
+        axisLabel: {
+          color: TEXT_MUTED,
+          formatter: (v: number) => formatNumber(v, 0),
+        },
         splitLine: { show: false },
       },
       {
@@ -674,7 +769,10 @@ function TrendChart({
         yAxisIndex: 0,
         data: spends,
         cursor: onSelect ? "pointer" : "default",
-        itemStyle: { color: COLOR_PRIMARY, borderRadius: [3, 3, 0, 0] },
+        itemStyle: {
+          color: BRIEFING_CHART_COLORS.spend,
+          borderRadius: [3, 3, 0, 0],
+        },
         barMaxWidth: 26,
       },
       {
@@ -683,7 +781,10 @@ function TrendChart({
         yAxisIndex: 1,
         data: users,
         cursor: onSelect ? "pointer" : "default",
-        itemStyle: { color: supersetPalette.chart[3], borderRadius: [3, 3, 0, 0] },
+        itemStyle: {
+          color: BRIEFING_CHART_COLORS.newUsers,
+          borderRadius: [3, 3, 0, 0],
+        },
         barMaxWidth: 26,
       },
       {
@@ -694,7 +795,7 @@ function TrendChart({
         smooth: true,
         symbol: "circle",
         symbolSize: 6,
-        itemStyle: { color: COLOR_SUCCESS },
+        itemStyle: { color: BRIEFING_CHART_COLORS.roi1 },
         lineStyle: { width: 2 },
       },
       {
@@ -705,7 +806,7 @@ function TrendChart({
         smooth: true,
         symbol: "circle",
         symbolSize: 6,
-        itemStyle: { color: COLOR_INFO },
+        itemStyle: { color: BRIEFING_CHART_COLORS.ltv1 },
         lineStyle: { width: 2 },
       },
     ],
@@ -743,10 +844,7 @@ interface ComboRow {
   prev?: { spend: number; new_users: number; ltv1: number; roi1: number };
 }
 
-function aggregateByChannel(
-  projects: ProjectRow[],
-  game: string,
-): ComboRow[] {
+function aggregateByChannel(projects: ProjectRow[], game: string): ComboRow[] {
   const rows = projects.filter((p) => p.project === game);
   const map = new Map<
     string,
@@ -772,18 +870,16 @@ function aggregateByChannel(
       pUsers: number;
       pLtv1w: number;
       pRoi1w: number;
-    } =
-      map.get(ch) ??
-      {
-        spend: 0,
-        users: 0,
-        ltv1w: 0,
-        roi1w: 0,
-        pSpend: 0,
-        pUsers: 0,
-        pLtv1w: 0,
-        pRoi1w: 0,
-      };
+    } = map.get(ch) ?? {
+      spend: 0,
+      users: 0,
+      ltv1w: 0,
+      roi1w: 0,
+      pSpend: 0,
+      pUsers: 0,
+      pLtv1w: 0,
+      pRoi1w: 0,
+    };
     g.spend += p.spend;
     g.users += p.new_users;
     g.ltv1w += (p.ltv1 ?? 0) * (p.new_users || 0);
@@ -854,6 +950,7 @@ function MetricsComboChart({
     grid: { left: 96, right: 104, top: 48, bottom: 56 },
     tooltip: {
       trigger: "axis",
+      confine: true,
       formatter: (params: any) => {
         const arr = Array.isArray(params) ? params : [params];
         const idx = arr[0].dataIndex;
@@ -873,6 +970,7 @@ function MetricsComboChart({
     },
     legend: {
       data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
+      type: "scroll",
       top: 8,
       textStyle: { color: TEXT_MUTED, fontSize: 12 },
       itemWidth: 14,
@@ -894,7 +992,10 @@ function MetricsComboChart({
         type: "value",
         name: "消耗",
         nameTextStyle: { color: TEXT_MUTED, fontSize: 11 },
-        axisLabel: { color: TEXT_MUTED, formatter: (v: number) => formatNumber(v) },
+        axisLabel: {
+          color: TEXT_MUTED,
+          formatter: (v: number) => formatNumber(v),
+        },
         splitLine: { lineStyle: { color: DIVIDER } },
       },
       {
@@ -903,7 +1004,10 @@ function MetricsComboChart({
         nameTextStyle: { color: TEXT_MUTED, fontSize: 11 },
         position: "left",
         offset: 56,
-        axisLabel: { color: TEXT_MUTED, formatter: (v: number) => formatNumber(v, 0) },
+        axisLabel: {
+          color: TEXT_MUTED,
+          formatter: (v: number) => formatNumber(v, 0),
+        },
         splitLine: { show: false },
       },
       {
@@ -937,7 +1041,10 @@ function MetricsComboChart({
         yAxisIndex: 0,
         data: spends,
         cursor: onSelect ? "pointer" : "default",
-        itemStyle: { color: COLOR_PRIMARY, borderRadius: [3, 3, 0, 0] },
+        itemStyle: {
+          color: BRIEFING_CHART_COLORS.spend,
+          borderRadius: [3, 3, 0, 0],
+        },
         barMaxWidth: 26,
       },
       {
@@ -946,7 +1053,10 @@ function MetricsComboChart({
         yAxisIndex: 1,
         data: users,
         cursor: onSelect ? "pointer" : "default",
-        itemStyle: { color: supersetPalette.chart[3], borderRadius: [3, 3, 0, 0] },
+        itemStyle: {
+          color: BRIEFING_CHART_COLORS.newUsers,
+          borderRadius: [3, 3, 0, 0],
+        },
         barMaxWidth: 26,
       },
       {
@@ -957,7 +1067,7 @@ function MetricsComboChart({
         smooth: true,
         symbol: "circle",
         symbolSize: 6,
-        itemStyle: { color: COLOR_SUCCESS },
+        itemStyle: { color: BRIEFING_CHART_COLORS.roi1 },
         lineStyle: { width: 2 },
       },
       {
@@ -968,7 +1078,7 @@ function MetricsComboChart({
         smooth: true,
         symbol: "circle",
         symbolSize: 6,
-        itemStyle: { color: COLOR_INFO },
+        itemStyle: { color: BRIEFING_CHART_COLORS.ltv1 },
         lineStyle: { width: 2 },
       },
     ],
@@ -1047,12 +1157,8 @@ function MediaQualitySummary({
 }) {
   const valid = media.filter((m) => (m.roi1 ?? 0) > 0);
   if (valid.length === 0) return null;
-  const best = valid.reduce((a, b) =>
-    (b.roi1 ?? 0) > (a.roi1 ?? 0) ? b : a,
-  );
-  const worst = valid.reduce((a, b) =>
-    (b.roi1 ?? 0) < (a.roi1 ?? 0) ? b : a,
-  );
+  const best = valid.reduce((a, b) => ((b.roi1 ?? 0) > (a.roi1 ?? 0) ? b : a));
+  const worst = valid.reduce((a, b) => ((b.roi1 ?? 0) < (a.roi1 ?? 0) ? b : a));
   const fmtDelta = (d: number | null) =>
     d === null || Number.isNaN(d)
       ? ""
@@ -1115,6 +1221,7 @@ function MediaRoiChart({
     grid: { left: 96, right: 40, top: 10, bottom: 24 },
     tooltip: {
       trigger: "axis",
+      confine: true,
       axisPointer: { type: "shadow" },
       formatter: (params: any) => {
         const arr = Array.isArray(params) ? params : [params];
@@ -1149,7 +1256,11 @@ function MediaRoiChart({
         data: ordered.map((m) => ({
           value: m.roi1 ?? 0,
           itemStyle: {
-            color: (m.roi1 ?? 0) >= breakevenLine ? COLOR_SUCCESS : COLOR_ERROR,
+            // Value judgment → semantic status tokens (charts skill rule).
+            color:
+              (m.roi1 ?? 0) >= breakevenLine
+                ? supersetPalette.status.success
+                : supersetPalette.status.error,
             borderRadius: [0, 3, 3, 0],
           },
         })),
@@ -1161,7 +1272,10 @@ function MediaRoiChart({
             fontSize: 11,
             position: "insideEndTop",
           },
-          lineStyle: { color: COLOR_ERROR, type: "dashed" },
+          lineStyle: {
+            color: BRIEFING_CHART_COLORS.breakevenLine,
+            type: "dashed",
+          },
           data: [{ xAxis: breakevenLine }],
         },
       },
@@ -1208,7 +1322,6 @@ function ReportToc({
         borderColor: "divider",
         borderRadius: 2,
         p: 0.75,
-        boxShadow: 1,
       }}
     >
       <Stack spacing={0.25}>
@@ -1232,6 +1345,8 @@ function ReportToc({
                   minWidth: 0,
                   px: 1,
                   py: 0.25,
+                  borderRadius: 1,
+                  bgcolor: active ? "action.hover" : "transparent",
                 }}
               >
                 {c.label}
@@ -1243,22 +1358,6 @@ function ReportToc({
     </Box>
   );
 }
-
-const JOB_STATUS_LABEL: Record<JobStatus, string> = {
-  idle: "待执行",
-  running: "执行中",
-  done: "已完成",
-  error: "失败",
-  cancelled: "已停止",
-};
-
-const JOB_STATUS_COLOR: Record<JobStatus, string> = {
-  idle: "#8b949e",
-  running: "#0288d1",
-  done: "#2e7d32",
-  error: "#ef5350",
-  cancelled: "#ed6c02",
-};
 
 function JobLogPanel({
   logs,
@@ -1286,8 +1385,8 @@ function JobLogPanel({
       variant="outlined"
       sx={{
         mb: 2,
-        bgcolor: "#0d1117",
-        color: "#c9d1d9",
+        bgcolor: TERMINAL_BG,
+        color: TERMINAL_TEXT,
         overflow: "hidden",
       }}
     >
@@ -1301,10 +1400,18 @@ function JobLogPanel({
           py: 0.75,
           cursor: "pointer",
           userSelect: "none",
-          "&:hover": { bgcolor: "rgba(255,255,255,0.04)" },
+          "&:hover": { bgcolor: TERMINAL_HOVER },
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
           <Typography
             variant="caption"
             sx={{ color: JOB_STATUS_COLOR[status], fontWeight: 600 }}
@@ -1312,18 +1419,22 @@ function JobLogPanel({
             执行日志 · {JOB_STATUS_LABEL[status]}
           </Typography>
           {!expanded && lastLine && (
-            <Typography variant="caption" noWrap sx={{ color: "#8b949e" }}>
+            <Typography variant="caption" noWrap sx={{ color: TERMINAL_MUTED }}>
               {lastLine}
             </Typography>
           )}
         </Box>
         {expanded ? (
-          <ExpandLessIcon sx={{ fontSize: 18, color: "#8b949e" }} />
+          <ExpandLessIcon sx={{ fontSize: 18, color: TERMINAL_MUTED }} />
         ) : (
-          <ExpandMoreIcon sx={{ fontSize: 18, color: "#8b949e" }} />
+          <ExpandMoreIcon sx={{ fontSize: 18, color: TERMINAL_MUTED }} />
         )}
       </Box>
-      <Collapse in={expanded} timeout={{ enter: 300, exit: 700 }} unmountOnExit={false}>
+      <Collapse
+        in={expanded}
+        timeout={{ enter: 300, exit: 700 }}
+        unmountOnExit={false}
+      >
         <Box
           ref={boxRef}
           sx={{
@@ -1341,14 +1452,16 @@ function JobLogPanel({
           }}
         >
           {logs.length === 0 && status === "running" && (
-            <Box sx={{ color: "#8b949e" }}>等待任务启动…</Box>
+            <Box sx={{ color: TERMINAL_MUTED }}>等待任务启动…</Box>
           )}
           {logs.map((log, i) => (
             <Box key={i} sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-              <span style={{ color: "#8b949e" }}>
+              <span style={{ color: TERMINAL_MUTED }}>
                 [{log.ts.split("T")[1] ?? log.ts}]{" "}
               </span>
-              <span style={{ color: LOG_LEVEL_COLOR[log.level] ?? "#c9d1d9" }}>
+              <span
+                style={{ color: LOG_LEVEL_COLOR[log.level] ?? TERMINAL_TEXT }}
+              >
                 {log.message}
               </span>
             </Box>
@@ -1669,8 +1782,23 @@ export default function DailyReportDetail() {
   const resultIsWeekly =
     normalizeReportType(result?.report_type ?? reportType) === "weekly";
 
+  // Masthead meta line: type first, then the reported window.
+  const periodText =
+    resultIsWeekly && result?.period_start && result?.period_end
+      ? `简报周期：${result.period_start} ~ ${result.period_end}`
+      : result?.report_date
+        ? `简报日期：${result.report_date}`
+        : null;
+
   return (
-    <Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <Box
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
       <Box
         sx={{
           flex: 1,
@@ -1682,246 +1810,288 @@ export default function DailyReportDetail() {
         }}
       >
         <PageHeader
-        title={reportName}
-        subtitle={
-          resultIsWeekly && result?.period_start && result?.period_end
-            ? `简报周期：${result.period_start} ~ ${result.period_end}`
-            : result?.report_date
-              ? `简报日期：${result.report_date}`
-              : "运行简报以查看指标"
-        }
-        actions={
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <Button
-              startIcon={<ArrowBackIcon />}
-              onClick={() => navigate("/briefing")}
-            >
-              返回列表
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<EditIcon />}
-              onClick={openEdit}
-            >
-              编辑参数
-            </Button>
-            <DatePicker
-              label={resultIsWeekly ? "简报周（任选日期）" : "简报日期"}
-              value={reportDate}
-              onChange={(v: Dayjs | null) => setReportDate(v)}
-              slotProps={{
-                textField: {
-                  size: "small",
-                  helperText: resultIsWeekly
-                    ? "生成所选日期所在自然周（周日~周六）"
-                    : undefined,
-                },
-              }}
-            />
-            {isRunning ? (
+          title={reportName}
+          subtitle={
+            periodText
+              ? `${resultIsWeekly ? "周报" : "日报"} · ${periodText}`
+              : `${resultIsWeekly ? "周报" : "日报"} · 运行简报以查看指标`
+          }
+          actions={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <Button
-                variant="outlined"
-                color="error"
-                startIcon={<StopIcon />}
-                onClick={() => void handleStop()}
+                startIcon={<ArrowBackIcon />}
+                onClick={() => navigate("/briefing")}
               >
-                停止
+                返回列表
               </Button>
-            ) : jobStatus === "done" ? (
               <Button
                 variant="outlined"
-                startIcon={<RestartAltIcon />}
+                startIcon={<EditIcon />}
+                onClick={openEdit}
+              >
+                编辑参数
+              </Button>
+              <DatePicker
+                label={resultIsWeekly ? "简报周（任选日期）" : "简报日期"}
+                value={reportDate}
+                onChange={(v: Dayjs | null) => setReportDate(v)}
+                slotProps={{
+                  textField: {
+                    size: "small",
+                    helperText: resultIsWeekly
+                      ? "生成所选日期所在自然周（周日~周六）"
+                      : undefined,
+                  },
+                }}
+              />
+              {isRunning ? (
+                <Button
+                  variant="outlined"
+                  color="error"
+                  startIcon={<StopIcon />}
+                  onClick={() => void handleStop()}
+                >
+                  停止
+                </Button>
+              ) : jobStatus === "done" ? (
+                <Button
+                  variant="outlined"
+                  startIcon={<RestartAltIcon />}
+                  onClick={handleRun}
+                >
+                  重新执行
+                </Button>
+              ) : null}
+              <Button
+                variant="contained"
+                startIcon={<PlayArrowIcon />}
                 onClick={handleRun}
+                disabled={isRunning || !configId}
               >
-                重新执行
+                {isRunning ? "执行中…" : "运行简报"}
               </Button>
-            ) : null}
-            <Button
-              variant="contained"
-              startIcon={<PlayArrowIcon />}
-              onClick={handleRun}
-              disabled={isRunning || !configId}
-            >
-              {isRunning ? "执行中…" : "运行简报"}
-            </Button>
-          </Box>
-        }
-      />
-
-      {isRunning && <LinearProgress sx={{ mb: 2 }} />}
-
-      {isRunning && (
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            mb: 2,
-            color: "text.secondary",
-          }}
-        >
-          <Chip
-            size="small"
-            color="primary"
-            label={`执行中 · 已运行 ${Math.floor(elapsedSec / 60)}分 ${elapsedSec % 60}秒`}
-          />
-          {logs.length > 0 && (
-            <Typography variant="caption" color="text.secondary">
-              最后更新：{logs[logs.length - 1].ts.split("T")[1] ?? ""}
-            </Typography>
-          )}
-        </Box>
-      )}
-
-      {configError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {configError}
-        </Alert>
-      )}
-
-      {jobError && jobStatus === "error" && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          简报生成失败：{jobError}
-        </Alert>
-      )}
-
-      {jobStatus === "cancelled" && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          任务已手动停止。
-        </Alert>
-      )}
-
-      {(isRunning || logs.length > 0) && (
-        <JobLogPanel
-          logs={logs}
-          status={jobStatus}
-          expanded={logsExpanded}
-          onToggle={() => setLogsExpanded((v) => !v)}
+            </Box>
+          }
         />
-      )}
 
-      {result?.alerts && result.alerts.length > 0 && (
-        <Box sx={{ mb: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-          {result.alerts.map((a, i) => (
-            <Alert key={i} severity={LEVEL_COLOR[a.level] ?? "info"}>
-              <strong>{a.metric}:</strong> {a.message}
-            </Alert>
-          ))}
-        </Box>
-      )}
+        {isRunning && <LinearProgress sx={{ mb: 2 }} />}
 
-      {result?.empty && (
-        <Alert severity="warning">
-          所选日期范围内没有数据，请检查数据集/字段映射配置。
-        </Alert>
-      )}
-
-      {result && !result.empty && (
-        <>
-          {/* §1 核心指标速览 */}
-          <Box id="sec-core" sx={{ scrollMarginTop: 8 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
-              1. 核心指标速览
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1.5 }}
-            >
-              {resultIsWeekly && result?.period_start && result?.period_end
-                ? `报告周期：${result.period_start} ~ ${result.period_end} ｜ 对比周期：${result.previous_period_start ?? ""} ~ ${result.previous_period_end ?? ""}`
-                : `简报日期：${result.report_date} ｜ 对比周期：${result.previous_date}`}
-            </Typography>
-
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: 2,
-                mb: 3,
-              }}
-            >
-              <MetricCard
-                label={SPEND_LABEL}
-                value={formatNumber(core.spend)}
-                delta={spendDelta}
-                neutral
-              />
-              <MetricCard
-                label={USERS_LABEL}
-                value={formatNumber(core.new_users, 0)}
-                delta={usersDelta}
-              />
-              <MetricCard
-                label="CPA"
-                value={formatNumber(core.cpa, 1)}
-                delta={cpaDelta}
-                higherIsBetter={false}
-              />
-              <MetricCard
-                label="LTV1"
-                value={formatNumber(ltv1, 2)}
-                delta={ltv1Delta}
-              />
-              <MetricCard
-                label="ROI1"
-                value={formatPercent(roi1)}
-                delta={roi1Delta}
-              />
-            </Box>
+        {isRunning && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              mb: 2,
+              color: "text.secondary",
+            }}
+          >
+            <Chip
+              size="small"
+              color="primary"
+              label={`执行中 · 已运行 ${Math.floor(elapsedSec / 60)}分 ${elapsedSec % 60}秒`}
+            />
+            {logs.length > 0 && (
+              <Typography variant="caption" color="text.secondary">
+                最后更新：{logs[logs.length - 1].ts.split("T")[1] ?? ""}
+              </Typography>
+            )}
           </Box>
+        )}
 
-          {result.daily && result.daily.length > 0 && (
-            <Box id="sec-trend" sx={{ mb: 3, scrollMarginTop: 8 }}>
-              {drillDate ? (
-                <MetricsComboChart
-                  rows={(result?.daily_projects ?? [])
-                    .filter((r) => r.date === drillDate)
-                    .map((r) => ({
-                      label: r.project,
-                      spend: r.spend,
-                      new_users: r.new_users,
-                      ltv1: r.ltv1,
-                      roi1: r.roi1,
-                      prev: r.prev
-                        ? {
-                            spend: r.prev.spend,
-                            new_users: r.prev.new_users,
-                            ltv1: r.prev.ltv1,
-                            roi1: r.prev.roi1,
-                          }
-                        : undefined,
-                    }))
-                    .slice(0, MAX_DRILL_SERIES)}
-                  title={`${result?.daily?.find((d) => d.date === drillDate)?.label ?? drillDate} · 主游戏`}
-                  onBack={() => setDrillDate(null)}
-                />
-              ) : (
-                <TrendChart
-                  rows={result.daily}
-                  title={resultIsWeekly ? "分周对比" : "分天对比"}
-                  onSelect={setDrillDate}
-                />
-              )}
+        {configError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {configError}
+          </Alert>
+        )}
+
+        {jobError && jobStatus === "error" && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            简报生成失败：{jobError}
+          </Alert>
+        )}
+
+        {jobStatus === "cancelled" && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            任务已手动停止。
+          </Alert>
+        )}
+
+        {(isRunning || logs.length > 0) && (
+          <JobLogPanel
+            logs={logs}
+            status={jobStatus}
+            expanded={logsExpanded}
+            onToggle={() => setLogsExpanded((v) => !v)}
+          />
+        )}
+
+        {result?.alerts && result.alerts.length > 0 && (
+          <Box sx={{ mb: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+            {result.alerts.map((a, i) => {
+              // Report content stays flat: level color bar + light wash instead
+              // of elevated MUI Alert chrome.
+              const color =
+                ALERT_LEVEL_COLOR[a.level] ?? supersetPalette.status.info;
+              const bg =
+                a.level === "warning"
+                  ? CALLOUT_BG.warning
+                  : a.level === "info"
+                    ? CALLOUT_BG.info
+                    : CALLOUT_BG.error;
+              return (
+                <Box
+                  key={i}
+                  sx={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 1,
+                    p: 1.25,
+                    borderRadius: 1,
+                    borderLeft: `3px solid ${color}`,
+                    bgcolor: bg,
+                  }}
+                >
+                  <Typography variant="body2">
+                    <strong>{a.metric}:</strong> {a.message}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+        )}
+
+        {result?.empty && (
+          <Alert severity="warning">
+            所选日期范围内没有数据，请检查数据集/字段映射配置。
+          </Alert>
+        )}
+
+        {result && !result.empty && (
+          <>
+            {/* §1 核心指标速览 */}
+            <Box id="sec-core" sx={{ scrollMarginTop: 8 }}>
+              <ReportSectionHeader
+                index={1}
+                title="核心指标速览"
+                caption={
+                  resultIsWeekly && result?.period_start && result?.period_end
+                    ? `报告周期：${result.period_start} ~ ${result.period_end} ｜ 对比周期：${result.previous_period_start ?? ""} ~ ${result.previous_period_end ?? ""}`
+                    : `简报日期：${result.report_date} ｜ 对比周期：${result.previous_date}`
+                }
+              />
+
+              {/* Flat stat band: one outlined surface, hairline-separated cells. */}
+              <Paper
+                variant="outlined"
+                sx={{
+                  mb: 3,
+                  overflow: "hidden",
+                  bgcolor: supersetPalette.surface.main,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                    "& > *:not(:first-child)": {
+                      borderLeft: `1px solid ${DIVIDER}`,
+                    },
+                  }}
+                >
+                  <StatTile
+                    label={SPEND_LABEL}
+                    value={formatNumber(core.spend)}
+                    delta={spendDelta}
+                    neutral
+                  />
+                  <StatTile
+                    label={USERS_LABEL}
+                    value={formatNumber(core.new_users, 0)}
+                    delta={usersDelta}
+                  />
+                  <StatTile
+                    label="CPA"
+                    value={formatNumber(core.cpa, 1)}
+                    delta={cpaDelta}
+                    higherIsBetter={false}
+                  />
+                  <StatTile
+                    label="LTV1"
+                    value={formatNumber(ltv1, 2)}
+                    delta={ltv1Delta}
+                  />
+                  <StatTile
+                    label="ROI1"
+                    value={formatPercent(roi1)}
+                    delta={roi1Delta}
+                  />
+                </Box>
+              </Paper>
             </Box>
-          )}
 
-          {/* §2 主游戏维度分析（主视角） */}
-          <Box id="sec-projects" sx={{ mt: 3, scrollMarginTop: 8 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
-              2. 主游戏维度分析
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1.5 }}
-            >
-              以「主游戏 + 渠道商」为主视角，定位本期指标涨跌由哪些主游戏驱动
-            </Typography>
+            {result.daily && result.daily.length > 0 && (
+              <Box id="sec-trend" sx={{ mb: 3, scrollMarginTop: 8 }}>
+                {/*
+                 * Drill-down transition: keying the fade by the drill target
+                 * replays a short enter animation on every overview ↔ detail
+                 * switch, on top of ECharts' own bar-growth on mount.
+                 */}
+                <Fade
+                  in
+                  appear
+                  timeout={durationTokens.standard}
+                  easing={easeTokens.decelerate}
+                  key={drillDate ?? "trend-overview"}
+                >
+                  <Box>
+                    {drillDate ? (
+                      <MetricsComboChart
+                        rows={(result?.daily_projects ?? [])
+                          .filter((r) => r.date === drillDate)
+                          .map((r) => ({
+                            label: r.project,
+                            spend: r.spend,
+                            new_users: r.new_users,
+                            ltv1: r.ltv1,
+                            roi1: r.roi1,
+                            prev: r.prev
+                              ? {
+                                  spend: r.prev.spend,
+                                  new_users: r.prev.new_users,
+                                  ltv1: r.prev.ltv1,
+                                  roi1: r.prev.roi1,
+                                }
+                              : undefined,
+                          }))
+                          .slice(0, MAX_DRILL_SERIES)}
+                        title={`${result?.daily?.find((d) => d.date === drillDate)?.label ?? drillDate} · 主游戏`}
+                        onBack={() => setDrillDate(null)}
+                      />
+                    ) : (
+                      <TrendChart
+                        rows={result.daily}
+                        title={resultIsWeekly ? "分周对比" : "分天对比"}
+                        onSelect={setDrillDate}
+                      />
+                    )}
+                  </Box>
+                </Fade>
+              </Box>
+            )}
 
-            {(() => {
-              const gameRows: ComboRow[] = (result?.project_summary ?? []).map(
-                (p) => ({
+            {/* §2 主游戏维度分析（主视角） */}
+            <Box id="sec-projects" sx={{ mt: 3, scrollMarginTop: 8 }}>
+              <ReportSectionHeader
+                index={2}
+                title="主游戏维度分析"
+                caption="以「主游戏 + 渠道商」为主视角，定位本期指标涨跌由哪些主游戏驱动"
+              />
+
+              {(() => {
+                const gameRows: ComboRow[] = (
+                  result?.project_summary ?? []
+                ).map((p) => ({
                   label: p.project,
                   spend: p.spend,
                   new_users: p.new_users,
@@ -1935,63 +2105,72 @@ export default function DailyReportDetail() {
                         roi1: p.prev.roi1,
                       }
                     : undefined,
-                }),
-              );
-              const channelRows: ComboRow[] = drillGame
-                ? aggregateByChannel(result?.projects ?? [], drillGame)
-                : [];
-              return (
-                <>
-                  {drillGame && channelRows.length === 0 && (
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                      主游戏「{drillGame}」暂无可用的渠道明细（可能受 Top 项目数限制）。
-                    </Alert>
-                  )}
-                  <MetricsComboChart
-                    rows={drillGame ? channelRows : gameRows}
-                    title={
-                      drillGame ? `${drillGame} × 渠道商` : "主游戏明细（含环比）"
-                    }
-                    onSelect={drillGame ? undefined : setDrillGame}
-                    onBack={drillGame ? () => setDrillGame(null) : undefined}
-                  />
-                </>
-              );
-            })()}
+                }));
+                const channelRows: ComboRow[] = drillGame
+                  ? aggregateByChannel(result?.projects ?? [], drillGame)
+                  : [];
+                return (
+                  <>
+                    {drillGame && channelRows.length === 0 && (
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        主游戏「{drillGame}」暂无可用的渠道明细（可能受 Top
+                        项目数限制）。
+                      </Alert>
+                    )}
+                    {/* Same drill transition as §1 so both gestures read alike. */}
+                    <Fade
+                      in
+                      appear
+                      timeout={durationTokens.standard}
+                      easing={easeTokens.decelerate}
+                      key={drillGame ?? "game-overview"}
+                    >
+                      <Box>
+                        <MetricsComboChart
+                          rows={drillGame ? channelRows : gameRows}
+                          title={
+                            drillGame
+                              ? `${drillGame} × 渠道商`
+                              : "主游戏明细（含环比）"
+                          }
+                          onSelect={drillGame ? undefined : setDrillGame}
+                          onBack={
+                            drillGame ? () => setDrillGame(null) : undefined
+                          }
+                        />
+                      </Box>
+                    </Fade>
+                  </>
+                );
+              })()}
 
-            <ProjectComboTable
-              projects={result.projects ?? []}
-              breakevenLine={breakevenLine}
-              showDaily={showComboDaily}
-              onToggleDaily={() => setShowComboDaily((v) => !v)}
-              expandLabel={resultIsWeekly ? "分周" : "分天"}
-            />
-          </Box>
+              <ProjectComboTable
+                projects={result.projects ?? []}
+                breakevenLine={breakevenLine}
+                showDaily={showComboDaily}
+                onToggleDaily={() => setShowComboDaily((v) => !v)}
+                expandLabel={resultIsWeekly ? "分周" : "分天"}
+              />
+            </Box>
 
-          {/* §3 媒体表现分析（辅助视角） */}
-          <Box id="sec-media" sx={{ mt: 3, scrollMarginTop: 8 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
-              3. 媒体表现分析
-            </Typography>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1.5 }}
-            >
-              辅助视角：媒体维度的消耗分布与质量对比
-            </Typography>
-            <MediaQualitySummary
-              media={result.media ?? []}
-              breakevenLine={breakevenLine}
-            />
-            <MediaRoiChart
-              media={result.media ?? []}
-              breakevenLine={breakevenLine}
-            />
-          </Box>
-        </>
-      )}
-
+            {/* §3 媒体表现分析（辅助视角） */}
+            <Box id="sec-media" sx={{ mt: 3, scrollMarginTop: 8 }}>
+              <ReportSectionHeader
+                index={3}
+                title="媒体表现分析"
+                caption="辅助视角：媒体维度的消耗分布与质量对比"
+              />
+              <MediaQualitySummary
+                media={result.media ?? []}
+                breakevenLine={breakevenLine}
+              />
+              <MediaRoiChart
+                media={result.media ?? []}
+                breakevenLine={breakevenLine}
+              />
+            </Box>
+          </>
+        )}
       </Box>
 
       {result && !result.empty && (

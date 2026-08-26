@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
 import Box from "@mui/material/Box";
 import ReactEChartsCore from "echarts-for-react/lib/core";
@@ -15,6 +15,22 @@ export default function EChart({
   onEvents?: Record<string, (params: any) => void>;
 }) {
   const [ready, setReady] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<ReactEChartsCore | null>(null);
+
+  // echarts-for-react only listens for window resize. When the surrounding
+  // layout folds (sidebar collapse, grid columns stacking) the container
+  // changes size without a window event, so observe the element directly.
+  useEffect(() => {
+    if (!ready) return;
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      chartRef.current?.getEchartsInstance()?.resize();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ready]);
 
   useEffect(() => {
     let active = true;
@@ -35,13 +51,16 @@ export default function EChart({
   }
 
   return (
-    <ReactEChartsCore
-      echarts={getECharts()}
-      option={option}
-      notMerge
-      lazyUpdate
-      onEvents={onEvents}
-      style={{ height, width: "100%" }}
-    />
+    <Box ref={containerRef} sx={{ width: "100%" }}>
+      <ReactEChartsCore
+        ref={chartRef}
+        echarts={getECharts()}
+        option={option}
+        notMerge
+        lazyUpdate
+        onEvents={onEvents}
+        style={{ height, width: "100%" }}
+      />
+    </Box>
   );
 }
