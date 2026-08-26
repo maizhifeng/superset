@@ -55,11 +55,14 @@ import RolePermissionsDialog, {
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 
+/** "最后登录"相对时间标签与列表数据的自动刷新周期（毫秒）。 */
+const LAST_LOGIN_REFRESH_MS = 30_000;
+
 /** 把时间格式化为"刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期"。 */
-function relativeTime(value: string): string {
+function relativeTime(value: string, now: number): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return "-";
-  const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+  const diffSec = Math.floor((now - d.getTime()) / 1000);
   if (diffSec < 60) return "刚刚";
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
@@ -100,6 +103,18 @@ export default function AdminUsers() {
 
   const registerTools = useToolbarStore((s) => s.registerTools);
   const unregisterTools = useToolbarStore((s) => s.unregisterTools);
+
+  // 定时刷新：让"最后登录"的相对时间随时间推进，并及时反映用户的新登录。
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!document.hidden) {
+        setNowTick(Date.now());
+        fetchData({ silent: true });
+      }
+    }, LAST_LOGIN_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [fetchData]);
 
   const [activeOnly, setActiveOnly] = useState(false);
   const filteredRows = activeOnly
@@ -204,7 +219,10 @@ export default function AdminUsers() {
     }
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      notify({ severity: "success", message: `已复制 ${names.length} 个用户名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${names.length} 个用户名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -218,7 +236,10 @@ export default function AdminUsers() {
     }
     try {
       await navigator.clipboard.writeText(emails.join("\n"));
-      notify({ severity: "success", message: `已复制 ${emails.length} 个邮箱` });
+      notify({
+        severity: "success",
+        message: `已复制 ${emails.length} 个邮箱`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -273,7 +294,11 @@ export default function AdminUsers() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新列表">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -371,7 +396,19 @@ export default function AdminUsers() {
       },
     ]);
     return () => unregisterTools("admin_users");
-  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllUsernames, handleCopyAllEmails, activeOnly, setActiveOnly, filteredRows.length]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    fetchData,
+    loading,
+    handleExportCsv,
+    handleCopyAllUsernames,
+    handleCopyAllEmails,
+    activeOnly,
+    setActiveOnly,
+    filteredRows.length,
+  ]);
 
   const columns: GridColDef[] = [
     {
@@ -473,7 +510,14 @@ export default function AdminUsers() {
       flex: 1,
       minWidth: 100,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", alignItems: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 0.5,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           {params.value?.map((r: { id: number; name: string }) => (
             <Chip
               key={r.id}
@@ -513,14 +557,12 @@ export default function AdminUsers() {
       renderCell: (params) => (
         <Tooltip
           title={
-            params.value
-              ? new Date(params.value).toLocaleString()
-              : "从未登录"
+            params.value ? new Date(params.value).toLocaleString() : "从未登录"
           }
           disableHoverListener={!params.value}
         >
           <Typography variant="body2" color="text.secondary" noWrap>
-            {params.value ? relativeTime(params.value) : "-"}
+            {params.value ? relativeTime(params.value, nowTick) : "-"}
           </Typography>
         </Tooltip>
       ),
@@ -884,7 +926,9 @@ export default function AdminUsers() {
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}>
+          <Box
+            sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}
+          >
             <TextField
               autoFocus
               fullWidth
@@ -963,7 +1007,9 @@ export default function AdminUsers() {
                     <InputAdornment position="end">
                       <IconButton
                         size="small"
-                        aria-label={showCreatePassword ? "隐藏密码" : "显示密码"}
+                        aria-label={
+                          showCreatePassword ? "隐藏密码" : "显示密码"
+                        }
                         onClick={() => setShowCreatePassword((v) => !v)}
                         tabIndex={-1}
                       >
@@ -1029,10 +1075,7 @@ export default function AdminUsers() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button
-            disabled={creating}
-            onClick={() => setCreateOpen(false)}
-          >
+          <Button disabled={creating} onClick={() => setCreateOpen(false)}>
             取消
           </Button>
           <Button
