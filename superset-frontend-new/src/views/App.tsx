@@ -1,5 +1,11 @@
 import { useCallback, type ComponentType } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -29,8 +35,8 @@ const SavedQueryList = lazy(() => import("@/pages/SavedQueryList"));
 const AlertReportList = lazy(() => import("@/pages/AlertReportList"));
 const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
 const SystemAdmin = lazy(() => import("@/pages/SystemAdmin"));
-const DailyReportList = lazy(() => import("@/pages/DailyBriefing"));
-const DailyReportDetail = lazy(() => import("@/pages/DailyBriefing/detail"));
+const BriefingList = lazy(() => import("@/pages/Briefing"));
+const BriefingDetail = lazy(() => import("@/pages/Briefing/detail"));
 
 interface RouteConfig {
   path: string;
@@ -64,18 +70,20 @@ const routes: RouteConfig[] = [
   { path: "/alert/list", Component: AlertReportList, layout: "default" },
   { path: "/query_history", Component: QueryHistoryList, layout: "default" },
   { path: "/system/admin", Component: SystemAdmin, layout: "default" },
-  { path: "/briefing/daily", Component: DailyReportList, layout: "default" },
+  { path: "/briefing", Component: BriefingList, layout: "default" },
   {
-    path: "/briefing/daily/:id",
-    Component: DailyReportDetail,
+    path: "/briefing/:id",
+    Component: BriefingDetail,
     layout: "default",
   },
 ];
 
 // Redirect legacy routes to their consolidated tabbed pages.
 const legacyRedirects: { path: string; to: string }[] = [
-  // Top-level report entry redirects to the daily briefing list.
-  { path: "/report", to: "/briefing/daily" },
+  // Top-level report entry redirects to the briefing list.
+  { path: "/report", to: "/briefing" },
+  // Pre-consolidation briefing URLs (daily-only) forward to /briefing.
+  { path: "/briefing/daily", to: "/briefing" },
   { path: "/settings", to: "/system/admin?tab=menu" },
   { path: "/admin/users", to: "/system/admin?tab=users" },
   { path: "/admin/roles", to: "/system/admin?tab=roles" },
@@ -86,6 +94,13 @@ const legacyRedirects: { path: string; to: string }[] = [
     to: "/project/settings?tab=profit-sharing",
   },
 ];
+
+// Legacy /briefing/daily/:id URLs keep working by forwarding the id to the
+// consolidated /briefing/:id detail route.
+function LegacyBriefingDetailRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/briefing/${id ?? ""}`} replace />;
+}
 
 function LoadingFallback() {
   return (
@@ -205,6 +220,12 @@ export default function App() {
             element={<Navigate to={to} replace />}
           />
         ))}
+
+        <Route
+          key="legacy-briefing-detail"
+          path="/briefing/daily/:id"
+          element={<LegacyBriefingDetailRedirect />}
+        />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

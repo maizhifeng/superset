@@ -1,11 +1,11 @@
 """
-Background job manager for daily report generation.
+Background job manager for briefing generation.
 
-Report generation can take tens of seconds (it fetches several days of history
-from a Superset dataset), so it runs in a background thread instead of blocking
-the HTTP request.  The manager keeps an in-memory registry of jobs so the
-frontend can poll progress (live log), stop a running job, and re-run.  It also
-guards against launching a duplicate concurrent run for the same report
+Briefing generation can take tens of seconds (it fetches several days of
+history from a Superset dataset), so it runs in a background thread instead of
+blocking the HTTP request.  The manager keeps an in-memory registry of jobs so
+the frontend can poll progress (live log), stop a running job, and re-run.  It
+also guards against launching a duplicate concurrent run for the same report
 configuration.
 """
 
@@ -19,8 +19,8 @@ from typing import Any
 
 from flask import current_app
 
-from superset.project.daily_report.config import config_from_dict, DailyReportContext
-from superset.project.daily_report.service import CancelledError, run_daily_report
+from superset.project.briefing.config import config_from_dict, DailyReportContext
+from superset.project.briefing.service import CancelledError, run_briefing
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ _MAX_FINISHED_JOBS = 50
 
 
 class ReportJob:
-    """A single background report generation."""
+    """A single background briefing generation."""
 
     def __init__(self, config_id: int):
         self.id = uuid.uuid4().hex[:12]
@@ -116,7 +116,7 @@ def _start_worker(
         try:
             config = config_from_dict(config_payload)
             ctx = DailyReportContext(override_date=override_date)
-            result = run_daily_report(
+            result = run_briefing(
                 config,
                 ctx,
                 progress=lambda message, level="info": job.append_log(message, level),
@@ -131,7 +131,7 @@ def _start_worker(
                 # server restart; failures here must not break the job.  Include
                 # the task (job) id so the report list can reference the run.
                 try:
-                    from superset.project.daily_report.store import save_result
+                    from superset.project.briefing.store import save_result
 
                     save_result(
                         job.config_id,
@@ -142,12 +142,12 @@ def _start_worker(
                         },
                     )
                 except Exception:  # noqa: BLE001
-                    logger.exception("Failed to persist daily report result")
+                    logger.exception("Failed to persist briefing result")
         except CancelledError:
             job.cancel_finish()
             job.append_log("已停止", "warning")
         except Exception as exc:  # noqa: BLE001
-            logger.exception("Daily report job %s failed", job.id)
+            logger.exception("Briefing job %s failed", job.id)
             job.fail(str(exc))
             job.append_log(f"生成失败：{exc}", "error")
 
@@ -182,7 +182,7 @@ def start_job(
     thread = threading.Thread(
         target=_start_worker,
         args=(job, app, config_payload, override_date),
-        name=f"daily-report-{job.id}",
+        name=f"briefing-{job.id}",
         daemon=True,
     )
     thread.start()

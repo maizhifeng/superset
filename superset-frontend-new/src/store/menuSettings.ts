@@ -47,9 +47,9 @@ const defaultItems: NavItem[] = [
     roles: ["Admin"],
   },
   {
-    id: "daily_briefing",
-    path: "/briefing/daily",
-    label: "每日简报",
+    id: "briefing",
+    path: "/briefing",
+    label: "简报",
     builtIn: true,
   },
   // 系统管理为固定入口（默认对管理员启用，不参与菜单开关），其导航项在
@@ -62,6 +62,8 @@ const DEPRECATED_ITEM_IDS = new Set<string>([
   "admin_roles",
   "channel_config",
   "profit_sharing_config",
+  // 每日简报已整合为通用「简报」（日报/周报）。
+  "daily_briefing",
 ]);
 
 /** 固定入口（非可配置菜单项），从持久化的菜单设置中排除。 */
@@ -77,7 +79,7 @@ const defaultEnabled: Record<string, boolean> = {
   "alert/list": false,
   query_history: false,
   project_config: true,
-  daily_briefing: true,
+  briefing: true,
 };
 
 interface MenuSettingsState {
@@ -167,7 +169,8 @@ export const useMenuSettings = create<MenuSettingsState>()(
         ...current,
         ...mergeDefaults(
           persisted as
-            { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
+            | { items: NavItem[]; enabled: Record<string, boolean> }
+            | undefined,
         ),
       }),
     },

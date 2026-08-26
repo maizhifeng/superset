@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   Fragment,
@@ -19,6 +20,7 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import LinearProgress from "@mui/material/LinearProgress";
+import Collapse from "@mui/material/Collapse";
 import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
@@ -27,6 +29,8 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs, { type Dayjs } from "dayjs";
 import PageHeader from "@/components/PageHeader";
@@ -38,9 +42,11 @@ import api from "@/api";
 import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
 import {
+  normalizeReportType,
   paramsFromConfig,
   paramsToConfig,
   type ReportParamValues,
+  type ReportType,
 } from "./params";
 
 const TEXT_MUTED = supersetPalette.text.secondary;
@@ -134,8 +140,15 @@ interface DailyProjectRow {
 }
 
 interface DailyReportResult {
+  /** Raw stored value; legacy results may omit it. Normalized on read. */
+  report_type?: string | null;
   report_date?: string | null;
   previous_date?: string | null;
+  /** Weekly briefings: inclusive bounds of the reported / compared week. */
+  period_start?: string | null;
+  period_end?: string | null;
+  previous_period_start?: string | null;
+  previous_period_end?: string | null;
   core?: CoreMetrics;
   core_previous?: CoreMetrics;
   daily?: DailyTrendRow[];
@@ -157,6 +170,8 @@ interface DailyReportResult {
 
 interface DailyTrendRow {
   date: string;
+  /** Human label for the bucket ("MM-DD ~ MM-DD" for weekly briefings). */
+  label?: string;
   spend: number;
   new_users: number;
   cpa: number;
@@ -316,7 +331,7 @@ function DailySubTable({ rows }: { rows: DailyTrendRow[] }) {
                 style={{ borderBottom: "1px solid rgba(128,128,128,0.08)" }}
               >
                 <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>
-                  {row.date}
+                  {row.label ?? row.date}
                 </td>
                 <td style={{ padding: "5px 8px" }}>{formatNumber(row.spend)}</td>
                 <td style={{ padding: "5px 8px" }}>
@@ -353,11 +368,14 @@ function ProjectComboTable({
   breakevenLine,
   showDaily,
   onToggleDaily,
+  expandLabel = "分天",
 }: {
   projects: ProjectRow[];
   breakevenLine: number;
   showDaily: boolean;
   onToggleDaily: () => void;
+  /** Trend granularity word used in the toggle/caption ("分天" / "分周"). */
+  expandLabel?: string;
 }) {
   const comboLabel = (p: ProjectRow) =>
     [p.project, p.channel, p.region].filter(Boolean).join(" · ");
@@ -383,7 +401,7 @@ function ProjectComboTable({
           color="primary"
           onClick={onToggleDaily}
         >
-          {showDaily ? "收起分天" : "分天显示"}
+          {showDaily ? `收起${expandLabel}` : `${expandLabel}显示`}
         </Button>
       </Box>
       <Box sx={{ overflowX: "auto" }}>
@@ -493,7 +511,7 @@ function ProjectComboTable({
                             color="text.secondary"
                             sx={{ display: "block", mb: 0.5 }}
                           >
-                            {comboLabel(p)} ｜ 分天对比
+                            {comboLabel(p)} ｜ {expandLabel}对比
                           </Typography>
                           <DailySubTable rows={p.daily} />
                         </Box>
@@ -550,9 +568,9 @@ function TrendChart({
   onSelect?: (label: string) => void;
 }) {
   // The series is newest-first; flip to chronological so the time axis reads
-  // left-to-right as past → report day.
+  // left-to-right as past → reported period.
   const ordered = [...rows].reverse();
-  const dates = ordered.map((r) => r.date);
+  const dates = ordered.map((r) => r.label ?? r.date);
   const spends = ordered.map((r) => r.spend);
   const roi1s = ordered.map((r) => r.roi1);
   const ltv1s = ordered.map((r) => r.ltv1);
@@ -566,7 +584,11 @@ function TrendChart({
             p?.seriesType === "bar" &&
             p.name
           ) {
-            onSelect(p.name);
+            // The axis shows the bucket's display label ("MM-DD ~ MM-DD" for
+            // weekly briefings); report the canonical bucket key (the ISO
+            // start date) so callers can match payload rows by ``date``.
+            const clicked = ordered.find((r) => (r.label ?? r.date) === p.name);
+            onSelect(clicked ? clicked.date : p.name);
           }
         },
       }
@@ -1156,12 +1178,14 @@ function MediaRoiChart({
   );
 }
 
-const REPORT_CHAPTERS: { id: string; label: string }[] = [
-  { id: "sec-core", label: "核心指标" },
-  { id: "sec-trend", label: "分天对比" },
-  { id: "sec-projects", label: "主游戏分析" },
-  { id: "sec-media", label: "媒体分析" },
-];
+function reportChapters(trendLabel: string): { id: string; label: string }[] {
+  return [
+    { id: "sec-core", label: "核心指标" },
+    { id: "sec-trend", label: trendLabel },
+    { id: "sec-projects", label: "主游戏分析" },
+    { id: "sec-media", label: "媒体分析" },
+  ];
+}
 
 function ReportToc({
   chapters,
@@ -1220,42 +1244,117 @@ function ReportToc({
   );
 }
 
-function JobLogPanel({ logs, status }: { logs: JobLog[]; status: JobStatus }) {
+const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  idle: "待执行",
+  running: "执行中",
+  done: "已完成",
+  error: "失败",
+  cancelled: "已停止",
+};
+
+const JOB_STATUS_COLOR: Record<JobStatus, string> = {
+  idle: "#8b949e",
+  running: "#0288d1",
+  done: "#2e7d32",
+  error: "#ef5350",
+  cancelled: "#ed6c02",
+};
+
+function JobLogPanel({
+  logs,
+  status,
+  expanded,
+  onToggle,
+}: {
+  logs: JobLog[];
+  status: JobStatus;
+  /** Whether the log body is shown; collapsed keeps a one-line summary bar. */
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (boxRef.current) {
+    if (boxRef.current && expanded) {
       boxRef.current.scrollTop = boxRef.current.scrollHeight;
     }
-  }, [logs]);
+  }, [logs, expanded]);
+
+  const lastLine = logs[logs.length - 1]?.message;
 
   return (
     <Paper
       variant="outlined"
       sx={{
         mb: 2,
-        p: 1.5,
         bgcolor: "#0d1117",
         color: "#c9d1d9",
-        maxHeight: 220,
-        overflowY: "auto",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: 12,
+        overflow: "hidden",
       }}
-      ref={boxRef}
     >
-      {logs.length === 0 && status === "running" && (
-        <Box sx={{ color: "#8b949e" }}>等待任务启动…</Box>
-      )}
-      {logs.map((log, i) => (
-        <Box key={i} sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-          <span style={{ color: "#8b949e" }}>
-            [{log.ts.split("T")[1] ?? log.ts}]{" "}
-          </span>
-          <span style={{ color: LOG_LEVEL_COLOR[log.level] ?? "#c9d1d9" }}>
-            {log.message}
-          </span>
+      <Box
+        onClick={onToggle}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 1.5,
+          py: 0.75,
+          cursor: "pointer",
+          userSelect: "none",
+          "&:hover": { bgcolor: "rgba(255,255,255,0.04)" },
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{ color: JOB_STATUS_COLOR[status], fontWeight: 600 }}
+          >
+            执行日志 · {JOB_STATUS_LABEL[status]}
+          </Typography>
+          {!expanded && lastLine && (
+            <Typography variant="caption" noWrap sx={{ color: "#8b949e" }}>
+              {lastLine}
+            </Typography>
+          )}
         </Box>
-      ))}
+        {expanded ? (
+          <ExpandLessIcon sx={{ fontSize: 18, color: "#8b949e" }} />
+        ) : (
+          <ExpandMoreIcon sx={{ fontSize: 18, color: "#8b949e" }} />
+        )}
+      </Box>
+      <Collapse in={expanded} timeout={{ enter: 300, exit: 700 }} unmountOnExit={false}>
+        <Box
+          ref={boxRef}
+          sx={{
+            maxHeight: 200,
+            overflowY: "auto",
+            px: 1.5,
+            pb: 1.5,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+            fontSize: 12,
+            opacity: expanded ? 1 : 0,
+            transition: (theme) =>
+              theme.transitions.create("opacity", {
+                duration: theme.transitions.duration.leavingScreen,
+              }),
+          }}
+        >
+          {logs.length === 0 && status === "running" && (
+            <Box sx={{ color: "#8b949e" }}>等待任务启动…</Box>
+          )}
+          {logs.map((log, i) => (
+            <Box key={i} sx={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
+              <span style={{ color: "#8b949e" }}>
+                [{log.ts.split("T")[1] ?? log.ts}]{" "}
+              </span>
+              <span style={{ color: LOG_LEVEL_COLOR[log.level] ?? "#c9d1d9" }}>
+                {log.message}
+              </span>
+            </Box>
+          ))}
+        </Box>
+      </Collapse>
     </Paper>
   );
 }
@@ -1267,6 +1366,9 @@ export default function DailyReportDetail() {
   const notify = useNotificationStore((s) => s.notify);
 
   const [reportName, setReportName] = useState("简报详情");
+  // The briefing's own type ("daily" | "weekly"); resolved from the stored
+  // config and mirrored by each generated result.
+  const [reportType, setReportType] = useState<ReportType>("daily");
   const [reportDate, setReportDate] = useState<Dayjs | null>(() =>
     dayjs().subtract(1, "day"),
   );
@@ -1280,12 +1382,15 @@ export default function DailyReportDetail() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
   const [logs, setLogs] = useState<JobLog[]>([]);
+  // The live-log panel folds itself away once a run settles; the user can
+  // re-open it from the collapsed summary bar.
+  const [logsExpanded, setLogsExpanded] = useState(true);
   const [result, setResult] = useState<DailyReportResult | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState<number>(Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [activeSection, setActiveSection] = useState(REPORT_CHAPTERS[0].id);
+  const [activeSection, setActiveSection] = useState("sec-core");
   const [showComboDaily, setShowComboDaily] = useState(false);
   const [drillGame, setDrillGame] = useState<string | null>(null);
   const [drillDate, setDrillDate] = useState<string | null>(null);
@@ -1304,6 +1409,19 @@ export default function DailyReportDetail() {
     return () => clearInterval(t);
   }, [jobStatus]);
 
+  // Fold the log panel away shortly after a run settles: the final lines stay
+  // readable for a moment, then the panel fades into its collapsed summary
+  // bar.  A fresh run re-opens it immediately.
+  useEffect(() => {
+    if (jobStatus === "idle") return;
+    if (jobStatus === "running") {
+      setLogsExpanded(true);
+      return;
+    }
+    const t = setTimeout(() => setLogsExpanded(false), 1800);
+    return () => clearTimeout(t);
+  }, [jobStatus]);
+
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
@@ -1315,10 +1433,11 @@ export default function DailyReportDetail() {
     if (!configId) return;
     try {
       const res = await api.get<{ result: Record<string, unknown> }>(
-        `/daily-report/configs/${configId}`,
+        `/briefing/configs/${configId}`,
       );
       setConfig(res.data.result);
       setReportName(String(res.data.result?.name ?? "简报详情"));
+      setReportType(normalizeReportType(res.data.result?.report_type));
       setForm(paramsFromConfig(res.data.result));
     } catch {
       setConfigError("未找到该简报，可能已被删除。");
@@ -1333,25 +1452,47 @@ export default function DailyReportDetail() {
   // navigating away and back (the backend persists results per config).  Runs
   // once per mount; an active run sets its own result via polling.
   const restoredRef = useRef(false);
+  const restoredDateRef = useRef<string | null>(null);
   useEffect(() => {
     if (!configId || restoredRef.current) return;
     restoredRef.current = true;
     api
       .get<{ result: DailyReportResult | null }>(
-        `/daily-report/configs/${configId}/result`,
+        `/briefing/configs/${configId}/result`,
       )
       .then((res) => {
         const latest = res.data.result;
         if (latest) {
           setResult(latest);
           setJobStatus("done");
-          if (latest.report_date) setReportDate(dayjs(latest.report_date));
+          setReportType(normalizeReportType(latest.report_type));
+          if (latest.report_date) {
+            restoredDateRef.current = latest.report_date;
+            setReportDate(dayjs(latest.report_date));
+          }
         }
       })
       .catch(() => {
-        // No persisted result yet — the user can run the report to generate one.
+        // No persisted result yet — the user can run the briefing to generate
+        // one.
       });
   }, [configId]);
+
+  // Keep the picker's default aligned with the briefing type.  Daily reports
+  // on yesterday; weekly picks a date inside the target week, so anchor on the
+  // same weekday last week — it always lands in the last complete week.  A
+  // restored report keeps its own date instead.
+  useEffect(() => {
+    if (restoredDateRef.current) {
+      setReportDate(dayjs(restoredDateRef.current));
+      return;
+    }
+    setReportDate(
+      reportType === "weekly"
+        ? dayjs().subtract(7, "day")
+        : dayjs().subtract(1, "day"),
+    );
+  }, [reportType]);
 
   // Reflect the loaded report name in the global breadcrumb so the detail
   // route stays connected to the "每日简报" list trail and is reachable by
@@ -1366,6 +1507,15 @@ export default function DailyReportDetail() {
   // Scroll-spy: highlight the chapter currently in view so the side jump
   // indicator reflects scroll position.  Observes the report sections against
   // the viewport (the page itself is the scroll container).
+  const chapters = useMemo(
+    () =>
+      reportChapters(
+        normalizeReportType(result?.report_type ?? reportType) === "weekly"
+          ? "分周对比"
+          : "分天对比",
+      ),
+    [result?.report_type, reportType],
+  );
   useEffect(() => {
     if (!result || result.empty) return;
     const observer = new IntersectionObserver(
@@ -1379,18 +1529,16 @@ export default function DailyReportDetail() {
       },
       { rootMargin: "-15% 0px -75% 0px", threshold: 0 },
     );
-    REPORT_CHAPTERS.forEach((c) => {
+    chapters.forEach((c) => {
       const el = document.getElementById(c.id);
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, [result]);
+  }, [result, chapters]);
 
   const loadJob = useCallback(async (jid: string) => {
     try {
-      const res = await api.get<{ result: JobInfo }>(
-        `/daily-report/jobs/${jid}`,
-      );
+      const res = await api.get<{ result: JobInfo }>(`/briefing/jobs/${jid}`);
       const job = res.data.result;
       setLogs(job.logs ?? []);
       setJobError(job.error ?? null);
@@ -1424,16 +1572,21 @@ export default function DailyReportDetail() {
       setJobError(null);
       setStartedAt(Date.now());
       try {
-        // The picker holds the report date the user wants to see; the backend
-        // treats `override_date` as the "as-of" date and reports on the day
-        // before it, so shift by one day to make the picked date the report date.
+        // The picker holds the report date the user wants to see.  Daily runs
+        // treat `override_date` as the "as-of" date and report on the day
+        // before it, so shift by one day to make the picked date the report
+        // date; weekly runs select the natural (Sunday–Saturday) week
+        // containing the picked date, so it is passed through unchanged.
         const params: { override_date?: string } = {};
         if (override) {
-          params.override_date = override.add(1, "day").format("YYYY-MM-DD");
+          params.override_date =
+            reportType === "weekly"
+              ? override.format("YYYY-MM-DD")
+              : override.add(1, "day").format("YYYY-MM-DD");
         }
         const startRes = await api.post<{
           result: { job_id: string; status: string; already_running: boolean };
-        }>("/daily-report/jobs", { config_id: configId, ...params });
+        }>("/briefing/jobs", { config_id: configId, ...params });
         const { job_id, already_running } = startRes.data.result;
         setJobId(job_id);
         if (already_running) {
@@ -1454,7 +1607,7 @@ export default function DailyReportDetail() {
         notify({ severity: "error", message: msg });
       }
     },
-    [configId, jobStatus, notify, loadJob],
+    [configId, reportType, jobStatus, notify, loadJob],
   );
 
   const handleRun = useCallback(() => {
@@ -1464,7 +1617,7 @@ export default function DailyReportDetail() {
   const handleStop = useCallback(async () => {
     if (!jobId) return;
     try {
-      await api.post(`/daily-report/jobs/${jobId}/cancel`);
+      await api.post(`/briefing/jobs/${jobId}/cancel`);
       notify({ severity: "info", message: "正在停止任务…" });
       // Poll once more to reflect the cancelled state promptly.
       setTimeout(() => void loadJob(jobId), 800);
@@ -1483,7 +1636,7 @@ export default function DailyReportDetail() {
     const payload = paramsToConfig(form);
     setSaving(true);
     try {
-      await api.put(`/daily-report/configs/${configId}`, payload);
+      await api.put(`/briefing/configs/${configId}`, payload);
       notify({ severity: "success", message: "参数已更新" });
       setEditOpen(false);
       void loadConfig();
@@ -1511,6 +1664,10 @@ export default function DailyReportDetail() {
 
   const isRunning = jobStatus === "running";
   const elapsedSec = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
+  // The rendered result's type wins over the config type (they agree in
+  // practice; legacy results without a type fall back to the daily display).
+  const resultIsWeekly =
+    normalizeReportType(result?.report_type ?? reportType) === "weekly";
 
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -1527,15 +1684,17 @@ export default function DailyReportDetail() {
         <PageHeader
         title={reportName}
         subtitle={
-          result?.report_date
-            ? `简报日期：${result.report_date}`
-            : "运行简报以查看指标"
+          resultIsWeekly && result?.period_start && result?.period_end
+            ? `简报周期：${result.period_start} ~ ${result.period_end}`
+            : result?.report_date
+              ? `简报日期：${result.report_date}`
+              : "运行简报以查看指标"
         }
         actions={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <Button
               startIcon={<ArrowBackIcon />}
-              onClick={() => navigate("/briefing/daily")}
+              onClick={() => navigate("/briefing")}
             >
               返回列表
             </Button>
@@ -1547,10 +1706,17 @@ export default function DailyReportDetail() {
               编辑参数
             </Button>
             <DatePicker
-              label="简报日期"
+              label={resultIsWeekly ? "简报周（任选日期）" : "简报日期"}
               value={reportDate}
               onChange={(v: Dayjs | null) => setReportDate(v)}
-              slotProps={{ textField: { size: "small" } }}
+              slotProps={{
+                textField: {
+                  size: "small",
+                  helperText: resultIsWeekly
+                    ? "生成所选日期所在自然周（周日~周六）"
+                    : undefined,
+                },
+              }}
             />
             {isRunning ? (
               <Button
@@ -1626,7 +1792,12 @@ export default function DailyReportDetail() {
       )}
 
       {(isRunning || logs.length > 0) && (
-        <JobLogPanel logs={logs} status={jobStatus} />
+        <JobLogPanel
+          logs={logs}
+          status={jobStatus}
+          expanded={logsExpanded}
+          onToggle={() => setLogsExpanded((v) => !v)}
+        />
       )}
 
       {result?.alerts && result.alerts.length > 0 && (
@@ -1657,7 +1828,9 @@ export default function DailyReportDetail() {
               color="text.secondary"
               sx={{ display: "block", mb: 1.5 }}
             >
-              简报日期：{result.report_date} ｜ 对比周期：{result.previous_date}
+              {resultIsWeekly && result?.period_start && result?.period_end
+                ? `报告周期：${result.period_start} ~ ${result.period_end} ｜ 对比周期：${result.previous_period_start ?? ""} ~ ${result.previous_period_end ?? ""}`
+                : `简报日期：${result.report_date} ｜ 对比周期：${result.previous_date}`}
             </Typography>
 
             <Box
@@ -1720,11 +1893,15 @@ export default function DailyReportDetail() {
                         : undefined,
                     }))
                     .slice(0, MAX_DRILL_SERIES)}
-                  title={`${drillDate} · 主游戏`}
+                  title={`${result?.daily?.find((d) => d.date === drillDate)?.label ?? drillDate} · 主游戏`}
                   onBack={() => setDrillDate(null)}
                 />
               ) : (
-                <TrendChart rows={result.daily} onSelect={setDrillDate} />
+                <TrendChart
+                  rows={result.daily}
+                  title={resultIsWeekly ? "分周对比" : "分天对比"}
+                  onSelect={setDrillDate}
+                />
               )}
             </Box>
           )}
@@ -1739,7 +1916,7 @@ export default function DailyReportDetail() {
               color="text.secondary"
               sx={{ display: "block", mb: 1.5 }}
             >
-              以「主游戏 + 渠道商」为主视角，定位今日指标涨跌由哪些主游戏驱动
+              以「主游戏 + 渠道商」为主视角，定位本期指标涨跌由哪些主游戏驱动
             </Typography>
 
             {(() => {
@@ -1787,6 +1964,7 @@ export default function DailyReportDetail() {
               breakevenLine={breakevenLine}
               showDaily={showComboDaily}
               onToggleDaily={() => setShowComboDaily((v) => !v)}
+              expandLabel={resultIsWeekly ? "分周" : "分天"}
             />
           </Box>
 
@@ -1817,7 +1995,7 @@ export default function DailyReportDetail() {
       </Box>
 
       {result && !result.empty && (
-        <ReportToc chapters={REPORT_CHAPTERS} activeId={activeSection} />
+        <ReportToc chapters={chapters} activeId={activeSection} />
       )}
 
       <Dialog
