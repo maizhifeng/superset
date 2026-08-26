@@ -48,7 +48,7 @@ export interface PaginatedListResult<T> {
   setDeleteTarget: (t: { id: number; name: string } | null) => void;
   handleSearchChange: (v: string) => void;
   handleDelete: () => Promise<void>;
-  fetchData: () => void;
+  fetchData: (opts?: { silent?: boolean }) => void;
 }
 
 export function usePaginatedList<T>(
@@ -95,6 +95,7 @@ export function usePaginatedList<T>(
   const extraFilterLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
 
   const configRef = useRef({
     endpoint,
@@ -104,54 +105,65 @@ export function usePaginatedList<T>(
   });
   configRef.current = { endpoint, filterColumn, errorMessage, sortFieldMap };
 
-  const fetchData = useCallback(() => {
-    const { endpoint, filterColumn, errorMessage, sortFieldMap } =
-      configRef.current;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoading(true);
-    setError(null);
+  const fetchData = useCallback(
+    (opts?: { silent?: boolean }) => {
+      const { endpoint, filterColumn, errorMessage, sortFieldMap } =
+        configRef.current;
+      const silent = opts?.silent ?? false;
+      if (inFlightRef.current && silent) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      inFlightRef.current = true;
+      if (!silent) setLoading(true);
+      setError(null);
 
-    // Only single-column sort is sent to the API (multi-column not supported by list endpoints)
-    const sortEntry = sortModel[0];
-    const orderField = sortEntry
-      ? (sortFieldMap?.[sortEntry.field] ?? sortEntry.field)
-      : undefined;
-    const orderDirection = sortEntry?.sort;
+      // Only single-column sort is sent to the API (multi-column not supported by list endpoints)
+      const sortEntry = sortModel[0];
+      const orderField = sortEntry
+        ? (sortFieldMap?.[sortEntry.field] ?? sortEntry.field)
+        : undefined;
+      const orderDirection = sortEntry?.sort;
 
-    const filters: ListFilter[] = [
-      ...(searchText
-        ? [{ col: filterColumn, opr: "ct", value: searchText }]
-        : []),
-      ...extraFilters,
-    ];
+      const filters: ListFilter[] = [
+        ...(searchText
+          ? [{ col: filterColumn, opr: "ct", value: searchText }]
+          : []),
+        ...extraFilters,
+      ];
 
-    const qs = rison.encode({
-      page_size: paginationModel.pageSize,
-      page: paginationModel.page,
-      ...(filters.length > 0 ? { filters } : {}),
-      ...(orderField && {
-        order_column: orderField,
-        order_direction: orderDirection,
-      }),
-    });
-    api
-      .get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`, {
-        signal: controller.signal,
-      })
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        setRows(res.data.result);
-        setRowCount(res.data.count);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        setError(parseErrorMessage(err, errorMessage));
-        setLoading(false);
+      const qs = rison.encode({
+        page_size: paginationModel.pageSize,
+        page: paginationModel.page,
+        ...(filters.length > 0 ? { filters } : {}),
+        ...(orderField && {
+          order_column: orderField,
+          order_direction: orderDirection,
+        }),
       });
-  }, [paginationModel, searchText, sortModel, extraFilters]);
+      api
+        .get<{ result: T[]; count: number }>(`${endpoint}?q=${qs}`, {
+          signal: controller.signal,
+        })
+        .then((res) => {
+          if (controller.signal.aborted) return;
+          setRows(res.data.result);
+          setRowCount(res.data.count);
+          if (!silent) setLoading(false);
+        })
+        .catch((err) => {
+          if (controller.signal.aborted) return;
+          if (!silent) {
+            setError(parseErrorMessage(err, errorMessage));
+            setLoading(false);
+          }
+        })
+        .finally(() => {
+          if (abortRef.current === controller) inFlightRef.current = false;
+        });
+    },
+    [paginationModel, searchText, sortModel, extraFilters],
+  );
 
   useEffect(() => {
     return () => {
@@ -174,7 +186,8 @@ export function usePaginatedList<T>(
       setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
     searchLoaded.current = true;
-  }, [searchText]);  useEffect(() => {
+  }, [searchText]);
+  useEffect(() => {
     if (sortLoaded.current) {
       setPaginationModel((prev) => ({ ...prev, page: 0 }));
     }
