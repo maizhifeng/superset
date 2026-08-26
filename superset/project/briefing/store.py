@@ -1,12 +1,17 @@
 """
-Persistence for daily report configurations.
+Persistence for briefing configurations.
 
 Report configurations (each a set of report parameters) are stored as JSON
 blobs in Superset's existing ``key_value`` table under the custom resource
 ``daily_report_cfg``.  Reusing this table avoids new DB migrations.
 
+The resource identifiers intentionally keep their historical ``daily_report``
+values: they are an internal storage namespace only, and changing them would
+orphan every configuration/result persisted before the briefing consolidation.
+
 Each stored configuration is a dict of ``DailyReportConfig`` parameters plus a
-``name`` and optional ``description``.
+``name``, optional ``description``, and the ``report_type`` ("daily" or
+"weekly"; legacy rows without one are treated as daily).
 """
 
 from __future__ import annotations
@@ -151,14 +156,15 @@ def get_latest_result(config_id: int) -> dict[str, Any] | None:
 def get_latest_result_meta(config_id: int) -> dict[str, Any] | None:
     """Return lightweight metadata about the latest result (no heavy payload).
 
-    Surfaces the task (job) id, report date and finish time so list views can
-    reference a generated briefing without pulling the full result.
+    Surfaces the task (job) id, report type/date and finish time so list views
+    can reference a generated briefing without pulling the full result.
     """
     data = get_latest_result(config_id)
     if data is None:
         return None
     return {
         "job_id": data.get("job_id"),
+        "report_type": data.get("report_type", "daily"),
         "report_date": data.get("report_date"),
         "finished_at": data.get("finished_at"),
     }

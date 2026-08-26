@@ -1,7 +1,7 @@
 """
-Daily report configuration.
+Briefing configuration (daily and weekly report types).
 
-The daily report workflow (originally under ``AI/daily_report_workflow``) is
+The briefing workflow (originally under ``AI/daily_report_workflow``) is
 adapted here to source its raw data from Superset itself instead of Power BI.
 This module is the single switchboard for mapping a Superset physical
 dataset/table to the report's logical UA fields.  Adjust the values below to
@@ -13,10 +13,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from typing import Any
 
+# Supported briefing types; anything else normalizes to "daily".
+REPORT_TYPES = ("daily", "weekly")
+
+
+def normalize_report_type(value: Any) -> str:
+    """Map an arbitrary stored/requested report type onto a supported one."""
+    return value if value in REPORT_TYPES else "daily"
+
 
 @dataclass
 class DailyReportConfig:
     """Configurable mapping between the UA dataset and report fields."""
+
+    # ---- Briefing type ----
+    # "daily" reports on a single day (yesterday); "weekly" aggregates a
+    # complete natural week (Sunday–Saturday) and compares it with the week
+    # before.
+    report_type: str = "daily"
 
     # ---- Superset datasource ----
     # The canonical UA dataset (ad_combined_report).  The field mapping below is
@@ -26,6 +40,12 @@ class DailyReportConfig:
     table_name: str = "ad_combined_report"
     schema: str = "sj_report_data"
     database_name: str = "aliyun"
+    # Optional multi-dataset briefing: rows from every listed dataset are
+    # fetched separately (each with its own auto-resolved field mapping),
+    # renamed onto the first dataset's canonical mapping, and merged via
+    # UNION ALL before computation.  When empty, ``datasource_id`` above is
+    # used on its own.
+    datasource_ids: list[int] = field(default_factory=list)
 
     # ---- Dimension columns (column_name on the dataset) ----
     date_column: str = "report_date"
@@ -77,6 +97,9 @@ class DailyReportConfig:
     roi_warning_line: float = 0.10
     top_projects_count: int = 5
     days_of_history: int = 30
+    # Weekly briefings: how many complete weeks (including the reported week)
+    # the week-over-week comparison series covers.
+    weeks_of_history: int = 8
 
     # 基数阈值：低于此值不参与异常判断
     baseline_thresholds: dict[str, float] = field(
@@ -128,4 +151,5 @@ def config_from_dict(data: dict[str, Any] | None) -> DailyReportConfig:
                 # Ignore type-incompatible values so a bad stored payloads never
                 # crashes report runs.
                 continue
+    config.report_type = normalize_report_type(config.report_type)
     return config

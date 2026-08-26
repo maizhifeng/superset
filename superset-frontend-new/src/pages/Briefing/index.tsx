@@ -21,44 +21,72 @@ import api from "@/api";
 import ConfigForm from "./ConfigForm";
 import {
   EMPTY_PARAMS,
+  normalizeReportType,
   paramsFromConfig,
   paramsToConfig,
   type ReportParamValues,
+  type ReportType,
 } from "./params";
 
 interface ReportConfigRow {
   id: number;
   name: string;
   description?: string;
+  report_type?: ReportType;
   datasource_id?: number | null;
+  datasource_ids?: number[];
   table_name?: string | null;
   top_projects_count?: number | null;
   days_of_history?: number | null;
+  weeks_of_history?: number | null;
   last_job_id?: string | null;
   last_report_date?: string | null;
   last_finished_at?: string | null;
   [key: string]: unknown;
 }
 
+const TYPE_LABEL: Record<ReportType, string> = {
+  daily: "日报",
+  weekly: "周报",
+};
+
+const TYPE_TABS: { value: "all" | ReportType; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "daily", label: "日报" },
+  { value: "weekly", label: "周报" },
+];
+
 function summarize(cfg: ReportConfigRow): string[] {
   const parts: string[] = [];
-  // Show the chosen dataset by its bare table name — strip any `database.` or
-  // `schema.` prefix so only the table name is displayed.
+  // Show the chosen dataset(s) by their bare table name — strip any
+  // `database.` / `schema.` prefix so only the table name is displayed.
+  const ids = Array.isArray(cfg.datasource_ids)
+    ? cfg.datasource_ids.filter((v) => Number.isFinite(v) && v > 0)
+    : [];
   if (cfg.datasource_id) {
     const raw = cfg.table_name ? String(cfg.table_name) : "";
     const table = raw.split(".").pop() || raw;
-    parts.push(table || `数据集 #${cfg.datasource_id}`);
+    const label = table || `数据集 #${cfg.datasource_id}`;
+    parts.push(ids.length > 1 ? `${label} 等 ${ids.length} 个` : label);
+  } else if (ids.length > 0) {
+    parts.push(`${ids.length} 个数据集`);
   }
   if (cfg.top_projects_count) parts.push(`Top ${cfg.top_projects_count}`);
-  if (cfg.days_of_history) parts.push(`近 ${cfg.days_of_history} 天`);
+  if (normalizeReportType(cfg.report_type) === "weekly") {
+    const weeks = cfg.weeks_of_history;
+    if (weeks) parts.push(`近 ${weeks} 周`);
+  } else if (cfg.days_of_history) {
+    parts.push(`近 ${cfg.days_of_history} 天`);
+  }
   return parts;
 }
 
-export default function DailyReportList() {
+export default function BriefingList() {
   const navigate = useNavigate();
   const notify = useNotificationStore((s) => s.notify);
   const [rows, setRows] = useState<ReportConfigRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<"all" | ReportType>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ReportConfigRow | null>(null);
   const [form, setForm] = useState<ReportParamValues>(EMPTY_PARAMS);
@@ -72,7 +100,7 @@ export default function DailyReportList() {
     setLoading(true);
     try {
       const res = await api.get<{ result: ReportConfigRow[] }>(
-        "/daily-report/configs",
+        "/briefing/configs",
       );
       setRows(res.data.result ?? []);
     } catch {
@@ -107,10 +135,10 @@ export default function DailyReportList() {
     setSaving(true);
     try {
       if (editing) {
-        await api.put(`/daily-report/configs/${editing.id}`, payload);
+        await api.put(`/briefing/configs/${editing.id}`, payload);
         notify({ severity: "success", message: "简报参数已更新" });
       } else {
-        await api.post("/daily-report/configs", payload);
+        await api.post("/briefing/configs", payload);
         notify({ severity: "success", message: "简报已创建" });
       }
       setDialogOpen(false);
@@ -123,14 +151,14 @@ export default function DailyReportList() {
   };
 
   const handleRun = (cfg: ReportConfigRow) => {
-    navigate(`/briefing/daily/${cfg.id}`);
+    navigate(`/briefing/${cfg.id}`);
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await api.delete(`/daily-report/configs/${deleteTarget.id}`);
+      await api.delete(`/briefing/configs/${deleteTarget.id}`);
       notify({ severity: "success", message: "简报已删除" });
       setDeleteTarget(null);
       void load();
@@ -141,11 +169,16 @@ export default function DailyReportList() {
     }
   };
 
+  const filtered =
+    typeFilter === "all"
+      ? rows
+      : rows.filter((r) => normalizeReportType(r.report_type) === typeFilter);
+
   return (
     <Box sx={{ p: 3, pt: 2 }}>
       <PageHeader
-        title="每日简报"
-        subtitle="管理每日简报：可配置参数，点击进入简报详情"
+        title="简报"
+        subtitle="管理简报（日报 / 周报）：可配置参数，点击进入简报详情"
         actions={
           <Button
             variant="contained"
@@ -156,6 +189,20 @@ export default function DailyReportList() {
           </Button>
         }
       />
+
+      <Box sx={{ mb: 1, display: "flex", gap: 1 }}>
+        {TYPE_TABS.map((t) => (
+          <Button
+            key={t.value}
+            size="small"
+            sx={{ textTransform: "none" }}
+            variant={typeFilter === t.value ? "contained" : "outlined"}
+            onClick={() => setTypeFilter(t.value)}
+          >
+            {t.label}
+          </Button>
+        ))}
+      </Box>
 
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
         <Box sx={{ overflowX: "auto" }}>
@@ -169,7 +216,7 @@ export default function DailyReportList() {
           >
             <thead>
               <tr>
-                {["简报名称", "参数", "操作"].map((c) => (
+                {["类型", "简报名称", "参数", "操作"].map((c) => (
                   <th
                     key={c}
                     style={{
@@ -187,14 +234,14 @@ export default function DailyReportList() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={3} style={{ padding: 24, textAlign: "center" }}>
+                  <td colSpan={4} style={{ padding: 24, textAlign: "center" }}>
                     <CircularProgress size={24} />
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={4}
                     style={{
                       padding: 24,
                       textAlign: "center",
@@ -205,79 +252,98 @@ export default function DailyReportList() {
                   </td>
                 </tr>
               ) : (
-                rows.map((cfg) => (
-                  <tr
-                    key={cfg.id}
-                    style={{ borderBottom: "1px solid rgba(128,128,128,0.1)" }}
-                  >
-                     <td
-                       style={{ padding: "10px 12px", cursor: "pointer" }}
-                       onClick={() => handleRun(cfg)}
-                     >
-                       <Typography
-                         variant="body2"
-                         sx={{
-                           fontWeight: 600,
-                           color: "text.primary",
-                           "&:hover": {
-                             color: "primary.main",
-                             textDecoration: "underline",
-                           },
-                         }}
-                       >
-                         {cfg.name}
-                       </Typography>
-                       {cfg.description && (
-                         <Typography variant="caption" color="text.secondary">
-                           {cfg.description}
-                         </Typography>
-                       )}
-                       {(cfg.last_job_id || cfg.last_report_date) && (
-                         <Typography
-                           variant="caption"
-                           color="text.secondary"
-                           sx={{ display: "block", fontFamily: "monospace" }}
-                         >
-                           {cfg.last_job_id
-                             ? `任务 ${cfg.last_job_id}`
-                             : "尚未生成"}
-                           {cfg.last_report_date
-                             ? ` · ${cfg.last_report_date}`
-                             : ""}
-                         </Typography>
-                       )}
-                     </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                        {(() => {
-                          const chips = summarize(cfg);
-                          if (chips.length === 0) {
-                            return <Chip size="small" label="后端自动取数" />;
-                          }
-                          return chips.map((p) => (
-                            <Chip key={p} size="small" label={p} />
-                          ));
-                        })()}
-                      </Box>
-                    </td>
-                    <td style={{ padding: "10px 12px" }}>
-                      <Tooltip title="编辑参数">
-                        <IconButton size="small" onClick={() => openEdit(cfg)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="删除">
-                        <IconButton
+                filtered.map((cfg) => {
+                  const reportType = normalizeReportType(cfg.report_type);
+                  return (
+                    <tr
+                      key={cfg.id}
+                      style={{
+                        borderBottom: "1px solid rgba(128,128,128,0.1)",
+                      }}
+                    >
+                      <td style={{ padding: "10px 12px" }}>
+                        <Chip
                           size="small"
-                          color="error"
-                          onClick={() => setDeleteTarget(cfg)}
+                          color={
+                            reportType === "weekly" ? "secondary" : "default"
+                          }
+                          label={TYPE_LABEL[reportType]}
+                        />
+                      </td>
+                      <td
+                        style={{ padding: "10px 12px", cursor: "pointer" }}
+                        onClick={() => handleRun(cfg)}
+                      >
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            color: "text.primary",
+                            "&:hover": {
+                              color: "primary.main",
+                              textDecoration: "underline",
+                            },
+                          }}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </td>
-                  </tr>
-                ))
+                          {cfg.name}
+                        </Typography>
+                        {cfg.description && (
+                          <Typography variant="caption" color="text.secondary">
+                            {cfg.description}
+                          </Typography>
+                        )}
+                        {(cfg.last_job_id || cfg.last_report_date) && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: "block", fontFamily: "monospace" }}
+                          >
+                            {cfg.last_job_id
+                              ? `任务 ${cfg.last_job_id}`
+                              : "尚未生成"}
+                            {cfg.last_report_date
+                              ? ` · ${cfg.last_report_date}`
+                              : ""}
+                          </Typography>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <Box
+                          sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}
+                        >
+                          {(() => {
+                            const chips = summarize(cfg);
+                            if (chips.length === 0) {
+                              return <Chip size="small" label="后端自动取数" />;
+                            }
+                            return chips.map((p) => (
+                              <Chip key={p} size="small" label={p} />
+                            ));
+                          })()}
+                        </Box>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <Tooltip title="编辑参数">
+                          <IconButton
+                            size="small"
+                            onClick={() => openEdit(cfg)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="删除">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => setDeleteTarget(cfg)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
