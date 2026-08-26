@@ -11,6 +11,8 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import CircularProgress from "@mui/material/CircularProgress";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -19,6 +21,7 @@ import PageHeader from "@/components/PageHeader";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
 import ConfigForm from "./ConfigForm";
+import { briefingTable } from "./reportStyles";
 import {
   EMPTY_PARAMS,
   normalizeReportType,
@@ -190,19 +193,25 @@ export default function BriefingList() {
         }
       />
 
-      <Box sx={{ mb: 1, display: "flex", gap: 1 }}>
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={typeFilter}
+        onChange={(_, v: "all" | ReportType | null) => {
+          if (v !== null) setTypeFilter(v);
+        }}
+        sx={{ mb: 1 }}
+      >
         {TYPE_TABS.map((t) => (
-          <Button
+          <ToggleButton
             key={t.value}
-            size="small"
+            value={t.value}
             sx={{ textTransform: "none" }}
-            variant={typeFilter === t.value ? "contained" : "outlined"}
-            onClick={() => setTypeFilter(t.value)}
           >
             {t.label}
-          </Button>
+          </ToggleButton>
         ))}
-      </Box>
+      </ToggleButtonGroup>
 
       <Paper variant="outlined" sx={{ overflow: "hidden" }}>
         <Box sx={{ overflowX: "auto" }}>
@@ -217,15 +226,7 @@ export default function BriefingList() {
             <thead>
               <tr>
                 {["类型", "简报名称", "参数", "操作"].map((c) => (
-                  <th
-                    key={c}
-                    style={{
-                      padding: "10px 12px",
-                      borderBottom: "1px solid rgba(128,128,128,0.25)",
-                      fontWeight: 600,
-                      color: "text.secondary",
-                    }}
-                  >
+                  <th key={c} style={briefingTable.headCell("10px 12px")}>
                     {c}
                   </th>
                 ))}
@@ -252,18 +253,14 @@ export default function BriefingList() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((cfg) => {
+                filtered.map((cfg, idx) => {
                   const reportType = normalizeReportType(cfg.report_type);
                   return (
-                    <tr
-                      key={cfg.id}
-                      style={{
-                        borderBottom: "1px solid rgba(128,128,128,0.1)",
-                      }}
-                    >
+                    <tr key={cfg.id} style={briefingTable.zebraRow(idx)}>
                       <td style={{ padding: "10px 12px" }}>
                         <Chip
                           size="small"
+                          variant="outlined"
                           color={
                             reportType === "weekly" ? "secondary" : "default"
                           }
@@ -308,19 +305,14 @@ export default function BriefingList() {
                         )}
                       </td>
                       <td style={{ padding: "10px 12px" }}>
-                        <Box
-                          sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}
-                        >
+                        <Typography variant="caption" color="text.secondary">
                           {(() => {
-                            const chips = summarize(cfg);
-                            if (chips.length === 0) {
-                              return <Chip size="small" label="后端自动取数" />;
-                            }
-                            return chips.map((p) => (
-                              <Chip key={p} size="small" label={p} />
-                            ));
+                            const parts = summarize(cfg);
+                            return parts.length === 0
+                              ? "后端自动取数"
+                              : parts.join(" · ");
                           })()}
-                        </Box>
+                        </Typography>
                       </td>
                       <td style={{ padding: "10px 12px" }}>
                         <Tooltip title="编辑参数">
