@@ -139,3 +139,35 @@ test("handleDelete does nothing without deleteTarget", async () => {
 
   expect(api.delete).not.toHaveBeenCalled();
 });
+
+test("silent refetch queued while in flight fires after the request settles", async () => {
+  // 通过让初始请求挂起，制造"请求在途"状态，期间发起的静默轮询应被排队。
+  let resolveFirst!: (v: { data: typeof mockPaginatedResponse }) => void;
+  const first: Promise<{ data: typeof mockPaginatedResponse }> = new Promise(
+    (r) => {
+      resolveFirst = r;
+    },
+  );
+  vi.mocked(api.get).mockResolvedValueOnce(first);
+
+  const { result } = renderHook(() =>
+    usePaginatedList({
+      endpoint: "/chart/",
+      filterColumn: "slice_name",
+    }),
+  );
+
+  // 初始请求仍在途（first 未 resolve），此时静默轮询应排队而非丢弃。
+  act(() => {
+    result.current.fetchData({ silent: true });
+  });
+  expect(vi.mocked(api.get)).toHaveBeenCalledTimes(1);
+
+  // 让初始请求结束 -> 排队的静默轮询应立即补发。
+  act(() => {
+    vi.mocked(api.get).mockResolvedValue({ data: mockPaginatedResponse });
+    resolveFirst({ data: mockPaginatedResponse });
+  });
+
+  await waitFor(() => expect(vi.mocked(api.get).mock.calls.length).toBe(2));
+});

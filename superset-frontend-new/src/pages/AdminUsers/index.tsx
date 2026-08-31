@@ -55,12 +55,16 @@ import RolePermissionsDialog, {
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 
-/** "最后登录"相对时间标签与列表数据的自动刷新周期（毫秒）。 */
+/** "最后登录"相对时间标签与列表数据的自动刷新周期（毫秒）。
+ *  轮询用于推进相对时间（"N 分钟前"）以及反映新登录等数据变化，
+ *  仅在该页面保持可见时生效；间隔不必过密，30 秒足以保持标签新鲜。 */
 const LAST_LOGIN_REFRESH_MS = 30_000;
 
 /** 把时间格式化为"刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期"。 */
 function relativeTime(value: string, now: number): string {
-  const d = new Date(value);
+  // 后端返回的 last_login 是不带时区标记的 UTC 时间，需按 UTC 解析，
+  // 否则"刚刚的登录"会被误读成 8 小时前的旧时间（详见 parseBackendDate）。
+  const d = parseBackendDate(value);
   if (isNaN(d.getTime())) return "-";
   const diffSec = Math.floor((now - d.getTime()) / 1000);
   if (diffSec < 60) return "刚刚";
@@ -71,6 +75,7 @@ function relativeTime(value: string, now: number): string {
 }
 
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import { parseBackendDate } from "@/utils/datetime";
 import { useUserRouteOverrides } from "@/store/userRouteOverrides";
 import { useAuthStore } from "@/store/authStore";
 import { protectedRoutePaths } from "@/config/routePermissions";
@@ -557,7 +562,9 @@ export default function AdminUsers() {
       renderCell: (params) => (
         <Tooltip
           title={
-            params.value ? new Date(params.value).toLocaleString() : "从未登录"
+            params.value
+              ? parseBackendDate(params.value).toLocaleString()
+              : "从未登录"
           }
           disableHoverListener={!params.value}
         >

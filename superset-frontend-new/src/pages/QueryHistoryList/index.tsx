@@ -20,6 +20,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
 import { useNotificationStore } from "@/store/notificationStore";
 import { downloadCsv } from "@/utils/exportCsv";
+import { parseBackendDate } from "@/utils/datetime";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
@@ -111,7 +112,7 @@ function durationColor(ms: number): string {
 
 /** 把时间格式化为"刚刚 / N 分钟前 / N 小时前 / N 天前"。 */
 function relativeTime(value: string): string {
-  const diffSec = (Date.now() - new Date(value).getTime()) / 1000;
+  const diffSec = (Date.now() - parseBackendDate(value).getTime()) / 1000;
   if (diffSec < 60) return "刚刚";
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
@@ -140,7 +141,7 @@ export default function QueryHistoryList() {
   // 这里用 user_id + 时间 + 序号合成一个稳定的行 id。
   const rowsWithId = rows.map((row, i) => ({
     ...row,
-    seq: (paginationModel.page * paginationModel.pageSize) + i + 1,
+    seq: paginationModel.page * paginationModel.pageSize + i + 1,
     id: String(`${row.user?.username ?? "x"}-${row.dttm}-${i}`),
   }));
   const registerTools = useToolbarStore((s) => s.registerTools);
@@ -152,7 +153,7 @@ export default function QueryHistoryList() {
     async (row: QueryLog) => {
       const user = row.user?.username ?? "";
       const action = labelAction(row.action);
-      const time = row.dttm ? new Date(row.dttm).toISOString() : "";
+      const time = row.dttm ? parseBackendDate(row.dttm).toISOString() : "";
       const dur = row.duration_ms != null ? `${row.duration_ms}ms` : "";
       try {
         await navigator.clipboard.writeText(
@@ -203,7 +204,8 @@ export default function QueryHistoryList() {
   }, [userFilter]);
 
   useEffect(() => {
-    if (minDuration > 0) localStorage.setItem(MIN_DURATION_KEY, String(minDuration));
+    if (minDuration > 0)
+      localStorage.setItem(MIN_DURATION_KEY, String(minDuration));
     else localStorage.removeItem(MIN_DURATION_KEY);
   }, [minDuration]);
 
@@ -220,7 +222,8 @@ export default function QueryHistoryList() {
   );
 
   const userOptions = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.user?.username).filter(Boolean))),
+    () =>
+      Array.from(new Set(rows.map((r) => r.user?.username).filter(Boolean))),
     [rows],
   );
 
@@ -232,7 +235,7 @@ export default function QueryHistoryList() {
       rows.map((row) => ({
         用户: row.user?.username ?? "",
         操作: labelAction(row.action),
-        日期: row.dttm ? new Date(row.dttm).toISOString() : "",
+        日期: row.dttm ? parseBackendDate(row.dttm).toISOString() : "",
         "耗时(ms)": row.duration_ms ?? "",
       })),
       `query-history-${ts}.csv`,
@@ -246,10 +249,9 @@ export default function QueryHistoryList() {
       [
         (row.user?.username ?? "").replace(/\|/g, "\\|"),
         (labelAction(row.action) || "").replace(/\|/g, "\\|"),
-        row.dttm ? new Date(row.dttm).toISOString() : "",
+        row.dttm ? parseBackendDate(row.dttm).toISOString() : "",
         row.duration_ms ?? "",
-      ]
-        .join(" | "),
+      ].join(" | "),
     );
     const table = [
       `| ${header.join(" | ")} |`,
@@ -271,7 +273,8 @@ export default function QueryHistoryList() {
   // 组合模块 + 时间范围筛选，下发给服务端。
   useEffect(() => {
     const filters: { col: string; opr: string; value: string }[] = [];
-    if (moduleFilter) filters.push({ col: "action", opr: "ct", value: moduleFilter });
+    if (moduleFilter)
+      filters.push({ col: "action", opr: "ct", value: moduleFilter });
     if (timeRange) {
       const from = new Date();
       from.setDate(from.getDate() - Number(timeRange));
@@ -288,7 +291,11 @@ export default function QueryHistoryList() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新操作记录">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -370,7 +377,9 @@ export default function QueryHistoryList() {
           <Tooltip title="仅显示当前登录用户的操作记录">
             <Button
               size="small"
-              variant={userFilter === currentUsername ? "contained" : "outlined"}
+              variant={
+                userFilter === currentUsername ? "contained" : "outlined"
+              }
               color={userFilter === currentUsername ? "primary" : "inherit"}
               startIcon={<HistoryIcon sx={{ fontSize: 15 }} />}
               onClick={toggleOnlyMine}
@@ -386,26 +395,27 @@ export default function QueryHistoryList() {
         id: "user_filter",
         priority: 1.8,
         showOnMobile: false,
-        render: userOptions.length > 0 ? (
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel id="qh-user-label">用户</InputLabel>
-            <Select
-              labelId="qh-user-label"
-              label="用户"
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              {userOptions.map((u) => (
-                <MenuItem key={u as string} value={u as string}>
-                  {u as string}
+        render:
+          userOptions.length > 0 ? (
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel id="qh-user-label">用户</InputLabel>
+              <Select
+                labelId="qh-user-label"
+                label="用户"
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>全部</em>
                 </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        ) : null,
+                {userOptions.map((u) => (
+                  <MenuItem key={u as string} value={u as string}>
+                    {u as string}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null,
       },
       {
         id: "duration_filter",
@@ -452,12 +462,12 @@ export default function QueryHistoryList() {
                 variant="outlined"
                 startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
                 onClick={() => void handleCopyMarkdown()}
-              disabled={rows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制 Markdown
-            </Button>
-          </Tooltip>
+                disabled={rows.length === 0}
+                sx={{ textTransform: "none" }}
+              >
+                复制 Markdown
+              </Button>
+            </Tooltip>
           </>
         ),
       },
@@ -516,9 +526,7 @@ export default function QueryHistoryList() {
                   setUserFilter(params.row.user.username);
                 }}
               >
-                <FilterAltIcon
-                  sx={{ fontSize: 13, color: "text.disabled" }}
-                />
+                <FilterAltIcon sx={{ fontSize: 13, color: "text.disabled" }} />
               </IconButton>
             </Tooltip>
           ) : null}
@@ -533,7 +541,11 @@ export default function QueryHistoryList() {
         <Tooltip title={params.value ?? ""} arrow>
           <Typography
             variant="body2"
-            sx={{ fontSize: "0.8125rem", overflow: "hidden", textOverflow: "ellipsis" }}
+            sx={{
+              fontSize: "0.8125rem",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
           >
             {labelAction(params.value)}
           </Typography>
@@ -547,7 +559,10 @@ export default function QueryHistoryList() {
       renderCell: (params) => {
         if (!params.row.dttm) return null;
         return (
-          <Tooltip title={new Date(params.row.dttm).toLocaleString()} arrow>
+          <Tooltip
+            title={parseBackendDate(params.row.dttm).toLocaleString()}
+            arrow
+          >
             <Box component="span">{relativeTime(params.row.dttm)}</Box>
           </Tooltip>
         );
@@ -737,7 +752,9 @@ export default function QueryHistoryList() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {row.dttm ? new Date(row.dttm).toLocaleString() : ""}
+                    {row.dttm
+                      ? parseBackendDate(row.dttm).toLocaleString()
+                      : ""}
                   </Typography>
                 </Box>
                 <Box
