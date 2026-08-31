@@ -1,4 +1,4 @@
-import { useMenuSettings } from "@/store/menuSettings";
+import { useMenuSettings, mergeDefaults } from "@/store/menuSettings";
 import { test, expect, beforeEach } from "vitest";
 
 beforeEach(() => {
@@ -49,4 +49,49 @@ test("moveItem does nothing at boundary", () => {
   useMenuSettings.getState().moveItem("dashboards", "up");
   const items = useMenuSettings.getState().items;
   expect(items[0].id).toBe("dashboards");
+});
+
+test("mergeDefaults purges deprecated report menu items by id", () => {
+  const result = mergeDefaults({
+    items: [
+      { id: "report", path: "/report", label: "报告", builtIn: false },
+      { id: "briefing", path: "/briefing", label: "简报", builtIn: true },
+    ],
+    enabled: { report: true, briefing: true },
+  });
+  const ids = result.items.map((i) => i.id);
+  expect(ids).not.toContain("report");
+  expect(ids).toContain("briefing");
+  expect(result.enabled.report).toBeUndefined();
+  expect(result.enabled.briefing).toBe(true);
+});
+
+test("mergeDefaults purges deprecated report menu items by path", () => {
+  const result = mergeDefaults({
+    items: [
+      {
+        id: "custom_123",
+        path: "/report",
+        label: "报告",
+        builtIn: false,
+      },
+      { id: "briefing", path: "/briefing", label: "简报", builtIn: true },
+    ],
+    enabled: { custom_123: true, briefing: true },
+  });
+  const ids = result.items.map((i) => i.id);
+  expect(ids).not.toContain("custom_123");
+  expect(ids).toContain("briefing");
+  expect(result.enabled.custom_123).toBeUndefined();
+});
+
+test("mergeDefaults keeps the briefing entry", () => {
+  const result = mergeDefaults({
+    items: [
+      { id: "briefing", path: "/briefing", label: "简报", builtIn: true },
+    ],
+    enabled: { briefing: true },
+  });
+  expect(result.items.some((i) => i.id === "briefing")).toBe(true);
+  expect(result.enabled.briefing).toBe(true);
 });

@@ -96,6 +96,9 @@ export function usePaginatedList<T>(
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const abortRef = useRef<AbortController | null>(null);
   const inFlightRef = useRef(false);
+  // 静默轮询期间若恰好有请求在途，不应丢弃该次轮询：记录为待重发，
+  // 在当前请求结束后立刻补发一次静默刷新，避免"最后登录"长时间不更新。
+  const pendingSilentRefetchRef = useRef(false);
 
   const configRef = useRef({
     endpoint,
@@ -110,11 +113,17 @@ export function usePaginatedList<T>(
       const { endpoint, filterColumn, errorMessage, sortFieldMap } =
         configRef.current;
       const silent = opts?.silent ?? false;
-      if (inFlightRef.current && silent) return;
+      if (inFlightRef.current) {
+        // 请求在途：非静默请求直接跳过（调用方会自行重试）；静默轮询则排队，
+        // 待当前请求结束后补发，保证"最后登录"等轮询数据不会永久缺失。
+        if (silent) pendingSilentRefetchRef.current = true;
+        return;
+      }
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       inFlightRef.current = true;
+      pendingSilentRefetchRef.current = false;
       if (!silent) setLoading(true);
       setError(null);
 
@@ -159,7 +168,13 @@ export function usePaginatedList<T>(
           }
         })
         .finally(() => {
-          if (abortRef.current === controller) inFlightRef.current = false;
+          if (abortRef.current === controller) {
+            inFlightRef.current = false;
+            if (pendingSilentRefetchRef.current) {
+              pendingSilentRefetchRef.current = false;
+              fetchData({ silent: true });
+            }
+          }
         });
     },
     [paginationModel, searchText, sortModel, extraFilters],

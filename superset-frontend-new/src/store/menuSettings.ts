@@ -64,6 +64,20 @@ const DEPRECATED_ITEM_IDS = new Set<string>([
   "profit_sharing_config",
   // 每日简报已整合为通用「简报」（日报/周报）。
   "daily_briefing",
+  // 旧「报告」入口已弃用，统一由「简报」承接。
+  "report",
+  "reports",
+  "report/list",
+  "alert_report",
+  "daily_report",
+  "daily_report/list",
+]);
+
+/** 已废弃的菜单路由路径：持久化项用了自定义 id 时也按路径剔除。 */
+const DEPRECATED_ITEM_PATHS = new Set<string>([
+  "/report",
+  "/report/list",
+  "/briefing/daily",
 ]);
 
 /** 固定入口（非可配置菜单项），从持久化的菜单设置中排除。 */
@@ -92,23 +106,26 @@ interface MenuSettingsState {
   reset: () => void;
 }
 
-function mergeDefaults(
+export function mergeDefaults(
   persisted: { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
 ): { items: NavItem[]; enabled: Record<string, boolean> } {
   const sourceItems = persisted?.items ?? [];
   const sourceEnabled = persisted?.enabled ?? {};
-  const excluded = (id: string) =>
-    DEPRECATED_ITEM_IDS.has(id) || FIXED_ITEM_IDS.has(id);
+  const excluded = (item: NavItem) =>
+    DEPRECATED_ITEM_IDS.has(item.id) ||
+    FIXED_ITEM_IDS.has(item.id) ||
+    DEPRECATED_ITEM_PATHS.has(item.path);
   // Drop deprecated / fixed-entry items so they never re-surface from
   // persisted state or become user-configurable.
   const items = sourceItems
-    .filter((item) => !excluded(item.id))
+    .filter((item) => !excluded(item))
     .map((item) => ({ ...item }));
+  const knownIds = new Set(items.map((i) => i.id));
+  // Only carry visibility flags for entries that survive the purge above.
   const enabled: Record<string, boolean> = {};
   for (const [id, val] of Object.entries(sourceEnabled)) {
-    if (!excluded(id)) enabled[id] = val;
+    if (knownIds.has(id)) enabled[id] = val;
   }
-  const knownIds = new Set(items.map((i) => i.id));
   const defaultsById = new Map(defaultItems.map((d) => [d.id, d]));
   for (const item of items) {
     const def = defaultsById.get(item.id);
@@ -169,8 +186,7 @@ export const useMenuSettings = create<MenuSettingsState>()(
         ...current,
         ...mergeDefaults(
           persisted as
-            | { items: NavItem[]; enabled: Record<string, boolean> }
-            | undefined,
+            { items: NavItem[]; enabled: Record<string, boolean> } | undefined,
         ),
       }),
     },
