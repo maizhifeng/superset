@@ -16,6 +16,7 @@ import DialogContent from "@mui/material/DialogContent";
 import TextField from "@mui/material/TextField";
 import Autocomplete from "@mui/material/Autocomplete";
 import Chip from "@mui/material/Chip";
+import LinearProgress from "@mui/material/LinearProgress";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -25,10 +26,17 @@ import CloseIcon from "@mui/icons-material/Close";
 import FlipIcon from "@mui/icons-material/Flip";
 import ChevronLeft from "@mui/icons-material/ChevronLeft";
 import ChevronRight from "@mui/icons-material/ChevronRight";
-import dayjs from "dayjs";
 import api, { getMetricFormatMap } from "@/api";
+import { filterValuesQuery } from "@/api/filterValues";
 import { postChartData } from "@/api/chartData";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import { REGION_LABELS, isGameRegion, type GameRegion } from "@/config/regions";
+import { isFederatedDataset } from "@/config/federatedDatasets";
+import {
+  cchValueRegion,
+  narrowByRegion,
+  narrowMediaByKnownValues,
+} from "@/pages/Dashboard/compareRegions";
 import { extractQueryFields } from "@/utils/query/extractQueryFields";
 import { formatMetricValue } from "@/utils/formatNumber";
 import type { MetricFormatMap } from "@/utils/formatNumber";
@@ -43,32 +51,44 @@ import type {
 import type { ChartDataResponseResult } from "@/utils/query/types";
 import { formatLtvMultiplier } from "@/pages/Dashboard/ltvMultiplier";
 import {
+  ANCHORS,
+  ANCHOR_LABELS,
+  anchorSectionLabel,
+  buildStartMaps,
+  compareSectionOrder,
+  hasAnyStart,
+  resolveStartDate,
+  resolveStartWindow,
+  startKey,
+} from "@/pages/Dashboard/compareStartDate";
+import type {
+  AnchorKey,
+  ProfitSharingStartRow,
+  StartMaps,
+} from "@/pages/Dashboard/compareStartDate";
+import {
   resolveDisplayName,
   displayLabel,
 } from "@/pages/Dashboard/compareColumns";
 
 interface GameOption {
   papp_id: string;
+  region: GameRegion;
   papp_name: string;
   上线时间: string;
 }
 
 type SelectedGame = GameOption;
 
-/** 游戏最早上线时间(papp_id → 上线时间),未选渠道时兜底 */
-interface LaunchByChannel {
-  global: Record<string, string>;
-  /** 各渠道上线时间:papp_id → (渠道名 → 上线时间) */
-  perChannel: Record<string, Record<string, string>>;
+/**
+ * 游戏的唯一标识。国内与海外的 papp_id 可能重名（对应不同游戏），所以
+ * 选择、分表、主对比的标识都要带上区域，起始日期映射同样如此。
+ */
+function gameKey(game: { region: GameRegion; papp_id: string }): string {
+  return startKey(game.region, game.papp_id);
 }
 
-const PERIODS = [
-  { label: "上线后 7 天", days: 7 },
-  { label: "上线后 14 天", days: 14 },
-  { label: "上线后 30 天", days: 30 },
-  { label: "上线后 60 天", days: 60 },
-  { label: "上线后 90 天", days: 90 },
-];
+const PERIOD_DAYS = [7, 14, 30, 60, 90];
 
 function fmtValue(
   key: string,
@@ -110,15 +130,24 @@ export default function CompareModal({
 }: CompareModalProps) {
   const [games, setGames] = useState<GameOption[]>([]);
   const [selectedGames, setSelectedGames] = useState<SelectedGame[]>([]);
-  const [launchByChannel, setLaunchByChannel] = useState<LaunchByChannel>({
-    global: {},
-    perChannel: {},
-  });
-  const [primaryPappId, setPrimaryPappId] = useState<string | null>(null);
+  const [startMaps, setStartMaps] = useState<StartMaps>(() =>
+    buildStartMaps([]),
+  );
+  const [selectedAnchors, setSelectedAnchors] = useState<AnchorKey[]>([
+    "上线时间",
+  ]);
+  const [primaryGameKey, setPrimaryGameKey] = useState<string | null>(null);
   const [periodDays, setPeriodDays] = useState(30);
   const [timeGrain, setTimeGrain] = useState("P1D");
   const [ltvMode, setLtvMode] = useState<"raw" | "first" | "prev">("raw");
   const [loading, setLoading] = useState(false);
+  const [queryProgress, setQueryProgress] = useState<{
+    label: string;
+    done: number;
+    total: number;
+    startedAt: number;
+  } | null>(null);
+  const [queryElapsed, setQueryElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [inputValue, setInputValue] = useState("");
@@ -148,6 +177,7 @@ export default function CompareModal({
     games: SelectedGame[];
     cchNames: string[];
     channels: string[];
+    anchors: AnchorKey[];
   } | null>(null);
   const sectionAggregateCacheRef = useRef<Record<string, ChartDataRow>>({});
   const scrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -166,6 +196,20 @@ export default function CompareModal({
     }, 350);
   }, []);
 
+  // 查询耗时实时显示:每秒刷新已用时长,避免用户猜测进度
+  useEffect(() => {
+    if (!loading || !queryProgress) {
+      setQueryElapsed(0);
+      return undefined;
+    }
+    const { startedAt } = queryProgress;
+    setQueryElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    const timer = window.setInterval(() => {
+      setQueryElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [loading, queryProgress]);
+
   const cchNameOptions = useMemo(() => {
     return cchNameValues.filter((v) => !selectedCchNames.includes(v));
   }, [cchNameValues, selectedCchNames]);
@@ -182,13 +226,16 @@ export default function CompareModal({
       setChartDsType("table");
       setQueryResult(null);
       setError(null);
+      setQueryProgress(null);
+      setQueryElapsed(0);
       setSelectedGames([]);
       setSelectedCchNames([]);
       setSelectedChannels([]);
       setCchNameValues([]);
       setChannelValues([]);
       setGames([]);
-      setPrimaryPappId(null);
+      setSelectedAnchors(["上线时间"]);
+      setPrimaryGameKey(null);
       setMetricFormatMap({});
       setLtvMode("raw");
       setIntraSecondaryResult(null);
@@ -202,12 +249,15 @@ export default function CompareModal({
     setError(null);
     let cancelled = false;
 
-    // Fetch column values for filter autocompletes
+    // Fetch column values for filter autocompletes. 联邦数据集（国内+海外合并）
+    // 必须走 bi 接口，否则只返回主库取值，海外的渠道商/媒体选不到。
     const fetchColumnValues = (id: number) => {
+      const valuesPath = (column: string) =>
+        isFederatedDataset(id)
+          ? `/bi/filter-values/${id}/${encodeURIComponent(column)}/`
+          : `/datasource/table/${id}/column/${encodeURIComponent(column)}/values/`;
       api
-        .get<{ result: (string | null)[] }>(
-          `/datasource/table/${id}/column/${encodeURIComponent(COL.cch_name_id)}/values/`,
-        )
+        .get<{ result: (string | null)[] }>(valuesPath(COL.cch_name_id))
         .then((res) => {
           if (cancelled) return;
           const vals = (res.data.result ?? []).filter(
@@ -217,9 +267,7 @@ export default function CompareModal({
         })
         .catch(() => {});
       api
-        .get<{ result: (string | null)[] }>(
-          `/datasource/table/${id}/column/${encodeURIComponent(COL.channel_name)}/values/`,
-        )
+        .get<{ result: (string | null)[] }>(valuesPath(COL.channel_name))
         .then((res) => {
           if (cancelled) return;
           const vals = (res.data.result ?? []).filter(
@@ -282,42 +330,36 @@ export default function CompareModal({
       })();
     }
 
-    // Games list — fires in parallel with column value calls
+    // Games list — fires in parallel with column value calls.
+    // 国内与海外一起加载：两者可以直接对比，日期按「区域 + papp_id」区分。
     const gamesPromise = api
-      .get<{ result: { papp_id: number; papp_name: string }[] }>(
+      .get<{ result: { papp_id: number; region: string; papp_name: string }[] }>(
         "/project/papp",
       )
       .then((res) => res.data?.result ?? []);
     const profitSharingPromise = api
-      .get<{
-        result: { papp_id: number; channel_name: string; 上线时间: string }[];
-      }>("/project/profit-sharing")
+      .get<{ result: ProfitSharingStartRow[] }>("/project/profit-sharing")
       .then((res) => res.data?.result ?? []);
 
     Promise.all([gamesPromise, profitSharingPromise])
       .then(([games, profitShares]) => {
         if (cancelled) return;
-        // Different channels launch on different dates, so keep both the
-        // earliest launch per game (fallback) and per-channel launch times.
-        const globalLaunch: Record<string, string> = {};
-        const perChannel: Record<string, Record<string, string>> = {};
-        for (const ps of profitShares) {
-          if (!ps.上线时间) continue;
-          const pid = String(ps.papp_id);
-          if (!globalLaunch[pid] || ps.上线时间 < globalLaunch[pid]) {
-            globalLaunch[pid] = ps.上线时间;
-          }
-          if (ps.channel_name) {
-            (perChannel[pid] ??= {})[ps.channel_name] = ps.上线时间;
-          }
-        }
-        setLaunchByChannel({ global: globalLaunch, perChannel });
+        // 不同渠道的日期不同:分别保留每个轮次下各游戏的最早日期(兜底)
+        // 与各渠道自己的日期,由 resolveStartDate 按选中轮次逐级回退。
+        const maps = buildStartMaps(profitShares);
+        setStartMaps(maps);
         const list = games
-          .filter((g) => globalLaunch[g.papp_id])
+          .filter((g) => hasAnyStart(maps, startKey(g.region, g.papp_id)))
           .map((g) => ({
             papp_id: String(g.papp_id),
+            region: isGameRegion(g.region) ? g.region : "domestic",
             papp_name: g.papp_name ?? "",
-            上线时间: globalLaunch[g.papp_id],
+            上线时间:
+              resolveStartDate(
+                maps,
+                "上线时间",
+                startKey(g.region, g.papp_id),
+              ) ?? "",
           }));
         setGames(list);
       })
@@ -336,34 +378,117 @@ export default function CompareModal({
   const gameOptions = useMemo(
     () =>
       games.filter(
-        (g) => !selectedGames.some((sg) => sg.papp_id === g.papp_id),
+        (g) => !selectedGames.some((sg) => gameKey(sg) === gameKey(g)),
       ),
     [games, selectedGames],
   );
 
-  const removeGame = useCallback((pappId: string) => {
-    setSelectedGames((prev) => prev.filter((g) => g.papp_id !== pappId));
+  const removeGame = useCallback((key: string) => {
+    setSelectedGames((prev) => prev.filter((g) => gameKey(g) !== key));
   }, []);
 
-  // Resolve the launch-date window for a game, preferring the exact channel's
-  // launch date (different channels launch on different dates) and falling
-  // back to the game's earliest launch date.
+  // 轮次支持多选:多选时按轮次分表(外对比),至少保留一个轮次
+  const toggleAnchor = useCallback((key: AnchorKey) => {
+    setSelectedAnchors((prev) => {
+      if (prev.includes(key)) {
+        return prev.length > 1 ? prev.filter((k) => k !== key) : prev;
+      }
+      return [...prev, key];
+    });
+  }, []);
+
+  // Resolve the start-date window for a game under the given anchor round.
+  // 测试轮次只使用该轮次自己的日期(渠道 → 全游戏),没有则说明该游戏没有这一
+  // 轮测试,不生成分表;上线时间锚点使用上线时间(见 resolveStartWindow)。
   const resolveDateRange = useCallback(
-    (game: SelectedGame, cchName?: string) => {
-      const launch =
-        (cchName && launchByChannel.perChannel[game.papp_id]?.[cchName]) ||
-        launchByChannel.global[game.papp_id] ||
-        game.上线时间;
-      if (!launch) return undefined;
-      const start = dayjs(launch);
-      if (!start.isValid()) return undefined;
-      return {
-        start: start.format("YYYY/MM/DD"),
-        end: start.add(periodDays, "day").format("YYYY/MM/DD"),
-      };
-    },
-    [launchByChannel, periodDays],
+    (game: SelectedGame, cchName?: string, anchor: AnchorKey = "上线时间") =>
+      resolveStartWindow(
+        startMaps,
+        anchor,
+        gameKey(game),
+        periodDays,
+        cchName,
+      ),
+    [startMaps, periodDays],
   );
+
+  // 每个分表对应一个标签,标签展示该分表自己的测试时间窗口,
+  // 组合规则与 buildSections/sectionCount 保持一致(标签数 = 分表数);
+  // 排序按数据日期先后(compareSectionOrder),与分表渲染顺序一致。
+  const { sectionTags, skippedSectionLabels } = useMemo(() => {
+    const tags: {
+      key: string;
+      label: string;
+      gameId: string;
+      start?: string;
+      anchor: AnchorKey;
+    }[] = [];
+    const skipped: string[] = [];
+    const isMultiGame = selectedGames.length > 1;
+    const isMultiCch = selectedCchNames.length > 1;
+    const isMultiChannel = selectedChannels.length > 1;
+    const singleCchName =
+      selectedCchNames.length === 1
+        ? extractName(selectedCchNames[0])
+        : undefined;
+
+    const pushTag = (
+      game: SelectedGame,
+      anchor: AnchorKey,
+      cchName?: string,
+      channelName?: string,
+    ) => {
+      const range = resolveDateRange(game, cchName ?? singleCchName, anchor);
+      const parts = [game.papp_name];
+      if (isMultiCch && cchName) parts.push(cchName);
+      if (isMultiChannel && channelName) parts.push(channelName);
+      if (selectedAnchors.length > 1 || anchor !== "上线时间") {
+        parts.push(ANCHOR_LABELS[anchor]);
+      }
+      // 无可用起始日期(轮次与上线时间均缺失)的分表不生成标签也不查询
+      if (!range) {
+        skipped.push(parts.join(" · "));
+        return;
+      }
+      tags.push({
+        key: `${gameKey(game)}-${cchName ?? ""}-${channelName ?? ""}-${anchor}`,
+        label: `${parts.join(" · ")} [${range.start} ~ ${range.end})`,
+        gameId: gameKey(game),
+        start: range.start,
+        anchor,
+      });
+    };
+
+    for (const game of selectedGames) {
+      for (const anchor of selectedAnchors) {
+        if (isMultiGame || (!isMultiCch && !isMultiChannel)) {
+          pushTag(game, anchor);
+        } else if (isMultiCch && isMultiChannel) {
+          for (const cch of selectedCchNames) {
+            for (const ch of selectedChannels) {
+              pushTag(game, anchor, extractName(cch), ch);
+            }
+          }
+        } else if (isMultiCch) {
+          for (const cch of selectedCchNames) {
+            pushTag(game, anchor, extractName(cch));
+          }
+        } else {
+          for (const ch of selectedChannels) {
+            pushTag(game, anchor, undefined, ch);
+          }
+        }
+      }
+    }
+    tags.sort(compareSectionOrder);
+    return { sectionTags: tags, skippedSectionLabels: skipped };
+  }, [
+    selectedGames,
+    selectedCchNames,
+    selectedChannels,
+    selectedAnchors,
+    resolveDateRange,
+  ]);
 
   const handleQuery = useCallback(async () => {
     if (selectedGames.length === 0 || !chartFormData || !chartDsId) return;
@@ -384,25 +509,149 @@ export default function CompareModal({
       const timeGrainSql = timeGrain === "P1D" ? undefined : timeGrain;
       const BATCH = 3;
 
-      // Build detail queries, one per (game × channel) combo so each query
-      // can use that channel's own launch-date window.
-      const cchComboValues =
-        selectedCchNames.length > 0 ? selectedCchNames : [undefined];
-      const combos = selectedGames.flatMap((g) =>
-        cchComboValues.map((cchVal) => ({
-          game: g,
-          cchVal,
-          cchName: cchVal ? extractName(cchVal) : undefined,
-        })),
-      );
+      // 内对比次表资格(与下方分支一致):用于查询进度总数与是否发起次表查询。
+      // "其余渠道"次表在选中渠道时仍限定该渠道(其余媒体),因此用渠道自己的
+      // 起始日期,否则回退到游戏级日期。
+      const intraAnchor = selectedAnchors[0];
+      const intraCchName =
+        selectedCchNames.length === 1
+          ? extractName(selectedCchNames[0])
+          : undefined;
+      const intraRange =
+        selectedGames.length === 1
+          ? resolveDateRange(selectedGames[0], intraCchName, intraAnchor)
+          : undefined;
+      const intraEligible =
+        selectedAnchors.length === 1 &&
+        selectedGames.length === 1 &&
+        selectedCchNames.length <= 1 &&
+        selectedChannels.length <= 1 &&
+        (selectedCchNames.length > 0 || selectedChannels.length > 0) &&
+        (!timeCol || intraRange !== undefined);
+
+      // Build detail queries, one per (anchor × game × channel) combo so each
+      // query can use that round's own start-date window. 轮次与上线时间都缺失
+      // (无可用起始日期)的组合不参与查询,避免带上空日期过滤条件。
+      // 海外游戏只与海外渠道组合、国内游戏只与国内渠道组合。渠道商按取值格式
+      // 判断区域；媒体没有区域配置，先取该游戏真实存在的媒体取值再收窄。
+      const mediaByGame: Record<string, Set<string> | null> = {};
+      if (selectedChannels.length > 0 && chartDsId) {
+        await Promise.all(
+          selectedGames.map(async (g) => {
+            const key = gameKey(g);
+            const q = filterValuesQuery([
+              {
+                col: COL.papp_id,
+                op: "IN",
+                val: [`${g.papp_name} [${g.papp_id}]`],
+              },
+            ]);
+            const path = isFederatedDataset(chartDsId)
+              ? `/bi/filter-values/${chartDsId}/${encodeURIComponent(COL.channel_name)}/?q=${q}`
+              : `/datasource/table/${chartDsId}/column/${encodeURIComponent(COL.channel_name)}/values/?q=${q}`;
+            try {
+              const res = await api.get<{ result: (string | null)[] }>(path);
+              mediaByGame[key] = new Set(
+                (res.data?.result ?? [])
+                  .filter((v): v is string => v != null)
+                  .map(String),
+              );
+            } catch {
+              // 取值失败时不限制媒体，避免误删分表
+              mediaByGame[key] = null;
+            }
+          }),
+        );
+      }
+      // 该游戏可用的渠道商/媒体；null 表示所选渠道与该游戏区域不匹配，跳过该游戏
+      const cchForGame = (g: SelectedGame): string[] | null =>
+        narrowByRegion(selectedCchNames, g.region, cchValueRegion);
+      const mediaForGame = (g: SelectedGame): string[] | null =>
+        narrowMediaByKnownValues(selectedChannels, mediaByGame[gameKey(g)]);
+
+      const combos = selectedAnchors
+        .flatMap((anchor) =>
+          selectedGames.flatMap((g) => {
+            const cchList = cchForGame(g);
+            const mediaList = mediaForGame(g);
+            // 该游戏没有同区域的渠道商/媒体：不生成任何组合
+            if (cchList === null || mediaList === null) return [];
+            const cchValues = cchList.length > 0 ? cchList : [undefined];
+            return cchValues.map((cchVal) => {
+              const cchName = cchVal ? extractName(cchVal) : undefined;
+              return {
+                game: g,
+                cchVal,
+                cchName,
+                mediaList,
+                anchor,
+                range: resolveDateRange(g, cchName, anchor),
+              };
+            });
+          }),
+        )
+        .filter((c) => !timeCol || c.range !== undefined);
+
+      // 阶段性进度:明细(每个组合 1 次) → 汇总(每组合 1 次 + 内对比最多 2 次)
+      // → 分表汇总(按维度组合数)。跳过无起始日期的组合时数量会少于估算值,
+      // 每个阶段结束时会把进度推进到阶段边界,保证进度条不倒退、能走完。
+      const sectionAggTotal = (() => {
+        const anchorCount = selectedAnchors.length;
+        if (selectedGames.length > 1) return selectedGames.length * anchorCount;
+        if (
+          selectedGames.length === 1 &&
+          selectedCchNames.length > 1 &&
+          selectedChannels.length > 1
+        ) {
+          return (
+            selectedCchNames.length * selectedChannels.length * anchorCount
+          );
+        }
+        if (selectedCchNames.length > 1) {
+          return selectedCchNames.length * anchorCount;
+        }
+        if (selectedChannels.length > 1)
+          return selectedChannels.length * anchorCount;
+        return 0;
+      })();
+      const intraStepTotal = intraEligible ? 2 : 0;
+      const detailTotal = combos.length;
+      // 明细 + 汇总各查一次(每个组合),加内对比次表
+      const summaryTotal = detailTotal * 2 + intraStepTotal;
+      const totalSteps = summaryTotal + sectionAggTotal;
+      const progressStartedAt = Date.now();
+      let doneSteps = 0;
+      const reportProgress = (label: string, count = 1) => {
+        doneSteps = Math.min(doneSteps + count, totalSteps);
+        setQueryProgress({
+          label,
+          done: doneSteps,
+          total: totalSteps,
+          startedAt: progressStartedAt,
+        });
+      };
+      const finishStage = (label: string, stageBoundary: number) => {
+        doneSteps = Math.max(doneSteps, Math.min(stageBoundary, totalSteps));
+        setQueryProgress({
+          label,
+          done: doneSteps,
+          total: totalSteps,
+          startedAt: progressStartedAt,
+        });
+      };
+      setQueryProgress({
+        label: "正在查询明细数据",
+        done: 0,
+        total: totalSteps,
+        startedAt: progressStartedAt,
+      });
       const detailRows: ChartDataRow[] = [];
       let colNames: string[] = [];
 
       for (let i = 0; i < combos.length; i += BATCH) {
         const batch = combos.slice(i, i + BATCH);
         const batchResults = await Promise.all(
-          batch.map(async ({ game, cchVal, cchName }) => {
-            const range = resolveDateRange(game, cchName);
+          batch.map(async ({ game, cchVal, anchor, range, mediaList }) => {
             const q: QueryObject = {
               result_type: "full",
               metrics: extractQueryFields(chartFormData, chartVizType).metrics,
@@ -417,23 +666,23 @@ export default function CompareModal({
                 ...(cchVal
                   ? [{ col: COL.cch_name_id, op: "IN", val: [cchVal] }]
                   : []),
-                ...(selectedChannels.length > 0
-                  ? [{ col: COL.channel_name, op: "IN", val: selectedChannels }]
+                ...(mediaList.length > 0
+                  ? [{ col: COL.channel_name, op: "IN", val: mediaList }]
                   : []),
               ],
               granularity: chartFormData.granularity_sqla || undefined,
             };
-            if (timeCol) {
+            if (timeCol && range) {
               q.orderby = [[timeCol, true]];
               (q.filters as SimpleFilter[]).push({
                 col: timeCol,
                 op: ">=",
-                val: range?.start ?? "",
+                val: range.start,
               });
               (q.filters as SimpleFilter[]).push({
                 col: timeCol,
-                op: "<=",
-                val: range?.end ?? "",
+                op: "<",
+                val: range.end,
               });
             }
             if (timeGrainSql && timeCol) {
@@ -454,7 +703,9 @@ export default function CompareModal({
             const rows: ChartDataRow[] = [];
             for (const r of results) {
               const data = r.data as ChartDataRow[] | undefined;
-              if (data && Array.isArray(data)) rows.push(...data);
+              if (data && Array.isArray(data)) {
+                for (const row of data) rows.push({ ...row, __anchor: anchor });
+              }
             }
             return rows;
           }),
@@ -462,12 +713,15 @@ export default function CompareModal({
         for (const rows of batchResults) {
           detailRows.push(...rows);
         }
+        reportProgress("正在查询明细数据", batch.length);
       }
+      // 明细阶段结束,推进到阶段边界(即使部分组合被跳过)
+      finishStage("正在查询对比汇总", detailTotal);
 
       // Get colnames from first result, filter out internal fields
       if (detailRows.length > 0) {
         colNames = Object.keys(detailRows[0]).filter(
-          (k) => k !== "id" && k !== "treePath",
+          (k) => k !== "id" && k !== "treePath" && k !== "__anchor",
         );
       }
 
@@ -478,24 +732,12 @@ export default function CompareModal({
         columns: { name: string; type?: string }[];
         data: ChartDataRow[];
       } | null = null;
-      if (
-        selectedGames.length === 1 &&
-        selectedCchNames.length <= 1 &&
-        selectedChannels.length <= 1 &&
-        (selectedCchNames.length > 0 || selectedChannels.length > 0)
-      ) {
+      if (intraEligible) {
         const game = selectedGames[0];
         const sharedMetrics = extractQueryFields(
           chartFormData,
           chartVizType,
         ).metrics;
-        // "Remaining" section: when a channel is selected the secondary query
-        // still scopes to that channel (its remaining media), so use the
-        // channel's own launch date; otherwise fall back to the game's.
-        const intraCchName =
-          selectedCchNames.length === 1
-            ? extractName(selectedCchNames[0])
-            : undefined;
         const baseFilters: SimpleFilter[] = [
           {
             col: COL.papp_id,
@@ -503,17 +745,16 @@ export default function CompareModal({
             val: [`${game.papp_name} [${game.papp_id}]`],
           },
         ];
-        if (timeCol) {
-          const range = resolveDateRange(game, intraCchName);
+        if (timeCol && intraRange) {
           baseFilters.push({
             col: timeCol,
             op: ">=",
-            val: range?.start ?? "",
+            val: intraRange.start,
           });
           baseFilters.push({
             col: timeCol,
-            op: "<=",
-            val: range?.end ?? "",
+            op: "<",
+            val: intraRange.end,
           });
         }
 
@@ -628,6 +869,7 @@ export default function CompareModal({
             /* secondary failed silently */
           }
         }
+        reportProgress("正在查询对比汇总");
         // Secondary aggregate query (without timeCol — one total row)
         if (secondaryResult && secondaryResult.data.length > 0) {
           try {
@@ -657,17 +899,16 @@ export default function CompareModal({
                 val: selectedCchNames,
               });
             }
-            if (timeCol) {
-              const range = resolveDateRange(game, intraCchName);
+            if (timeCol && intraRange) {
               aggFilters.push({
                 col: timeCol,
                 op: ">=",
-                val: range?.start ?? "",
+                val: intraRange.start,
               });
               aggFilters.push({
                 col: timeCol,
-                op: "<=",
-                val: range?.end ?? "",
+                op: "<",
+                val: intraRange.end,
               });
             }
             const aggRes = await postChartData({
@@ -699,6 +940,7 @@ export default function CompareModal({
             /* secondary agg failed */
           }
         }
+        reportProgress("正在查询对比汇总");
         // Format time column in secondary data and sort by date (same logic as primary)
         if (secondaryResult && timeCol && secondaryResult.data.length > 0) {
           for (const row of secondaryResult.data) {
@@ -785,7 +1027,7 @@ export default function CompareModal({
       for (let i = 0; i < combos.length; i += BATCH) {
         const batch = combos.slice(i, i + BATCH);
         const batchAggs = await Promise.all(
-          batch.map(async ({ game, cchVal, cchName }) => {
+          batch.map(async ({ game, cchVal, anchor, range, mediaList }) => {
             const filters: SimpleFilter[] = [
               {
                 col: COL.papp_id,
@@ -795,21 +1037,20 @@ export default function CompareModal({
               ...(cchVal
                 ? [{ col: COL.cch_name_id, op: "IN", val: [cchVal] }]
                 : []),
-              ...(selectedChannels.length > 0
-                ? [{ col: COL.channel_name, op: "IN", val: selectedChannels }]
+              ...(mediaList.length > 0
+                ? [{ col: COL.channel_name, op: "IN", val: mediaList }]
                 : []),
             ];
-            if (timeCol) {
-              const range = resolveDateRange(game, cchName);
+            if (timeCol && range) {
               filters.push({
                 col: timeCol,
                 op: ">=",
-                val: range?.start ?? "",
+                val: range.start,
               });
               filters.push({
                 col: timeCol,
-                op: "<=",
-                val: range?.end ?? "",
+                op: "<",
+                val: range.end,
               });
             }
             const payload = {
@@ -836,7 +1077,10 @@ export default function CompareModal({
               const rows: ChartDataRow[] = [];
               for (const r of results) {
                 const data = r.data as ChartDataRow[] | undefined;
-                if (data && Array.isArray(data)) rows.push(...data);
+                if (data && Array.isArray(data)) {
+                  for (const row of data)
+                    rows.push({ ...row, __anchor: anchor });
+                }
               }
               return rows;
             } catch {
@@ -845,7 +1089,10 @@ export default function CompareModal({
           }),
         );
         for (const rows of batchAggs) aggRows.push(...rows);
+        reportProgress("正在查询对比汇总", batch.length);
       }
+      // 汇总阶段结束,推进到阶段边界(内对比次表可能未发起)
+      finishStage("正在查询分表汇总", summaryTotal);
 
       // Build tree rows: aggregate rows (parents) + detail rows (children)
       const treeRows: ChartDataRow[] = [];
@@ -884,24 +1131,31 @@ export default function CompareModal({
         displayName: resolveDisplayName(name, timeCol, timeGrain),
       }));
 
-      // Per-section aggregate queries (for cross-comparison sections)
+      // Per-section aggregate queries (for cross-comparison sections).
+      // 多选轮次时每个轮次各出一套分表,标签前缀与渲染侧保持一致。
       const sectionAggs: Record<string, ChartDataRow> = {};
+      const multiAnchor = selectedAnchors.length > 1;
+      const aggLabel = (anchor: AnchorKey, label: string) =>
+        anchorSectionLabel(anchor, label, multiAnchor);
       const sharedMetrics = extractQueryFields(
         chartFormData,
         chartVizType,
       ).metrics;
-      const timeFilters: SimpleFilter[] =
-        timeCol && selectedGames[0]
-          ? (() => {
-              const range = resolveDateRange(selectedGames[0]);
-              return range
-                ? [
-                    { col: timeCol, op: ">=", val: range.start },
-                    { col: timeCol, op: "<=", val: range.end },
-                  ]
-                : [];
-            })()
+      // 每个游戏/分表使用它自己的起始日期窗口：多游戏对比时若统一取第一个
+      // 游戏的窗口，其余分表的合计行会统计到错误的日期区间。
+      const timeFiltersFor = (
+        anchor: AnchorKey,
+        game: SelectedGame | undefined = selectedGames[0],
+      ): SimpleFilter[] => {
+        if (!timeCol || !game) return [];
+        const range = resolveDateRange(game, undefined, anchor);
+        return range
+          ? [
+              { col: timeCol, op: ">=", val: range.start },
+              { col: timeCol, op: "<", val: range.end },
+            ]
           : [];
+      };
       const gameFilter: SimpleFilter | null =
         selectedGames.length > 0
           ? {
@@ -910,28 +1164,36 @@ export default function CompareModal({
               val: selectedGames.map((g) => `${g.papp_name} [${g.papp_id}]`),
             }
           : null;
-      // Build per-section aggregate queries
-      if (
-        selectedGames.length === 1 &&
-        selectedCchNames.length > 1 &&
-        selectedChannels.length > 1
-      ) {
-        // M×N sections: one aggregate per (渠道商 × 媒体) combination
-        for (const cch of selectedCchNames) {
-          for (const ch of selectedChannels) {
-            const cchRange =
-              timeCol && selectedGames[0]
-                ? resolveDateRange(selectedGames[0], extractName(cch))
-                : undefined;
-            const filters: SimpleFilter[] = cchRange
-              ? [
-                  { col: timeCol, op: ">=", val: cchRange.start },
-                  { col: timeCol, op: "<=", val: cchRange.end },
-                ]
-              : [];
-            if (gameFilter) filters.push(gameFilter);
-            filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
-            filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
+      // Build per-section aggregate queries. 分支顺序与渲染保持一致：
+      // 多游戏时每个游戏一个分表（各自使用自己的起始日期窗口），
+      // 单游戏时才按渠道商/媒体再拆分。
+      if (selectedGames.length > 1) {
+        for (const anchor of selectedAnchors) {
+          for (const g of selectedGames) {
+            // 只统计该游戏同区域的渠道商/媒体
+            const cchList = cchForGame(g);
+            const mediaList = mediaForGame(g);
+            if (cchList === null || mediaList === null) continue;
+            const filters: SimpleFilter[] = timeFiltersFor(anchor, g);
+            // 无可用起始日期的分表跳过,避免空日期过滤条件
+            if (timeCol && filters.length === 0) continue;
+            filters.push({
+              col: COL.papp_id,
+              op: "IN",
+              val: [`${g.papp_name} [${g.papp_id}]`],
+            });
+            if (cchList.length > 0)
+              filters.push({
+                col: COL.cch_name_id,
+                op: "IN",
+                val: cchList,
+              });
+            if (mediaList.length > 0)
+              filters.push({
+                col: COL.channel_name,
+                op: "IN",
+                val: mediaList,
+              });
             try {
               const res = await postChartData({
                 datasource: { id: chartDsId, type: chartDsType },
@@ -954,158 +1216,195 @@ export default function CompareModal({
               for (const r of results) {
                 const data = r.data as ChartDataRow[] | undefined;
                 if (data && data.length > 0) {
-                  sectionAggs[`${extractName(cch)} × ${ch}`] = data[0];
+                  sectionAggs[aggLabel(anchor, g.papp_name)] = {
+                    ...data[0],
+                    __anchor: anchor,
+                  };
                   break;
                 }
               }
             } catch {
               /* aggregate query failed */
             }
+            reportProgress("正在查询分表汇总");
+          }
+        }
+      } else if (
+        selectedGames.length === 1 &&
+        selectedCchNames.length > 1 &&
+        selectedChannels.length > 1
+      ) {
+        // M×N sections: one aggregate per (轮次 × 渠道商 × 媒体) combination
+        const mnCch = cchForGame(selectedGames[0]) ?? [];
+        const mnMedia = mediaForGame(selectedGames[0]) ?? [];
+        for (const anchor of selectedAnchors) {
+          for (const cch of mnCch) {
+            for (const ch of mnMedia) {
+              const cchRange =
+                timeCol && selectedGames[0]
+                  ? resolveDateRange(selectedGames[0], extractName(cch), anchor)
+                  : undefined;
+              // 无可用起始日期的组合跳过,避免空日期过滤条件
+              if (timeCol && !cchRange) continue;
+              const filters: SimpleFilter[] = cchRange
+                ? [
+                    { col: timeCol, op: ">=", val: cchRange.start },
+                    { col: timeCol, op: "<", val: cchRange.end },
+                  ]
+                : [];
+              if (gameFilter) filters.push(gameFilter);
+              filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
+              filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
+              try {
+                const res = await postChartData({
+                  datasource: { id: chartDsId, type: chartDsType },
+                  queries: [
+                    {
+                      result_type: "full" as const,
+                      metrics: sharedMetrics,
+                      groupby: [COL.papp_name],
+                      columns: [],
+                      filters,
+                    },
+                  ],
+                  result_format: "json" as const,
+                  result_type: "full" as const,
+                  force: true,
+                });
+                const results = (
+                  Array.isArray(res.data?.result) ? res.data.result : []
+                ) as ChartDataResponseResult[];
+                for (const r of results) {
+                  const data = r.data as ChartDataRow[] | undefined;
+                  if (data && data.length > 0) {
+                    sectionAggs[
+                      aggLabel(anchor, `${extractName(cch)} × ${ch}`)
+                    ] = { ...data[0], __anchor: anchor };
+                    break;
+                  }
+                }
+              } catch {
+                /* aggregate query failed */
+              }
+              reportProgress("正在查询分表汇总");
+            }
           }
         }
       } else if (selectedCchNames.length > 1) {
-        for (const cch of selectedCchNames) {
-          // Each channel section uses that channel's own launch-date window
-          const cchRange =
-            timeCol && selectedGames[0]
-              ? resolveDateRange(selectedGames[0], extractName(cch))
-              : undefined;
-          const filters: SimpleFilter[] = cchRange
-            ? [
-                { col: timeCol, op: ">=", val: cchRange.start },
-                { col: timeCol, op: "<=", val: cchRange.end },
-              ]
-            : [];
-          if (gameFilter) filters.push(gameFilter);
-          filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
-          if (selectedChannels.length > 0)
-            filters.push({
-              col: COL.channel_name,
-              op: "IN",
-              val: selectedChannels,
-            });
-          try {
-            const res = await postChartData({
-              datasource: { id: chartDsId, type: chartDsType },
-              queries: [
-                {
-                  result_type: "full" as const,
-                  metrics: sharedMetrics,
-                  groupby: [COL.cch_name],
-                  columns: [],
-                  filters,
-                },
-              ],
-              result_format: "json" as const,
-              result_type: "full" as const,
-              force: true,
-            });
-            const results = (
-              Array.isArray(res.data?.result) ? res.data.result : []
-            ) as ChartDataResponseResult[];
-            for (const r of results) {
-              const data = r.data as ChartDataRow[] | undefined;
-              if (data && data.length > 0) {
-                sectionAggs[extractName(cch)] = data[0];
-                break;
+        const cchBranchList = cchForGame(selectedGames[0]) ?? [];
+        const mediaBranchList = mediaForGame(selectedGames[0]) ?? [];
+        for (const anchor of selectedAnchors) {
+          for (const cch of cchBranchList) {
+            // Each channel section uses that channel's own round/launch window
+            const cchRange =
+              timeCol && selectedGames[0]
+                ? resolveDateRange(selectedGames[0], extractName(cch), anchor)
+                : undefined;
+            // 无可用起始日期的组合跳过,避免空日期过滤条件
+            if (timeCol && !cchRange) continue;
+            const filters: SimpleFilter[] = cchRange
+              ? [
+                  { col: timeCol, op: ">=", val: cchRange.start },
+                  { col: timeCol, op: "<", val: cchRange.end },
+                ]
+              : [];
+            if (gameFilter) filters.push(gameFilter);
+            filters.push({ col: COL.cch_name_id, op: "IN", val: [cch] });
+            if (mediaBranchList.length > 0)
+              filters.push({
+                col: COL.channel_name,
+                op: "IN",
+                val: mediaBranchList,
+              });
+            try {
+              const res = await postChartData({
+                datasource: { id: chartDsId, type: chartDsType },
+                queries: [
+                  {
+                    result_type: "full" as const,
+                    metrics: sharedMetrics,
+                    groupby: [COL.cch_name],
+                    columns: [],
+                    filters,
+                  },
+                ],
+                result_format: "json" as const,
+                result_type: "full" as const,
+                force: true,
+              });
+              const results = (
+                Array.isArray(res.data?.result) ? res.data.result : []
+              ) as ChartDataResponseResult[];
+              for (const r of results) {
+                const data = r.data as ChartDataRow[] | undefined;
+                if (data && data.length > 0) {
+                  sectionAggs[aggLabel(anchor, extractName(cch))] = {
+                    ...data[0],
+                    __anchor: anchor,
+                  };
+                  break;
+                }
               }
+            } catch {
+              /* aggregate query failed */
             }
-          } catch {
-            /* aggregate query failed */
+            reportProgress("正在查询分表汇总");
           }
         }
       } else if (selectedChannels.length > 1) {
-        for (const ch of selectedChannels) {
-          const filters: SimpleFilter[] = timeFilters;
-          if (gameFilter) filters.push(gameFilter);
-          if (selectedCchNames.length > 0)
-            filters.push({
-              col: COL.cch_name_id,
-              op: "IN",
-              val: selectedCchNames,
-            });
-          filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
-          try {
-            const res = await postChartData({
-              datasource: { id: chartDsId, type: chartDsType },
-              queries: [
-                {
-                  result_type: "full" as const,
-                  metrics: sharedMetrics,
-                  groupby: [COL.channel_name],
-                  columns: [],
-                  filters,
-                },
-              ],
-              result_format: "json" as const,
-              result_type: "full" as const,
-              force: true,
-            });
-            const results = (
-              Array.isArray(res.data?.result) ? res.data.result : []
-            ) as ChartDataResponseResult[];
-            for (const r of results) {
-              const data = r.data as ChartDataRow[] | undefined;
-              if (data && data.length > 0) {
-                sectionAggs[ch] = data[0];
-                break;
+        const mediaOnlyList = mediaForGame(selectedGames[0]) ?? [];
+        const cchOnlyList = cchForGame(selectedGames[0]) ?? [];
+        for (const anchor of selectedAnchors) {
+          for (const ch of mediaOnlyList) {
+            const filters: SimpleFilter[] = timeFiltersFor(anchor);
+            // 无可用起始日期的分表跳过,避免空日期过滤条件
+            if (timeCol && filters.length === 0) continue;
+            if (gameFilter) filters.push(gameFilter);
+            if (cchOnlyList.length > 0)
+              filters.push({
+                col: COL.cch_name_id,
+                op: "IN",
+                val: cchOnlyList,
+              });
+            filters.push({ col: COL.channel_name, op: "IN", val: [ch] });
+            try {
+              const res = await postChartData({
+                datasource: { id: chartDsId, type: chartDsType },
+                queries: [
+                  {
+                    result_type: "full" as const,
+                    metrics: sharedMetrics,
+                    groupby: [COL.channel_name],
+                    columns: [],
+                    filters,
+                  },
+                ],
+                result_format: "json" as const,
+                result_type: "full" as const,
+                force: true,
+              });
+              const results = (
+                Array.isArray(res.data?.result) ? res.data.result : []
+              ) as ChartDataResponseResult[];
+              for (const r of results) {
+                const data = r.data as ChartDataRow[] | undefined;
+                if (data && data.length > 0) {
+                  sectionAggs[aggLabel(anchor, ch)] = {
+                    ...data[0],
+                    __anchor: anchor,
+                  };
+                  break;
+                }
               }
+            } catch {
+              /* aggregate query failed */
             }
-          } catch {
-            /* aggregate query failed */
-          }
-        }
-      } else if (selectedGames.length > 1) {
-        for (const g of selectedGames) {
-          const filters: SimpleFilter[] = timeFilters;
-          filters.push({
-            col: COL.papp_id,
-            op: "IN",
-            val: [`${g.papp_name} [${g.papp_id}]`],
-          });
-          if (selectedCchNames.length > 0)
-            filters.push({
-              col: COL.cch_name_id,
-              op: "IN",
-              val: selectedCchNames,
-            });
-          if (selectedChannels.length > 0)
-            filters.push({
-              col: COL.channel_name,
-              op: "IN",
-              val: selectedChannels,
-            });
-          try {
-            const res = await postChartData({
-              datasource: { id: chartDsId, type: chartDsType },
-              queries: [
-                {
-                  result_type: "full" as const,
-                  metrics: sharedMetrics,
-                  groupby: [COL.papp_name],
-                  columns: [],
-                  filters,
-                },
-              ],
-              result_format: "json" as const,
-              result_type: "full" as const,
-              force: true,
-            });
-            const results = (
-              Array.isArray(res.data?.result) ? res.data.result : []
-            ) as ChartDataResponseResult[];
-            for (const r of results) {
-              const data = r.data as ChartDataRow[] | undefined;
-              if (data && data.length > 0) {
-                sectionAggs[g.papp_name] = data[0];
-                break;
-              }
-            }
-          } catch {
-            /* aggregate query failed */
+            reportProgress("正在查询分表汇总");
           }
         }
       }
+      // 分表阶段结束(部分组合被跳过后补齐),随后渲染结果
+      finishStage("正在生成对比结果", totalSteps);
       sectionAggregateCacheRef.current = sectionAggs;
 
       setQueryResult({ status: "success", columns, data: treeRows });
@@ -1113,6 +1412,7 @@ export default function CompareModal({
         games: selectedGames.map((g) => ({ ...g })),
         cchNames: [...selectedCchNames],
         channels: [...selectedChannels],
+        anchors: [...selectedAnchors],
       };
     } catch (err: unknown) {
       const axiosErr = err as {
@@ -1128,9 +1428,11 @@ export default function CompareModal({
       setError(typeof serverMsg === "string" ? serverMsg : "查询失败");
     } finally {
       setLoading(false);
+      setQueryProgress(null);
     }
   }, [
     selectedGames,
+    selectedAnchors,
     chartFormData,
     chartDsId,
     chartDsType,
@@ -1170,7 +1472,9 @@ export default function CompareModal({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 1.5,
+          flexWrap: "wrap",
+          columnGap: 1.5,
+          rowGap: 0.5,
           bgcolor: "grey.50",
           borderBottom: "1px solid",
           borderColor: "divider",
@@ -1185,15 +1489,75 @@ export default function CompareModal({
         >
           周期对比
         </Typography>
+        <Box
+          sx={{
+            position: "relative",
+            display: "flex",
+            gap: 0.5,
+            alignItems: "center",
+          }}
+        >
+          <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+            基准
+          </Typography>
+          {ANCHORS.map((a) => {
+            const active = selectedAnchors.includes(a.key);
+            return (
+              <Chip
+                key={a.key}
+                label={a.label}
+                size="small"
+                variant={active ? "filled" : "outlined"}
+                color={active ? "secondary" : "default"}
+                onClick={() => toggleAnchor(a.key)}
+                title="可多选，多选时按轮次分表对比（外对比）"
+                sx={{ cursor: "pointer", minWidth: 28 }}
+              />
+            );
+          })}
+          {selectedAnchors.length > 1 && (
+            <Box
+              sx={{
+                position: "absolute",
+                top: -8,
+                right: -8,
+                px: 0.75,
+                py: 0.15,
+                borderRadius: "3px",
+                bgcolor: "error.main",
+                color: "common.white",
+                fontSize: "0.65rem",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+                zIndex: 10,
+                pointerEvents: "none",
+                boxShadow: "var(--mui-palette-shadow-sm)",
+              }}
+            >
+              <Box
+                sx={{
+                  display: "inline-block",
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  bgcolor: "common.white",
+                  mr: 0.5,
+                  verticalAlign: "middle",
+                }}
+              />
+              外对比
+            </Box>
+          )}
+        </Box>
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-          {PERIODS.map((p) => (
+          {PERIOD_DAYS.map((days) => (
             <Chip
-              key={p.days}
-              label={p.label}
+              key={days}
+              label={`${selectedAnchors.length > 1 ? "各轮次后" : `${ANCHOR_LABELS[selectedAnchors[0]]}后`} ${days} 天`}
               size="small"
-              variant={periodDays === p.days ? "filled" : "outlined"}
-              color={periodDays === p.days ? "primary" : "default"}
-              onClick={() => setPeriodDays(p.days)}
+              variant={periodDays === days ? "filled" : "outlined"}
+              color={periodDays === days ? "primary" : "default"}
+              onClick={() => setPeriodDays(days)}
               sx={{ cursor: "pointer" }}
             />
           ))}
@@ -1273,16 +1637,46 @@ export default function CompareModal({
               onInputChange={(_, v) => setInputValue(v)}
               options={gameOptions}
               getOptionLabel={(o) => `${o.papp_name} [${o.papp_id}]`}
+              renderOption={(props, option) => (
+                <Box component="li" {...props} key={gameKey(option)}>
+                  <Box
+                    component="span"
+                    sx={{
+                      flex: 1,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {option.papp_name} [{option.papp_id}]
+                  </Box>
+                  {option.region === "oversea" && (
+                    <Box
+                      component="span"
+                      sx={{
+                        ml: 1,
+                        px: 0.5,
+                        borderRadius: 0.5,
+                        bgcolor: "action.hover",
+                        color: "text.secondary",
+                        fontSize: "0.7rem",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {REGION_LABELS.oversea}
+                    </Box>
+                  )}
+                </Box>
+              )}
               onChange={(_, value) => {
                 setSelectedGames(value);
-                const newIds = value.map((v: GameOption) => v.papp_id);
+                const newKeys = value.map((v: GameOption) => gameKey(v));
                 if (
-                  newIds.length > 0 &&
-                  !newIds.includes(primaryPappId ?? "")
+                  newKeys.length > 0 &&
+                  !newKeys.includes(primaryGameKey ?? "")
                 ) {
-                  setPrimaryPappId(newIds[0]);
+                  setPrimaryGameKey(newKeys[0]);
                 }
-                if (newIds.length === 0) setPrimaryPappId(null);
+                if (newKeys.length === 0) setPrimaryGameKey(null);
               }}
               filterSelectedOptions
               disableCloseOnSelect
@@ -1559,23 +1953,19 @@ export default function CompareModal({
           </Box>
           {(() => {
             const isIntra =
+              selectedAnchors.length === 1 &&
               selectedGames.length === 1 &&
               selectedCchNames.length <= 1 &&
               selectedChannels.length <= 1 &&
               (selectedCchNames.length > 0 || selectedChannels.length > 0);
             const isInter =
+              selectedAnchors.length > 1 ||
               selectedCchNames.length > 1 ||
               selectedChannels.length > 1 ||
               selectedGames.length > 1;
             if (!isIntra && !isInter) return null;
-            const sectionCount =
-              selectedGames.length > 1
-                ? selectedGames.length
-                : selectedCchNames.length > 1
-                  ? selectedChannels.length > 1
-                    ? selectedCchNames.length * selectedChannels.length
-                    : selectedCchNames.length
-                  : selectedChannels.length;
+            // 与分表标签一致:无可用起始日期的组合不计入分表数
+            const sectionCount = Math.max(sectionTags.length, 1);
             const showWarning = isInter && sectionCount > 4;
             return (
               <>
@@ -1625,7 +2015,7 @@ export default function CompareModal({
           })()}
         </Box>
 
-        {selectedGames.length > 0 && (
+        {sectionTags.length > 0 && (
           <Box
             sx={{
               display: "flex",
@@ -1636,39 +2026,77 @@ export default function CompareModal({
               pb: 0.5,
             }}
           >
-            {selectedGames.map((g) => {
-              // Show the per-channel launch window when a channel is picked
-              const labelCchName =
-                selectedCchNames.length === 1
-                  ? extractName(selectedCchNames[0])
-                  : undefined;
-              const range = resolveDateRange(g, labelCchName);
-              return (
-                <Chip
-                  key={g.papp_id}
-                  icon={
-                    g.papp_id === primaryPappId ? (
-                      <Box component="span" sx={{ fontSize: 10, ml: 0.25 }}>
-                        ★
-                      </Box>
-                    ) : undefined
-                  }
-                  label={`${g.papp_name} [${range?.start ?? ""} ~ ${range?.end ?? ""}]`}
-                  onDelete={() => removeGame(g.papp_id)}
-                  onClick={() => setPrimaryPappId(g.papp_id)}
-                  size="small"
-                  color={g.papp_id === primaryPappId ? "primary" : "default"}
-                  sx={{
-                    maxWidth: 320,
-                    "& .MuiChip-label": {
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    },
-                  }}
-                />
-              );
-            })}
+            {sectionTags.map((tag) => (
+              <Chip
+                key={tag.key}
+                icon={
+                  tag.gameId === primaryGameKey ? (
+                    <Box component="span" sx={{ fontSize: 10, ml: 0.25 }}>
+                      ★
+                    </Box>
+                  ) : undefined
+                }
+                label={tag.label}
+                onDelete={() => removeGame(tag.gameId)}
+                onClick={() => setPrimaryGameKey(tag.gameId)}
+                size="small"
+                color={tag.gameId === primaryGameKey ? "primary" : "default"}
+                sx={{
+                  maxWidth: 320,
+                  "& .MuiChip-label": {
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  },
+                }}
+              />
+            ))}
           </Box>
+        )}
+
+        {loading && queryProgress && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              py: 0.5,
+            }}
+          >
+            <LinearProgress
+              variant="determinate"
+              value={
+                queryProgress.total > 0
+                  ? Math.min(
+                      (queryProgress.done / queryProgress.total) * 100,
+                      100,
+                    )
+                  : 100
+              }
+              sx={{ flex: 1, height: 6, borderRadius: 1 }}
+            />
+            <Typography
+              variant="caption"
+              sx={{ color: "text.secondary", whiteSpace: "nowrap" }}
+            >
+              {queryProgress.label}
+              {queryProgress.total > 0
+                ? ` ${queryProgress.done}/${queryProgress.total}`
+                : ""}{" "}
+              · 已用 {queryElapsed}s
+            </Typography>
+          </Box>
+        )}
+
+        {skippedSectionLabels.length > 0 && (
+          <Typography
+            variant="caption"
+            sx={{ color: "text.secondary", pb: 0.5 }}
+          >
+            已跳过：{skippedSectionLabels.slice(0, 3).join("、")}
+            {skippedSectionLabels.length > 3
+              ? ` 等 ${skippedSectionLabels.length} 项`
+              : ""}
+          </Typography>
         )}
 
         {error && (
@@ -2139,187 +2567,251 @@ export default function CompareModal({
               const snap = queryFilterSnapshot.current;
               if (!snap) return [];
               const data = queryResult.data;
-              const snapGames = snap.games;
-              const snapCchNames = snap.cchNames;
-              const snapChannels = snap.channels;
-              const isMultiGame = snapGames.length > 1;
-              const isMultiCch = snapCchNames.length > 1;
-              const isMultiChannel = snapChannels.length > 1;
-              const isIntraSnap =
-                snapGames.length === 1 &&
-                snapCchNames.length <= 1 &&
-                snapChannels.length <= 1 &&
-                (snapCchNames.length > 0 || snapChannels.length > 0);
+              const snapAnchors: AnchorKey[] =
+                snap.anchors && snap.anchors.length > 0
+                  ? snap.anchors
+                  : ["上线时间"];
+              const multiAnchor = snapAnchors.length > 1;
               const aggCache = sectionAggregateCacheRef.current;
 
-              // Helper: build section from detail rows
-              const makeSection = (
-                label: string,
-                filterFn: (row: ChartDataRow) => boolean,
-                tableName: string,
+              // 单选轮次时保持原有单一对比;多选轮次时每个轮次独立分表(外对比),
+              // 分表标签带轮次前缀,与 sectionAggregateCacheRef 的 key 一致。
+              const buildFor = (
+                subset: Record<string, unknown>[],
+                anchor?: AnchorKey,
               ) => {
-                const allRows = data.filter(filterFn) as ChartDataRow[];
-                if (allRows.length === 0) return null;
-                const dataAgg = allRows.find((r) =>
-                  String(r.id ?? "").startsWith("p_"),
-                );
-                const detailRows = allRows.filter(
-                  (r) => !String(r.id ?? "").startsWith("p_"),
-                );
-                if (detailRows.length === 0) return null;
-                const sectionAgg = aggCache[label] || dataAgg || null;
-                const renderFn = (key: string) => {
-                  if (sectionAgg) {
-                    const rows = [sectionAgg, ...detailRows];
-                    return renderSection(key, rows, tableName);
-                  }
-                  // Detail-only: wrap in a table with header but no aggregate row
-                  return (
-                    <Box key={key}>
-                      <Table
-                        size="small"
-                        sx={{
-                          tableLayout: "fixed",
-                          borderCollapse: "collapse",
-                        }}
-                      >
-                        {colGroup}
-                        {(tableName === "primary" ||
-                          tableName === "intra_secondary") && (
-                          <TableHead>
-                            <TableRow>
-                              {columns.map((col, ci) => (
-                                <TableCell key={col.name} sx={thSx(ci)}>
-                                  {displayLabel(col.name, col.displayName)}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          </TableHead>
-                        )}
-                        <TableBody>
-                          {detailRows.map((row, ri) => (
-                            <TableRow key={ri} hover>
-                              {columns.map((col, ci) => (
-                                <TableCell key={col.name} sx={dataSx(ci)}>
-                                  {renderMetricValue(col.name, row)}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </Box>
-                  );
+                const lbl = (label: string) =>
+                  anchor
+                    ? anchorSectionLabel(anchor, label, multiAnchor)
+                    : label;
+                const snapGames = snap.games;
+                const snapCchNames = snap.cchNames;
+                const snapChannels = snap.channels;
+                const sectionAnchor: AnchorKey = anchor ?? snapAnchors[0];
+                const isMultiGame = snapGames.length > 1;
+                const isMultiCch = snapCchNames.length > 1;
+                const isMultiChannel = snapChannels.length > 1;
+                const isIntraSnap =
+                  snapAnchors.length === 1 &&
+                  snapGames.length === 1 &&
+                  snapCchNames.length <= 1 &&
+                  snapChannels.length <= 1 &&
+                  (snapCchNames.length > 0 || snapChannels.length > 0);
+
+                // 分表窗口起始日期(用于按数据日期排序;与标签计算保持一致)
+                const sectionStart = (
+                  game: SelectedGame,
+                  cchName?: string,
+                ): string | undefined => {
+                  const resolvedCch =
+                    cchName ??
+                    (snapCchNames.length === 1
+                      ? extractName(snapCchNames[0])
+                      : undefined);
+                  return resolveDateRange(game, resolvedCch, sectionAnchor)
+                    ?.start;
                 };
-                return { rows: detailRows, render: renderFn };
+
+                // Helper: build section from detail rows
+                const makeSection = (
+                  label: string,
+                  filterFn: (row: ChartDataRow) => boolean,
+                  tableName: string,
+                  start?: string,
+                ) => {
+                  const allRows = subset.filter(filterFn) as ChartDataRow[];
+                  if (allRows.length === 0) return null;
+                  const dataAgg = allRows.find((r) =>
+                    String(r.id ?? "").startsWith("p_"),
+                  );
+                  const detailRows = allRows.filter(
+                    (r) => !String(r.id ?? "").startsWith("p_"),
+                  );
+                  if (detailRows.length === 0) return null;
+                  const sectionAgg = aggCache[label] || dataAgg || null;
+                  const renderFn = (key: string) => {
+                    if (sectionAgg) {
+                      const rows = [sectionAgg, ...detailRows];
+                      return renderSection(key, rows, tableName);
+                    }
+                    // Detail-only: wrap in a table with header but no aggregate row
+                    return (
+                      <Box key={key}>
+                        <Table
+                          size="small"
+                          sx={{
+                            tableLayout: "fixed",
+                            borderCollapse: "collapse",
+                          }}
+                        >
+                          {colGroup}
+                          {(tableName === "primary" ||
+                            tableName === "intra_secondary") && (
+                            <TableHead>
+                              <TableRow>
+                                {columns.map((col, ci) => (
+                                  <TableCell key={col.name} sx={thSx(ci)}>
+                                    {displayLabel(col.name, col.displayName)}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            </TableHead>
+                          )}
+                          <TableBody>
+                            {detailRows.map((row, ri) => (
+                              <TableRow key={ri} hover>
+                                {columns.map((col, ci) => (
+                                  <TableCell key={col.name} sx={dataSx(ci)}>
+                                    {renderMetricValue(col.name, row)}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    );
+                  };
+                  return {
+                    rows: detailRows,
+                    render: renderFn,
+                    start,
+                    anchor: sectionAnchor,
+                    label,
+                  };
+                };
+
+                // 1) Multi-game + filters: each game is a section
+                if (isMultiGame) {
+                  return snapGames.map((g) =>
+                    makeSection(
+                      lbl(g.papp_name),
+                      (r) => String(r[COL.papp_name] ?? "") === g.papp_name,
+                      "primary",
+                      sectionStart(g),
+                    ),
+                  );
+                }
+
+                // 2) Single game + multiple cch × multiple channels: M×N sections
+                if (isMultiCch && isMultiChannel) {
+                  return snapCchNames.flatMap((cch) =>
+                    snapChannels.map((ch) =>
+                      makeSection(
+                        lbl(`${extractName(cch)} × ${ch}`),
+                        (r) =>
+                          String(r[COL.cch_name] ?? "") === extractName(cch) &&
+                          String(r[COL.channel_name] ?? "") === ch,
+                        "primary",
+                        sectionStart(snapGames[0], extractName(cch)),
+                      ),
+                    ),
+                  );
+                }
+
+                // 3) Single game + multiple cch_names: each cch is a section
+                if (isMultiCch) {
+                  return snapCchNames.map((cch) =>
+                    makeSection(
+                      lbl(extractName(cch)),
+                      (r) => String(r[COL.cch_name] ?? "") === extractName(cch),
+                      "primary",
+                      sectionStart(snapGames[0], extractName(cch)),
+                    ),
+                  );
+                }
+
+                // 4) Single game + multiple channels: each channel is a section
+                if (isMultiChannel) {
+                  return snapChannels.map((ch) =>
+                    makeSection(
+                      lbl(ch),
+                      (r) => String(r[COL.channel_name] ?? "") === ch,
+                      "primary",
+                      sectionStart(snapGames[0]),
+                    ),
+                  );
+                }
+
+                // 5) Single game + single filter: intra-project (primary vs remaining)
+                if (isIntraSnap) {
+                  const game = snapGames[0];
+                  const gameName = game.papp_name;
+                  const primaryFilter = (r: ChartDataRow) => {
+                    if (String(r[COL.papp_name] ?? "") !== gameName)
+                      return false;
+                    if (
+                      snapCchNames.length === 1 &&
+                      (r[COL.cch_name] ?? "") !== "" &&
+                      String(r[COL.cch_name] ?? "") !==
+                        extractName(snapCchNames[0])
+                    )
+                      return false;
+                    if (
+                      snapChannels.length === 1 &&
+                      (r[COL.channel_name] ?? "") !== "" &&
+                      String(r[COL.channel_name] ?? "") !== snapChannels[0]
+                    )
+                      return false;
+                    return true;
+                  };
+                  const primarySection = makeSection(
+                    lbl(gameName),
+                    primaryFilter,
+                    "primary",
+                    sectionStart(game),
+                  );
+                  let secondarySection: ReturnType<typeof makeSection> | null =
+                    null;
+                  if (
+                    intraSecondaryResult &&
+                    intraSecondaryResult.data.length > 0
+                  ) {
+                    secondarySection = {
+                      rows: intraSecondaryRows,
+                      render: (_key: string) =>
+                        renderSection(
+                          "intra_secondary_data",
+                          intraSecondaryRows,
+                          "intra_secondary",
+                        ),
+                      start: primarySection?.start,
+                      anchor: sectionAnchor,
+                      label: `${lbl(gameName)}（其余渠道）`,
+                    };
+                  }
+                  return [primarySection, secondarySection].filter(Boolean);
+                }
+
+                // 6) Single game + no filters: single section
+                return [
+                  makeSection(
+                    lbl(snapGames[0]?.papp_name ?? ""),
+                    () => true,
+                    "primary",
+                    sectionStart(snapGames[0]),
+                  ),
+                ];
               };
 
-              // 1) Multi-game + filters: each game is a section
-              if (isMultiGame) {
-                return snapGames.map((g) =>
-                  makeSection(
-                    g.papp_name,
-                    (r) => String(r[COL.papp_name] ?? "") === g.papp_name,
-                    "primary",
-                  ),
-                );
-              }
-
-              // 2) Single game + multiple cch × multiple channels: M×N sections
-              if (isMultiCch && isMultiChannel) {
-                return snapCchNames.flatMap((cch) =>
-                  snapChannels.map((ch) =>
-                    makeSection(
-                      `${extractName(cch)} × ${ch}`,
-                      (r) =>
-                        String(r[COL.cch_name] ?? "") === extractName(cch) &&
-                        String(r[COL.channel_name] ?? "") === ch,
-                      "primary",
+              if (multiAnchor) {
+                return snapAnchors.flatMap((anchor) =>
+                  buildFor(
+                    data.filter(
+                      (r) => String(r.__anchor ?? "上线时间") === anchor,
                     ),
+                    anchor,
                   ),
                 );
               }
-
-              // 3) Single game + multiple cch_names: each cch is a section
-              if (isMultiCch) {
-                return snapCchNames.map((cch) =>
-                  makeSection(
-                    extractName(cch),
-                    (r) => String(r[COL.cch_name] ?? "") === extractName(cch),
-                    "primary",
-                  ),
-                );
-              }
-
-              // 4) Single game + multiple channels: each channel is a section
-              if (isMultiChannel) {
-                return snapChannels.map((ch) =>
-                  makeSection(
-                    ch,
-                    (r) => String(r[COL.channel_name] ?? "") === ch,
-                    "primary",
-                  ),
-                );
-              }
-
-              // 5) Single game + single filter: intra-project (primary vs remaining)
-              if (isIntraSnap) {
-                const game = snapGames[0];
-                const gameName = game.papp_name;
-                const primaryFilter = (r: ChartDataRow) => {
-                  if (String(r[COL.papp_name] ?? "") !== gameName) return false;
-                  if (
-                    snapCchNames.length === 1 &&
-                    (r[COL.cch_name] ?? "") !== "" &&
-                    String(r[COL.cch_name] ?? "") !==
-                      extractName(snapCchNames[0])
-                  )
-                    return false;
-                  if (
-                    snapChannels.length === 1 &&
-                    (r[COL.channel_name] ?? "") !== "" &&
-                    String(r[COL.channel_name] ?? "") !== snapChannels[0]
-                  )
-                    return false;
-                  return true;
-                };
-                const primarySection = makeSection(
-                  gameName,
-                  primaryFilter,
-                  "primary",
-                );
-                let secondarySection: ReturnType<typeof makeSection> | null =
-                  null;
-                if (
-                  intraSecondaryResult &&
-                  intraSecondaryResult.data.length > 0
-                ) {
-                  secondarySection = {
-                    rows: intraSecondaryRows,
-                    render: (_key: string) =>
-                      renderSection(
-                        "intra_secondary_data",
-                        intraSecondaryRows,
-                        "intra_secondary",
-                      ),
-                  };
-                }
-                return [primarySection, secondarySection].filter(Boolean);
-              }
-
-              // 6) Single game + no filters: single section
-              return [
-                makeSection(
-                  snapGames[0]?.papp_name ?? "",
-                  () => true,
-                  "primary",
-                ),
-              ];
+              return buildFor(data);
             };
 
             const sections = buildSections()
               .filter(Boolean)
-              .map((s) => s!);
+              .map((s) => s!)
+              // 分表按数据日期先后排序,而不是点击顺序
+              .sort(compareSectionOrder);
 
             if (sections.length === 0) {
               return (

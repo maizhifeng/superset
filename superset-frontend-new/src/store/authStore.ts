@@ -12,6 +12,7 @@ import api, {
   clearAuthAndBackup,
   SWITCHED_FLAG_KEY,
 } from "@/api";
+import { useMenuSettings } from "@/store/menuSettings";
 
 interface User {
   username: string;
@@ -80,6 +81,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
         set({ user: userData, isAuthenticated: true });
         setupTokenRefresh();
         await _get().fetchRoles();
+        await useMenuSettings.getState().fetchSettings();
         set({ loading: false });
       }
     } catch {
@@ -94,6 +96,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
             set({ user: userData, isAuthenticated: true });
             setupTokenRefresh();
             await _get().fetchRoles();
+            await useMenuSettings.getState().fetchSettings();
             set({ loading: false });
             return;
           }
@@ -130,6 +133,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     set({ token: accessToken, user: userData, isAuthenticated: true });
     setupTokenRefresh();
     await _get().fetchRoles();
+    await useMenuSettings.getState().fetchSettings();
     void fetchCsrfToken();
   },
 

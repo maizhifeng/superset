@@ -31,14 +31,18 @@ import Checkbox from "@mui/material/Checkbox";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
-
-const DB_CONFIG = {
-  database_id: 2,
-  schema: "sj_platform",
-  table: "part_channel",
-};
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import {
+  CHANNEL_SOURCES,
+  GAME_REGIONS,
+  REGION_LABELS,
+  channelPayload,
+  type GameRegion,
+} from "@/config/regions";
 
 interface ChannelRow {
+  channel_key: string;
   channel_id: string;
   channel_name: string;
   updated_at: string;
@@ -48,7 +52,7 @@ interface ChannelRow {
 }
 
 const COLUMNS = [
-  "channel_id",
+  "channel_key",
   "channel_name",
   "updated_at",
   "默认分成",
@@ -56,11 +60,16 @@ const COLUMNS = [
   "白名单控制参数",
 ];
 
+const COLUMN_LABELS: Record<string, string> = {
+  channel_key: "渠道标识",
+};
+
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
 };
 
 export default function ChannelConfig() {
+  const [region, setRegion] = useState<GameRegion>("domestic");
   const [rows, setRows] = useState<ChannelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -71,11 +80,14 @@ export default function ChannelConfig() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const fetchRows = useCallback(async () => {
-    const res = await api.get<{ result: ChannelRow[] }>("/project/channel");
+  const fetchRows = useCallback(async (target: GameRegion) => {
+    const res = await api.get<{ result: ChannelRow[] }>("/project/channel", {
+      params: { region: target },
+    });
     const sorted = (res.data.result ?? [])
       .map((r) => ({
-        channel_id: String(r.channel_id),
+        channel_key: String(r.channel_key ?? ""),
+        channel_id: r.channel_id == null ? "" : String(r.channel_id),
         channel_name: r.channel_name ?? "",
         updated_at: r.updated_at ?? "",
         白名单控制参数: r.白名单控制参数 ?? "",
@@ -88,67 +100,38 @@ export default function ChannelConfig() {
 
   useEffect(() => {
     setLoading(true);
-    fetchRows()
+    fetchRows(region)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [fetchRows]);
+  }, [fetchRows, region]);
 
   const handleSync = useCallback(async () => {
+    const source = CHANNEL_SOURCES[region];
     setSyncing(true);
     setError(null);
     try {
-      const sql = `SELECT * FROM ${DB_CONFIG.schema}.${DB_CONFIG.table}`;
       const q = await api.post<QueryResult>("/sqllab/execute/", {
-        database_id: DB_CONFIG.database_id,
-        sql,
+        database_id: source.databaseId,
+        sql: source.sql,
       });
 
-      const existingRes = await api.get<{
-        result: {
-          channel_id: number;
-          白名单控制参数: string;
-          默认分成: string;
-          ios虚拟支付分成: string;
-        }[];
-      }>("/project/channel");
-      const existingParams = new Map<
-        number,
-        { 白名单控制参数: string; 默认分成: string; ios虚拟支付分成: string }
-      >();
-      for (const entry of existingRes.data.result ?? []) {
-        existingParams.set(entry.channel_id, {
-          白名单控制参数: entry.白名单控制参数 ?? "",
-          默认分成: entry.默认分成 ?? "",
-          ios虚拟支付分成: entry.ios虚拟支付分成 ?? "",
-        });
-      }
+      // 整表一次性回写：逐行 PUT 会触发应用级 50 req/s 限流。
+      const channels = (q.data.data ?? [])
+        .map((raw) => channelPayload(region, raw))
+        .filter((channel) => channel !== null);
 
-      let count = 0;
-      for (const raw of q.data.data) {
-        const channelId = Number(raw.channel_id);
-        if (!channelId) continue;
-        const prev = existingParams.get(channelId) ?? {
-          白名单控制参数: "",
-          默认分成: "",
-          ios虚拟支付分成: "",
-        };
-        await api.put(`/project/channel/${channelId}`, {
-          channel_name: String(raw.channel_name ?? ""),
-          updated_at: String(raw.updated_at ?? ""),
-          白名单控制参数: prev.白名单控制参数,
-          默认分成: prev.默认分成,
-          ios虚拟支付分成: prev.ios虚拟支付分成,
-        });
-        count++;
-      }
-      await fetchRows();
-      setSuccess(`已同步 ${count} 条`);
+      const res = await api.post<{ result: { count: number } }>(
+        "/project/channel/bulk",
+        { region, channels },
+      );
+      await fetchRows(region);
+      setSuccess(`已同步 ${REGION_LABELS[region]}渠道 ${res.data.result.count} 条`);
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "同步失败"));
     } finally {
       setSyncing(false);
     }
-  }, [fetchRows]);
+  }, [fetchRows, region]);
 
   const toggleEdit = useCallback((id: string) => {
     setEditingIds((prev) => {
@@ -173,11 +156,13 @@ export default function ChannelConfig() {
 
   const handleSave = useCallback(
     async (row: ChannelRow) => {
-      setSaving((prev) => ({ ...prev, [row.channel_id]: true }));
+      setSaving((prev) => ({ ...prev, [row.channel_key]: true }));
       setError(null);
       setSuccess(null);
       try {
-        await api.put(`/project/channel/${row.channel_id}`, {
+        await api.put(`/project/channel/${row.channel_key}`, {
+          region,
+          channel_id: row.channel_id === "" ? null : Number(row.channel_id),
           channel_name: row.channel_name,
           updated_at: row.updated_at,
           白名单控制参数: row.白名单控制参数,
@@ -185,36 +170,39 @@ export default function ChannelConfig() {
           ios虚拟支付分成: row.ios虚拟支付分成,
         });
         setSuccess(`已保存 ${row.channel_name}`);
-        exitEdit(row.channel_id);
+        exitEdit(row.channel_key);
       } catch (err: unknown) {
         setError(parseErrorMessage(err, "保存失败"));
       } finally {
-        setSaving((prev) => ({ ...prev, [row.channel_id]: false }));
+        setSaving((prev) => ({ ...prev, [row.channel_key]: false }));
       }
     },
-    [exitEdit],
+    [exitEdit, region],
   );
 
-  const updateWhitelist = useCallback((channelId: string, value: string) => {
+  const updateWhitelist = useCallback((channelKey: string, value: string) => {
     setRows((prev) =>
       prev.map((r) =>
-        r.channel_id === channelId ? { ...r, 白名单控制参数: value } : r,
+        r.channel_key === channelKey ? { ...r, 白名单控制参数: value } : r,
       ),
     );
   }, []);
 
-  const updateDefaultSplit = useCallback((channelId: string, value: string) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.channel_id === channelId ? { ...r, 默认分成: value } : r,
-      ),
-    );
-  }, []);
+  const updateDefaultSplit = useCallback(
+    (channelKey: string, value: string) => {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.channel_key === channelKey ? { ...r, 默认分成: value } : r,
+        ),
+      );
+    },
+    [],
+  );
 
-  const updateIosSplit = useCallback((channelId: string, value: string) => {
+  const updateIosSplit = useCallback((channelKey: string, value: string) => {
     setRows((prev) =>
       prev.map((r) =>
-        r.channel_id === channelId ? { ...r, ios虚拟支付分成: value } : r,
+        r.channel_key === channelKey ? { ...r, ios虚拟支付分成: value } : r,
       ),
     );
   }, []);
@@ -261,19 +249,26 @@ export default function ChannelConfig() {
     page * rowsPerPage + rowsPerPage,
   );
 
-  if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-        <Typography variant="body2" color="text.secondary">
-          加载中...
-        </Typography>
-      </Box>
-    );
-  }
+  // 切换区域时重置筛选/分页/编辑态，避免把国内的行状态带到海外列表。
+  const handleChangeRegion = useCallback((next: GameRegion) => {
+    setRegion(next);
+    setFilterName(null);
+    setPage(0);
+    setEditingIds(new Set());
+  }, []);
 
   return (
     <>
-      <Box sx={{ p: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+          p: 3,
+          gap: 1.5,
+        }}
+      >
         {success && (
           <Snackbar
             open
@@ -309,17 +304,32 @@ export default function ChannelConfig() {
           </Snackbar>
         )}
 
+        <Tabs
+          value={region}
+          onChange={(_, v) => handleChangeRegion(v as GameRegion)}
+          sx={{ minHeight: 0, borderBottom: 1, borderColor: "divider" }}
+        >
+          {GAME_REGIONS.map((r) => (
+            <Tab
+              key={r}
+              value={r}
+              label={`${REGION_LABELS[r]}渠道商`}
+              sx={{ minHeight: 0, py: 1, fontSize: "0.8125rem" }}
+            />
+          ))}
+        </Tabs>
         <Card
           variant="outlined"
           sx={{
             borderRadius: 2,
             display: "flex",
             flexDirection: "column",
-            height: "calc(100vh - 80px)",
+            flex: 1,
+            minHeight: 0,
           }}
         >
           <CardHeader
-            title={`渠道商 (${filteredRows.length})`}
+            title={`${REGION_LABELS[region]}渠道商 (${filteredRows.length})`}
             sx={cardHeaderSx}
             action={
               <Box
@@ -374,7 +384,15 @@ export default function ChannelConfig() {
               </Box>
             }
           />
-          {rows.length === 0 ? (
+          {loading ? (
+            <CardContent sx={{ flex: 1 }}>
+              <Box sx={{ textAlign: "center", py: 6 }}>
+                <Typography variant="body2" color="text.secondary">
+                  加载中...
+                </Typography>
+              </Box>
+            </CardContent>
+          ) : rows.length === 0 ? (
             <CardContent sx={{ flex: 1 }}>
               <Box sx={{ textAlign: "center", py: 6 }}>
                 <Typography
@@ -382,7 +400,7 @@ export default function ChannelConfig() {
                   color="text.secondary"
                   sx={{ mb: 2 }}
                 >
-                  未加载数据。点击同步从数据库加载。
+                  {`未加载数据。点击同步从 ${CHANNEL_SOURCES[region].schema}.${CHANNEL_SOURCES[region].table} 加载${REGION_LABELS[region]}渠道商。`}
                 </Typography>
                 <Button
                   variant="outlined"
@@ -455,7 +473,7 @@ export default function ChannelConfig() {
                                   </Box>
                                 </Tooltip>
                               ) : (
-                                col
+                                (COLUMN_LABELS[col] ?? col)
                               )}
                             </Typography>
                           </TableCell>
@@ -473,15 +491,29 @@ export default function ChannelConfig() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
+                      {visibleRows.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={COLUMNS.length + 1}
+                            sx={{ textAlign: "center", py: 4 }}
+                          >
+                            <Typography variant="body2" color="text.secondary">
+                              {whitelistOnly
+                                ? "暂无白名单渠道商，关闭「仅白名单」可查看全部。"
+                                : "当前筛选条件下没有渠道商。"}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
                       {visibleRows.map((row) => {
-                        const editing = editingIds.has(row.channel_id);
+                        const editing = editingIds.has(row.channel_key);
                         return (
-                        <TableRow key={row.channel_id}>
+                        <TableRow key={row.channel_key}>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
                           <Typography
                             sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
                           >
-                            {row.channel_id}
+                            {row.channel_key}
                           </Typography>
                         </TableCell>
                         <TableCell sx={{ p: 0.5, textAlign: "center" }}>
@@ -509,7 +541,7 @@ export default function ChannelConfig() {
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (/^\d*\.?\d*$/.test(v) || v === "") {
-                                  updateDefaultSplit(row.channel_id, v);
+                                  updateDefaultSplit(row.channel_key, v);
                                 }
                               }}
                               slotProps={{
@@ -550,7 +582,7 @@ export default function ChannelConfig() {
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (/^\d*\.?\d*$/.test(v) || v === "") {
-                                  updateIosSplit(row.channel_id, v);
+                                  updateIosSplit(row.channel_key, v);
                                 }
                               }}
                               slotProps={{
@@ -589,7 +621,7 @@ export default function ChannelConfig() {
                               checked={row.白名单控制参数 === "Y"}
                               onChange={(_, checked) =>
                                 updateWhitelist(
-                                  row.channel_id,
+                                  row.channel_key,
                                   checked ? "Y" : "",
                                 )
                               }
@@ -614,7 +646,7 @@ export default function ChannelConfig() {
                                 <IconButton
                                   size="small"
                                   onClick={() => void handleSave(row)}
-                                  disabled={saving[row.channel_id]}
+                                  disabled={saving[row.channel_key]}
                                   color="primary"
                                   aria-label="保存"
                                 >
@@ -622,8 +654,8 @@ export default function ChannelConfig() {
                                 </IconButton>
                                 <IconButton
                                   size="small"
-                                  onClick={() => exitEdit(row.channel_id)}
-                                  disabled={saving[row.channel_id]}
+                                  onClick={() => exitEdit(row.channel_key)}
+                                  disabled={saving[row.channel_key]}
                                   aria-label="取消编辑"
                                 >
                                   <CloseIcon fontSize="small" />
@@ -632,7 +664,7 @@ export default function ChannelConfig() {
                             ) : (
                               <IconButton
                                 size="small"
-                                onClick={() => toggleEdit(row.channel_id)}
+                                onClick={() => toggleEdit(row.channel_key)}
                                 aria-label="编辑"
                               >
                                 <EditIcon fontSize="small" />

@@ -27,11 +27,17 @@ import Switch from "@mui/material/Switch";
 import TextField from "@mui/material/TextField";
 import Checkbox from "@mui/material/Checkbox";
 import Autocomplete from "@mui/material/Autocomplete";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
-
-const DB_CONFIG = { database_id: 2, schema: "sj_platform", table: "part_papp" };
+import {
+  GAME_REGIONS,
+  GAME_SOURCES,
+  REGION_LABELS,
+  type GameRegion,
+} from "@/config/regions";
 
 interface PappRow {
   papp_id: string;
@@ -47,6 +53,7 @@ const cardHeaderSx = {
 };
 
 export default function ProjectConfig() {
+  const [region, setRegion] = useState<GameRegion>("domestic");
   const [rows, setRows] = useState<PappRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -57,8 +64,10 @@ export default function ProjectConfig() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const fetchRows = useCallback(async () => {
-    const res = await api.get<{ result: PappRow[] }>("/project/papp");
+  const fetchRows = useCallback(async (target: GameRegion) => {
+    const res = await api.get<{ result: PappRow[] }>("/project/papp", {
+      params: { region: target },
+    });
     const sorted = (res.data.result ?? [])
       .map((r) => ({
         papp_id: String(r.papp_id),
@@ -72,49 +81,43 @@ export default function ProjectConfig() {
 
   useEffect(() => {
     setLoading(true);
-    fetchRows()
+    fetchRows(region)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [fetchRows]);
+  }, [fetchRows, region]);
 
   const handleSync = useCallback(async () => {
+    const source = GAME_SOURCES[region];
     setSyncing(true);
     setError(null);
     try {
-      const sql = `SELECT * FROM ${DB_CONFIG.schema}.${DB_CONFIG.table}`;
+      const sql = `SELECT * FROM ${source.schema}.${source.table}`;
       const q = await api.post<QueryResult>("/sqllab/execute/", {
-        database_id: DB_CONFIG.database_id,
+        database_id: source.databaseId,
         sql,
       });
 
-      const existingRes = await api.get<{
-        result: { papp_id: number; 白名单控制参数: string }[];
-      }>("/project/papp");
-      const existingParams = new Map<number, string>();
-      for (const entry of existingRes.data.result ?? []) {
-        if (entry.白名单控制参数)
-          existingParams.set(entry.papp_id, entry.白名单控制参数);
-      }
-
-      let count = 0;
-      for (const raw of q.data.data) {
-        const pappId = Number(raw.papp_id);
-        if (!pappId) continue;
-        await api.put(`/project/papp/${pappId}`, {
+      // 整表一次性回写：逐行 PUT 会触发应用级 50 req/s 限流。
+      const games = (q.data.data ?? [])
+        .map((raw) => ({
+          papp_id: Number(raw.papp_id),
           papp_name: String(raw.papp_name ?? ""),
           updated_at: String(raw.updated_at ?? ""),
-          白名单控制参数: existingParams.get(pappId) ?? "",
-        });
-        count++;
-      }
-      await fetchRows();
-      setSuccess(`已同步 ${count} 条`);
+        }))
+        .filter((game) => Boolean(game.papp_id));
+
+      const res = await api.post<{ result: { count: number } }>(
+        "/project/papp/bulk",
+        { region, games },
+      );
+      await fetchRows(region);
+      setSuccess(`已同步 ${REGION_LABELS[region]}游戏 ${res.data.result.count} 条`);
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "同步失败"));
     } finally {
       setSyncing(false);
     }
-  }, [fetchRows]);
+  }, [fetchRows, region]);
 
   const toggleEdit = useCallback((id: string) => {
     setEditingIds((prev) => {
@@ -144,6 +147,7 @@ export default function ProjectConfig() {
       setSuccess(null);
       try {
         await api.put(`/project/papp/${row.papp_id}`, {
+          region,
           papp_name: row.papp_name,
           updated_at: row.updated_at,
           白名单控制参数: row.白名单控制参数,
@@ -156,7 +160,7 @@ export default function ProjectConfig() {
         setSaving((prev) => ({ ...prev, [row.papp_id]: false }));
       }
     },
-    [exitEdit],
+    [exitEdit, region],
   );
 
   const updateWhitelist = useCallback((pappId: string, checked: boolean) => {
@@ -209,30 +213,52 @@ export default function ProjectConfig() {
     page * rowsPerPage + rowsPerPage,
   );
 
-  if (loading) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-        <Typography variant="body2" color="text.secondary">
-          加载中...
-        </Typography>
-      </Box>
-    );
-  }
+  // 切换区域时重置筛选/分页/编辑态，避免把国内的行状态带到海外列表。
+  const handleChangeRegion = useCallback((next: GameRegion) => {
+    setRegion(next);
+    setFilterName(null);
+    setPage(0);
+    setEditingIds(new Set());
+  }, []);
 
   return (
     <>
-      <Box sx={{ p: 3 }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+          p: 3,
+          gap: 1.5,
+        }}
+      >
+        <Tabs
+          value={region}
+          onChange={(_, v) => handleChangeRegion(v as GameRegion)}
+          sx={{ minHeight: 0, borderBottom: 1, borderColor: "divider" }}
+        >
+          {GAME_REGIONS.map((r) => (
+            <Tab
+              key={r}
+              value={r}
+              label={`${REGION_LABELS[r]}游戏`}
+              sx={{ minHeight: 0, py: 1, fontSize: "0.8125rem" }}
+            />
+          ))}
+        </Tabs>
         <Card
           variant="outlined"
           sx={{
             borderRadius: 2,
             display: "flex",
             flexDirection: "column",
-            height: "calc(100vh - 80px)",
+            flex: 1,
+            minHeight: 0,
           }}
         >
           <CardHeader
-            title={`游戏 (${filteredRows.length})`}
+            title={`${REGION_LABELS[region]}游戏 (${filteredRows.length})`}
             sx={cardHeaderSx}
             action={
               <Box
@@ -287,7 +313,15 @@ export default function ProjectConfig() {
               </Box>
             }
           />
-          {rows.length === 0 ? (
+          {loading ? (
+            <CardContent sx={{ flex: 1 }}>
+              <Box sx={{ textAlign: "center", py: 6 }}>
+                <Typography variant="body2" color="text.secondary">
+                  加载中...
+                </Typography>
+              </Box>
+            </CardContent>
+          ) : rows.length === 0 ? (
             <CardContent sx={{ flex: 1 }}>
               <Box sx={{ textAlign: "center", py: 6 }}>
                 <Typography
@@ -295,7 +329,7 @@ export default function ProjectConfig() {
                   color="text.secondary"
                   sx={{ mb: 2 }}
                 >
-                  未加载数据。点击同步从数据库加载。
+                  {`未加载数据。点击同步从 ${GAME_SOURCES[region].schema}.${GAME_SOURCES[region].table} 加载${REGION_LABELS[region]}游戏。`}
                 </Typography>
                 <Button
                   variant="outlined"
@@ -386,6 +420,23 @@ export default function ProjectConfig() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
+                      {visibleRows.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={COLUMNS.length + 1}
+                            sx={{ textAlign: "center", py: 4 }}
+                          >
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                            >
+                              {whitelistOnly
+                                ? "暂无白名单游戏，关闭「仅白名单」可查看全部。"
+                                : "当前筛选条件下没有游戏。"}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      )}
                       {visibleRows.map((row) => {
                         const editing = editingIds.has(row.papp_id);
                         return (

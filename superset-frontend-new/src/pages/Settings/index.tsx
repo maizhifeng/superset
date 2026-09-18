@@ -23,10 +23,26 @@ import { useUiPreferences, type GridDensity } from "@/store/uiPreferences";
 import { useNotificationStore } from "@/store/notificationStore";
 import CodeIcon from "@mui/icons-material/Code";
 
-const DENSITY_OPTIONS: { value: GridDensity; label: string; icon: ReactNode }[] = [
-  { value: "compact", label: "紧凑", icon: <DensitySmallIcon sx={{ fontSize: 18 }} /> },
-  { value: "standard", label: "标准", icon: <DensityMediumIcon sx={{ fontSize: 18 }} /> },
-  { value: "comfortable", label: "舒适", icon: <DensityLargeIcon sx={{ fontSize: 18 }} /> },
+const DENSITY_OPTIONS: {
+  value: GridDensity;
+  label: string;
+  icon: ReactNode;
+}[] = [
+  {
+    value: "compact",
+    label: "紧凑",
+    icon: <DensitySmallIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    value: "standard",
+    label: "标准",
+    icon: <DensityMediumIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    value: "comfortable",
+    label: "舒适",
+    icon: <DensityLargeIcon sx={{ fontSize: 18 }} />,
+  },
 ];
 
 export default function Settings() {
@@ -35,6 +51,8 @@ export default function Settings() {
   const toggle = useMenuSettings((s) => s.toggle);
   const moveItem = useMenuSettings((s) => s.moveItem);
   const reset = useMenuSettings((s) => s.reset);
+  const saveSettings = useMenuSettings((s) => s.saveSettings);
+  const fetchSettings = useMenuSettings((s) => s.fetchSettings);
   const gridDensity = useUiPreferences((s) => s.gridDensity);
   const setGridDensity = useUiPreferences((s) => s.setGridDensity);
   const openHelp = useHelpModalStore((s) => s.openHelp);
@@ -51,11 +69,35 @@ export default function Settings() {
     }
   };
 
+  const persistOrRevert = async () => {
+    try {
+      await saveSettings();
+    } catch {
+      notify({ severity: "error", message: "保存失败，已恢复服务器配置" });
+      await fetchSettings();
+    }
+  };
+
+  const handleToggle = (id: string) => {
+    toggle(id);
+    void persistOrRevert();
+  };
+
+  const handleMoveItem = (id: string, direction: "up" | "down") => {
+    moveItem(id, direction);
+    void persistOrRevert();
+  };
+
+  const handleReset = () => {
+    reset();
+    void persistOrRevert();
+  };
+
   return (
     <Box sx={{ p: 4 }}>
       <PageHeader
         title="设置"
-        subtitle="导航菜单管理"
+        subtitle="导航与路由管理"
         actions={
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button
@@ -71,7 +113,7 @@ export default function Settings() {
               size="small"
               variant="outlined"
               startIcon={<RestartAltIcon />}
-              onClick={reset}
+              onClick={handleReset}
               sx={{ textTransform: "none" }}
             >
               恢复默认菜单
@@ -79,6 +121,11 @@ export default function Settings() {
           </Box>
         }
       />
+
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        开关同时控制侧边导航与路由访问：关闭后所有用户都无法访问对应页面，直接输入
+        URL 也会被拦截。
+      </Typography>
 
       <Paper
         sx={{
@@ -126,7 +173,7 @@ export default function Settings() {
             color="text.secondary"
             sx={{ fontWeight: 600, textAlign: "center" }}
           >
-            可见
+            启用
           </Typography>
         </Box>
 
@@ -174,7 +221,7 @@ export default function Settings() {
                   <IconButton
                     size="small"
                     disabled={i === 0}
-                    onClick={() => moveItem(item.id, "up")}
+                    onClick={() => handleMoveItem(item.id, "up")}
                     sx={{
                       opacity: i === 0 ? 0.3 : 1,
                       "&.Mui-disabled": { opacity: 0.3 },
@@ -189,7 +236,7 @@ export default function Settings() {
                   <IconButton
                     size="small"
                     disabled={i === items.length - 1}
-                    onClick={() => moveItem(item.id, "down")}
+                    onClick={() => handleMoveItem(item.id, "down")}
                     sx={{
                       opacity: i === items.length - 1 ? 0.3 : 1,
                       "&.Mui-disabled": { opacity: 0.3 },
@@ -203,7 +250,7 @@ export default function Settings() {
             <Box sx={{ display: "flex", justifyContent: "center" }}>
               <Switch
                 checked={enabled[item.id] ?? true}
-                onChange={() => toggle(item.id)}
+                onChange={() => handleToggle(item.id)}
                 size="small"
               />
             </Box>
