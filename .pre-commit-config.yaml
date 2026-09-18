@@ -100,13 +100,13 @@ repos:
     hooks:
       - id: prettier-frontend-new
         name: prettier (frontend-new)
-        entry: bash -c 'cd superset-frontend-new && for file in "$@"; do npx prettier --write "${file#superset-frontend-new/}"; done'
+        entry: bash -c 'cd superset-frontend-new && for file in "$@"; do npx prettier --write "${file#superset-frontend-new/}"; done' --
         language: system
         pass_filenames: true
         files: ^superset-frontend-new/.*\.(js|jsx|ts|tsx|css|scss|sass|json)$
       - id: eslint-frontend-new
         name: eslint (frontend-new)
-        entry: bash -c 'cd superset-frontend-new && FILES=$(printf "%s\n" "$@" | sed "s|^superset-frontend-new/||" | tr "\n" " ") && npx eslint --fix $FILES'
+        entry: bash -c 'cd superset-frontend-new && FILES=$(printf "%s\n" "$@" | sed "s|^superset-frontend-new/||" | tr "\n" " ") && npx eslint --fix $FILES' --
         language: system
         pass_filenames: true
         files: ^superset-frontend-new/.*\.(ts|tsx)$

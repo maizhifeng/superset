@@ -29,12 +29,14 @@ export function useNavManager() {
   const routeOverrides = useUserRouteOverrides((s) => s.overrides);
   const currentUsername = useAuthStore((s) => s.user?.username);
 
-  // 系统管理固定入口：管理员角色命中或对该路由有单用户覆盖放行时可见。
+  // 系统管理固定入口：显式拒绝优先，其次单用户放行，最后回落到管理员角色。
   const canAccessSystemAdmin = useMemo(() => {
     if (!currentUsername) return false;
-    if (userRoles?.["Admin"] === true) return true;
     const userOverrides = routeOverrides[currentUsername] ?? {};
-    return userOverrides["/system/admin"] === true;
+    const override = userOverrides["/system/admin"];
+    if (override === false) return false;
+    if (override === true) return true;
+    return userRoles?.["Admin"] === true;
   }, [currentUsername, userRoles, routeOverrides]);
 
   const activeCategory = useNavStore((s) => s.activeCategory);
@@ -58,15 +60,15 @@ export function useNavManager() {
         .filter((item) => {
           if (item.id === "home") return false;
           if (!enabled[item.id]) return false;
+          // Per-user overrides win over role checks for every menu entry.
+          const userOverrides = currentUsername
+            ? (routeOverrides[currentUsername] ?? {})
+            : {};
+          const override = userOverrides[item.path];
+          if (override === true) return true;
+          if (override === false) return false;
           if (!item.roles || item.roles.length === 0) return true;
-          if (item.roles.some((role) => userRoles?.[role] === true))
-            return true;
-          if (currentUsername) {
-            const userOverrides = routeOverrides[currentUsername] ?? {};
-            const override = userOverrides[item.path];
-            if (override === true) return true;
-          }
-          return false;
+          return item.roles.some((role) => userRoles?.[role] === true);
         })
         .map((item) => ({
           id: item.id,
@@ -84,7 +86,14 @@ export function useNavManager() {
           ]
         : []),
     ],
-    [items, enabled, userRoles, routeOverrides, currentUsername, canAccessSystemAdmin],
+    [
+      items,
+      enabled,
+      userRoles,
+      routeOverrides,
+      currentUsername,
+      canAccessSystemAdmin,
+    ],
   );
 
   const handleNavEnter = useCallback((cat: string) => {

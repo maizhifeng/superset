@@ -601,6 +601,9 @@ class ChartDataRestApi(ChartRestApi):
         "IP分成": "IP分成",
         "分成方式": "分成方式",
         "上线时间": "上线时间",
+        "首测起始时间": "首测起始时间",
+        "二测起始时间": "二测起始时间",
+        "三测起始时间": "三测起始时间",
         "分成比例": "分成比例",
     }
     DISPLAY_FIELDS = list(FIELD_MAP.keys())
@@ -674,18 +677,27 @@ class ChartDataRestApi(ChartRestApi):
             return result
 
         from superset import db
+        from superset.models.papp_metadata import REGION_DOMESTIC, REGION_OVERSEA
         from superset.models.profit_sharing import ProfitSharing
 
         papp_col = ps_config["papp_name_column"] if ps_config else None
         channel_col = ps_config["channel_name_column"] if ps_config else None
-        profit_shares = db.session.query(ProfitSharing).all()
+        # 图表按「游戏名+渠道名」匹配配置，同名游戏在两个区域都存在时以国内为准，
+        # 保持加入海外配置之前的注入结果。
+        ps_map: dict[tuple[Any, Any], Any] = {}
+        for ps in db.session.query(ProfitSharing).all():
+            key = (ps.papp_name, ps.channel_name)
+            existing = ps_map.get(key)
+            if existing is None or (
+                existing.region == REGION_OVERSEA and ps.region == REGION_DOMESTIC
+            ):
+                ps_map[key] = ps
         logger.debug(
             "_inject_profit_sharing: papp_col=%s channel_col=%s profit_shares=%d",
             papp_col,
             channel_col,
-            len(profit_shares),
+            len(ps_map),
         )
-        ps_map = {(ps.papp_name, ps.channel_name): ps for ps in profit_shares}
 
         # Ensure SqlMetric records exist (appear in metrics selector under "指标")
         self._ensure_profit_sharing_metrics(ds, self.DISPLAY_FIELDS)

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import api from "@/api";
 
 export interface NavItem {
   id: string;
@@ -104,6 +105,13 @@ interface MenuSettingsState {
   moveItem: (id: string, direction: "up" | "down") => void;
   /** 恢复菜单到默认项与默认可见状态。 */
   reset: () => void;
+  /**
+   * 从后端加载全局菜单/路由开关配置。后端尚未保存过配置（result 为 null）
+   * 或请求失败时回退到代码默认值/本地缓存，不阻塞应用启动。
+   */
+  fetchSettings: () => Promise<void>;
+  /** 将当前配置持久化到后端；失败时抛出，由调用方提示与回滚。 */
+  saveSettings: () => Promise<void>;
 }
 
 export function mergeDefaults(
@@ -146,11 +154,40 @@ export function mergeDefaults(
   return { items, enabled };
 }
 
+/** Serializes save requests so the last change always wins. */
+let saveQueue: Promise<void> = Promise.resolve();
+
 export const useMenuSettings = create<MenuSettingsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       items: [...defaultItems],
       enabled: { ...defaultEnabled },
+      fetchSettings: async () => {
+        try {
+          const res = await api.get<{
+            result: {
+              items: NavItem[];
+              enabled: Record<string, boolean>;
+            } | null;
+          }>("/menu/settings");
+          const payload = res.data?.result;
+          set(mergeDefaults(payload ?? undefined));
+        } catch {
+          // Endpoint unreachable/not deployed yet: keep cached/default values
+          // so route gating fails open instead of locking users out.
+        }
+      },
+      saveSettings: async () => {
+        const { items, enabled } = get();
+        const run = async () => {
+          await api.put("/menu/settings", { items, enabled });
+        };
+        // Serialize writes so rapid toggles cannot land out of order and
+        // revert a later change.
+        const next = saveQueue.then(run, run);
+        saveQueue = next.catch(() => undefined);
+        return next;
+      },
       toggle: (id) =>
         set((state) => ({
           enabled: { ...state.enabled, [id]: !state.enabled[id] },

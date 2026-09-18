@@ -20,6 +20,8 @@ import OutlinedInput from "@mui/material/OutlinedInput";
 import Checkbox from "@mui/material/Checkbox";
 import ListItemText from "@mui/material/ListItemText";
 import Switch from "@mui/material/Switch";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import InputAdornment from "@mui/material/InputAdornment";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -78,7 +80,7 @@ import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { parseBackendDate } from "@/utils/datetime";
 import { useUserRouteOverrides } from "@/store/userRouteOverrides";
 import { useAuthStore } from "@/store/authStore";
-import { protectedRoutePaths } from "@/config/routePermissions";
+import { routePoints } from "@/config/menuRoutes";
 import type { AdminUser, AdminRole } from "@/types/api";
 
 export default function AdminUsers() {
@@ -149,6 +151,7 @@ export default function AdminUsers() {
   const [routeTarget, setRouteTarget] = useState<AdminUser | null>(null);
   const routeOverrides = useUserRouteOverrides((s) => s.overrides);
   const setOverride = useUserRouteOverrides((s) => s.setOverride);
+  const clearOverride = useUserRouteOverrides((s) => s.clearOverride);
 
   const [switchTarget, setSwitchTarget] = useState<AdminUser | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -860,51 +863,84 @@ export default function AdminUsers() {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            开启开关以授予该用户对此路由的访问权限。未设置的路由默认根据角色权限判断。
+            「默认」跟随角色权限（无角色要求的页面默认可访问）；「允许 /
+            拒绝」为该用户
+            单独放行或拦截对应页面及其详情页。全局菜单开关关闭的路由，此处放行无效。
           </Typography>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {protectedRoutePaths.map((path) => {
+            {routePoints.map((point) => {
               const userOverrides = routeTarget
                 ? (routeOverrides[routeTarget.username] ?? {})
                 : {};
-              const isOverridden = userOverrides[path] !== undefined;
-              const isGranted = userOverrides[path] === true;
+              const value = userOverrides[point.path];
+              const state =
+                value === true ? "allow" : value === false ? "deny" : "default";
 
               return (
                 <Box
-                  key={path}
+                  key={point.path}
                   sx={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    py: 1,
+                    gap: 1,
+                    py: 0.75,
                     px: 1.5,
                     borderRadius: 1,
-                    bgcolor: isOverridden ? "action.selected" : "transparent",
+                    bgcolor:
+                      state === "default" ? "transparent" : "action.selected",
                   }}
                 >
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {path}
+                      {point.label}
                     </Typography>
-                  </Box>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      允许
-                    </Typography>
-                    <Switch
-                      size="small"
-                      checked={isGranted}
-                      onChange={(e) => {
-                        if (!routeTarget) return;
-                        setOverride(
-                          routeTarget.username,
-                          path,
-                          e.target.checked,
-                        );
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{
+                        display: "block",
+                        fontFamily:
+                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                       }}
-                    />
+                    >
+                      {point.path}
+                    </Typography>
                   </Box>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={state}
+                    onChange={(_, next) => {
+                      if (!routeTarget || !next) return;
+                      if (next === "allow") {
+                        setOverride(routeTarget.username, point.path, true);
+                      } else if (next === "deny") {
+                        setOverride(routeTarget.username, point.path, false);
+                      } else {
+                        clearOverride(routeTarget.username, point.path);
+                      }
+                    }}
+                  >
+                    <ToggleButton
+                      value="default"
+                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                    >
+                      默认
+                    </ToggleButton>
+                    <ToggleButton
+                      value="allow"
+                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                    >
+                      允许
+                    </ToggleButton>
+                    <ToggleButton
+                      value="deny"
+                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                    >
+                      拒绝
+                    </ToggleButton>
+                  </ToggleButtonGroup>
                 </Box>
               );
             })}

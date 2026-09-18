@@ -107,3 +107,52 @@ test("clicking non-mapped route keeps pinned panel open", async () => {
 
   expect(useNavStore.getState().sidePanelOpen).toBe(true);
 });
+
+test("per-user deny hides a menu entry without role requirements", () => {
+  useUserRouteOverrides.setState({
+    overrides: { admin: { "/database/list": false } },
+  });
+
+  const { result } = renderHook(() => useNavManager(), { wrapper });
+
+  expect(result.current.activityBarItems.map((item) => item.id)).not.toContain(
+    "database/list",
+  );
+});
+
+test("per-user grant shows a role-restricted menu entry", () => {
+  useMenuSettings.setState({
+    items: [
+      {
+        id: "project_config",
+        path: "/project/settings",
+        label: "项目配置",
+        builtIn: true,
+        roles: ["Admin"],
+      },
+    ],
+    enabled: { project_config: true },
+  });
+  useAuthStore.setState({ user: { username: "admin", roles: {} } });
+  useUserRouteOverrides.setState({
+    overrides: { admin: { "/project/settings": true } },
+  });
+
+  const { result } = renderHook(() => useNavManager(), { wrapper });
+
+  expect(result.current.activityBarItems.map((item) => item.id)).toContain(
+    "project_config",
+  );
+});
+
+test("per-user deny hides the fixed system admin entry for admins", () => {
+  useUserRouteOverrides.setState({
+    overrides: { admin: { "/system/admin": false } },
+  });
+
+  const { result } = renderHook(() => useNavManager(), { wrapper });
+
+  expect(result.current.activityBarItems.map((item) => item.id)).not.toContain(
+    "system_admin",
+  );
+});

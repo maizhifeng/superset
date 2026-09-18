@@ -12,6 +12,8 @@ import { persist } from "zustand/middleware";
 interface UserRouteOverridesState {
   overrides: Record<string, Record<string, boolean>>;
   setOverride: (username: string, path: string, granted: boolean) => void;
+  /** Drop a single route override so the route falls back to its defaults. */
+  clearOverride: (username: string, path: string) => void;
   clearOverrides: (username: string) => void;
   getOverrides: (username: string) => Record<string, boolean>;
 }
@@ -29,6 +31,17 @@ export const useUserRouteOverrides = create<UserRouteOverridesState>()(
           } else {
             userOverrides[path] = false;
           }
+          return {
+            overrides: { ...state.overrides, [username]: userOverrides },
+          };
+        }),
+
+      clearOverride: (username, path) =>
+        set((state) => {
+          const existing = state.overrides[username];
+          if (!existing || existing[path] === undefined) return state;
+          const userOverrides = { ...existing };
+          delete userOverrides[path];
           return {
             overrides: { ...state.overrides, [username]: userOverrides },
           };

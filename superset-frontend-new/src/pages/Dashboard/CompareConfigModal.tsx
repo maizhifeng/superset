@@ -18,6 +18,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import InfoIcon from "@mui/icons-material/Info";
 import FilterAltOffIcon from "@mui/icons-material/FilterAltOff";
 import api from "@/api";
+import { isFederatedDataset } from "@/config/federatedDatasets";
 import type { CompareDimension } from "@/pages/Dashboard/ChartCard";
 
 export interface ColumnOption {
@@ -72,9 +73,11 @@ async function fetchColumnValues(
   column: string,
 ): Promise<string[]> {
   try {
-    const res = await api.get(
-      `/datasource/table/${datasetId}/column/${encodeURIComponent(column)}/values/`,
-    );
+    // 联邦数据集需要走 bi 接口，否则只返回主库取值，海外维度值选不到。
+    const path = isFederatedDataset(datasetId)
+      ? `/bi/filter-values/${datasetId}/${encodeURIComponent(column)}/`
+      : `/datasource/table/${datasetId}/column/${encodeURIComponent(column)}/values/`;
+    const res = await api.get(path);
     const raw: unknown[] = res.data?.result || [];
     return raw.filter((v): v is string => v != null).map(String);
   } catch {

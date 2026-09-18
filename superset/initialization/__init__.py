@@ -997,6 +997,8 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             # Briefing job endpoints
             csrf.exempt("superset.project.briefing.api.create_job")
             csrf.exempt("superset.project.briefing.api.cancel_job_route")
+            # Global menu/route switch endpoints
+            csrf.exempt("superset.project.menu.api.put_menu_settings")
 
     def configure_async_queries(self) -> None:
         if feature_flag_manager.is_feature_enabled("GLOBAL_ASYNC_QUERIES"):
@@ -1037,6 +1039,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         from superset.project.briefing.api import briefing_blueprint
 
         self.superset_app.register_blueprint(briefing_blueprint)
+
+        # Register global menu/route switch blueprint
+        from superset.project.menu.api import menu_blueprint
+
+        self.superset_app.register_blueprint(menu_blueprint)
 
     def setup_mui_static_routes(self) -> None:
         """Serve MUI frontend static assets from /app/mui-static/assets/

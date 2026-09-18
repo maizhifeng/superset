@@ -70,9 +70,10 @@ export default function DatasetEdit() {
     const table = dataset.schema
       ? `${dataset.schema}.${dataset.table_name}`
       : dataset.table_name;
-    const sql = dataset.kind === "virtual" && dataset.sql
-      ? dataset.sql
-      : `SELECT * FROM ${table};`;
+    const sql =
+      dataset.kind === "virtual" && dataset.sql
+        ? dataset.sql
+        : `SELECT * FROM ${table};`;
     try {
       await navigator.clipboard.writeText(sql);
       notify({ severity: "success", message: "已复制查询 SQL" });
@@ -109,7 +110,10 @@ export default function DatasetEdit() {
     }
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      notify({ severity: "success", message: `已复制 ${names.length} 个指标名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${names.length} 个指标名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -350,8 +354,7 @@ export default function DatasetEdit() {
     if (!newMetric.metric_name.trim() || !newMetric.expression.trim()) return;
     const name = newMetric.metric_name.trim();
     const exists = dataset?.metrics?.some(
-      (m) =>
-        m.metric_name.toLowerCase() === name.toLowerCase() && m.id !== 0,
+      (m) => m.metric_name.toLowerCase() === name.toLowerCase() && m.id !== 0,
     );
     if (exists) {
       setMetricError("已存在同名指标，请更换名称");
@@ -686,7 +689,13 @@ export default function DatasetEdit() {
                           <TableCell
                             sx={{ fontSize: "0.75rem", fontWeight: 500 }}
                           >
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.25,
+                              }}
+                            >
                               {col.column_name}
                               <Tooltip title="复制列名">
                                 <IconButton
@@ -700,7 +709,10 @@ export default function DatasetEdit() {
                                   }
                                 >
                                   <ContentCopyIcon
-                                    sx={{ fontSize: 13, color: "text.disabled" }}
+                                    sx={{
+                                      fontSize: 13,
+                                      color: "text.disabled",
+                                    }}
                                   />
                                 </IconButton>
                               </Tooltip>
@@ -1326,6 +1338,9 @@ export default function DatasetEdit() {
                                     "IP分成",
                                     "分成方式",
                                     "上线时间",
+                                    "首测起始时间",
+                                    "二测起始时间",
+                                    "三测起始时间",
                                   ].includes(m.metric_name),
                               )
                               .map((m) => (

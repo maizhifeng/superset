@@ -1,7 +1,15 @@
 import { useMenuSettings, mergeDefaults } from "@/store/menuSettings";
-import { test, expect, beforeEach } from "vitest";
+import { test, expect, beforeEach, vi } from "vitest";
+
+const { mockApi } = vi.hoisted(() => ({
+  mockApi: { get: vi.fn(), put: vi.fn() },
+}));
+
+vi.mock("@/api", () => ({ default: mockApi }));
 
 beforeEach(() => {
+  mockApi.get.mockReset();
+  mockApi.put.mockReset();
   useMenuSettings.setState({
     items: [
       {
@@ -94,4 +102,68 @@ test("mergeDefaults keeps the briefing entry", () => {
   });
   expect(result.items.some((i) => i.id === "briefing")).toBe(true);
   expect(result.enabled.briefing).toBe(true);
+});
+
+test("fetchSettings replaces local state with the server payload", async () => {
+  mockApi.get.mockResolvedValue({
+    data: {
+      result: {
+        items: [
+          {
+            id: "dashboards",
+            path: "/dashboard/list",
+            label: "仪表板",
+            builtIn: true,
+          },
+        ],
+        enabled: { dashboards: false },
+      },
+    },
+  });
+
+  await useMenuSettings.getState().fetchSettings();
+
+  expect(useMenuSettings.getState().enabled.dashboards).toBe(false);
+  // Missing default entries are re-added with their default visibility.
+  expect(useMenuSettings.getState().enabled.charts).toBe(true);
+});
+
+test("fetchSettings falls back to defaults when the server has none", async () => {
+  mockApi.get.mockResolvedValue({ data: { result: null } });
+  useMenuSettings.setState({ items: [], enabled: {} });
+
+  await useMenuSettings.getState().fetchSettings();
+
+  expect(useMenuSettings.getState().enabled.sqllab).toBe(false);
+  expect(useMenuSettings.getState().enabled.dashboards).toBe(true);
+  expect(useMenuSettings.getState().items.length).toBeGreaterThan(0);
+});
+
+test("fetchSettings keeps cached state when the request fails", async () => {
+  mockApi.get.mockRejectedValue(new Error("offline"));
+  useMenuSettings.setState({ items: [], enabled: { dashboards: false } });
+
+  await useMenuSettings.getState().fetchSettings();
+
+  expect(useMenuSettings.getState().enabled.dashboards).toBe(false);
+});
+
+test("saveSettings PUTs the current configuration", async () => {
+  mockApi.put.mockResolvedValue({ data: { result: {} } });
+  const items = [
+    {
+      id: "dashboards",
+      path: "/dashboard/list",
+      label: "仪表板",
+      builtIn: true,
+    },
+  ];
+  useMenuSettings.setState({ items, enabled: { dashboards: true } });
+
+  await useMenuSettings.getState().saveSettings();
+
+  expect(mockApi.put).toHaveBeenCalledWith("/menu/settings", {
+    items,
+    enabled: { dashboards: true },
+  });
 });
