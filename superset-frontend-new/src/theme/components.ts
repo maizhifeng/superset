@@ -14,6 +14,43 @@ export default {
         minHeight: "100vh",
         margin: 0,
       },
+      // Briefing-table motion lives in the global sheet: those cells are
+      // styled with plain inline objects, and an emotion ``keyframes`` object
+      // only registers itself when used inside an emotion style (``sx``).
+      // Reel: the outgoing figure rolls up and out while the incoming one
+      // rises into place, the way an odometer wheel turns over.
+      "@keyframes briefingReelIn": {
+        from: { transform: "translateY(0.9em)", opacity: 0 },
+        to: { transform: "translateY(0)", opacity: 1 },
+      },
+      "@keyframes briefingReelOut": {
+        from: { transform: "translateY(0)", opacity: 1 },
+        to: { transform: "translateY(-0.9em)", opacity: 0 },
+      },
+      // Daily rows unfold one after another.
+      "@keyframes briefingRowIn": {
+        from: { opacity: 0, transform: "translateY(-6px)" },
+        to: { opacity: 1, transform: "translateY(0)" },
+      },
+      "@keyframes briefingLogLineIn": {
+        from: { opacity: 0, transform: "translateY(-2px)" },
+        to: { opacity: 1, transform: "translateY(0)" },
+      },
+      // Reading tables (briefing tables use plain <table> markup) get a row
+      // hover wash without giving up the inline zebra styling.
+      "table.briefing-table tbody tr:hover": {
+        backgroundColor: theme.palette.action.hover,
+      },
+      // Honour the OS "reduce motion" preference app-wide: keyframe loops,
+      // slide/fade entrances and smooth scrolling all collapse to instant.
+      "@media (prefers-reduced-motion: reduce)": {
+        "*, *::before, *::after": {
+          animationDuration: "0.01ms !important",
+          animationIterationCount: "1 !important",
+          transitionDuration: "0.01ms !important",
+          scrollBehavior: "auto !important",
+        },
+      },
     }),
   },
   MuiButton: {

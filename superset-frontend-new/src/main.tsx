@@ -5,6 +5,8 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { LocalizationProvider } from "@mui/x-date-pickers";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
+import "dayjs/locale/zh-cn";
 import { CacheProvider } from "@emotion/react";
 import createCache from "@emotion/cache";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -27,14 +29,16 @@ export function Root() {
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", themeMode);
-    const themeColor =
-      themeMode === "notion" ? "#0075de" : "#b8653a";
+    const themeColor = themeMode === "notion" ? "#0075de" : "#b8653a";
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", themeColor);
   }, [themeMode]);
 
   useEffect(() => {
+    // The interface is Chinese; without this the date pickers rendered
+    // US-format dates (09/19/2026) inside Chinese labels.
+    dayjs.locale("zh-cn");
     void refreshFederatedDatasets(api);
   }, []);
 
@@ -42,7 +46,7 @@ export function Root() {
     <CacheProvider value={emotionCache}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="zh-cn">
           <QueryClientProvider client={queryClient}>
             <BrowserRouter
               future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
