@@ -130,6 +130,16 @@ def _normalize_config_payload(data: dict[str, Any]) -> dict[str, Any]:
     data["datasource_ids"] = ids[:MAX_DATASETS_PER_BRIEFING]
     if ids:
         data["datasource_id"] = ids[0]
+    if "uncapped_channels" in data:
+        raw_channels = data.get("uncapped_channels")
+        if not isinstance(raw_channels, (list, tuple)):
+            raw_channels = [raw_channels] if raw_channels else []
+        seen: list[str] = []
+        for value in raw_channels:
+            name = str(value or "").strip()
+            if name and name not in seen:
+                seen.append(name)
+        data["uncapped_channels"] = seen
     return data
 
 
