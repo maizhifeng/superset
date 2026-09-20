@@ -36,10 +36,24 @@ export const BRIEFING_CHART_COLORS = {
   newUsers: supersetPalette.chart[1],
   /** ROI1 line. */
   roi1: supersetPalette.success.main,
-  /** LTV1 line. */
-  ltv1: supersetPalette.info.main,
+  /**
+   * LTV1 line.  A violet rather than the palette's blue-grey info tone: ROI1
+   * (green) and LTV1 are 2px lines on the same plot and the two used to sit
+   * 1.3:1 apart, which made them hard to tell apart.
+   */
+  ltv1: supersetPalette.chart[5],
   /** Breakeven / threshold mark lines. */
   breakevenLine: supersetPalette.error.main,
+} as const;
+
+/**
+ * Media-chart treatment for a channel under the breakeven line: a neutral wash
+ * with an outline, instead of the solid status red that turned a whole panel
+ * into an alarm when every channel was below target.
+ */
+export const BELOW_TARGET_BAR = {
+  fill: "rgba(184, 101, 58, 0.16)",
+  line: supersetPalette.primary.main,
 } as const;
 
 /** Axis-label and grid-line chrome shared by all briefing charts. */
@@ -87,21 +101,31 @@ export const CALLOUT_BG: Record<string, string> = {
  * Shared table styling for briefing tables. Plain `CSSProperties` factories so
  * native `<th>`/`<td>`/`<tr>` elements stay inline-styled while sourcing every
  * color from the theme palette.
+ *
+ * Numeric columns are right-aligned so digits line up under their header, and
+ * the row hover wash lives in the theme (keyed off ``BRIEFING_TABLE_CLASS``).
  */
+export const BRIEFING_TABLE_CLASS = "briefing-table";
+
 export const briefingTable = {
-  headCell(padding = "6px 8px"): CSSProperties {
+  headCell(
+    padding = "5px 8px",
+    options?: { numeric?: boolean },
+  ): CSSProperties {
     return {
       padding,
       borderBottom: `1px solid ${supersetPalette.outline}`,
       fontWeight: 600,
       color: supersetPalette.text.secondary,
       whiteSpace: "nowrap",
+      textAlign: options?.numeric ? "right" : "left",
     };
   },
   bodyCell(options?: { numeric?: boolean; padding?: string }): CSSProperties {
     return {
-      padding: options?.padding ?? "6px 8px",
+      padding: options?.padding ?? "5px 8px",
       fontVariantNumeric: options?.numeric ? "tabular-nums" : undefined,
+      textAlign: options?.numeric ? "right" : undefined,
       whiteSpace: "nowrap",
     };
   },

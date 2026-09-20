@@ -285,15 +285,21 @@ export default function BriefingList() {
                           {cfg.name}
                         </Typography>
                         {cfg.description && (
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "text.secondary" }}
+                          >
                             {cfg.description}
                           </Typography>
                         )}
                         {(cfg.last_job_id || cfg.last_report_date) && (
                           <Typography
                             variant="caption"
-                            color="text.secondary"
-                            sx={{ display: "block", fontFamily: "monospace" }}
+                            sx={{
+                              color: "text.secondary",
+                              display: "block",
+                              fontFamily: "monospace",
+                            }}
                           >
                             {cfg.last_job_id
                               ? `任务 ${cfg.last_job_id}`
@@ -305,7 +311,10 @@ export default function BriefingList() {
                         )}
                       </td>
                       <td style={{ padding: "10px 12px" }}>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography
+                          variant="caption"
+                          sx={{ color: "text.secondary" }}
+                        >
                           {(() => {
                             const parts = summarize(cfg);
                             return parts.length === 0

@@ -30,6 +30,13 @@ export async function loadECharts(): Promise<void> {
     const core = await import("echarts/core");
     const { GridComponent, TooltipComponent, LegendComponent, TitleComponent } =
       await import("echarts/components");
+    // ``MarkLineComponent`` is imported straight from its own module rather
+    // than from the ``echarts/components`` barrel: pulling it through the
+    // barrel made Rollup include every component in the barrel (brush,
+    // dataZoom, visualMap, toolbox…), growing this chunk from ~90KB to ~353KB
+    // for the sake of one dashed threshold line.
+    const { install: MarkLineComponent } =
+      await import("echarts/lib/component/marker/installMarkLine.js");
     const { CanvasRenderer } = await import("echarts/renderers");
     const { BarChart, LineChart, PieChart } = await import("echarts/charts");
 
@@ -38,6 +45,7 @@ export async function loadECharts(): Promise<void> {
       TooltipComponent,
       LegendComponent,
       TitleComponent,
+      MarkLineComponent,
       CanvasRenderer,
       BarChart,
       LineChart,

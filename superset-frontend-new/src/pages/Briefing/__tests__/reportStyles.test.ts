@@ -18,7 +18,11 @@
  */
 import { describe, expect, test } from "vitest";
 import { supersetPalette } from "@/theme/palette";
-import { BRIEFING_CHART_CHROME, BRIEFING_CHART_COLORS } from "../reportStyles";
+import {
+  BELOW_TARGET_BAR,
+  BRIEFING_CHART_CHROME,
+  BRIEFING_CHART_COLORS,
+} from "../reportStyles";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
@@ -47,7 +51,9 @@ describe("BRIEFING_CHART_COLORS", () => {
     expect(BRIEFING_CHART_COLORS.spend).toBe(supersetPalette.primary.main);
     expect(BRIEFING_CHART_COLORS.newUsers).toBe(supersetPalette.chart[1]);
     expect(BRIEFING_CHART_COLORS.roi1).toBe(supersetPalette.success.main);
-    expect(BRIEFING_CHART_COLORS.ltv1).toBe(supersetPalette.info.main);
+    // ROI1 and LTV1 are 2px lines on the same plot; the palette's info tone
+    // sat too close to the ROI green, so LTV1 uses a violet instead.
+    expect(BRIEFING_CHART_COLORS.ltv1).toBe(supersetPalette.chart[5]);
     expect(BRIEFING_CHART_COLORS.breakevenLine).toBe(
       supersetPalette.error.main,
     );
@@ -55,5 +61,11 @@ describe("BRIEFING_CHART_COLORS", () => {
       supersetPalette.text.secondary,
     );
     expect(BRIEFING_CHART_CHROME.gridLine).toBe(supersetPalette.divider);
+  });
+
+  test("below-target bars keep a neutral wash and an outline", () => {
+    // Guards against regressing to a solid status red for every failing bar.
+    expect(BELOW_TARGET_BAR.fill).toMatch(/^rgba\(/);
+    expect(BELOW_TARGET_BAR.line).toBe(supersetPalette.primary.main);
   });
 });
