@@ -14,11 +14,21 @@
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!--
+      The web fonts load through a plain stylesheet link.  An inline
+      ``onload="this.media='all'"`` activation is NOT an option here: the
+      production Content-Security-Policy is ``script-src 'self'``, which blocks
+      inline event handlers and silently left the sheet at ``media="print"`` —
+      so production rendered fallback fonts while development did not.
+    -->
     <link
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Sora:wght@100..800&display=swap"
+    />
+    <link
       rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Sora:wght@100..800&display=swap"
     />
     <title>starfly</title>
   </head>

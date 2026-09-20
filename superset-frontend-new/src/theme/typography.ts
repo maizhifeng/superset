@@ -51,6 +51,23 @@ export default {
     lineHeight: 1.5,
     letterSpacing: 0,
   },
+  // Card and panel headings sit at the same level as ``h6``; they share the
+  // serif display family so a section title and a card title never differ in
+  // typeface at the same size.
+  subtitle1: {
+    fontFamily: "Newsreader, Georgia, 'Times New Roman', serif",
+    fontSize: "1rem",
+    fontWeight: 600,
+    lineHeight: 1.5,
+    letterSpacing: 0,
+  },
+  subtitle2: {
+    fontFamily: "Newsreader, Georgia, 'Times New Roman', serif",
+    fontSize: "0.9375rem",
+    fontWeight: 600,
+    lineHeight: 1.5,
+    letterSpacing: 0,
+  },
   body1: { fontSize: "0.875rem", lineHeight: 1.6 },
   body2: { fontSize: "0.8125rem", lineHeight: 1.55 },
   button: { textTransform: "none", fontWeight: 500 },

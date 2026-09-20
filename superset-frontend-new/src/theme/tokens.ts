@@ -39,6 +39,7 @@ export const radius = {
 /** Motion durations (ms). */
 export const duration = {
   micro: 80,
+  exit: 120,
   quick: 150,
   standard: 200,
   slow: 300,
