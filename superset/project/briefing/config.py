@@ -60,6 +60,9 @@ class DailyReportConfig:
     spend_column: str = "返点后消耗"
     new_users_column: str = "新增进入"
     cpa_column: str = "返点后消耗"
+    # Period recharge flow (充值流水).  Purely additive — reported as a SUM over
+    # the segment rows instead of an LTV/ROI style ratio numerator.
+    recharge_column: str = "充值流水"
     ltv_columns: tuple[str, ...] = (
         "1日充值",
         "2日充值",
@@ -71,6 +74,11 @@ class DailyReportConfig:
         "14日充值",
         "30日充值",
     )
+    # 1日付费率 = 1日付费数 / 新增进入, 2日留存率 = 2日留存数 / 新增进入.
+    # Both numerators are plain counts over the same ``new_users_column``
+    # denominator, so they are additive numerators like the recharge columns.
+    pay_rate_column: str = "1日付费数"
+    retention_column: str = "2日留存数"
     roi_columns: tuple[str, ...] = (
         "1日充值",
         "2日充值",
@@ -96,6 +104,12 @@ class DailyReportConfig:
     roi_critical_line: float = 0.05
     roi_warning_line: float = 0.10
     top_projects_count: int = 5
+    # Channels exempt from the Top-N combo cut: every 主游戏×渠道商 row of these
+    # channels is listed (as long as it carries spend, users or recharge).  The
+    # overseas channel ``third`` carries revenue but never ad spend, so it can
+    # never make a spend-based cut and would otherwise disappear entirely.
+    # Only the combo table is affected — the 主游戏 view keeps its 95% spend cap.
+    uncapped_channels: list[str] = field(default_factory=list)
     days_of_history: int = 30
     # Weekly briefings: how many complete weeks (including the reported week)
     # the week-over-week comparison series covers.

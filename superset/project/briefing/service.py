@@ -203,6 +203,9 @@ def _validate_columns(
         config.spend_column,
         config.new_users_column,
         config.cpa_column,
+        config.recharge_column,
+        config.pay_rate_column,
+        config.retention_column,
         *config.ltv_columns,
         *config.roi_columns,
     }
@@ -468,15 +471,19 @@ def _weighted_ratio(
     numerator_col: str,
     denominator_col: str,
     weighted: bool = True,
-) -> float:
+) -> float | None:
     """Compute a weighted ratio over the given segment-level rows.
 
     With ``weighted`` (default), the metric is a per-segment rate and the result
     is SUM(value * weight) / SUM(weight).  Otherwise the column is an additive
     numerator and the result is SUM(value) / SUM(weight).
+
+    ``None`` (JSON null) when the ratio is undefined — no weight at all (zero
+    spend, zero new users) or a missing column.  Reporting 0.0 instead would
+    make "no cost, but revenue" read as "zero return".
     """
     if numerator_col not in df.columns or denominator_col not in df.columns:
-        return 0.0
+        return None
     weight = pd.to_numeric(df[denominator_col], errors="coerce").fillna(0.0)
     if weighted:
         value = pd.to_numeric(df[numerator_col], errors="coerce").fillna(0.0)
@@ -484,7 +491,14 @@ def _weighted_ratio(
     else:
         num = float(pd.to_numeric(df[numerator_col], errors="coerce").sum())
     den = float(weight.sum())
-    return (num / den) if den else 0.0
+    return (num / den) if den else None
+
+
+def _sum_metric(df: pd.DataFrame, column: str) -> float:
+    """Sum an additive metric column, tolerating an unmapped/absent column."""
+    if not column or column not in df.columns or df.empty:
+        return 0.0
+    return float(pd.to_numeric(df[column], errors="coerce").fillna(0.0).sum())
 
 
 def _range_subset(
@@ -543,15 +557,32 @@ def _build_core_metrics(
     spend_col = config.spend_column
     users_col = config.new_users_column
     if day_df.empty:
-        core: dict[str, Any] = {"spend": 0.0, "new_users": 0, "cpa": 0.0}
+        core: dict[str, Any] = {
+            "spend": 0.0,
+            "new_users": 0,
+            "cpa": None,
+            "recharge": 0.0,
+        }
         for key in _METRIC_KEYS:
-            core[f"LTV{key}"] = 0.0
-            core[f"ROI{key}"] = 0.0
+            core[f"LTV{key}"] = None
+            core[f"ROI{key}"] = None
         return core
     total_spend = float(pd.to_numeric(day_df[spend_col], errors="coerce").sum())
     total_users = float(pd.to_numeric(day_df[users_col], errors="coerce").sum())
-    cpa = total_spend / total_users if total_users else 0.0
-    core = {"spend": total_spend, "new_users": int(total_users), "cpa": cpa}
+    cpa = total_spend / total_users if total_users else None
+    core = {
+        "spend": total_spend,
+        "new_users": int(total_users),
+        "cpa": cpa,
+        "recharge": _sum_metric(day_df, config.recharge_column),
+    }
+    core.update(
+        {
+            key: value
+            for key, value in _ratio_fields(day_df, config).items()
+            if key in ("pay_rate", "retention_rate")
+        }
+    )
     for key, col in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
         core[f"LTV{key}"] = _weighted_ratio(
             day_df, col, users_col, weighted=config.ltv_weighted_average
@@ -585,9 +616,7 @@ def _build_daily_series(
         cm = _build_core_metrics(day_df, config, ctx)
         # LTV1-LTV7 are emitted per bucket (in addition to the headline
         # LTV1/ROI1) so the frontend 展开表格 can show the LTV maturation curve.
-        ltv_extra = {
-            f"ltv{key}": cm.get(f"LTV{key}", 0.0) for key in (2, 3, 4, 5, 6, 7)
-        }
+        ltv_extra = {f"ltv{key}": cm.get(f"LTV{key}") for key in (2, 3, 4, 5, 6, 7)}
         series.append(
             {
                 "date": bucket.label,
@@ -595,8 +624,11 @@ def _build_daily_series(
                 "spend": cm["spend"],
                 "new_users": cm["new_users"],
                 "cpa": cm["cpa"],
-                "ltv1": cm.get("LTV1", 0.0),
-                "roi1": cm.get("ROI1", 0.0),
+                "recharge": cm.get("recharge", 0.0),
+                "pay_rate": cm.get("pay_rate"),
+                "retention_rate": cm.get("retention_rate"),
+                "ltv1": cm.get("LTV1"),
+                "roi1": cm.get("ROI1"),
                 **ltv_extra,
             }
         )
@@ -623,16 +655,13 @@ def _build_project_summary_for_period(
     users_col = config.new_users_column
     if period_df.empty or project_col not in period_df.columns:
         return []
-    g = (
-        period_df.groupby(project_col, dropna=False)
-        .agg(
-            **{
-                "spend": (spend_col, "sum"),
-                "new_users": (users_col, "sum"),
-            }
-        )
-        .reset_index()
-    )
+    agg_spec: dict[str, tuple[str, str]] = {
+        "spend": (spend_col, "sum"),
+        "new_users": (users_col, "sum"),
+    }
+    if config.recharge_column and config.recharge_column in period_df.columns:
+        agg_spec["recharge"] = (config.recharge_column, "sum")
+    g = period_df.groupby(project_col, dropna=False).agg(**agg_spec).reset_index()
     has_prev = not prev_df.empty and project_col in prev_df.columns
     rows: list[dict[str, Any]] = []
     for _, r in g.iterrows():
@@ -646,41 +675,20 @@ def _build_project_summary_for_period(
             "project": proj,
             "spend": su,
             "new_users": int(nu),
-            "cpa": su / nu if nu else 0.0,
+            "cpa": su / nu if nu else None,
+            "recharge": float(r.get("recharge") or 0.0),
         }
-        if config.ltv_columns:
-            row["ltv1"] = _weighted_ratio(
-                sub,
-                config.ltv_columns[0],
-                users_col,
-                weighted=config.ltv_weighted_average,
-            )
-        if config.roi_columns:
-            row["roi1"] = _weighted_ratio(
-                sub,
-                config.roi_columns[0],
-                spend_col,
-                weighted=config.roi_weighted_average,
-            )
+        row.update(_ratio_fields(sub, config))
         if has_prev:
             psub = prev_df[prev_df[project_col].astype(str) == proj]
             psu = float(pd.to_numeric(psub[spend_col], errors="coerce").sum())
             pnu = float(pd.to_numeric(psub[users_col], errors="coerce").sum())
-            prev: dict[str, Any] = {"spend": psu, "new_users": int(pnu)}
-            if config.ltv_columns:
-                prev["ltv1"] = _weighted_ratio(
-                    psub,
-                    config.ltv_columns[0],
-                    users_col,
-                    weighted=config.ltv_weighted_average,
-                )
-            if config.roi_columns:
-                prev["roi1"] = _weighted_ratio(
-                    psub,
-                    config.roi_columns[0],
-                    spend_col,
-                    weighted=config.roi_weighted_average,
-                )
+            prev: dict[str, Any] = {
+                "spend": psu,
+                "new_users": int(pnu),
+                "recharge": _sum_metric(psub, config.recharge_column),
+            }
+            prev.update(_ratio_fields(psub, config))
             row["prev"] = prev
         rows.append(row)
     rows.sort(key=lambda p: p["spend"], reverse=True)
@@ -688,13 +696,40 @@ def _build_project_summary_for_period(
     return rows[:top_n]
 
 
-def _ltv_roi_fields(sub: pd.DataFrame, config: DailyReportConfig) -> dict[str, float]:
-    """Headline ``ltv1``/``roi1`` fields for a segment-level frame.
+def _ratio_fields(
+    sub: pd.DataFrame, config: DailyReportConfig
+) -> dict[str, float | None]:
+    """Headline ratio fields for a segment-level frame.
 
-    A key is only present when the corresponding metric column is configured,
-    matching the historical payload shape.
+    ``ltv1``/``roi1`` plus ``pay_rate`` (1日付费率) and ``retention_rate``
+    (2日留存率), which share the ``new_users`` denominator.  A key is only
+    present when the corresponding metric column is configured, matching the
+    historical payload shape.
     """
-    fields: dict[str, float] = {}
+    fields: dict[str, float | None] = {}
+    # The maturation curve travels with every row, so a collapsed parent row
+    # and the daily rows it discloses expose the same metric fields.
+    for index, column in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
+        fields[f"ltv{index}"] = _weighted_ratio(
+            sub,
+            column,
+            config.new_users_column,
+            weighted=config.ltv_weighted_average,
+        )
+    if config.pay_rate_column:
+        fields["pay_rate"] = _weighted_ratio(
+            sub,
+            config.pay_rate_column,
+            config.new_users_column,
+            weighted=False,
+        )
+    if config.retention_column:
+        fields["retention_rate"] = _weighted_ratio(
+            sub,
+            config.retention_column,
+            config.new_users_column,
+            weighted=False,
+        )
     if config.ltv_columns:
         fields["ltv1"] = _weighted_ratio(
             sub,
@@ -717,17 +752,14 @@ def _agg_spend_users(
     group_cols: list[str],
     config: DailyReportConfig,
 ) -> pd.DataFrame:
-    """Sum spend / new users per group over one bucket's rows."""
-    return (
-        bucket_df.groupby(group_cols, dropna=False)
-        .agg(
-            **{
-                "spend": (config.spend_column, "sum"),
-                "new_users": (config.new_users_column, "sum"),
-            }
-        )
-        .reset_index()
-    )
+    """Sum spend / new users (and recharge, when mapped) per group."""
+    spec: dict[str, tuple[str, str]] = {
+        "spend": (config.spend_column, "sum"),
+        "new_users": (config.new_users_column, "sum"),
+    }
+    if config.recharge_column and config.recharge_column in bucket_df.columns:
+        spec["recharge"] = (config.recharge_column, "sum")
+    return bucket_df.groupby(group_cols, dropna=False).agg(**spec).reset_index()
 
 
 def _bucket_group_metrics(
@@ -753,9 +785,10 @@ def _bucket_group_metrics(
         entry: dict[str, Any] = {
             "spend": su,
             "new_users": int(nu),
-            "cpa": su / nu if nu else 0.0,
+            "cpa": su / nu if nu else None,
+            "recharge": float(row.get("recharge") or 0.0),
         }
-        entry.update(_ltv_roi_fields(sub, config))
+        entry.update(_ratio_fields(sub, config))
         result[key] = entry
     return result
 
@@ -764,12 +797,17 @@ def _build_project_summary_rows(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
     config: DailyReportConfig,
+    df: pd.DataFrame | None = None,
+    date_col: str = "",
+    history: list[PeriodBucket] | None = None,
+    ctx: DailyReportContext | None = None,
 ) -> list[dict[str, Any]]:
-    """主游戏 summary — one row per game across all its channels/regions.
+    """主游戏 rows — one per game across **all** its channels/regions.
 
-    Each row carries the reported period's metrics plus the previous period's
-    (``prev``) so the UI can show per-game deltas, and is capped to the games
-    making up ~95% of total spend.
+    Each row carries the reported period's metrics, the previous period's
+    (``prev``) and, when the history frame is supplied, its own per-bucket
+    series (``daily``) so the UI can show a game's 分天 without the channel
+    split.  Only games that actually spent are listed, biggest first.
     """
     project_col = config.project_column
     rows: list[dict[str, Any]] = []
@@ -787,15 +825,29 @@ def _build_project_summary_rows(
             "project": g,
             "spend": su,
             "new_users": int(nu),
-            "cpa": su / nu if nu else 0.0,
+            "cpa": su / nu if nu else None,
+            "recharge": float(r.get("recharge") or 0.0),
         }
-        row.update(_ltv_roi_fields(sub, config))
+        row.update(_ratio_fields(sub, config))
         row["prev"] = prev_map.get((g,), {})
+        if df is not None and history:
+            # Whole-game series: same shape as a channel row's, so the merged
+            # ("不分客户端") table can reuse the same daily rows.
+            row["daily"] = _combo_bucket_series(
+                df,
+                date_col,
+                history,
+                [project_col],
+                (g,),
+                config,
+                ctx or DailyReportContext(),
+            )
         rows.append(row)
+    # Plain spend-descending scope: every game that actually spent, biggest
+    # first.  The old "~95% of spend" accumulation is gone — it hid nothing
+    # meaningful but made the game list depend on the tail's exact sizes.
+    rows = [row for row in rows if (row.get("spend") or 0) > 0]
     rows.sort(key=lambda p: p["spend"], reverse=True)
-    # Drop the long tail: keep the games that make up ~95% of total spend
-    # so the primary view stays focused on material contributors.
-    _cap_long_tail(rows)
     return rows
 
 
@@ -823,12 +875,62 @@ def _combo_bucket_series(
                 "spend": cm["spend"],
                 "new_users": cm["new_users"],
                 "cpa": cm["cpa"],
-                "ltv1": cm.get("LTV1", 0.0),
-                "roi1": cm.get("ROI1", 0.0),
-                **{f"ltv{key}": cm.get(f"LTV{key}", 0.0) for key in (2, 3, 4, 5, 6, 7)},
+                "recharge": cm.get("recharge", 0.0),
+                "pay_rate": cm.get("pay_rate"),
+                "retention_rate": cm.get("retention_rate"),
+                "ltv1": cm.get("LTV1"),
+                "roi1": cm.get("ROI1"),
+                **{f"ltv{key}": cm.get(f"LTV{key}") for key in (2, 3, 4, 5, 6, 7)},
             }
         )
     return series
+
+
+def _select_combo_rows(
+    rows: list[dict[str, Any]],
+    top_n: int,
+    uncapped_channels: Iterable[str],
+) -> list[dict[str, Any]]:
+    """Decide which 主游戏 × 渠道商 combos are listed.
+
+    Selection is a plain spend ranking: the ``top_n`` combos with the biggest
+    rebate-adjusted spend.  Combos with no spend are never used to fill the
+    list — a zero-spend row tells the reader nothing about where money went.
+
+    Channels named in ``uncapped_channels`` (``third`` for the overseas source)
+    bypass that ranking, but only for a game that already has a spend-bearing
+    combo in the list: the point is to disclose a spending game's non-ad
+    channel, not to add rows for games that are not spending (nor to smuggle
+    revenue-only rows in through a second ranking).  Matching ignores case and
+    surrounding blanks.
+    """
+    limit = top_n if top_n and top_n > 0 else len(rows)
+    exempt_channels = {
+        str(c).strip().casefold() for c in uncapped_channels if str(c).strip()
+    }
+    ranked: list[int] = []
+    exempt_candidates: list[int] = []
+    for i, row in enumerate(rows):
+        channel = str(row.get("channel") or "").strip().casefold()
+        if channel and channel in exempt_channels:
+            exempt_candidates.append(i)
+            continue
+        if (row.get("spend") or 0) > 0:
+            ranked.append(i)
+    ranked.sort(key=lambda i: -float(rows[i].get("spend") or 0))
+    keep = list(ranked[:limit])
+    listed_games = {str(rows[i].get("project") or "") for i in keep}
+    for i in exempt_candidates:
+        row = rows[i]
+        if str(row.get("project") or "") not in listed_games:
+            continue
+        if (
+            (row.get("spend") or 0)
+            or (row.get("new_users") or 0)
+            or (row.get("recharge") or 0)
+        ):
+            keep.append(i)
+    return [rows[i] for i in sorted(keep)]
 
 
 def _build_project_combo_rows(
@@ -840,7 +942,11 @@ def _build_project_combo_rows(
     config: DailyReportConfig,
     ctx: DailyReportContext,
 ) -> list[dict[str, Any]]:
-    """主游戏 × 渠道商 (× 地区) combo rows with a per-bucket mini-series."""
+    """主游戏 × 渠道商 (× 地区) combo rows with a per-bucket mini-series.
+
+    Which combos are listed — and in what order — is decided by
+    ``_select_combo_rows``; this function only builds them.
+    """
     project_col = config.project_column
     rows: list[dict[str, Any]] = []
     if current_df.empty or project_col not in current_df.columns:
@@ -866,8 +972,9 @@ def _build_project_combo_rows(
             "spend": base["spend"],
             "new_users": base["new_users"],
             "cpa": base["cpa"],
+            "recharge": float(base.get("recharge") or 0.0),
         }
-        row.update(_ltv_roi_fields(sub, config))
+        row.update(_ratio_fields(sub, config))
         row["prev"] = prev_map.get(key_vals, {})
         # Per-combo bucket series so the UI can expand a row into its own
         # trend (spend / new-users / ROI1 / LTV1 over the history window),
@@ -878,7 +985,25 @@ def _build_project_combo_rows(
         rows.append(row)
     rows.sort(key=lambda p: p["spend"], reverse=True)
     top_n = ctx.top_projects_count or config.top_projects_count
-    return rows[:top_n]
+    rows = _select_combo_rows(rows, top_n, config.uncapped_channels or [])
+    # Presentation order: a game and all its channels stay adjacent, the games
+    # lead with the biggest total spend, and the channels inside a game remain
+    # spend-descending.
+    #
+    # Group order uses each game's *full* spend across every channel (before the
+    # cut) so the table's game order lines up with the 主游戏明细 chart above it;
+    # the cut itself only decides which combos are listed.
+    game_spend: dict[str, float] = {}
+    for key_vals, base in cur_map.items():
+        game = str(key_vals[0] or "") if key_vals else ""
+        game_spend[game] = game_spend.get(game, 0.0) + float(base.get("spend") or 0)
+    rows.sort(
+        key=lambda p: (
+            -game_spend.get(str(p.get("project") or ""), 0.0),
+            -float(p.get("spend") or 0),
+        )
+    )
+    return rows
 
 
 def _build_media_rows(
@@ -904,8 +1029,9 @@ def _build_media_rows(
             "spend": base["spend"],
             "new_users": base["new_users"],
             "cpa": base["cpa"],
+            "recharge": float(base.get("recharge") or 0.0),
         }
-        row.update(_ltv_roi_fields(sub, config))
+        row.update(_ratio_fields(sub, config))
         row["prev"] = prev_map.get((media_channel,), {})
         rows.append(row)
     rows.sort(key=lambda m: m["spend"], reverse=True)
@@ -959,7 +1085,9 @@ def _build_report(
             daily_projects.append(r)
 
     prev_df = _bucket_subset(df, date_col, previous)
-    project_summary = _build_project_summary_rows(current_df, prev_df, config)
+    project_summary = _build_project_summary_rows(
+        current_df, prev_df, config, df, date_col, history, ctx
+    )
     projects = _build_project_combo_rows(
         df, date_col, current_df, prev_df, history, config, ctx
     )
@@ -1136,6 +1264,19 @@ def suggest_field_map(
     ltv_cols, ltv_weighted = _resolve_metric_columns(ltv_rate_cols, money_cols, indices)
     roi_cols, roi_weighted = _resolve_metric_columns(roi_rate_cols, money_cols, indices)
 
+    # Recharge flow: an exact 充值流水 wins; otherwise accept any 充值/流水 column
+    # that is not one of the backdated LTV/ROI numerators.
+    pay_rate_col = pick("1日付费数", "付费数", "付费人数", "1日付费率", "pay_rate")
+    retention_col = pick("2日留存数", "2日留存率", "次日留存数", "retention_2")
+    recharge_col = pick("充值流水", "流水", "充值金额", "recharge", "recharge_amount")
+    if not recharge_col:
+        recharge_candidates = [
+            c
+            for c in like("充值", "流水")
+            if "日充值" not in c and c != "累计充值" and c not in money_cols
+        ]
+        recharge_col = recharge_candidates[0] if recharge_candidates else ""
+
     return {
         "date_column": date_col,
         "project_column": project_col,
@@ -1145,6 +1286,9 @@ def suggest_field_map(
         "spend_column": spend_col,
         "new_users_column": new_users_col,
         "cpa_column": spend_col,
+        "recharge_column": recharge_col,
+        "pay_rate_column": pay_rate_col,
+        "retention_column": retention_col,
         "ltv_columns": ltv_cols,
         "roi_columns": roi_cols,
         "ltv_weighted_average": ltv_weighted,
@@ -1265,7 +1409,12 @@ def _canonicalize_frame(
     """
     out = df.copy()
     rename: dict[str, str] = {}
-    for field in _CANONICAL_DIMENSION_FIELDS:
+    for field in (
+        *_CANONICAL_DIMENSION_FIELDS,
+        "recharge_column",
+        "pay_rate_column",
+        "retention_column",
+    ):
         src, dst = own_map.get(field) or "", canonical_map.get(field) or ""
         if src and dst and src != dst and src in out.columns:
             rename[src] = dst
@@ -1282,6 +1431,14 @@ def _canonicalize_frame(
         for col in canonical_map.get(metrics_field) or []:
             if col and col not in out.columns:
                 out[col] = 0.0
+    for additive_field in (
+        "recharge_column",
+        "pay_rate_column",
+        "retention_column",
+    ):
+        column = canonical_map.get(additive_field) or ""
+        if column and column not in out.columns:
+            out[column] = 0.0
     return out
 
 
@@ -1302,6 +1459,9 @@ def get_config_payload(config: DailyReportConfig) -> dict[str, Any]:
         "ad_channel_column": config.ad_channel_column,
         "region_column": config.region_column,
         "spend_column": config.spend_column,
+        "recharge_column": config.recharge_column,
+        "pay_rate_column": config.pay_rate_column,
+        "retention_column": config.retention_column,
         "new_users_column": config.new_users_column,
         "cpa_column": config.cpa_column,
         "ltv_columns": list(config.ltv_columns),
@@ -1311,6 +1471,7 @@ def get_config_payload(config: DailyReportConfig) -> dict[str, Any]:
         "roi_critical_line": config.roi_critical_line,
         "roi_warning_line": config.roi_warning_line,
         "top_projects_count": config.top_projects_count,
+        "uncapped_channels": list(config.uncapped_channels or []),
         "days_of_history": config.days_of_history,
         "weeks_of_history": config.weeks_of_history,
         "report_type": normalize_report_type(config.report_type),
