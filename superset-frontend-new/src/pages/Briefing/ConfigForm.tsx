@@ -200,6 +200,24 @@ export default function ConfigForm({
               {datasetOptions}
             </Select>
           </FormControl>
+          <TextField
+            size="small"
+            fullWidth
+            sx={{ mt: 1 }}
+            label="豁免渠道（逗号分隔）"
+            placeholder="third"
+            value={local.uncapped_channels.join(", ")}
+            helperText="这些渠道不做 Top N 截断，全部列出；仅影响「主游戏 × 渠道商」表，主游戏视图仍按 95% 消耗截尾"
+            onChange={(e) =>
+              set(
+                "uncapped_channels",
+                e.target.value
+                  .split(/[,，、\s]+/)
+                  .map((v) => v.trim())
+                  .filter(Boolean),
+              )
+            }
+          />
         </Grid>
         <Field
           label="Top N 项目数"

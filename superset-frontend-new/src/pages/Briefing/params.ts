@@ -21,6 +21,13 @@ export interface ReportParamValues {
    * merged (UNION ALL) before computation.  Empty => single-dataset mode.
    */
   datasource_ids: number[];
+  /**
+   * Channels exempt from the Top-N combo cut: every 主游戏×渠道商 row of these
+   * channels is listed.  ``third`` (the overseas non-ad channel) carries
+   * revenue but no ad spend, so a spend-based cut would always drop it.
+   * The 主游戏 view keeps its own 95% spend cap.
+   */
+  uncapped_channels: string[];
   /** Dataset coordinates, persisted alongside the id for run-time resolution. */
   table_name: string;
   schema: string;
@@ -40,6 +47,7 @@ export const EMPTY_PARAMS: ReportParamValues = {
   description: "",
   datasource_id: "",
   datasource_ids: [],
+  uncapped_channels: [],
   table_name: "",
   schema: "",
   database_name: "",
@@ -84,6 +92,11 @@ export function paramsFromConfig(
     description: String(cfg?.description ?? ""),
     datasource_id: num("datasource_id"),
     datasource_ids: datasourceIds,
+    uncapped_channels: Array.isArray(cfg?.uncapped_channels)
+      ? (cfg.uncapped_channels as unknown[])
+          .map((v) => String(v ?? "").trim())
+          .filter(Boolean)
+      : [],
     table_name: str("table_name"),
     schema: str("schema"),
     database_name: str("database_name"),
@@ -110,6 +123,7 @@ export function paramsToConfig(p: ReportParamValues): Record<string, unknown> {
     description: p.description,
     datasource_id: ids.length ? ids[0] : null,
     datasource_ids: ids,
+    uncapped_channels: p.uncapped_channels.map((c) => c.trim()).filter(Boolean),
     table_name: p.table_name || null,
     schema: p.schema || null,
     database_name: p.database_name || null,
