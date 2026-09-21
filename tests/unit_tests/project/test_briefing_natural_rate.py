@@ -26,6 +26,7 @@ per-media average.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pandas as pd
 
@@ -65,7 +66,7 @@ def _frame() -> pd.DataFrame:
 
 
 def _config(**overrides) -> DailyReportConfig:
-    base: dict = {
+    base: dict[str, Any] = {
         "date_column": "report_date",
         "project_column": "主游戏",
         "channel_column": "渠道商",

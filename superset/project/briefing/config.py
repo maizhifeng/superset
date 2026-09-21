@@ -66,6 +66,10 @@ class DailyReportConfig:
     # Period recharge flow (充值流水).  Purely additive — reported as a SUM over
     # the segment rows instead of an LTV/ROI style ratio numerator.
     recharge_column: str = "充值流水"
+    # Lifetime recharge (累计充值), the numerator of 累计ROI.  Distinct from the
+    # backdated ``N日充值`` columns above: those mature per daily cohort, while
+    # this one is the account's cumulative total for the segment.
+    cumulative_recharge_column: str = "累计充值"
     ltv_columns: tuple[str, ...] = (
         "1日充值",
         "2日充值",
