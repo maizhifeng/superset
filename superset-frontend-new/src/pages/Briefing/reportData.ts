@@ -65,6 +65,8 @@ export interface DailyTotals {
   /** 比率类指标按新增人数加权（与明细行同口径）。 */
   pay_rate: number | null;
   retention_rate: number | null;
+  /** 自然新增%：自然量新增 / 新增进入，同样按新增人数加权。 */
+  natural_rate: number | null;
   /** LTV 各成熟度：按新增人数加权的窗口均值。 */
   ltv: Record<number, number | null>;
   roi1: number | null;
@@ -76,6 +78,7 @@ type DailyLike = {
   recharge?: number | null;
   pay_rate?: number | null;
   retention_rate?: number | null;
+  natural_rate?: number | null;
   ltv1?: number | null;
   ltv2?: number | null;
   ltv3?: number | null;
@@ -93,7 +96,7 @@ export const LTV_MILESTONES = [1, 2, 3, 4, 5, 6, 7] as const;
  * Roll a project's daily rows into the period figure for that project.
  *
  * Additive metrics (spend, new users, 充值流水) are summed; the per-unit ratios
- * (CPA, LTV, ROI1, 1日付费率, 2日留存率) are rebuilt from their
+ * (CPA, LTV, ROI1, 1日付费率, 2日留存率, 自然新增%) are rebuilt from their
  * weights instead of averaging averages — CPA from the period's spend and
  * users, LTV1 weighted by each day's new users, ROI1 weighted by each day's
  * spend (the same convention ``aggregateByChannel`` uses for channels).
@@ -110,6 +113,7 @@ export function summarizeDailyRows(
   let recharge = 0;
   let payWeighted = 0;
   let retentionWeighted = 0;
+  let naturalWeighted = 0;
   let roiWeighted = 0;
   const ltvWeighted: Record<number, number> = {};
   for (const row of rows) {
@@ -120,6 +124,7 @@ export function summarizeDailyRows(
     recharge += row.recharge ?? 0;
     payWeighted += (row.pay_rate ?? 0) * rowUsers;
     retentionWeighted += (row.retention_rate ?? 0) * rowUsers;
+    naturalWeighted += (row.natural_rate ?? 0) * rowUsers;
     roiWeighted += (row.roi1 ?? 0) * rowSpend;
     for (const day of LTV_MILESTONES) {
       const key = `ltv${day}` as keyof DailyLike;
@@ -137,6 +142,7 @@ export function summarizeDailyRows(
     recharge,
     pay_rate: users ? payWeighted / users : null,
     retention_rate: users ? retentionWeighted / users : null,
+    natural_rate: users ? naturalWeighted / users : null,
     ltv,
     roi1: spend ? roiWeighted / spend : null,
   };

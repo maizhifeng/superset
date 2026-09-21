@@ -17,16 +17,11 @@ export default {
       // Briefing-table motion lives in the global sheet: those cells are
       // styled with plain inline objects, and an emotion ``keyframes`` object
       // only registers itself when used inside an emotion style (``sx``).
-      // Reel: the outgoing figure rolls up and out while the incoming one
-      // rises into place, the way an odometer wheel turns over.
-      "@keyframes briefingReelIn": {
-        from: { transform: "translateY(0.9em)", opacity: 0 },
-        to: { transform: "translateY(0)", opacity: 1 },
-      },
-      "@keyframes briefingReelOut": {
-        from: { transform: "translateY(0)", opacity: 1 },
-        to: { transform: "translateY(-0.9em)", opacity: 0 },
-      },
+      //
+      // The reel's own keyframes are NOT here: the odometer roll is started
+      // imperatively through the Web Animations API (see ``WheelValue``), so
+      // its two curves live next to the code that plays them and the cells
+      // stay style-static instead of allocating an emotion class per render.
       // Daily rows unfold one after another.
       "@keyframes briefingRowIn": {
         from: { opacity: 0, transform: "translateY(-6px)" },
@@ -35,6 +30,27 @@ export default {
       "@keyframes briefingLogLineIn": {
         from: { opacity: 0, transform: "translateY(-2px)" },
         to: { opacity: 1, transform: "translateY(0)" },
+      },
+      // One metric cell's odometer wheel: the incoming figure sits in flow and
+      // sets the cell's width, the outgoing one is pinned over it and clipped.
+      // The briefing tables hold ~200 of these, so the structure is a class
+      // rather than an ``sx`` object (the per-render serialization was the
+      // bulk of the reel's main-thread cost).
+      ".briefing-wheel": {
+        position: "relative",
+        display: "inline-block",
+        overflow: "hidden",
+        lineHeight: 1.35,
+        verticalAlign: "bottom",
+      },
+      ".briefing-wheel-out": {
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+      },
+      ".briefing-wheel-in": {
+        display: "inline-block",
       },
       // Reading tables (briefing tables use plain <table> markup) get a row
       // hover wash without giving up the inline zebra styling.

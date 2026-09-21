@@ -44,6 +44,25 @@ test("summarizeDailyRows weights 付费率 / 留存率 / LTV by new users", () =
   expect(totals?.ltv[1]).toBeCloseTo((1 * 10 + 3 * 30) / 40);
 });
 
+test("summarizeDailyRows rolls 自然新增% up into the window's organic share", () => {
+  // Each day's rate is a share of that day's new users, so the window's share
+  // is the new-user-weighted mean — the same denominator the backend uses.
+  const totals = summarizeDailyRows([
+    { spend: 100, new_users: 10, natural_rate: 0.5 },
+    { spend: 300, new_users: 30, natural_rate: 0.25 },
+  ]);
+
+  expect(totals?.natural_rate).toBeCloseTo((0.5 * 10 + 0.25 * 30) / 40);
+});
+
+test("summarizeDailyRows reports an undefined 自然新增% as null, not zero", () => {
+  // No new users at all: the organic share has a zero denominator.
+  expect(
+    summarizeDailyRows([{ spend: 0, new_users: 0, natural_rate: null }])
+      ?.natural_rate,
+  ).toBeNull();
+});
+
 test("summarizeDailyRows adds 充值流水 like any other additive metric", () => {
   const totals = summarizeDailyRows([
     { spend: 100, new_users: 10, recharge: 250, ltv1: 2, roi1: 0.1 },

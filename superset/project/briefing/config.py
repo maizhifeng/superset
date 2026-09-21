@@ -55,6 +55,9 @@ class DailyReportConfig:
     region_column: str = ""
     business_column: str = ""
     channel_type_column: str = ""
+    # 客户端平台 — splits the 核心指标速览 headline figures by client
+    # (``mobile`` / ``mini_game`` / ``oversea`` in the UA datasets).
+    platform_column: str = "平台"
 
     # ---- Metric columns ----
     spend_column: str = "返点后消耗"
@@ -79,6 +82,12 @@ class DailyReportConfig:
     # denominator, so they are additive numerators like the recharge columns.
     pay_rate_column: str = "1日付费数"
     retention_column: str = "2日留存数"
+    # 自然新增% = 自然量新增 / 新增进入.  The non-ad (organic) traffic is the
+    # subset of ``ad_channel_column`` rows carrying this label; both UA datasets
+    # normalize their own organic source onto it (``pad_id = 0`` for the mobile
+    # source, ``Rastar自然量`` for the overseas one), so the share is computed
+    # from the fetched 媒体 column instead of an ad-hoc per-dataset rule.
+    natural_media_label: str = "自然量"
     roi_columns: tuple[str, ...] = (
         "1日充值",
         "2日充值",

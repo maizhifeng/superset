@@ -56,6 +56,7 @@ def _default_config_payload(report_type: str | None = None) -> dict[str, Any]:
         "channel_column",
         "ad_channel_column",
         "region_column",
+        "platform_column",
         "spend_column",
         "new_users_column",
         "cpa_column",

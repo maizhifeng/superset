@@ -25,6 +25,25 @@ function matches(): boolean {
   return window.matchMedia(QUERY).matches;
 }
 
+// One shared MediaQueryList for the one-shot read below: the briefing tables
+// ask on every value change, and allocating a fresh list per cell per switch
+// is pure garbage.
+let cachedQuery: MediaQueryList | null = null;
+
+/**
+ * One-shot read of the same preference, for callers that must stay off the
+ * React render path.
+ *
+ * The per-cell animation drivers in the briefing tables run ~200 times per
+ * value change; subscribing each of them with ``useReducedMotion`` would add
+ * a state hook and a ``change`` listener per cell.
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  cachedQuery ??= window.matchMedia(QUERY);
+  return cachedQuery.matches;
+}
+
 /**
  * Whether the user asked the OS to reduce motion.
  *
