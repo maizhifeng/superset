@@ -205,6 +205,7 @@ def _validate_columns(
         config.new_users_column,
         config.cpa_column,
         config.recharge_column,
+        config.cumulative_recharge_column,
         config.pay_rate_column,
         config.retention_column,
         *config.ltv_columns,
@@ -609,7 +610,8 @@ def _build_core_metrics(
         {
             key: value
             for key, value in _ratio_fields(day_df, config).items()
-            if key in ("pay_rate", "retention_rate", "natural_rate")
+            if key
+            in ("pay_rate", "retention_rate", "natural_rate", "roi_cum", "roi_flow")
         }
     )
     for key, col in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
@@ -659,6 +661,8 @@ def _build_daily_series(
                 "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
+                "roi_cum": cm.get("roi_cum"),
+                "roi_flow": cm.get("roi_flow"),
                 **ltv_extra,
             }
         )
@@ -777,6 +781,23 @@ def _ratio_fields(
             config.roi_columns[0],
             config.spend_column,
             weighted=config.roi_weighted_average,
+        )
+    # 累计ROI / 流水ROI share ROI1's spend denominator but swap the numerator:
+    # the account's lifetime recharge, and the period's own recharge flow.
+    # Both numerators are additive columns, so they use SUM(col)/SUM(spend).
+    if config.cumulative_recharge_column:
+        fields["roi_cum"] = _weighted_ratio(
+            sub,
+            config.cumulative_recharge_column,
+            config.spend_column,
+            weighted=False,
+        )
+    if config.recharge_column:
+        fields["roi_flow"] = _weighted_ratio(
+            sub,
+            config.recharge_column,
+            config.spend_column,
+            weighted=False,
         )
     return fields
 
@@ -915,6 +936,8 @@ def _combo_bucket_series(
                 "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
+                "roi_cum": cm.get("roi_cum"),
+                "roi_flow": cm.get("roi_flow"),
                 **{f"ltv{key}": cm.get(f"LTV{key}") for key in (2, 3, 4, 5, 6, 7)},
             }
         )
@@ -1341,6 +1364,9 @@ def suggest_field_map(
     pay_rate_col = pick("1日付费数", "付费数", "付费人数", "1日付费率", "pay_rate")
     retention_col = pick("2日留存数", "2日留存率", "次日留存数", "retention_2")
     recharge_col = pick("充值流水", "流水", "充值金额", "recharge", "recharge_amount")
+    cumulative_recharge_col = pick(
+        "累计充值", "累计流水", "total_paid_money", "cumulative_recharge"
+    )
     if not recharge_col:
         recharge_candidates = [
             c
@@ -1360,6 +1386,7 @@ def suggest_field_map(
         "new_users_column": new_users_col,
         "cpa_column": spend_col,
         "recharge_column": recharge_col,
+        "cumulative_recharge_column": cumulative_recharge_col,
         "pay_rate_column": pay_rate_col,
         "retention_column": retention_col,
         "ltv_columns": ltv_cols,
@@ -1486,6 +1513,7 @@ def _canonicalize_frame(
     for field in (
         *_CANONICAL_DIMENSION_FIELDS,
         "recharge_column",
+        "cumulative_recharge_column",
         "pay_rate_column",
         "retention_column",
     ):
@@ -1507,6 +1535,7 @@ def _canonicalize_frame(
                 out[col] = 0.0
     for additive_field in (
         "recharge_column",
+        "cumulative_recharge_column",
         "pay_rate_column",
         "retention_column",
     ):
@@ -1535,6 +1564,7 @@ def get_config_payload(config: DailyReportConfig) -> dict[str, Any]:
         "platform_column": config.platform_column,
         "spend_column": config.spend_column,
         "recharge_column": config.recharge_column,
+        "cumulative_recharge_column": config.cumulative_recharge_column,
         "pay_rate_column": config.pay_rate_column,
         "retention_column": config.retention_column,
         "new_users_column": config.new_users_column,

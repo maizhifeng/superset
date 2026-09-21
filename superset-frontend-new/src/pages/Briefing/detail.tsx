@@ -141,6 +141,8 @@ interface ProjectRow {
   ltv6?: number | null;
   ltv7?: number | null;
   roi1: number | null;
+  roi_cum?: number | null;
+  roi_flow?: number | null;
   prev?: {
     spend: number;
     new_users: number;
@@ -171,6 +173,8 @@ interface ProjectSummaryRow {
   ltv6?: number | null;
   ltv7?: number | null;
   roi1: number | null;
+  roi_cum?: number | null;
+  roi_flow?: number | null;
   /** Whole-game daily series (all channels), used by the merged view. */
   daily?: DailyTrendRow[];
   prev?: {
@@ -225,6 +229,8 @@ interface DailyProjectRow {
   ltv6?: number | null;
   ltv7?: number | null;
   roi1: number | null;
+  roi_cum?: number | null;
+  roi_flow?: number | null;
   prev?: {
     spend: number;
     new_users: number;
@@ -292,6 +298,10 @@ interface MetricRow {
   ltv6?: number | null;
   ltv7?: number | null;
   roi1: number | null;
+  /** 累计ROI：累计充值 / 返点后消耗。 */
+  roi_cum?: number | null;
+  /** 流水ROI：充值流水 / 返点后消耗。 */
+  roi_flow?: number | null;
 }
 
 interface DailyTrendRow extends MetricRow {
@@ -488,6 +498,8 @@ function metricColumnDefs(ltvDays: number[]) {
     })),
     { key: "roi1", label: "ROI1", numeric: true },
     { key: "roi1Delta", label: "ROI1环比", numeric: true },
+    { key: "roiCum", label: "累计ROI", numeric: true },
+    { key: "roiFlow", label: "流水ROI", numeric: true },
   ];
 }
 
@@ -505,6 +517,8 @@ interface MetricValues {
   ltv: Record<number, number | null | undefined>;
   roi1: number | null | undefined;
   roi1Delta: number | null;
+  roiCum: number | null | undefined;
+  roiFlow: number | null | undefined;
 }
 
 /** One row's metric cells as plain text (colourable), in column order. */
@@ -553,6 +567,8 @@ function metricCellsText(
     })),
     { key: "roi1", text: formatPercent(values.roi1) },
     { key: "roi1Delta", ...delta(values.roi1Delta) },
+    { key: "roiCum", text: formatPercent(values.roiCum) },
+    { key: "roiFlow", text: formatPercent(values.roiFlow) },
   ];
 }
 
@@ -685,6 +701,8 @@ function metricRowValues(
       7: row.ltv7,
     },
     roi1: row.roi1,
+    roiCum: row.roi_cum,
+    roiFlow: row.roi_flow,
     // ``row.roi1`` is only null for a segment with no spend at all (platform
     // rows can be); the previous side keeps the original non-zero guard.
     roi1Delta:
@@ -712,6 +730,8 @@ function totalsMetricValues(
     ltv: Object.fromEntries(ltvDays.map((d) => [d, totals.ltv[d]])),
     roi1: totals.roi1,
     roi1Delta: null,
+    roiCum: totals.roi_cum,
+    roiFlow: totals.roi_flow,
   };
 }
 
@@ -1230,6 +1250,8 @@ function ProjectComboTable({
                     },
                     roi1: p.roi1,
                     roi1Delta: pct(p.roi1, p.prev?.roi1),
+                    roiCum: p.roi_cum,
+                    roiFlow: p.roi_flow,
                   };
               return (
                 <Fragment key={`${p.project}-${p.channel}-${p.region}`}>
@@ -1711,6 +1733,8 @@ interface ComboRow {
   new_users: number;
   ltv1: number | null;
   roi1: number | null;
+  roi_cum?: number | null;
+  roi_flow?: number | null;
   prev?: {
     spend: number;
     new_users: number;

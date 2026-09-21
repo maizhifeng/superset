@@ -70,6 +70,9 @@ export interface DailyTotals {
   /** LTV 各成熟度：按新增人数加权的窗口均值。 */
   ltv: Record<number, number | null>;
   roi1: number | null;
+  /** 累计ROI / 流水ROI：与 ROI1 同分母，按消耗加权。 */
+  roi_cum: number | null;
+  roi_flow: number | null;
 }
 
 type DailyLike = {
@@ -87,6 +90,8 @@ type DailyLike = {
   ltv6?: number | null;
   ltv7?: number | null;
   roi1?: number | null;
+  roi_cum?: number | null;
+  roi_flow?: number | null;
 };
 
 /** LTV milestones a row can carry. */
@@ -96,7 +101,8 @@ export const LTV_MILESTONES = [1, 2, 3, 4, 5, 6, 7] as const;
  * Roll a project's daily rows into the period figure for that project.
  *
  * Additive metrics (spend, new users, 充值流水) are summed; the per-unit ratios
- * (CPA, LTV, ROI1, 1日付费率, 2日留存率, 自然新增%) are rebuilt from their
+ * (CPA, LTV, ROI1, 累计ROI, 流水ROI, 1日付费率, 2日留存率, 自然新增%) are
+ * rebuilt from their
  * weights instead of averaging averages — CPA from the period's spend and
  * users, LTV1 weighted by each day's new users, ROI1 weighted by each day's
  * spend (the same convention ``aggregateByChannel`` uses for channels).
@@ -115,6 +121,8 @@ export function summarizeDailyRows(
   let retentionWeighted = 0;
   let naturalWeighted = 0;
   let roiWeighted = 0;
+  let roiCumWeighted = 0;
+  let roiFlowWeighted = 0;
   const ltvWeighted: Record<number, number> = {};
   for (const row of rows) {
     const rowSpend = row.spend ?? 0;
@@ -126,6 +134,8 @@ export function summarizeDailyRows(
     retentionWeighted += (row.retention_rate ?? 0) * rowUsers;
     naturalWeighted += (row.natural_rate ?? 0) * rowUsers;
     roiWeighted += (row.roi1 ?? 0) * rowSpend;
+    roiCumWeighted += (row.roi_cum ?? 0) * rowSpend;
+    roiFlowWeighted += (row.roi_flow ?? 0) * rowSpend;
     for (const day of LTV_MILESTONES) {
       const key = `ltv${day}` as keyof DailyLike;
       ltvWeighted[day] = (ltvWeighted[day] ?? 0) + (row[key] ?? 0) * rowUsers;
@@ -145,5 +155,7 @@ export function summarizeDailyRows(
     natural_rate: users ? naturalWeighted / users : null,
     ltv,
     roi1: spend ? roiWeighted / spend : null,
+    roi_cum: spend ? roiCumWeighted / spend : null,
+    roi_flow: spend ? roiFlowWeighted / spend : null,
   };
 }
