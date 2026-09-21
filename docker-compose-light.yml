@@ -105,7 +105,7 @@ services:
       - path: docker/.env-local # optional override
         required: false
     image: postgres:17
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./pgdata_light:/var/lib/postgresql/data
       - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
@@ -115,7 +115,7 @@ services:
 
   redis:
     image: redis:7
-    restart: unless-stopped
+    restart: always
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
@@ -131,7 +131,7 @@ services:
     build:
       <<: *common-build
     command: ["/app/docker/docker-bootstrap.sh", "app"]
-    restart: unless-stopped
+    restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: *superset-user
@@ -154,6 +154,9 @@ services:
       GITHUB_SHA: ${GITHUB_SHA:-}
 
   superset-init-light:
+    # One-shot bootstrap (migrations, admin user, roles): it must run once and
+    # exit, so it deliberately keeps the default `no` policy while every
+    # resident service above/below restarts `always`.
     build:
       <<: *common-build
     command: ["/app/docker/docker-init.sh"]
@@ -198,6 +201,7 @@ services:
     ports:
       - "${NODE_PORT:-9000}:9000"
     command: ["/app/docker/docker-frontend-mui.sh"]
+    restart: always
     env_file:
       - path: docker/.env # default
         required: true
@@ -211,7 +215,7 @@ services:
     # service over WebSocket (proxied by the Vite dev server).
     build:
       context: ./superset-frontend-new/agents/pi-agent-server
-    restart: unless-stopped
+    restart: always
     environment:
       WS_PORT: 3001
       LLM_MODEL: ${PI_AGENT_LLM_MODEL:-gemma-4-e2b-it}
