@@ -1147,6 +1147,12 @@ def _build_project_region_rows(
         ctx,
         group_key,
     )
+    # A region that neither spent nor earned is aggregate-only: it still counts
+    # towards its combo in the channel view (which is built from the full frame
+    # above, not from these rows), but listing it would fill the table with
+    # zero rows.  ``or`` rather than ``and`` on the raw values, so a region that
+    # earned without spending — or the reverse — stays visible.
+    rows = [row for row in rows if row["spend"] or row["recharge"]]
     if not rows:
         return rows
 

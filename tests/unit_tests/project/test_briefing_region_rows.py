@@ -193,6 +193,82 @@ def test_region_rows_follow_the_parent_tables_order() -> None:
     assert [r["region"] for r in regions[:2]] == ["TH", "ID"]
 
 
+def test_a_region_that_neither_spent_nor_earned_is_hidden() -> None:
+    """Zero regions are noise in the split view but still count in the roll-up."""
+    frame = pd.DataFrame(
+        {
+            "report_date": ["2026-09-20"] * 3,
+            "主游戏": ["A", "A", "A"],
+            "渠道商": ["c1", "c1", "c1"],
+            "地区": ["TH", "ID", "AE"],
+            "返点后消耗": [400.0, 100.0, 0.0],
+            "新增进入": [100, 50, 7],
+            "1日充值": [200.0, 40.0, 0.0],
+            "充值流水": [900.0, 100.0, 0.0],
+            "累计充值": [600.0, 50.0, 0.0],
+        }
+    )
+    config = _config()
+    combos = _combos(frame, config)
+
+    regions = _regions(frame, config, combos)
+
+    assert [r["region"] for r in regions] == ["TH", "ID"]  # AE dropped
+    # ...yet its 7 users still count towards the combo the channel view shows,
+    # which is what "只在分地区关闭时纳入汇总" means.
+    assert len(combos) == 1
+    assert combos[0]["spend"] == 500.0
+    assert combos[0]["new_users"] == 157
+    assert sum(r["new_users"] for r in regions) == 150
+    assert combos[0]["new_users"] - sum(r["new_users"] for r in regions) == 7
+
+
+def test_a_region_with_only_recharge_survives_the_filter() -> None:
+    """The rule drops both-zero rows, not zero-spend ones."""
+    frame = pd.DataFrame(
+        {
+            "report_date": ["2026-09-20"] * 2,
+            "主游戏": ["A", "A"],
+            "渠道商": ["c1", "c1"],
+            "地区": ["TH", "TH2"],
+            "返点后消耗": [400.0, 0.0],
+            "新增进入": [100, 5],
+            "1日充值": [200.0, 30.0],
+            "充值流水": [900.0, 30.0],
+            "累计充值": [600.0, 10.0],
+        }
+    )
+    config = _config()
+
+    regions = _regions(frame, config, _combos(frame, config))
+
+    assert [r["region"] for r in regions] == ["TH", "TH2"]
+    assert regions[1]["spend"] == 0.0
+    assert regions[1]["recharge"] == 30.0
+
+
+def test_a_region_with_only_spend_survives_the_filter() -> None:
+    frame = pd.DataFrame(
+        {
+            "report_date": ["2026-09-20"] * 2,
+            "主游戏": ["A", "A"],
+            "渠道商": ["c1", "c1"],
+            "地区": ["TH", "TH2"],
+            "返点后消耗": [400.0, 60.0],
+            "新增进入": [100, 15],
+            "1日充值": [200.0, 0.0],
+            "充值流水": [900.0, 0.0],
+            "累计充值": [600.0, 0.0],
+        }
+    )
+    config = _config()
+
+    regions = _regions(frame, config, _combos(frame, config))
+
+    assert [r["region"] for r in regions] == ["TH", "TH2"]
+    assert regions[1]["recharge"] == 0.0
+
+
 def test_region_rows_carry_the_ratio_fields() -> None:
     frame = _frame()
     config = _config()
