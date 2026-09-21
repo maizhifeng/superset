@@ -223,8 +223,8 @@ def test_a_region_that_neither_spent_nor_earned_is_hidden() -> None:
     assert combos[0]["new_users"] - sum(r["new_users"] for r in regions) == 7
 
 
-def test_a_region_with_only_recharge_survives_the_filter() -> None:
-    """The rule drops both-zero rows, not zero-spend ones."""
+def test_a_region_with_only_recharge_is_also_hidden() -> None:
+    """Earning without spending is aggregate-only too."""
     frame = pd.DataFrame(
         {
             "report_date": ["2026-09-20"] * 2,
@@ -242,12 +242,14 @@ def test_a_region_with_only_recharge_survives_the_filter() -> None:
 
     regions = _regions(frame, config, _combos(frame, config))
 
-    assert [r["region"] for r in regions] == ["TH", "TH2"]
-    assert regions[1]["spend"] == 0.0
-    assert regions[1]["recharge"] == 30.0
+    assert [r["region"] for r in regions] == ["TH"]  # TH2 dropped
+    # The dropped region's revenue still counts in the channel view.
+    combos = _combos(frame, config)
+    assert combos[0]["recharge"] == 930.0
+    assert combos[0]["spend"] == 400.0
 
 
-def test_a_region_with_only_spend_survives_the_filter() -> None:
+def test_a_region_with_only_spend_is_also_hidden() -> None:
     frame = pd.DataFrame(
         {
             "report_date": ["2026-09-20"] * 2,
@@ -265,8 +267,11 @@ def test_a_region_with_only_spend_survives_the_filter() -> None:
 
     regions = _regions(frame, config, _combos(frame, config))
 
-    assert [r["region"] for r in regions] == ["TH", "TH2"]
-    assert regions[1]["recharge"] == 0.0
+    assert [r["region"] for r in regions] == ["TH"]  # TH2 dropped
+    # ...while its spend still counts in the channel view.
+    combos = _combos(frame, config)
+    assert combos[0]["spend"] == 460.0
+    assert combos[0]["recharge"] == 900.0
 
 
 def test_region_rows_carry_the_ratio_fields() -> None:
