@@ -257,6 +257,8 @@ interface DailyReportResult {
   daily_projects?: DailyProjectRow[];
   project_summary?: ProjectSummaryRow[];
   projects?: ProjectRow[];
+  /** 分地区: ``projects`` subdivided by region. */
+  project_regions?: ProjectRow[];
   media?: MediaRow[];
   /** 核心指标的平台拆分（核心指标速览的「查看数据表」）。 */
   platforms?: PlatformRow[];
@@ -337,7 +339,7 @@ const SPEND_LABEL = "返点后消耗";
 const RECHARGE_LABEL = "充值流水";
 const PAY_RATE_LABEL = "1日付费率";
 const NATURAL_RATE_LABEL = "自然新增%";
-/** Channel cell text of a merged ("不分客户端") row. */
+/** Channel cell text of a row whose channels were rolled into its game. */
 const MERGED_CHANNEL_LABEL = "全部渠道";
 const RETENTION_LABEL = "2日留存率";
 const USERS_LABEL = "新增进入";
@@ -1113,17 +1115,22 @@ function ProjectComboTable({
   breakevenLine,
   showDaily,
   onToggleDaily,
-  merged = false,
-  onToggleMerged,
+  splitChannel = true,
+  onToggleChannel,
+  splitRegion = false,
+  onToggleRegion,
   expandLabel = "分天",
 }: {
   projects: ProjectRow[];
   breakevenLine: number;
   showDaily: boolean;
   onToggleDaily: () => void;
-  /** 不分客户端: one row per game, every channel rolled into it. */
-  merged?: boolean;
-  onToggleMerged?: () => void;
+  /** 分渠道: rows are per channel; off rolls every channel into its game. */
+  splitChannel?: boolean;
+  onToggleChannel?: () => void;
+  /** 分地区: subdivide each 主游戏 × 渠道商 row by region. */
+  splitRegion?: boolean;
+  onToggleRegion?: () => void;
   /** Trend granularity word used in the toggle/caption ("分天" / "分周"). */
   expandLabel?: string;
 }) {
@@ -1165,22 +1172,58 @@ function ProjectComboTable({
         }}
       >
         <Typography variant="subtitle1">
-          {merged
-            ? "主游戏 明细（不分客户端）"
-            : "主游戏 × 渠道商 明细（含环比）"}
+          {splitChannel
+            ? splitRegion
+              ? "主游戏 × 渠道商 × 地区 明细（含环比）"
+              : "主游戏 × 渠道商 明细（含环比）"
+            : "主游戏 明细（不分渠道）"}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {onToggleMerged && (
-            <Tooltip title="同一主游戏下的所有渠道商合并为一条">
+          {onToggleChannel && (
+            <Tooltip
+              // Keeps the visible label as the button's accessible name; the
+              // default (``aria-label``) would replace it with the sentence.
+              describeChild
+              title={
+                splitChannel
+                  ? "当前按渠道商拆分行；关闭后每个主游戏合并为一条"
+                  : "同一主游戏下的所有渠道商合并为一条"
+              }
+            >
               <Button
                 size="small"
-                variant={merged ? "contained" : "outlined"}
+                variant={splitChannel ? "contained" : "outlined"}
                 color="primary"
-                onClick={onToggleMerged}
-                aria-pressed={merged}
+                onClick={onToggleChannel}
+                aria-pressed={splitChannel}
               >
-                不分客户端
+                分渠道
               </Button>
+            </Tooltip>
+          )}
+          {onToggleRegion && (
+            <Tooltip
+              describeChild
+              title={
+                splitChannel
+                  ? "在渠道基础上再按地区细分（中国大陆为 mainland）"
+                  : "需先开启「分渠道」才能按地区细分"
+              }
+            >
+              {/* A disabled button swallows pointer events, so the tooltip needs
+                  a wrapper element to still fire. */}
+              <span>
+                <Button
+                  size="small"
+                  variant={splitRegion ? "contained" : "outlined"}
+                  color="primary"
+                  onClick={onToggleRegion}
+                  aria-pressed={splitRegion}
+                  disabled={!splitChannel}
+                >
+                  分地区
+                </Button>
+              </span>
             </Tooltip>
           )}
           <Button
@@ -2581,7 +2624,11 @@ export default function DailyReportDetail() {
   const [activeSection, setActiveSection] = useState("sec-core");
   const [showComboDaily, setShowComboDaily] = useState(false);
   // 不分客户端: roll a game's channels into a single row.
-  const [showMerged, setShowMerged] = useState(false);
+  // 分渠道 is the report's default view; 分地区 refines it and is off by
+  // default.  Region without the channel split is not a view the backend
+  // produces, so the region switch is gated on the channel one.
+  const [splitChannel, setSplitChannel] = useState(true);
+  const [splitRegion, setSplitRegion] = useState(false);
   const [drillGame, setDrillGame] = useState<string | null>(null);
   const [drillDate, setDrillDate] = useState<string | null>(null);
   // The report scrolls inside its own container (the chapter rail tracks it).
@@ -2931,14 +2978,17 @@ export default function DailyReportDetail() {
     [result?.project_summary, listedGames],
   );
 
-  // The merged view is the game-level table: every channel of a game rolled
-  // into one row, using the backend's whole-game rows (which carry the same
-  // metric fields, prev and daily series as a channel row).  It lists exactly
-  // the games the channel view lists, so the toggle changes the channel split
-  // and nothing else.
+  // 分地区 subdivides exactly the combos the channel view lists, so switching
+  // it never re-ranks the games.  Turning 分渠道 off falls back to the
+  // backend's whole-game rows, which carry the same metric fields, prev and
+  // daily series as a channel row — and list exactly the same games — so that
+  // switch changes the channel split and nothing else.
   const tableRows = useMemo<ProjectRow[]>(() => {
-    const channelRows = result?.projects ?? [];
-    if (!showMerged) return channelRows;
+    if (splitChannel) {
+      return splitRegion
+        ? (result?.project_regions ?? [])
+        : (result?.projects ?? []);
+    }
     return (result?.project_summary ?? [])
       .filter((p) => listedGames.has(p.project))
       .map((p) => ({
@@ -2962,7 +3012,14 @@ export default function DailyReportDetail() {
         prev: p.prev,
         daily: p.daily,
       }));
-  }, [showMerged, listedGames, result?.projects, result?.project_summary]);
+  }, [
+    splitChannel,
+    splitRegion,
+    listedGames,
+    result?.projects,
+    result?.project_regions,
+    result?.project_summary,
+  ]);
 
   const channelRows = useMemo<ComboRow[]>(
     () =>
@@ -3290,8 +3347,17 @@ export default function DailyReportDetail() {
                   breakevenLine={breakevenLine}
                   showDaily={showComboDaily}
                   onToggleDaily={() => setShowComboDaily((v) => !v)}
-                  merged={showMerged}
-                  onToggleMerged={() => setShowMerged((v) => !v)}
+                  splitChannel={splitChannel}
+                  onToggleChannel={() => {
+                    setSplitChannel((v) => {
+                      // Region subdivision only exists on top of the channel
+                      // split, so leaving that view drops the region switch.
+                      if (v) setSplitRegion(false);
+                      return !v;
+                    });
+                  }}
+                  splitRegion={splitRegion}
+                  onToggleRegion={() => setSplitRegion((v) => !v)}
                   expandLabel={resultIsWeekly ? "分周" : "分天"}
                 />
               </Box>
