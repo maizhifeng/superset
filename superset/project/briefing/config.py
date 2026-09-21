@@ -52,7 +52,10 @@ class DailyReportConfig:
     project_column: str = "主游戏"
     channel_column: str = "渠道商"
     ad_channel_column: str = "媒体"
-    region_column: str = ""
+    # 地区.  Both UA datasets now carry one (中国大陆 hardcodes ``mainland``),
+    # so the mapping resolves for every source; the 主游戏 × 渠道商 table only
+    # applies it behind the frontend's 分地区 switch.
+    region_column: str = "地区"
     business_column: str = ""
     channel_type_column: str = ""
     # 客户端平台 — splits the 核心指标速览 headline figures by client

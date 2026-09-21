@@ -991,7 +991,7 @@ def _select_combo_rows(
     return [rows[i] for i in sorted(keep)]
 
 
-def _build_project_combo_rows(
+def _combo_rows_for(
     df: pd.DataFrame,
     date_col: str,
     current_df: pd.DataFrame,
@@ -999,21 +999,17 @@ def _build_project_combo_rows(
     history: list[PeriodBucket],
     config: DailyReportConfig,
     ctx: DailyReportContext,
+    group_key: list[str],
 ) -> list[dict[str, Any]]:
-    """主游戏 × 渠道商 (× 地区) combo rows with a per-bucket mini-series.
+    """Build one row per ``group_key`` combination, spend-descending.
 
-    Which combos are listed — and in what order — is decided by
-    ``_select_combo_rows``; this function only builds them.
+    The key is passed in rather than derived so the channel view and its
+    region subdivision below stay independent: adding the region to the
+    dataset's mapping must not silently re-split the channel table.
     """
-    project_col = config.project_column
     rows: list[dict[str, Any]] = []
-    if current_df.empty or project_col not in current_df.columns:
+    if current_df.empty or not all(c in current_df.columns for c in group_key):
         return rows
-    group_key = [
-        c
-        for c in (project_col, config.channel_column, config.region_column)
-        if c in current_df.columns
-    ] or [project_col]
 
     cur_map = _bucket_group_metrics(current_df, group_key, config)
     prev_map = _bucket_group_metrics(prev_df, group_key, config)
@@ -1042,23 +1038,130 @@ def _build_project_combo_rows(
         )
         rows.append(row)
     rows.sort(key=lambda p: p["spend"], reverse=True)
-    top_n = ctx.top_projects_count or config.top_projects_count
-    rows = _select_combo_rows(rows, top_n, config.uncapped_channels or [])
+    return rows
+
+
+def _build_project_combo_rows(
+    df: pd.DataFrame,
+    date_col: str,
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    history: list[PeriodBucket],
+    config: DailyReportConfig,
+    ctx: DailyReportContext,
+) -> list[dict[str, Any]]:
+    """主游戏 × 渠道商 combo rows with a per-bucket mini-series.
+
+    Which combos are listed — and in what order — is decided by
+    ``_select_combo_rows``; this function only builds them.  The region is
+    deliberately *not* part of the key here: it subdivides this table from the
+    frontend's 分地区 switch instead (see ``_build_project_region_rows``), so
+    the default view keeps listing whole channels.
+    """
+    project_col = config.project_column
+    if current_df.empty or project_col not in current_df.columns:
+        return []
+    group_key = [
+        c for c in (project_col, config.channel_column) if c in current_df.columns
+    ] or [project_col]
+    rows = _combo_rows_for(
+        df, date_col, current_df, prev_df, history, config, ctx, group_key
+    )
+    if not rows:
+        return rows
     # Presentation order: a game and all its channels stay adjacent, the games
     # lead with the biggest total spend, and the channels inside a game remain
     # spend-descending.
     #
-    # Group order uses each game's *full* spend across every channel (before the
-    # cut) so the table's game order lines up with the 主游戏明细 chart above it;
-    # the cut itself only decides which combos are listed.
+    # Group order uses each game's *full* spend across every channel (read off
+    # the rows before the cut) so the table's game order lines up with the
+    # 主游戏明细 chart above it; the cut itself only decides which combos are
+    # listed.
     game_spend: dict[str, float] = {}
-    for key_vals, base in cur_map.items():
-        game = str(key_vals[0] or "") if key_vals else ""
-        game_spend[game] = game_spend.get(game, 0.0) + float(base.get("spend") or 0)
+    for row in rows:
+        game = str(row.get("project") or "")
+        game_spend[game] = game_spend.get(game, 0.0) + float(row.get("spend") or 0)
+
+    top_n = ctx.top_projects_count or config.top_projects_count
+    rows = _select_combo_rows(rows, top_n, config.uncapped_channels or [])
     rows.sort(
         key=lambda p: (
             -game_spend.get(str(p.get("project") or ""), 0.0),
             -float(p.get("spend") or 0),
+        )
+    )
+    return rows
+
+
+def _build_project_region_rows(
+    df: pd.DataFrame,
+    date_col: str,
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    history: list[PeriodBucket],
+    config: DailyReportConfig,
+    ctx: DailyReportContext,
+    combos: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """分地区: subdivide the combos the channel view already lists.
+
+    A pure refinement of ``_build_project_combo_rows`` — the region key is only
+    applied inside the (游戏, 渠道) pairs that survived the channel view's Top-N
+    cut, so switching 分地区 on subdivides the table instead of re-ranking it.
+    That matters here: the overseas source carries ~107 regions, and letting
+    them compete for the Top-N slots would fragment the game list.
+    """
+    region_col = config.region_column
+    project_col = config.project_column
+    channel_col = config.channel_column
+    if not region_col or not combos:
+        return []
+    if region_col not in current_df.columns or project_col not in current_df.columns:
+        return []
+
+    # Restrict every frame to the listed (游戏, 渠道) pairs, then group by region.
+    keep = {(str(r.get("project") or ""), str(r.get("channel") or "")) for r in combos}
+
+    def listed(frame: pd.DataFrame) -> pd.DataFrame:
+        if frame.empty or channel_col not in frame.columns:
+            return frame.iloc[0:0]
+        pairs = list(
+            zip(
+                frame[project_col].astype(str),
+                frame[channel_col].astype(str),
+                strict=True,
+            )
+        )
+        return frame[[pair in keep for pair in pairs]]
+
+    group_key = [
+        c for c in (project_col, channel_col, region_col) if c in current_df.columns
+    ]
+    rows = _combo_rows_for(
+        listed(df),
+        date_col,
+        listed(current_df),
+        listed(prev_df),
+        history,
+        config,
+        ctx,
+        group_key,
+    )
+    if not rows:
+        return rows
+
+    # Keep the parent table's ordering: game, then channel, then region.
+    order = {
+        (str(r.get("project") or ""), str(r.get("channel") or "")): i
+        for i, r in enumerate(combos)
+    }
+    rows.sort(
+        key=lambda r: (
+            order.get(
+                (str(r.get("project") or ""), str(r.get("channel") or "")),
+                len(order),
+            ),
+            -float(r.get("spend") or 0),
         )
     )
     return rows
@@ -1183,6 +1286,9 @@ def _build_report(
     projects = _build_project_combo_rows(
         df, date_col, current_df, prev_df, history, config, ctx
     )
+    project_regions = _build_project_region_rows(
+        df, date_col, current_df, prev_df, history, config, ctx, projects
+    )
     media = _build_media_rows(current_df, prev_df, config)
     platforms = _build_platform_rows(current_df, prev_df, config)
 
@@ -1205,6 +1311,7 @@ def _build_report(
         "daily_projects": daily_projects,
         "project_summary": project_summary,
         "projects": projects,
+        "project_regions": project_regions,
         "media": media,
         "platforms": platforms,
         "alerts": alerts,
@@ -1345,7 +1452,7 @@ def suggest_field_map(
     ad_channel_col = pick(
         "ad_aid", "ad_cmedia", "ad_pmedia", "媒体[ID]", "媒体", "广告渠道名称"
     )
-    region_col = pick("region", "country", "area", "主要地区")
+    region_col = pick("region", "country", "area", "地区", "主要地区")
     platform_col = pick("平台", "platform", "客户端", "platform_name")
     spend_col = pick("ad_real_cost", "ad_cost", "返点后消耗", "消耗", "spend", "cost")
     new_users_col = pick("n_unum", "act_num", "新增进入", "new_users", "激活")
@@ -1605,6 +1712,7 @@ def _empty_payload(
         "previous_period_end": previous.end.isoformat(),
         "core": {},
         "projects": [],
+        "project_regions": [],
         "media": [],
         "platforms": [],
         "alerts": [
