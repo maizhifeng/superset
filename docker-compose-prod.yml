@@ -35,7 +35,7 @@ services:
     <<: *prod-env
     image: redis:7
     container_name: superset_cache
-    restart: unless-stopped
+    restart: always
     command: sh -c 'redis-server --requirepass "$$REDIS_PASSWORD"'
     volumes:
       - redis:/data
@@ -44,7 +44,7 @@ services:
     <<: *prod-env
     image: postgres:17
     container_name: superset_db
-    restart: unless-stopped
+    restart: always
     volumes:
       - ./pgdata_prod:/var/lib/postgresql/data
       - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
@@ -58,7 +58,7 @@ services:
       <<: *common-build
     container_name: superset_app
     command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
-    restart: unless-stopped
+    restart: always
     ports:
       - 80:8088
     depends_on:
@@ -67,6 +67,9 @@ services:
     volumes: *superset-volumes
 
   superset-init:
+    # One-shot bootstrap (migrations, admin user, roles): it must run once and
+    # exit, so it deliberately keeps the default `no` policy while every
+    # resident service restarts `always`.
     <<: *prod-env
     environment:
       SERVER_LIMIT_REQUEST_LINE: 4096
@@ -93,7 +96,7 @@ services:
     environment:
       SERVER_LIMIT_REQUEST_LINE: 4096
       SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
-    restart: unless-stopped
+    restart: always
     depends_on:
       superset-init:
         condition: service_completed_successfully
@@ -114,7 +117,7 @@ services:
     environment:
       SERVER_LIMIT_REQUEST_LINE: 4096
       SERVER_LIMIT_REQUEST_FIELD_SIZE: 8190
-    restart: unless-stopped
+    restart: always
     depends_on:
       superset-init:
         condition: service_completed_successfully
