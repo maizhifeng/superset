@@ -30,11 +30,11 @@ ARG BUILD_TRANSLATIONS="false"
 # superset-node-mui used for building MUI frontend assets (Vite)
 ######################################################################
 FROM --platform=${BUILDPLATFORM} node:22-trixie-slim AS superset-node-mui
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    :
 
 COPY docker/ /app/docker/
+
+# Aliyun apt/pip mirrors + acquire timeouts for the build containers
+RUN /app/docker/setup-mirrors.sh
 
 # Install system dependencies required for native modules
 RUN /app/docker/apt-install.sh build-essential python3 zstd
@@ -60,9 +60,10 @@ RUN --mount=type=cache,target=/root/.npm \
 ######################################################################
 FROM python:${PY_VER} AS python-base
 
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    :
+COPY docker/ /app/docker/
+
+# Aliyun apt/pip/uv mirrors + acquire timeouts for the build containers
+RUN /app/docker/setup-mirrors.sh
 
 ARG SUPERSET_HOME="/app/superset_home"
 ENV SUPERSET_HOME=${SUPERSET_HOME}
@@ -77,8 +78,12 @@ COPY --chmod=755 docker/*.sh /app/docker/
 
 ARG PIP_INDEX_URL
 ARG UV_INDEX_URL
+ARG UV_DEFAULT_INDEX
+ARG UV_HTTP_TIMEOUT
 ENV PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
 ENV UV_INDEX_URL=${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}
+ENV UV_DEFAULT_INDEX=${UV_DEFAULT_INDEX:-https://mirrors.aliyun.com/pypi/simple/}
+ENV UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-60}
 RUN pip install --no-cache-dir --upgrade uv
 
 # Using uv as it's faster/simpler than pip
