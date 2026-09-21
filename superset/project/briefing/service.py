@@ -200,6 +200,7 @@ def _validate_columns(
         config.region_column,
         config.business_column,
         config.channel_type_column,
+        config.platform_column,
         config.spend_column,
         config.new_users_column,
         config.cpa_column,
@@ -501,6 +502,33 @@ def _sum_metric(df: pd.DataFrame, column: str) -> float:
     return float(pd.to_numeric(df[column], errors="coerce").fillna(0.0).sum())
 
 
+def _natural_rate(df: pd.DataFrame, config: DailyReportConfig) -> float | None:
+    """自然新增% — the organic share of a segment's new users.
+
+    A pure numerator-over-denominator ratio: the new users whose 媒体 is the
+    configured organic label over every new user in the frame.  This is the
+    dataset's ``自然新增%`` metric restated over the fetched rows, so the
+    multi-dataset union and the per-segment drill-downs share one formula
+    instead of each re-deriving the subset.
+
+    ``None`` (JSON null) when the ratio is undefined — the media column is not
+    mapped, or the segment has no new users at all.  Reporting 0.0 instead
+    would make "no organic traffic" indistinguishable from "no traffic".
+    """
+    ad_channel_col = config.ad_channel_column
+    users_col = config.new_users_column
+    if not ad_channel_col or not users_col:
+        return None
+    if ad_channel_col not in df.columns or users_col not in df.columns:
+        return None
+    users = pd.to_numeric(df[users_col], errors="coerce").fillna(0.0)
+    total = float(users.sum())
+    if not total:
+        return None
+    organic = users[df[ad_channel_col].astype(str) == config.natural_media_label]
+    return float(organic.sum()) / total
+
+
 def _range_subset(
     df: pd.DataFrame, date_col: str, start: date, end: date
 ) -> pd.DataFrame:
@@ -566,6 +594,7 @@ def _build_core_metrics(
         for key in _METRIC_KEYS:
             core[f"LTV{key}"] = None
             core[f"ROI{key}"] = None
+        core["natural_rate"] = None
         return core
     total_spend = float(pd.to_numeric(day_df[spend_col], errors="coerce").sum())
     total_users = float(pd.to_numeric(day_df[users_col], errors="coerce").sum())
@@ -580,7 +609,7 @@ def _build_core_metrics(
         {
             key: value
             for key, value in _ratio_fields(day_df, config).items()
-            if key in ("pay_rate", "retention_rate")
+            if key in ("pay_rate", "retention_rate", "natural_rate")
         }
     )
     for key, col in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
@@ -627,6 +656,7 @@ def _build_daily_series(
                 "recharge": cm.get("recharge", 0.0),
                 "pay_rate": cm.get("pay_rate"),
                 "retention_rate": cm.get("retention_rate"),
+                "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
                 **ltv_extra,
@@ -702,11 +732,15 @@ def _ratio_fields(
     """Headline ratio fields for a segment-level frame.
 
     ``ltv1``/``roi1`` plus ``pay_rate`` (1日付费率) and ``retention_rate``
-    (2日留存率), which share the ``new_users`` denominator.  A key is only
-    present when the corresponding metric column is configured, matching the
-    historical payload shape.
+    (2日留存率), which share the ``new_users`` denominator, and ``natural_rate``
+    (自然新增%).  A key is only present when the corresponding metric column is
+    configured, matching the historical payload shape.
     """
     fields: dict[str, float | None] = {}
+    # 自然新增% travels with every row like the ratios below it: the media
+    # dimension is fetched for every briefing, so the organic share is always
+    # available without a second query.
+    fields["natural_rate"] = _natural_rate(sub, config)
     # The maturation curve travels with every row, so a collapsed parent row
     # and the daily rows it discloses expose the same metric fields.
     for index, column in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
@@ -878,6 +912,7 @@ def _combo_bucket_series(
                 "recharge": cm.get("recharge", 0.0),
                 "pay_rate": cm.get("pay_rate"),
                 "retention_rate": cm.get("retention_rate"),
+                "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
                 **{f"ltv{key}": cm.get(f"LTV{key}") for key in (2, 3, 4, 5, 6, 7)},
@@ -1041,6 +1076,40 @@ def _build_media_rows(
     return rows
 
 
+def _build_platform_rows(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    config: DailyReportConfig,
+) -> list[dict[str, Any]]:
+    """Per-platform split of the 核心指标速览 headline figures.
+
+    Every platform present in the window is listed — including one that spent
+    nothing, which the media view deliberately drops.  A platform is a fixed
+    part of how the business is sliced, so hiding a slice would make the table's
+    rows silently fail to add up to the headline above it.
+
+    ``_bucket_group_metrics`` already returns each group's spend / new users /
+    CPA plus the ratio fields (自然新增%, LTV, ROI1), so the table and the
+    headline band share one roll-up instead of two subtly different ones.
+    """
+    platform_col = config.platform_column
+    rows: list[dict[str, Any]] = []
+    if not platform_col or current_df.empty or platform_col not in current_df.columns:
+        return rows
+    cur_map = _bucket_group_metrics(current_df, [platform_col], config)
+    prev_map = _bucket_group_metrics(prev_df, [platform_col], config)
+    for (platform,), base in cur_map.items():
+        rows.append(
+            {
+                **base,
+                "platform": platform,
+                "prev": prev_map.get((platform,), {}),
+            }
+        )
+    rows.sort(key=lambda p: p["spend"], reverse=True)
+    return rows
+
+
 def _build_report(
     df: pd.DataFrame,
     config: DailyReportConfig,
@@ -1092,6 +1161,7 @@ def _build_report(
         df, date_col, current_df, prev_df, history, config, ctx
     )
     media = _build_media_rows(current_df, prev_df, config)
+    platforms = _build_platform_rows(current_df, prev_df, config)
 
     alerts = _detect_alerts(core, config)
 
@@ -1113,6 +1183,7 @@ def _build_report(
         "project_summary": project_summary,
         "projects": projects,
         "media": media,
+        "platforms": platforms,
         "alerts": alerts,
         "thresholds": {
             "roi_critical_line": config.roi_critical_line,
@@ -1252,6 +1323,7 @@ def suggest_field_map(
         "ad_aid", "ad_cmedia", "ad_pmedia", "媒体[ID]", "媒体", "广告渠道名称"
     )
     region_col = pick("region", "country", "area", "主要地区")
+    platform_col = pick("平台", "platform", "客户端", "platform_name")
     spend_col = pick("ad_real_cost", "ad_cost", "返点后消耗", "消耗", "spend", "cost")
     new_users_col = pick("n_unum", "act_num", "新增进入", "new_users", "激活")
 
@@ -1283,6 +1355,7 @@ def suggest_field_map(
         "channel_column": channel_col,
         "ad_channel_column": ad_channel_col,
         "region_column": region_col or "",
+        "platform_column": platform_col or "",
         "spend_column": spend_col,
         "new_users_column": new_users_col,
         "cpa_column": spend_col,
@@ -1311,6 +1384,7 @@ _CANONICAL_DIMENSION_FIELDS = (
     "channel_column",
     "ad_channel_column",
     "region_column",
+    "platform_column",
     "spend_column",
     "new_users_column",
     "cpa_column",
@@ -1458,12 +1532,14 @@ def get_config_payload(config: DailyReportConfig) -> dict[str, Any]:
         "channel_column": config.channel_column,
         "ad_channel_column": config.ad_channel_column,
         "region_column": config.region_column,
+        "platform_column": config.platform_column,
         "spend_column": config.spend_column,
         "recharge_column": config.recharge_column,
         "pay_rate_column": config.pay_rate_column,
         "retention_column": config.retention_column,
         "new_users_column": config.new_users_column,
         "cpa_column": config.cpa_column,
+        "natural_media_label": config.natural_media_label,
         "ltv_columns": list(config.ltv_columns),
         "roi_columns": list(config.roi_columns),
         "alert_critical_threshold": config.alert_critical_threshold,
@@ -1500,6 +1576,7 @@ def _empty_payload(
         "core": {},
         "projects": [],
         "media": [],
+        "platforms": [],
         "alerts": [
             {
                 "level": "warning",

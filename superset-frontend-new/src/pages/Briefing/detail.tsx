@@ -1,6 +1,8 @@
 import {
+  memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -20,7 +22,6 @@ import DialogActions from "@mui/material/DialogActions";
 import Collapse from "@mui/material/Collapse";
 import Fade from "@mui/material/Fade";
 import Typography from "@mui/material/Typography";
-import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import { keyframes } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -30,12 +31,16 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CategoryIcon from "@mui/icons-material/Category";
+import TableChartIcon from "@mui/icons-material/TableChart";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs, { type Dayjs } from "dayjs";
 import PageHeader from "@/components/PageHeader";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
-import useReducedMotion from "@/hooks/useReducedMotion";
+import useReducedMotion, {
+  prefersReducedMotion,
+} from "@/hooks/useReducedMotion";
 import type { EChartsOption } from "echarts";
 import { supersetPalette } from "@/theme/palette";
 import { duration as durationTokens, ease as easeTokens } from "@/theme/tokens";
@@ -79,7 +84,6 @@ const TERMINAL_MUTED = "#8b949e";
 const TERMINAL_HOVER = "rgba(255,255,255,0.04)";
 
 /** Height of one chapter-navigation item; the active pill slides by this much. */
-const TOC_ITEM_HEIGHT = 32;
 
 // Local keyframes.  Every one of them collapses to instant under the theme's
 // global ``prefers-reduced-motion: reduce`` rule.
@@ -103,6 +107,8 @@ interface CoreMetrics {
   cpa?: number | null;
   /** 充值流水：周期内充值合计（纯加法指标）。 */
   recharge?: number;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   ROI1?: number | null;
   LTV1?: number | null;
   [key: string]: number | null | undefined;
@@ -122,6 +128,8 @@ interface ProjectRow {
   new_users: number;
   pay_rate?: number | null;
   retention_rate?: number | null;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -150,6 +158,8 @@ interface ProjectSummaryRow {
   new_users: number;
   pay_rate?: number | null;
   retention_rate?: number | null;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -179,6 +189,8 @@ interface MediaRow {
   new_users: number;
   pay_rate?: number | null;
   retention_rate?: number | null;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   cpa: number | null;
   recharge?: number;
   ltv1?: number | null;
@@ -200,6 +212,8 @@ interface DailyProjectRow {
   new_users: number;
   pay_rate?: number | null;
   retention_rate?: number | null;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -238,6 +252,8 @@ interface DailyReportResult {
   project_summary?: ProjectSummaryRow[];
   projects?: ProjectRow[];
   media?: MediaRow[];
+  /** 核心指标的平台拆分（核心指标速览的「查看数据表」）。 */
+  platforms?: PlatformRow[];
   alerts?: AlertItem[];
   empty?: boolean;
   error?: string;
@@ -250,18 +266,24 @@ interface DailyReportResult {
   };
 }
 
-interface DailyTrendRow {
-  date: string;
-  /** Human label for the bucket ("MM-DD ~ MM-DD" for weekly briefings). */
-  label?: string;
+/**
+ * The metric fields a comparison table row carries.
+ *
+ * Daily buckets (分天对比) and platform rows (核心指标速览) expose the same set,
+ * so both tables build their cells through ``metricRowValues`` instead of each
+ * mapping the fields their own way.
+ */
+interface MetricRow {
   spend: number;
   new_users: number;
   cpa: number | null;
-  /** 充值流水（该 bucket 的充值合计）。 */
+  /** 充值流水。 */
   recharge?: number;
   /** 1日付费率 / 2日留存率（分母为新增进入）。 */
   pay_rate?: number | null;
   retention_rate?: number | null;
+  /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
+  natural_rate?: number | null;
   ltv1: number | null;
   ltv2?: number | null;
   ltv3?: number | null;
@@ -269,7 +291,20 @@ interface DailyTrendRow {
   ltv5?: number | null;
   ltv6?: number | null;
   ltv7?: number | null;
+  roi1: number | null;
+}
+
+interface DailyTrendRow extends MetricRow {
+  date: string;
+  /** Human label for the bucket ("MM-DD ~ MM-DD" for weekly briefings). */
+  label?: string;
   roi1: number;
+}
+
+/** One platform's slice of the 核心指标速览 headline figures. */
+interface PlatformRow extends MetricRow {
+  platform: string;
+  prev?: MetricRow;
 }
 
 interface JobLog {
@@ -291,6 +326,7 @@ interface JobInfo {
 const SPEND_LABEL = "返点后消耗";
 const RECHARGE_LABEL = "充值流水";
 const PAY_RATE_LABEL = "1日付费率";
+const NATURAL_RATE_LABEL = "自然新增%";
 /** Channel cell text of a merged ("不分客户端") row. */
 const MERGED_CHANNEL_LABEL = "全部渠道";
 const RETENTION_LABEL = "2日留存率";
@@ -441,6 +477,7 @@ function metricColumnDefs(ltvDays: number[]) {
     { key: "spendDelta", label: "消耗环比", numeric: true },
     { key: "recharge", label: RECHARGE_LABEL, numeric: true },
     { key: "newUsers", label: USERS_LABEL, numeric: true },
+    { key: "naturalRate", label: NATURAL_RATE_LABEL, numeric: true },
     { key: "payRate", label: PAY_RATE_LABEL, numeric: true },
     { key: "retentionRate", label: RETENTION_LABEL, numeric: true },
     { key: "cpa", label: "CPA", numeric: true },
@@ -463,6 +500,7 @@ interface MetricValues {
   newUsers: number;
   payRate: number | null | undefined;
   retentionRate: number | null | undefined;
+  naturalRate: number | null | undefined;
   cpa: number | null | undefined;
   ltv: Record<number, number | null | undefined>;
   roi1: number | null | undefined;
@@ -505,6 +543,7 @@ function metricCellsText(
     { key: "spendDelta", ...delta(values.spendDelta, false) },
     { key: "recharge", text: formatNumber(values.recharge) },
     { key: "newUsers", text: String(values.newUsers) },
+    { key: "naturalRate", text: formatPercent(values.naturalRate) },
     { key: "payRate", text: formatPercent(values.payRate) },
     { key: "retentionRate", text: formatPercent(values.retentionRate) },
     { key: "cpa", text: formatNumber(values.cpa, 1) },
@@ -525,10 +564,39 @@ const REEL_MS = 380;
 const REEL_STAGGER_MS = 24;
 
 /**
+ * The reel's two curves, in Web Animations API form.
+ *
+ * They used to be CSS ``@keyframes`` toggled by per-cell React state.  That
+ * made every value change a state round-trip inside each cell — ~200 cells
+ * rendering three times each, spread over ~18 commit waves because the
+ * per-column stagger meant 18 separate ``setTimeout`` batches.  Measured on
+ * the briefing page that was 160-450ms of main-thread JS for one switch, with
+ * style+layout accounting for only ~30ms of it.
+ *
+ * Driving the same curves through ``element.animate()`` keeps React out of the
+ * animation entirely: the parent commits once with the new text, and each cell
+ * starts its own roll synchronously before paint.
+ */
+const REEL_OUT_KEYFRAMES: Keyframe[] = [
+  { transform: "translateY(0)", opacity: 1 },
+  { transform: "translateY(-0.9em)", opacity: 0 },
+];
+const REEL_IN_KEYFRAMES: Keyframe[] = [
+  { transform: "translateY(0.9em)", opacity: 0 },
+  { transform: "translateY(0)", opacity: 1 },
+];
+
+/**
  * A figure that rolls over when its text changes: the old value rises out of
  * the cell while the new one rises in, like a wheel.
+ *
+ * Memoised and style-static on purpose — the briefing tables mount ~200 of
+ * these, so the component must neither allocate an emotion class per render
+ * nor re-render when its own figure is unchanged.  The outgoing figure is a
+ * permanent, clipped, ``aria-hidden`` sibling that is filled in and animated
+ * imperatively, so a roll costs two ``animate()`` calls and zero React work.
  */
-function WheelValue({
+const WheelValue = memo(function WheelValue({
   text,
   color,
   delay = 0,
@@ -537,67 +605,65 @@ function WheelValue({
   color?: string;
   delay?: number;
 }) {
+  const outRef = useRef<HTMLSpanElement>(null);
+  const inRef = useRef<HTMLSpanElement>(null);
   const previous = useRef(text);
-  const [outgoing, setOutgoing] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (previous.current === text) return undefined;
+  // Layout effect, not a passive one: the roll has to be applied before the
+  // browser paints the settled figure, or the cell flashes its new value for a
+  // frame before rolling.
+  useLayoutEffect(() => {
     const from = previous.current;
     previous.current = text;
-    setOutgoing(from);
-    const timer = setTimeout(() => setOutgoing(null), REEL_MS + delay);
-    return () => clearTimeout(timer);
+    const out = outRef.current;
+    const incoming = inRef.current;
+    if (from === text || !out || !incoming) return undefined;
+    // The global reduce-motion rule only reaches CSS animations, and this roll
+    // is JS-driven, so it has to honour the preference itself.
+    if (prefersReducedMotion()) {
+      out.textContent = "";
+      return undefined;
+    }
+    out.textContent = from;
+    const timing: KeyframeAnimationOptions = {
+      duration: REEL_MS,
+      delay,
+      easing: easeTokens.decelerate,
+      // ``both`` holds the outgoing figure in place through the stagger delay
+      // and leaves the incoming one settled at the end.
+      fill: "both",
+    };
+    const outAnim = out.animate(REEL_OUT_KEYFRAMES, timing);
+    const inAnim = incoming.animate(REEL_IN_KEYFRAMES, timing);
+    const release = () => {
+      out.textContent = "";
+      // A finished ``fill: both`` animation keeps its composited layer alive;
+      // both elements rest at their natural style once the roll lands, so
+      // cancelling releases the layer without changing what is painted.
+      outAnim.cancel();
+      inAnim.cancel();
+    };
+    outAnim.onfinish = release;
+    // Re-entrant on purpose: a new figure arriving mid-roll cancels the old
+    // one, and cleanup runs before the next effect body in the same commit, so
+    // the cell never paints two overlapping figures.
+    return release;
   }, [text, delay]);
 
   return (
-    <Box
-      component="span"
-      sx={{
-        position: "relative",
-        display: "inline-block",
-        overflow: "hidden",
-        lineHeight: 1.35,
-        verticalAlign: "bottom",
-        color,
-      }}
-    >
-      {outgoing !== null && (
-        <Box
-          component="span"
-          aria-hidden
-          sx={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            animation: `briefingReelOut ${REEL_MS}ms ${easeTokens.decelerate} both`,
-            animationDelay: `${delay}ms`,
-          }}
-        >
-          {outgoing}
-        </Box>
-      )}
-      <Box
-        component="span"
-        sx={{
-          display: "inline-block",
-          animation:
-            outgoing === null
-              ? undefined
-              : `briefingReelIn ${REEL_MS}ms ${easeTokens.decelerate} both`,
-          animationDelay: outgoing === null ? undefined : `${delay}ms`,
-        }}
-      >
+    <span className="briefing-wheel" style={color ? { color } : undefined}>
+      <span ref={outRef} className="briefing-wheel-out" aria-hidden />
+      <span ref={inRef} className="briefing-wheel-in">
         {text}
-      </Box>
-    </Box>
+      </span>
+    </span>
   );
-}
+});
 
-/** A day's values, with 环比 measured against the day before it. */
-function dailyMetricValues(
-  row: DailyTrendRow,
-  prev: DailyTrendRow | undefined,
+/** A row's values, with 环比 measured against the comparable previous row. */
+function metricRowValues(
+  row: MetricRow,
+  prev: MetricRow | undefined,
 ): MetricValues {
   return {
     spend: row.spend,
@@ -607,6 +673,7 @@ function dailyMetricValues(
     newUsers: row.new_users,
     payRate: row.pay_rate,
     retentionRate: row.retention_rate,
+    naturalRate: row.natural_rate,
     cpa: row.cpa,
     ltv: {
       1: row.ltv1,
@@ -618,7 +685,12 @@ function dailyMetricValues(
       7: row.ltv7,
     },
     roi1: row.roi1,
-    roi1Delta: prev && prev.roi1 ? (row.roi1 - prev.roi1) / prev.roi1 : null,
+    // ``row.roi1`` is only null for a segment with no spend at all (platform
+    // rows can be); the previous side keeps the original non-zero guard.
+    roi1Delta:
+      row.roi1 === null || !prev?.roi1
+        ? null
+        : (row.roi1 - prev.roi1) / prev.roi1,
   };
 }
 
@@ -635,6 +707,7 @@ function totalsMetricValues(
     newUsers: totals.new_users,
     payRate: totals.pay_rate,
     retentionRate: totals.retention_rate,
+    naturalRate: totals.natural_rate,
     cpa: totals.cpa,
     ltv: Object.fromEntries(ltvDays.map((d) => [d, totals.ltv[d]])),
     roi1: totals.roi1,
@@ -642,15 +715,19 @@ function totalsMetricValues(
   };
 }
 
-/** The trend chart's text alternative: the report's daily rows as a table. */
-function ChartDataTable({
+/**
+ * 分天对比's sub-table: the report's daily rows as text.
+ *
+ * It is rendered by ``TrendOverview``, which owns the strip that discloses it,
+ * so this component is only the table.
+ */
+function DailyDataTable({
   rows,
   ltvDays,
 }: {
   rows: DailyTrendRow[];
   ltvDays: number[];
 }) {
-  const [open, setOpen] = useState(false);
   const columns = metricColumnDefs(ltvDays);
   const ordered = useMemo(
     () =>
@@ -658,15 +735,331 @@ function ChartDataTable({
     [rows],
   );
   return (
-    <Box sx={{ mt: 1 }}>
-      <Button
-        size="small"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        startIcon={open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+    <Box
+      sx={{
+        p: 1,
+        border: "1px solid",
+        borderColor: "divider",
+        borderTop: 0,
+        borderRadius: "0 0 4px 4px",
+      }}
+    >
+      <Box sx={{ overflowX: "auto" }}>
+        <table
+          className={BRIEFING_TABLE_CLASS}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "12px",
+            textAlign: "left",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={briefingTable.headCell("5px 8px")}>日期</th>
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  style={briefingTable.headCell("5px 8px", {
+                    numeric: c.numeric,
+                  })}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((row, i) => (
+              <tr key={row.date} style={briefingTable.zebraRow(i)}>
+                <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
+                  {row.label ?? row.date}
+                </td>
+                {metricCellsText(
+                  metricRowValues(row, ordered[i - 1]),
+                  ltvDays,
+                ).map((cell) => (
+                  <td
+                    key={cell.key}
+                    title={cell.title}
+                    style={briefingTable.bodyCell({
+                      numeric: true,
+                      padding: "5px 8px",
+                    })}
+                  >
+                    <span
+                      style={cell.color ? { color: cell.color } : undefined}
+                    >
+                      {cell.text}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+    </Box>
+  );
+}
+
+/**
+ * §2 分天对比: the trend chart plus the daily table it discloses.
+ *
+ * Mirrors §1's 分业务板块 split — the same strip welded to the surface above
+ * it, the same collapse underneath — so the report's disclosures read as one
+ * mechanism instead of each section inventing its own affordance.
+ */
+function TrendOverview({
+  rows,
+  ltvDays,
+  weekly,
+  onSelect,
+}: {
+  rows: DailyTrendRow[];
+  ltvDays: number[];
+  weekly: boolean;
+  onSelect?: (label: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TrendChart
+        rows={rows}
+        title=""
+        onSelect={onSelect}
+        footer={
+          <ExpandStrip
+            label={weekly ? "分周明细" : "分天明细"}
+            icon={<TableChartIcon sx={{ fontSize: 16 }} />}
+            open={open}
+            onToggle={() => setOpen((v) => !v)}
+          />
+        }
+      />
+      <Collapse
+        in={open}
+        unmountOnExit
+        timeout={{
+          enter: durationTokens.standard,
+          exit: durationTokens.exit,
+        }}
       >
-        {open ? "收起数据表" : "查看数据表"}
-      </Button>
+        <DailyDataTable rows={rows} ltvDays={ltvDays} />
+      </Collapse>
+    </>
+  );
+}
+
+/**
+ * The seven headline figures, as values rather than a rendered band.
+ *
+ * ``CoreMetrics`` uses the payload's ``LTV1`` / ``ROI1`` spelling while every
+ * table row uses ``ltv1`` / ``roi1``; call sites normalise onto this shape so
+ * one component can render both.
+ */
+interface CoreBandValues {
+  spend?: number;
+  recharge?: number;
+  new_users?: number;
+  natural_rate?: number | null;
+  cpa?: number | null;
+  ltv1?: number | null;
+  roi1?: number | null;
+}
+
+/**
+ * 核心指标速览's band: one outlined surface, hairline-separated cards.
+ *
+ * Shared by the headline band and every platform band in the expanded
+ * breakdown, so a platform's figures are laid out exactly like the total's —
+ * which is what makes the split readable at a glance.
+ */
+function CoreStatBand({
+  values,
+  previous,
+  footer,
+}: {
+  values: CoreBandValues;
+  previous?: CoreBandValues;
+  /** Attached strip below the cards, inside the same surface. */
+  footer?: ReactNode;
+}) {
+  const pct = (cur?: number | null, base?: number | null) =>
+    base ? ((cur ?? 0) - base) / base : null;
+  const tiles = [
+    {
+      label: SPEND_LABEL,
+      value: formatNumber(values.spend),
+      delta: pct(values.spend, previous?.spend),
+      neutral: true,
+    },
+    {
+      label: RECHARGE_LABEL,
+      value: formatNumber(values.recharge),
+      delta: pct(values.recharge, previous?.recharge),
+    },
+    {
+      label: USERS_LABEL,
+      value: formatNumber(values.new_users, 0),
+      delta: pct(values.new_users, previous?.new_users),
+    },
+    {
+      // 自然新增% is a share, so its 环比 is the change in the share itself
+      // rather than a growth rate of a count.
+      label: NATURAL_RATE_LABEL,
+      value: formatPercent(values.natural_rate),
+      delta: pct(values.natural_rate, previous?.natural_rate),
+    },
+    {
+      label: "CPA",
+      value: formatNumber(values.cpa, 1),
+      delta: pct(values.cpa, previous?.cpa),
+      higherIsBetter: false,
+    },
+    {
+      label: "LTV1",
+      value: formatNumber(values.ltv1, 2),
+      delta: pct(values.ltv1, previous?.ltv1),
+    },
+    {
+      label: "ROI1",
+      value: formatPercent(values.roi1),
+      delta: pct(values.roi1, previous?.roi1),
+    },
+  ];
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ overflow: "hidden", bgcolor: supersetPalette.surface.main }}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          "& > *:not(:first-of-type)": {
+            borderLeft: `1px solid ${DIVIDER}`,
+          },
+        }}
+      >
+        {tiles.map((tile) => (
+          <StatTile
+            key={tile.label}
+            label={tile.label}
+            value={tile.value}
+            delta={tile.delta}
+            neutral={tile.neutral}
+            higherIsBetter={tile.higherIsBetter}
+          />
+        ))}
+      </Box>
+      {footer}
+    </Paper>
+  );
+}
+
+/**
+ * A full-width strip welded to the bottom edge of a section's surface, which
+ * opens the detail sitting underneath it.
+ *
+ * It lives inside that surface, under a hairline, rather than floating below
+ * it: as a plain text button a margin down it read as page furniture, and the
+ * detail it opens went unnoticed.  §1's 分业务板块 split and §2's daily table
+ * share it, so the report's disclosures read as one mechanism.
+ */
+function ExpandStrip({
+  label,
+  icon,
+  open,
+  onToggle,
+}: {
+  label: string;
+  icon: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 0.75,
+        width: "100%",
+        py: 0.75,
+        border: 0,
+        borderTop: "1px solid",
+        borderColor: "divider",
+        bgcolor: open ? "primary.container" : "action.hover",
+        color: open ? "primary.onContainer" : "text.primary",
+        font: "inherit",
+        fontSize: "0.8125rem",
+        fontWeight: 600,
+        cursor: "pointer",
+        transition: "background-color 150ms ease, color 150ms ease",
+        "&:hover": { bgcolor: "action.selected" },
+      }}
+    >
+      {icon}
+      {label}
+      {open ? (
+        <ExpandLessIcon sx={{ fontSize: 18 }} />
+      ) : (
+        <ExpandMoreIcon sx={{ fontSize: 18 }} />
+      )}
+    </Box>
+  );
+}
+
+/**
+ * §1 核心指标速览: the headline band plus the 分业务板块 split it opens.
+ *
+ * The split renders the *same* band component once per platform, so a
+ * platform's cards line up with the total's — which is what makes the
+ * breakdown readable at a glance.
+ */
+function CoreOverview({
+  core,
+  previous,
+  rows,
+}: {
+  core: CoreMetrics;
+  previous: CoreMetrics;
+  rows: PlatformRow[];
+}) {
+  const [open, setOpen] = useState(false);
+  // ``CoreMetrics`` carries the payload's ``LTV1`` / ``ROI1`` spelling; the
+  // band speaks the lowercase row spelling.
+  const headline: CoreBandValues = {
+    ...core,
+    ltv1: core.LTV1,
+    roi1: core.ROI1,
+  };
+  const headlinePrevious: CoreBandValues = {
+    ...previous,
+    ltv1: previous.LTV1,
+    roi1: previous.ROI1,
+  };
+  return (
+    <>
+      <CoreStatBand
+        values={headline}
+        previous={headlinePrevious}
+        footer={
+          rows.length > 0 ? (
+            <ExpandStrip
+              label="分业务板块"
+              icon={<CategoryIcon sx={{ fontSize: 16 }} />}
+              open={open}
+              onToggle={() => setOpen((v) => !v)}
+            />
+          ) : undefined
+        }
+      />
       <Collapse
         in={open}
         unmountOnExit
@@ -676,70 +1069,22 @@ function ChartDataTable({
         }}
       >
         <Box
-          sx={{
-            mt: 1,
-            p: 1,
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1,
-          }}
+          sx={{ pt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}
         >
-          <Box sx={{ overflowX: "auto" }}>
-            <table
-              className={BRIEFING_TABLE_CLASS}
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "12px",
-                textAlign: "left",
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={briefingTable.headCell("5px 8px")}>日期</th>
-                  {columns.map((c) => (
-                    <th
-                      key={c.key}
-                      style={briefingTable.headCell("5px 8px", {
-                        numeric: c.numeric,
-                      })}
-                    >
-                      {c.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ordered.map((row, i) => (
-                  <tr key={row.date} style={briefingTable.zebraRow(i)}>
-                    <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
-                      {row.label ?? row.date}
-                    </td>
-                    {metricCellsText(
-                      dailyMetricValues(row, ordered[i - 1]),
-                      ltvDays,
-                    ).map((cell) => (
-                      <td
-                        key={cell.key}
-                        title={cell.title}
-                        style={briefingTable.bodyCell({
-                          numeric: true,
-                          padding: "5px 8px",
-                        })}
-                      >
-                        <Box component="span" sx={{ color: cell.color }}>
-                          {cell.text}
-                        </Box>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Box>
+          {rows.map((row) => (
+            <Box key={row.platform}>
+              <Typography
+                variant="subtitle2"
+                sx={{ mb: 0.5, color: TEXT_MUTED }}
+              >
+                {row.platform || "-"}
+              </Typography>
+              <CoreStatBand values={row} previous={row.prev} />
+            </Box>
+          ))}
         </Box>
       </Collapse>
-    </Box>
+    </>
   );
 }
 
@@ -872,6 +1217,7 @@ function ProjectComboTable({
                     newUsers: p.new_users,
                     payRate: p.pay_rate,
                     retentionRate: p.retention_rate,
+                    naturalRate: p.natural_rate,
                     cpa: p.cpa,
                     ltv: {
                       1: p.ltv1,
@@ -975,9 +1321,13 @@ function ProjectComboTable({
                           style={smallNumCell}
                           title={cell.title}
                         >
-                          <Box component="span" sx={{ color: cell.color }}>
+                          <span
+                            style={
+                              cell.color ? { color: cell.color } : undefined
+                            }
+                          >
                             {cell.text}
-                          </Box>
+                          </span>
                         </td>
                       ))}
                       <td style={smallNumCell}>
@@ -1023,7 +1373,7 @@ function disclosedDays(
   );
   return ordered.map((row, i) => ({
     row,
-    values: dailyMetricValues(row, ordered[i - 1]),
+    values: metricRowValues(row, ordered[i - 1]),
   }));
 }
 
@@ -1126,10 +1476,13 @@ function TrendChart({
   rows,
   title = "分天对比",
   onSelect,
+  footer,
 }: {
   rows: DailyTrendRow[];
   title?: string;
   onSelect?: (label: string) => void;
+  /** Attached strip below the plot, inside the same surface. */
+  footer?: ReactNode;
 }) {
   // The series is newest-first; flip to chronological so the time axis reads
   // left-to-right as past → reported period.
@@ -1317,32 +1670,37 @@ function TrendChart({
   }, [ordered, onSelect]);
 
   return (
-    <Paper sx={{ p: 2 }} variant="outlined">
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          mb: 1,
-        }}
-      >
-        {title ? (
-          <Typography variant="subtitle1">{title}</Typography>
-        ) : (
-          <span />
-        )}
-        {onSelect && (
-          <Typography variant="caption" sx={{ color: "text.secondary" }}>
-            点击柱可下钻
-          </Typography>
-        )}
+    // The padding lives on an inner box so ``footer`` can run full-bleed to the
+    // surface's edges, exactly like §1's 分业务板块 strip.
+    <Paper variant="outlined" sx={{ overflow: "hidden" }}>
+      <Box sx={{ p: 2 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 1,
+          }}
+        >
+          {title ? (
+            <Typography variant="subtitle1">{title}</Typography>
+          ) : (
+            <span />
+          )}
+          {onSelect && (
+            <Typography variant="caption" sx={{ color: "text.secondary" }}>
+              点击柱可下钻
+            </Typography>
+          )}
+        </Box>
+        <EChart
+          option={option}
+          height={360}
+          onEvents={onEvents}
+          ariaLabel={`${title}：按时间对比返点后消耗、新增进入、ROI1 与 LTV1，点击柱可下钻查看当天的分游戏明细`}
+        />
       </Box>
-      <EChart
-        option={option}
-        height={360}
-        onEvents={onEvents}
-        ariaLabel={`${title}：按时间对比返点后消耗、新增进入、ROI1 与 LTV1，点击柱可下钻查看当天的分游戏明细`}
-      />
+      {footer}
     </Paper>
   );
 }
@@ -1842,147 +2200,101 @@ function reportChapters(trendLabel: string): { id: string; label: string }[] {
   ];
 }
 
+/** Horizontal cut (px) on each chapter card's leading and trailing edges. */
+const CHAPTER_SLANT_PX = 9;
+/** Floor on a step's width, so the shorter labels still read as full blocks. */
+const CHAPTER_STEP_MIN_WIDTH = 104;
+
 /**
- * Chapter navigation, rendered as a real layout column instead of a floating
- * overlay.
+ * Chapter jump nav, rendered inside the breadcrumb bar as a step progress bar.
  *
- * The previous fixed-position panel sat on top of the charts (measured 20px of
- * overlap at every breakpoint from 1024 to 1920), so it now occupies its own
- * rail and can never cover the plot area.  The active chapter is marked by a
- * pill that slides between items, and the rail itself tracks scroll progress.
+ * It started as a plain row of text buttons, which read as incidental chrome
+ * rather than navigation.  Each chapter is now a slanted card in a stepped
+ * bar — quadrilaterals cut on the leading and trailing edges, flat at the two
+ * outer ends so the group still reads as one continuous control — and the fill
+ * climbs with the reader's position: reached chapters tinted, the current one
+ * solid, the rest neutral.  That makes "where am I" legible from the shape of
+ * the bar alone, without reading the labels.
  */
-function ReportToc({
+function ChapterNav({
   chapters,
   activeId,
-  scrollRef,
+  onJump,
 }: {
   chapters: { id: string; label: string }[];
   activeId: string;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onJump: (id: string) => void;
 }) {
-  const reduced = useReducedMotion();
-  const progressRef = useRef<HTMLDivElement | null>(null);
   const activeIndex = Math.max(
     0,
     chapters.findIndex((c) => c.id === activeId),
   );
-
-  // Scroll progress is written straight to the DOM: driving it through state
-  // would re-render the whole report on every scroll event.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return undefined;
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const max = el.scrollHeight - el.clientHeight;
-      const ratio = max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
-      if (progressRef.current) {
-        progressRef.current.style.transform = `scaleY(${Math.max(0.02, ratio)})`;
-      }
-    };
-    const onScroll = () => {
-      if (!frame) frame = requestAnimationFrame(update);
-    };
-    update();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      el.removeEventListener("scroll", onScroll);
-    };
-  }, [scrollRef]);
-
   return (
     <Box
       component="nav"
       aria-label="章节导航"
       sx={{
-        display: { xs: "none", md: "flex" },
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "stretch",
+        display: "flex",
+        alignItems: "center",
+        gap: "2px",
+        minWidth: 0,
         flexShrink: 0,
-        width: 112,
-        pr: 1.5,
       }}
     >
-      <Box
-        sx={{
-          position: "relative",
-          bgcolor: "background.paper",
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 2,
-          p: 0.5,
-          overflow: "hidden",
-        }}
-      >
-        <Box
-          ref={progressRef}
-          aria-hidden
-          sx={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 2,
-            bgcolor: "primary.main",
-            transformOrigin: "top",
-            transform: "scaleY(0)",
-            transition: reduced
-              ? "none"
-              : `transform ${durationTokens.quick}ms linear`,
-          }}
-        />
-        <Box
-          aria-hidden
-          sx={{
-            position: "absolute",
-            left: 4,
-            right: 4,
-            top: 4,
-            height: TOC_ITEM_HEIGHT,
-            borderRadius: 1,
-            bgcolor: "action.selected",
-            transform: `translateY(${activeIndex * TOC_ITEM_HEIGHT}px)`,
-            transition: reduced
-              ? "none"
-              : `transform ${durationTokens.standard}ms ${easeTokens.decelerate}`,
-          }}
-        />
-        <Stack>
-          {chapters.map((c) => {
-            const active = c.id === activeId;
-            return (
-              <Button
-                key={c.id}
-                size="small"
-                aria-current={active ? "true" : undefined}
-                onClick={() => {
-                  document.getElementById(c.id)?.scrollIntoView({
-                    behavior: reduced ? "auto" : "smooth",
-                    block: "start",
-                  });
-                }}
-                sx={{
-                  position: "relative",
-                  zIndex: 1,
-                  height: TOC_ITEM_HEIGHT,
-                  minWidth: 0,
-                  justifyContent: "flex-start",
-                  px: 1,
-                  textTransform: "none",
-                  fontSize: "0.75rem",
-                  color: active ? "primary.main" : "text.secondary",
-                  fontWeight: active ? 700 : 400,
-                }}
-              >
-                {c.label}
-              </Button>
-            );
-          })}
-        </Stack>
-      </Box>
+      {chapters.map((chapter, i) => {
+        const active = i === activeIndex;
+        const reached = i <= activeIndex;
+        const first = i === 0;
+        const last = i === chapters.length - 1;
+        // A parallelogram per step: the leading edge leans one way and the
+        // trailing edge the same way, so neighbours cut parallel to each other.
+        const cut = `polygon(${first ? 0 : CHAPTER_SLANT_PX}px 0, 100% 0, calc(100% - ${
+          last ? 0 : CHAPTER_SLANT_PX
+        }px) 100%, 0 100%)`;
+        return (
+          <Box
+            key={chapter.id}
+            component="button"
+            type="button"
+            onClick={() => onJump(chapter.id)}
+            aria-current={active ? "step" : undefined}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 32,
+              minWidth: CHAPTER_STEP_MIN_WIDTH,
+              border: 0,
+              font: "inherit",
+              fontSize: "0.9375rem",
+              fontWeight: active ? 700 : 500,
+              lineHeight: 1,
+              letterSpacing: 0,
+              px: `${CHAPTER_SLANT_PX + 12}px`,
+              clipPath: cut,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              bgcolor: active
+                ? "primary.main"
+                : reached
+                  ? "primary.container"
+                  : "action.hover",
+              color: active
+                ? "primary.contrastText"
+                : reached
+                  ? "primary.onContainer"
+                  : "text.disabled",
+              transition: "background-color 150ms ease, color 150ms ease",
+              "&:hover": {
+                bgcolor: active ? "primary.dark" : "action.selected",
+                color: active ? "primary.contrastText" : "text.primary",
+              },
+            }}
+          >
+            {chapter.label}
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -2354,14 +2666,6 @@ export default function DailyReportDetail() {
     );
   }, [reportType]);
 
-  // Reflect the loaded report name in the global breadcrumb so the detail
-  // route stays connected to the "每日简报" list trail and is reachable by
-  // clicking the breadcrumb.  Clear it on leave so no stale name lingers.
-  useEffect(() => {
-    if (config) setCustomBreadcrumb({ label: reportName });
-    return () => setCustomBreadcrumb(null);
-  }, [config, reportName, setCustomBreadcrumb]);
-
   useEffect(() => () => stopPolling(), []);
 
   // Scroll-spy: highlight the chapter currently in view so the side jump
@@ -2395,6 +2699,48 @@ export default function DailyReportDetail() {
     });
     return () => observer.disconnect();
   }, [result, chapters]);
+
+  // Chapters jump within the report's own scroll container; the browser walks
+  // up to the nearest scrollable ancestor for us.
+  const jumpToChapter = useCallback((id: string) => {
+    document.getElementById(id)?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      block: "start",
+    });
+  }, []);
+  const hasChapters = Boolean(result && !result.empty);
+
+  // The breadcrumb carries both the report name and the chapter jump nav: the
+  // chapters are part of "where am I in this report", and hosting them here
+  // keeps them off the plot area.  The active chapter is re-highlighted as the
+  // scroll-spy moves, without tearing the breadcrumb down in between.
+  useEffect(() => {
+    if (!config) {
+      setCustomBreadcrumb(null);
+      return;
+    }
+    setCustomBreadcrumb({
+      label: reportName,
+      actions: hasChapters ? (
+        <ChapterNav
+          chapters={chapters}
+          activeId={activeSection}
+          onJump={jumpToChapter}
+        />
+      ) : undefined,
+    });
+  }, [
+    config,
+    reportName,
+    chapters,
+    activeSection,
+    hasChapters,
+    jumpToChapter,
+    setCustomBreadcrumb,
+  ]);
+
+  // Clear on leave so no stale name lingers on the next route.
+  useEffect(() => () => setCustomBreadcrumb(null), [setCustomBreadcrumb]);
 
   const loadJob = useCallback(async (jid: string) => {
     try {
@@ -2509,19 +2855,10 @@ export default function DailyReportDetail() {
 
   const core = result?.core ?? {};
   const prev = result?.core_previous ?? {};
-  const roi1 = core.ROI1;
-  const ltv1 = core.LTV1;
   const breakevenLine = result?.thresholds?.default_breakeven_line ?? 0.1;
 
-  // Day-over-day deltas (report day vs previous day) for the core cards.
-  const pct = (cur?: number | null, base?: number | null) =>
-    base ? ((cur ?? 0) - base) / base : null;
-  const spendDelta = pct(core.spend, prev.spend);
-  const rechargeDelta = pct(core.recharge, prev.recharge);
-  const usersDelta = pct(core.new_users, prev.new_users);
-  const cpaDelta = pct(core.cpa, prev.cpa);
-  const ltv1Delta = pct(core.LTV1, prev.LTV1);
-  const roi1Delta = pct(core.ROI1, prev.ROI1);
+  // The headline band's 环比 figures are derived inside ``CoreStatBand``, so
+  // the same code produces the total's and each platform's.
 
   const isRunning = jobStatus === "running";
   const elapsedSec = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
@@ -2834,59 +3171,16 @@ export default function DailyReportDetail() {
                   }
                 />
 
-                {/* Flat stat band: one outlined surface, hairline-separated cells. */}
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    mb: 3,
-                    overflow: "hidden",
-                    bgcolor: supersetPalette.surface.main,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(160px, 1fr))",
-                      "& > *:not(:first-of-type)": {
-                        borderLeft: `1px solid ${DIVIDER}`,
-                      },
-                    }}
-                  >
-                    <StatTile
-                      label={SPEND_LABEL}
-                      value={formatNumber(core.spend)}
-                      delta={spendDelta}
-                      neutral
-                    />
-                    <StatTile
-                      label={RECHARGE_LABEL}
-                      value={formatNumber(core.recharge)}
-                      delta={rechargeDelta}
-                    />
-                    <StatTile
-                      label={USERS_LABEL}
-                      value={formatNumber(core.new_users, 0)}
-                      delta={usersDelta}
-                    />
-                    <StatTile
-                      label="CPA"
-                      value={formatNumber(core.cpa, 1)}
-                      delta={cpaDelta}
-                      higherIsBetter={false}
-                    />
-                    <StatTile
-                      label="LTV1"
-                      value={formatNumber(ltv1, 2)}
-                      delta={ltv1Delta}
-                    />
-                    <StatTile
-                      label="ROI1"
-                      value={formatPercent(roi1)}
-                      delta={roi1Delta}
-                    />
-                  </Box>
-                </Paper>
+                {/* Flat stat band: one outlined surface, hairline-separated
+                    cells.  Its 分业务板块 strip is welded to the band's own
+                    bottom edge rather than floating below it. */}
+                <Box sx={{ mb: 3 }}>
+                  <CoreOverview
+                    core={core}
+                    previous={prev}
+                    rows={result.platforms ?? []}
+                  />
+                </Box>
               </Box>
 
               {result.daily && result.daily.length > 0 && (
@@ -2917,21 +3211,17 @@ export default function DailyReportDetail() {
                           onBack={() => setDrillDate(null)}
                         />
                       ) : (
-                        <TrendChart
+                        // The chart owns its 分天明细 strip; the numbered
+                        // chapter header above carries the title.
+                        <TrendOverview
                           rows={result.daily}
-                          // The numbered chapter header above carries the title.
-                          title=""
+                          ltvDays={trendLtvDays}
+                          weekly={resultIsWeekly}
                           onSelect={setDrillDate}
                         />
                       )}
                     </Box>
                   </Fade>
-                  {!drillDate && (
-                    <ChartDataTable
-                      rows={result.daily}
-                      ltvDays={trendLtvDays}
-                    />
-                  )}
                 </Box>
               )}
 
@@ -3001,14 +3291,6 @@ export default function DailyReportDetail() {
             </>
           )}
         </Box>
-
-        {result && !result.empty && (
-          <ReportToc
-            chapters={chapters}
-            activeId={activeSection}
-            scrollRef={scrollRef}
-          />
-        )}
       </Box>
 
       <Dialog
