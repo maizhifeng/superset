@@ -1147,12 +1147,14 @@ def _build_project_region_rows(
         ctx,
         group_key,
     )
-    # A region that neither spent nor earned is aggregate-only: it still counts
-    # towards its combo in the channel view (which is built from the full frame
-    # above, not from these rows), but listing it would fill the table with
-    # zero rows.  ``or`` rather than ``and`` on the raw values, so a region that
-    # earned without spending — or the reverse — stays visible.
-    rows = [row for row in rows if row["spend"] or row["recharge"]]
+    # Only a region that both spent and earned is listed.  A region missing
+    # either side is aggregate-only: it still counts towards its combo in the
+    # channel view (which is built from the full frame above, not from these
+    # rows), but on its own it says nothing about where money went — a region
+    # with spend and no 流水 is a cohort that has not paid yet, and one with
+    # 流水 and no spend is an organic tail.  Keeping either would leave the
+    # split view full of rows the channel view already covers.
+    rows = [row for row in rows if row["spend"] and row["recharge"]]
     if not rows:
         return rows
 
