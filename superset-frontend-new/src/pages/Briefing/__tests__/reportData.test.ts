@@ -17,7 +17,17 @@
  * under the License.
  */
 import { expect, test } from "vitest";
-import { gamesOf, summarizeDailyRows, visibleLtvDays } from "../reportData";
+import {
+  gamesByMedia,
+  gamesOf,
+  mediaByPlatform,
+  mediaRowsByProject,
+  platformsBySpend,
+  roiQuality,
+  rollupMediaRows,
+  summarizeDailyRows,
+  visibleLtvDays,
+} from "../reportData";
 
 test("summarizeDailyRows sums additive metrics and reweights ratios", () => {
   const totals = summarizeDailyRows([
@@ -106,6 +116,149 @@ test("gamesOf collects the games behind a set of channel rows", () => {
     gamesOf([{ project: "A" }, { project: "B" }, { project: "A" }]),
   ).toEqual(new Set(["A", "B"]));
   expect(gamesOf([])).toEqual(new Set());
+});
+
+test("gamesByMedia keeps each media's games together and in payload order", () => {
+  const games = gamesByMedia([
+    { channel: "m1", project: "A" },
+    { channel: "m1", project: "B" },
+    { channel: "m2", project: "A" },
+  ]);
+
+  expect([...games.keys()]).toEqual(["m1", "m2"]);
+  expect(games.get("m1")?.map((g) => g.project)).toEqual(["A", "B"]);
+  expect(games.get("m2")?.map((g) => g.project)).toEqual(["A"]);
+});
+
+test("gamesByMedia tolerates a result generated before the drill existed", () => {
+  // Legacy payloads carry no 媒体 × 主游戏 rows at all.
+  expect(gamesByMedia(undefined).size).toBe(0);
+  expect(gamesByMedia([]).size).toBe(0);
+});
+
+test("mediaRowsByProject keeps each game's media together and in payload order", () => {
+  const byProject = mediaRowsByProject([
+    { project: "A", channel: "m1" },
+    { project: "A", channel: "m2" },
+    { project: "B", channel: "m1" },
+  ]);
+
+  expect([...byProject.keys()]).toEqual(["A", "B"]);
+  expect(byProject.get("A")?.map((r) => r.channel)).toEqual(["m1", "m2"]);
+  expect(byProject.get("B")?.map((r) => r.channel)).toEqual(["m1"]);
+});
+
+test("mediaRowsByProject tolerates a result generated before the drill existed", () => {
+  expect(mediaRowsByProject(undefined).size).toBe(0);
+  expect(mediaRowsByProject([]).size).toBe(0);
+});
+
+test("mediaByPlatform keeps each platform's media spend-descending", () => {
+  // The chart's first level is the platform, so a media that bought on two
+  // platforms shows up under each — ordered by that platform's own spend.
+  const byPlatform = mediaByPlatform([
+    { platform: "oversea", channel: "Facebook", spend: 300 },
+    { platform: "mobile", channel: "今日头条", spend: 60 },
+    { platform: "oversea", channel: "Google", spend: 100 },
+  ]);
+
+  expect([...byPlatform.keys()]).toEqual(["oversea", "mobile"]);
+  expect(byPlatform.get("oversea")?.map((r) => r.channel)).toEqual([
+    "Facebook",
+    "Google",
+  ]);
+  expect(byPlatform.get("mobile")?.map((r) => r.channel)).toEqual(["今日头条"]);
+  // A result generated before the platform cut existed has nothing to group.
+  expect(mediaByPlatform(undefined).size).toBe(0);
+});
+
+test("platformsBySpend ranks platforms by their total spend", () => {
+  // A fixed order across every media is what makes a group readable without a
+  // legend, so it is pinned here.
+  const order = platformsBySpend([
+    { platform: "oversea", spend: 100 },
+    { platform: "mobile", spend: 300 },
+    { platform: "oversea", spend: 100 },
+    { platform: "mini_game", spend: 50 },
+  ]);
+
+  expect(order).toEqual(["mobile", "oversea", "mini_game"]);
+  expect(platformsBySpend(undefined)).toEqual([]);
+});
+
+test("roiQuality classifies against the breakeven and critical lines", () => {
+  expect(roiQuality(0.12, 0.1, 0.05)).toBe("good");
+  expect(roiQuality(0.1, 0.1, 0.05)).toBe("good"); // 达标 includes the line
+  expect(roiQuality(0.07, 0.1, 0.05)).toBe("warning");
+  expect(roiQuality(0.05, 0.1, 0.05)).toBe("warning");
+  expect(roiQuality(0.01, 0.1, 0.05)).toBe("critical");
+  expect(roiQuality(0, 0.1, 0.05)).toBe("critical");
+  // A row without a ROI1 is "not rated", never read as a failure.
+  expect(roiQuality(null, 0.1, 0.05)).toBe("unknown");
+  expect(roiQuality(undefined, 0.1, 0.05)).toBe("unknown");
+});
+
+test("rollupMediaRows rebuilds a game's row from its media rows", () => {
+  const row = rollupMediaRows([
+    {
+      spend: 100,
+      new_users: 10,
+      ltv1: 2,
+      roi1: 0.1,
+      recharge: 30,
+      prev: { spend: 80, new_users: 8, ltv1: 1, roi1: 0.05, recharge: 20 },
+    },
+    {
+      spend: 300,
+      new_users: 30,
+      ltv1: 3,
+      roi1: 0.2,
+      recharge: 70,
+      prev: { spend: 320, new_users: 40, ltv1: 4, roi1: 0.1, recharge: 50 },
+    },
+  ]);
+
+  expect(row).not.toBeNull();
+  expect(row?.spend).toBe(400);
+  expect(row?.new_users).toBe(40);
+  expect(row?.cpa).toBeCloseTo(10); // 400 / 40
+  expect(row?.recharge).toBe(100);
+  expect(row?.ltv1).toBeCloseTo((2 * 10 + 3 * 30) / 40);
+  expect(row?.roi1).toBeCloseTo((0.1 * 100 + 0.2 * 300) / 400);
+  // The 环比 block is rebuilt from each row's own prev, same weights.
+  expect(row?.prev.spend).toBe(400);
+  expect(row?.prev.new_users).toBe(48);
+  expect(row?.prev.cpa).toBeCloseTo(400 / 48);
+  expect(row?.prev.ltv1).toBeCloseTo((1 * 8 + 4 * 40) / 48);
+  expect(row?.prev.roi1).toBeCloseTo((0.05 * 80 + 0.1 * 320) / 400);
+  expect(row?.prev.recharge).toBe(70);
+});
+
+test("rollupMediaRows adds up to the media rows it rolls up", () => {
+  // The swapped outer row and the inner rows it opens must read as one total.
+  const rows = [
+    { spend: 120, new_users: 12, roi1: 0.25 },
+    { spend: 30, new_users: 3, roi1: 0.5 },
+  ];
+  const row = rollupMediaRows(rows);
+
+  expect(row?.spend).toBe(150);
+  expect(row?.new_users).toBe(15);
+  expect(row?.roi1).toBeCloseTo((0.25 * 120 + 0.5 * 30) / 150);
+});
+
+test("rollupMediaRows returns null when there is nothing to roll up", () => {
+  expect(rollupMediaRows([])).toBeNull();
+  expect(rollupMediaRows(undefined)).toBeNull();
+});
+
+test("rollupMediaRows reports undefined ratios as null, not zero", () => {
+  const row = rollupMediaRows([{ spend: 0, new_users: 0, recharge: 120 }]);
+
+  expect(row?.recharge).toBe(120);
+  expect(row?.cpa).toBeNull();
+  expect(row?.ltv1).toBeNull();
+  expect(row?.roi1).toBeNull();
 });
 
 test("visibleLtvDays keeps only the milestones that carry data", () => {

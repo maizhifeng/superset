@@ -23,7 +23,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
-from typing import Any, Iterable
+from typing import Any, Container, Iterable
 
 import pandas as pd
 import sqlalchemy as sa
@@ -1210,6 +1210,120 @@ def _build_media_rows(
     return rows
 
 
+def _build_media_cross_rows(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    config: DailyReportConfig,
+    media_rows: list[dict[str, Any]],
+    dimension_col: str,
+    dimension_key: str,
+    exclude: Container[str] = (),
+) -> list[dict[str, Any]]:
+    """Split the listed media by a second dimension (主游戏 or 客户端).
+
+    The media dimension is a column of its own, so a cut behind a media channel
+    cannot be rolled up on the client the way the 主游戏 × 渠道商 drill is — it
+    has to be built here, from the same frames the media rows come from, which
+    also keeps every view on one definition of the metrics.
+
+    Only the media the media view lists are subdivided, so a cut always has
+    rows behind it, and only members carrying spend are listed — the same rule
+    that keeps a zero-spend media out of the parent view, and the reason the
+    subdivision adds up to the parent exactly.
+    """
+    ad_channel_col = config.ad_channel_column
+    if not media_rows or not dimension_col:
+        return []
+    if (
+        current_df.empty
+        or ad_channel_col not in current_df.columns
+        or dimension_col not in current_df.columns
+    ):
+        return []
+
+    listed = [str(row.get("channel") or "") for row in media_rows]
+    cur_map = _bucket_group_metrics(current_df, [ad_channel_col, dimension_col], config)
+    prev_map = _bucket_group_metrics(prev_df, [ad_channel_col, dimension_col], config)
+
+    rows: list[dict[str, Any]] = []
+    for (media_channel, member), base in cur_map.items():
+        if media_channel not in listed or member in exclude:
+            continue
+        if base["spend"] <= 0:
+            continue
+        sub = current_df[current_df[ad_channel_col].astype(str) == media_channel]
+        sub = sub[sub[dimension_col].astype(str) == member]
+        row: dict[str, Any] = {
+            "channel": media_channel,
+            dimension_key: member,
+            "spend": base["spend"],
+            "new_users": base["new_users"],
+            "cpa": base["cpa"],
+            "recharge": float(base.get("recharge") or 0.0),
+        }
+        row.update(_ratio_fields(sub, config))
+        row["prev"] = prev_map.get((media_channel, member), {})
+        rows.append(row)
+
+    # Media in the parent view's order (spend-descending), members inside a
+    # media by their own spend, so both lists read the same way top to bottom.
+    order = {channel: index for index, channel in enumerate(listed)}
+    rows.sort(
+        key=lambda r: (
+            order.get(str(r.get("channel") or ""), len(order)),
+            -float(r.get("spend") or 0),
+        )
+    )
+    return rows
+
+
+def _build_media_project_rows(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    config: DailyReportConfig,
+    media_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """主游戏 breakdown behind each listed 媒体 (the media view's drill-down).
+
+    Games are deliberately not spend-capped the way the 主游戏 × 渠道商 table
+    is: inside a single media the whole point of the drill is to see where
+    that media's money went, and one media buys at most a handful of games.
+    """
+    return _build_media_cross_rows(
+        current_df,
+        prev_df,
+        config,
+        media_rows,
+        config.project_column,
+        "project",
+        exclude=SCATTERED_PROJECT_LABELS,
+    )
+
+
+def _build_media_platform_rows(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    config: DailyReportConfig,
+    media_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """客户端 split behind each listed 媒体 (the media chart's grouping).
+
+    The media chart ranks spend and colours it by ROI quality, so it needs the
+    same 媒体 × 客户端 cut the 主游戏 drill has — one bar per platform inside
+    each media.  A media that bought nothing on a platform simply has no bar
+    there; the platforms it did buy stay spend-descending, and the media keep
+    the parent view's order.
+    """
+    return _build_media_cross_rows(
+        current_df,
+        prev_df,
+        config,
+        media_rows,
+        config.platform_column,
+        "platform",
+    )
+
+
 def _build_platform_rows(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
@@ -1298,6 +1412,8 @@ def _build_report(
         df, date_col, current_df, prev_df, history, config, ctx, projects
     )
     media = _build_media_rows(current_df, prev_df, config)
+    media_projects = _build_media_project_rows(current_df, prev_df, config, media)
+    media_platforms = _build_media_platform_rows(current_df, prev_df, config, media)
     platforms = _build_platform_rows(current_df, prev_df, config)
 
     alerts = _detect_alerts(core, config)
@@ -1321,6 +1437,8 @@ def _build_report(
         "projects": projects,
         "project_regions": project_regions,
         "media": media,
+        "media_projects": media_projects,
+        "media_platforms": media_platforms,
         "platforms": platforms,
         "alerts": alerts,
         "thresholds": {
@@ -1722,6 +1840,8 @@ def _empty_payload(
         "projects": [],
         "project_regions": [],
         "media": [],
+        "media_projects": [],
+        "media_platforms": [],
         "platforms": [],
         "alerts": [
             {

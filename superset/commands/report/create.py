@@ -66,7 +66,9 @@ class CreateReportScheduleCommand(CreateMixin, BaseReportScheduleCommand):
         """
         creation_method = self._properties.get("creation_method")
 
-        # For reports from charts/dashboards, always use current user
+        # For reports from charts/dashboards, always use current user.
+        # Briefing schedules keep the recipients as provided (may be empty —
+        # a briefing with no recipients only persists its result).
         if creation_method in (
             ReportCreationMethod.CHARTS,
             ReportCreationMethod.DASHBOARDS,
@@ -141,12 +143,13 @@ class CreateReportScheduleCommand(CreateMixin, BaseReportScheduleCommand):
         self._validate_report_extra(exceptions)
 
         # Validate that each chart or dashboard only has one report with
-        # the respective creation method.
-        if (
-            creation_method != ReportCreationMethod.ALERTS_REPORTS
-            and not ReportScheduleDAO.validate_unique_creation_method(
-                dashboard_id, chart_id
-            )
+        # the respective creation method.  Briefing schedules reference a
+        # config id (not a chart/dashboard) so uniqueness does not apply.
+        if creation_method not in (
+            ReportCreationMethod.ALERTS_REPORTS,
+            ReportCreationMethod.BRIEFING,
+        ) and not ReportScheduleDAO.validate_unique_creation_method(
+            dashboard_id, chart_id
         ):
             raise ReportScheduleCreationMethodUniquenessValidationError()
 

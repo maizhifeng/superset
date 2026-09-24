@@ -304,6 +304,22 @@ class ReportSchedulePostSchema(Schema):
                     {"database": ["Database reference is not allowed on a report"]}
                 )
 
+        if data.get("creation_method") == ReportCreationMethod.BRIEFING:
+            if "chart" in data or "dashboard" in data:
+                raise ValidationError(
+                    {
+                        "creation_method": [
+                            "Chart/dashboard references are not allowed on a briefing"
+                        ]
+                    }
+                )
+            extra = data.get("extra") or {}
+            briefing = extra.get("briefing") if isinstance(extra, dict) else None
+            if not isinstance(briefing, dict) or not briefing.get("config_id"):
+                raise ValidationError(
+                    {"extra": ["extra.briefing.config_id is required for briefings"]}
+                )
+
 
 class ReportSchedulePutSchema(Schema):
     type = fields.String(

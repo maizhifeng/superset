@@ -1259,12 +1259,9 @@ class TestReportSchedulesApi(SupersetTestCase):
         uri = "api/v1/report/"
         rv = self.post_assert_metric(uri, report_schedule_data, "post")
         response = json.loads(rv.data.decode("utf-8"))
+        expected_methods = ", ".join(method.value for method in ReportCreationMethod)
         assert response == {
-            "message": {
-                "creation_method": [
-                    "Must be one of: charts, dashboards, alerts_reports."
-                ]
-            }
+            "message": {"creation_method": [f"Must be one of: {expected_methods}."]}
         }
         assert rv.status_code == 400
 

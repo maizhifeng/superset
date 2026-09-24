@@ -23,6 +23,7 @@ import Collapse from "@mui/material/Collapse";
 import Fade from "@mui/material/Fade";
 import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
+import IconButton from "@mui/material/IconButton";
 import { keyframes } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -31,6 +32,7 @@ import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CategoryIcon from "@mui/icons-material/Category";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
@@ -50,7 +52,6 @@ import EChart from "./EChart";
 import {
   ALERT_LEVEL_COLOR,
   BRIEFING_CHART_CHROME,
-  BELOW_TARGET_BAR,
   BRIEFING_CHART_COLORS,
   BRIEFING_TABLE_CLASS,
   CALLOUT_BG,
@@ -60,10 +61,18 @@ import {
   type JobStatus,
 } from "./reportStyles";
 import {
+  gamesByMedia,
   gamesOf,
+  mediaByPlatform,
+  mediaRowsByProject,
+  platformsBySpend,
+  roiQuality,
+  rollupMediaRows,
   summarizeDailyRows,
   visibleLtvDays,
   type DailyTotals,
+  type MediaRollupRow,
+  type RoiQuality,
 } from "./reportData";
 import {
   normalizeReportType,
@@ -209,6 +218,27 @@ interface MediaRow {
   };
 }
 
+/**
+ * One 主游戏 slice of a media channel — the rows the media view drills into.
+ *
+ * A media channel is not a 渠道商, so this cross-cut cannot be derived from
+ * ``projects``; the backend sends it ready-made with the same metric fields
+ * (and the same period-over-period block) as a media row.
+ */
+interface MediaProjectRow extends MediaRow {
+  project: string;
+}
+
+/**
+ * One 客户端 slice of a media channel — the bars the media chart groups.
+ *
+ * Like the 主游戏 cut it cannot be rolled up on the client, so the backend
+ * sends it ready-made with the same metric fields as a media row.
+ */
+interface MediaPlatformRow extends MediaRow {
+  platform: string;
+}
+
 interface DailyProjectRow {
   date: string;
   project: string;
@@ -260,6 +290,10 @@ interface DailyReportResult {
   /** 分地区: ``projects`` subdivided by region. */
   project_regions?: ProjectRow[];
   media?: MediaRow[];
+  /** 分媒体钻取: ``media`` subdivided by 主游戏. */
+  media_projects?: MediaProjectRow[];
+  /** 媒体图分组: ``media`` subdivided by 客户端. */
+  media_platforms?: MediaPlatformRow[];
   /** 核心指标的平台拆分（核心指标速览的「查看数据表」）。 */
   platforms?: PlatformRow[];
   alerts?: AlertItem[];
@@ -2083,14 +2117,26 @@ function MetricsComboChart({
 function MediaQualitySummary({
   media,
   breakevenLine,
+  onSelect,
 }: {
   media: MediaRow[];
   breakevenLine: number;
+  /** Click gesture shared with the chart: open that media's 主游戏 breakdown. */
+  onSelect?: (channel: string) => void;
 }) {
   const valid = media.filter((m) => (m.roi1 ?? 0) > 0);
   if (valid.length === 0) return null;
   const best = valid.reduce((a, b) => ((b.roi1 ?? 0) > (a.roi1 ?? 0) ? b : a));
   const worst = valid.reduce((a, b) => ((b.roi1 ?? 0) < (a.roi1 ?? 0) ? b : a));
+  // Clicking a chip is the same gesture as clicking its bar, so the summary
+  // reads as an entry point into the breakdown rather than a dead read-out.
+  const drillProps = (channel: string) =>
+    onSelect
+      ? {
+          onClick: () => onSelect(channel),
+          title: `查看 ${channel} 的主游戏明细`,
+        }
+      : {};
   const fmtDelta = (d: number | null) =>
     d === null || Number.isNaN(d)
       ? ""
@@ -2114,6 +2160,7 @@ function MediaQualitySummary({
       label={`最佳媒体：${best.channel}（ROI1 ${formatPercent(
         bestRoi1,
       )}${fmtDelta(bestDelta)}）`}
+      {...drillProps(best.channel)}
     />,
   ];
   if ((worst.roi1 ?? 0) < breakevenLine) {
@@ -2126,6 +2173,7 @@ function MediaQualitySummary({
         label={`需关注：${worst.channel}（ROI1 ${formatPercent(
           worstRoi1,
         )}${fmtDelta(worstDelta)}）`}
+        {...drillProps(worst.channel)}
       />,
     );
   }
@@ -2136,124 +2184,646 @@ function MediaQualitySummary({
   );
 }
 
-function MediaRoiChart({
-  media,
+/**
+ * One row of the media chart: a platform heading, or a media bar under it.
+ *
+ * The chart reads 客户端 as the first level and 媒体 as the second, so the rows
+ * are flat with explicit headings — a media that bought on several platforms
+ * appears once under each of them, separated by the heading, rather than as
+ * adjacent bars inside one group.
+ */
+interface MediaSpendRow {
+  kind: "header" | "bar";
+  /** The platform on a heading row, the media on a bar row. */
+  label: string;
+  /** The platform a bar sits under; empty when there is no platform cut. */
+  platform: string;
+  /** Heading: the platform's total; bar: the media's spend on that platform. */
+  spend: number;
+  /** Bars only: how the bar is coloured. */
+  roi1?: number | null;
+  prev?: { roi1?: number | null } | null;
+}
+
+/**
+ * The slice of ECharts' axis-tooltip payload this chart reads.
+ *
+ * Narrower than the library's own callback type on purpose: one hovered entry
+ * per series, and all the formatter needs is which row it points at — the
+ * figures are read back from the rows.
+ */
+interface SpendTooltipParams {
+  dataIndex: number;
+}
+
+/** ROI1 quality → bar colour.  Mirrors the backend's alert ladder. */
+const ROI_QUALITY_COLOR: Record<RoiQuality, string> = {
+  good: supersetPalette.status.success,
+  warning: supersetPalette.status.warning,
+  critical: supersetPalette.status.error,
+  // No ROI column mapped: a neutral bar reads as "not rated", not as failure.
+  unknown: BRIEFING_CHART_COLORS.spend,
+};
+
+const ROI_QUALITY_LABEL: Record<RoiQuality, string> = {
+  good: "达标",
+  warning: "中",
+  critical: "低",
+  unknown: "无 ROI",
+};
+
+/** Compact percentage for the legend's threshold ranges. */
+function thresholdPercent(value: number): string {
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+/**
+ * 媒体消耗分布, with ROI1 quality carried by the bar colour.
+ *
+ * The overview stacks two levels on the y-axis: 客户端 headings, with the
+ * media bought on each platform under them, so one media reads as separate
+ * bars wherever it bought.  The drill into a media has no platform cut and
+ * falls back to one bar per 主游戏.  Either way the plot reads the same way:
+ * length is 返点后消耗, colour is how the ROI1 sits against the breakeven and
+ * critical lines.
+ */
+function MediaSpendChart({
+  rows,
+  title,
   breakevenLine,
+  criticalLine,
+  onSelect,
+  onBack,
 }: {
-  media: MediaRow[];
+  rows: MediaSpendRow[];
+  title: string;
   breakevenLine: number;
+  criticalLine: number;
+  /** Drill gesture: clicking a bar opens that media's 主游戏 breakdown. */
+  onSelect?: (label: string) => void;
+  /** Set while drilled in, so the panel keeps the way back on screen. */
+  onBack?: () => void;
 }) {
-  const valid = useMemo(() => media.filter((m) => (m.roi1 ?? 0) > 0), [media]);
-  const ordered = useMemo(
-    () => [...valid].sort((a, b) => (a.roi1 ?? 0) - (b.roi1 ?? 0)),
-    [valid],
+  const grouped = rows.some((row) => row.kind === "header");
+  const hasRoi = rows.some(
+    (row) => row.kind === "bar" && row.roi1 !== null && row.roi1 !== undefined,
+  );
+
+  const onEvents = useMemo(
+    () =>
+      onSelect
+        ? {
+            click: (p: {
+              componentType?: string;
+              seriesType?: string;
+              name?: string;
+            }) => {
+              if (
+                p?.componentType === "series" &&
+                p?.seriesType === "bar" &&
+                p.name
+              ) {
+                onSelect(p.name);
+              }
+            },
+          }
+        : undefined,
+    [onSelect],
   );
 
   const option: EChartsOption = useMemo(() => {
     const pct = (cur?: number | null, base?: number | null) =>
       base ? ((cur ?? 0) - base) / base : null;
-    const budgets = ordered.map((m) => m.roi1 ?? 0);
     return {
-      grid: { left: 96, right: 64, top: 10, bottom: 24 },
+      grid: { left: grouped ? 150 : 96, right: 96, top: 8, bottom: 24 },
       tooltip: {
         trigger: "axis",
         confine: true,
         axisPointer: { type: "shadow" },
-        formatter: (params: any) => {
+        formatter: (params: SpendTooltipParams | SpendTooltipParams[]) => {
           const arr = Array.isArray(params) ? params : [params];
-          const m = ordered[arr[0].dataIndex];
-          const roiD = pct(m.roi1, m.prev?.roi1);
+          const row = arr.length > 0 ? rows[arr[0].dataIndex] : undefined;
+          if (!row) return "";
+          if (row.kind === "header") {
+            return `<strong>${row.label}</strong><br/>消耗合计 ${formatNumber(
+              row.spend,
+            )}`;
+          }
+          const level = roiQuality(row.roi1, breakevenLine, criticalLine);
+          const roiD = pct(row.roi1, row.prev?.roi1);
           return [
-            `<strong>${m.channel}</strong>`,
-            `消耗：${formatNumber(m.spend)}`,
-            `ROI1：${formatPercent(m.roi1)}（${roiD === null ? "-" : (roiD >= 0 ? "+" : "") + (roiD * 100).toFixed(1) + "%"}）`,
-            (m.roi1 ?? 0) >= breakevenLine ? "状态：达标" : "状态：未达标",
+            `<strong>${row.label}</strong>${
+              row.platform ? ` · ${row.platform}` : ""
+            }`,
+            `消耗 ${formatNumber(row.spend)} ｜ ROI1 ${formatPercent(row.roi1)}（${
+              roiD === null
+                ? "-"
+                : (roiD >= 0 ? "+" : "") + (roiD * 100).toFixed(1) + "%"
+            }）｜ ${ROI_QUALITY_LABEL[level]}`,
           ].join("<br/>");
         },
       },
       xAxis: {
         type: "value",
-        // The breakeven line has to sit inside the axis; without this the
-        // threshold was clipped and every bar simply read as "red".
-        max: ({ max }: { max: number }) => Math.max(max, breakevenLine * 1.25),
+        // A handful of round ticks: the default density overlaps itself once
+        // the card is as narrow as a phone, and axis labels carry no decimals
+        // where the bar labels keep the table's precision.
+        splitNumber: 4,
         axisLabel: {
           color: TEXT_MUTED,
           fontSize: 12,
-          formatter: (v: number) => `${(v * 100).toFixed(0)}%`,
+          hideOverlap: true,
+          formatter: (v: number) => {
+            if (Math.abs(v) >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+            if (Math.abs(v) >= 1000) return `${Math.round(v / 1000)}K`;
+            return `${v}`;
+          },
         },
         splitLine: { lineStyle: { color: DIVIDER } },
       },
       yAxis: {
         type: "category",
-        data: ordered.map((m) => m.channel),
-        axisLabel: { color: TEXT_MUTED, fontSize: 12 },
+        // Rows arrive in reading order (biggest platform first, its media
+        // spend-descending); inverting the axis puts the first row on top.
+        inverse: true,
+        data: rows.map((row) => row.label),
+        axisLabel: {
+          color: TEXT_MUTED,
+          fontSize: 12,
+          // The heading is the first level, so it is the heavier one and
+          // carries the platform's total; its media read under it.
+          formatter: (value: string, index: number) => {
+            const row = rows[index];
+            return row?.kind === "header"
+              ? `{h|${value}} {t|${formatNumber(row.spend)}}`
+              : `{m|${value}}`;
+          },
+          rich: {
+            h: { color: TEXT_MUTED, fontSize: 12, fontWeight: 700 },
+            t: { color: TEXT_MUTED, fontSize: 11 },
+            m: { color: TEXT_MUTED, fontSize: 12 },
+          },
+        },
         axisLine: { lineStyle: { color: DIVIDER } },
       },
       series: [
         {
           type: "bar",
-          barMaxWidth: 22,
-          // Short bars get their value printed, so a 0.15% channel is still
-          // readable instead of being a sliver.
+          barMaxWidth: 16,
           label: {
             show: true,
             position: "right",
             distance: 6,
             fontSize: 12,
             color: TEXT_MUTED,
-            formatter: (p: any) => formatPercent(p.value),
+            formatter: (p: { value?: unknown }) =>
+              typeof p.value === "number" ? formatNumber(p.value) : "",
           },
-          data: budgets.map((value) => ({
-            value,
-            itemStyle: {
-              // Below target stays a neutral wash with an outline; colouring
-              // every failing bar solid red turned the whole panel into an
-              // alarm when all channels were under the line.
-              color:
-                value >= breakevenLine
-                  ? BRIEFING_CHART_COLORS.roi1
-                  : BELOW_TARGET_BAR.fill,
-              borderColor:
-                value >= breakevenLine
-                  ? BRIEFING_CHART_COLORS.roi1
-                  : BELOW_TARGET_BAR.line,
-              borderWidth: 1,
-              borderRadius: [0, 3, 3, 0],
-            },
-          })),
-          markLine: {
-            symbol: "none",
-            label: {
-              formatter: `盈亏线 ${(breakevenLine * 100).toFixed(0)}%`,
-              color: TEXT_MUTED,
-              fontSize: 12,
-              position: "insideEndTop",
-            },
-            lineStyle: {
-              color: BRIEFING_CHART_COLORS.breakevenLine,
-              type: "dashed",
-            },
-            data: [{ xAxis: breakevenLine }],
-          },
+          data: rows.map((row) =>
+            row.kind === "header"
+              ? null
+              : {
+                  value: row.spend,
+                  itemStyle: {
+                    color:
+                      ROI_QUALITY_COLOR[
+                        roiQuality(row.roi1, breakevenLine, criticalLine)
+                      ],
+                    borderRadius: [0, 3, 3, 0],
+                  },
+                },
+          ),
+          // A hairline over each heading (the first one needs none): the two
+          // levels read as blocks rather than one long list of bars.
+          markLine: grouped
+            ? {
+                symbol: "none",
+                silent: true,
+                label: { show: false },
+                lineStyle: { color: DIVIDER, type: "solid", width: 1 },
+                data: rows
+                  .map((row, index) => ({ row, index }))
+                  .filter(
+                    ({ row, index }) => row.kind === "header" && index > 0,
+                  )
+                  .map(({ index }) => ({ yAxis: index - 0.5 })),
+              }
+            : undefined,
         },
       ],
     };
-  }, [ordered, breakevenLine]);
+  }, [rows, grouped, breakevenLine, criticalLine]);
 
-  if (valid.length === 0) return null;
+  // The overview has nothing to show without a single plottable row; a drilled
+  // panel still renders, so the way back never disappears with its bars.
+  if (rows.length === 0 && !onBack) return null;
+
+  const height = Math.max(200, rows.length * 28 + 16);
+  const legend: { level: RoiQuality; range: string }[] = [
+    {
+      level: "good",
+      range: `≥${thresholdPercent(breakevenLine)}`,
+    },
+    {
+      level: "warning",
+      range: `${thresholdPercent(criticalLine)}~${thresholdPercent(breakevenLine)}`,
+    },
+    {
+      level: "critical",
+      range: `<${thresholdPercent(criticalLine)}`,
+    },
+  ];
 
   return (
     <Paper sx={{ p: 2 }} variant="outlined">
-      <Typography variant="subtitle1" sx={{ mb: 0.5 }}>
-        媒体 ROI 对比
-      </Typography>
-      <EChart
-        option={option}
-        height={Math.max(200, valid.length * 34)}
-        ariaLabel={`媒体 ROI 对比：${ordered
-          .map((m) => `${m.channel} ${formatPercent(m.roi1)}`)
-          .join("，")}；盈亏线 ${(breakevenLine * 100).toFixed(0)}%`}
-      />
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1,
+          mb: 0.5,
+        }}
+      >
+        <Typography variant="subtitle1">{title}</Typography>
+        {onBack && (
+          <Button size="small" startIcon={<ArrowBackIcon />} onClick={onBack}>
+            返回全部媒体
+          </Button>
+        )}
+      </Box>
+      {rows.length === 0 ? (
+        <Typography variant="body2" sx={{ color: TEXT_MUTED, py: 2 }}>
+          该媒体本期没有可展开的主游戏明细。
+        </Typography>
+      ) : (
+        <>
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 1.5,
+              mb: 1,
+            }}
+          >
+            <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+              {`条形=${SPEND_LABEL}${
+                grouped ? "（一级=客户端，二级=媒体）" : ""
+              }${hasRoi ? "，颜色=ROI1：" : ""}`}
+            </Typography>
+            {hasRoi &&
+              legend.map(({ level, range }) => (
+                <Box
+                  key={level}
+                  sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "2px",
+                      bgcolor: ROI_QUALITY_COLOR[level],
+                    }}
+                  />
+                  <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+                    {`${ROI_QUALITY_LABEL[level]}（${range}）`}
+                  </Typography>
+                </Box>
+              ))}
+          </Box>
+          <EChart
+            option={option}
+            onEvents={onEvents}
+            height={height}
+            ariaLabel={`${title}：${rows
+              .map((row) =>
+                row.kind === "header"
+                  ? `【${row.label}】合计 ${formatNumber(row.spend)}`
+                  : `${row.label} ${formatNumber(row.spend)}`,
+              )
+              .join("，")}；颜色区分 ROI1 质量${
+              onSelect ? "，点击柱可下钻到主游戏" : ""
+            }`}
+          />
+        </>
+      )}
+    </Paper>
+  );
+}
+
+/**
+ * 媒体 → 主游戏 detail table under the media chart.
+ *
+ * The media view is the auxiliary perspective, so this table stays compact: one
+ * row per media with the headline metrics, expanding into the games that media
+ * bought.  A result generated before the drill existed carries no 主游戏 rows,
+ * in which case the table simply reads as a media-level summary.
+ *
+ * The outer dimension can be swapped: the same rows read 主游戏 × 媒体 when the
+ * reader wants to know which media a game ran through rather than which games a
+ * media bought.  ``mode`` only decides which dimension the groups and their
+ * members are read from — the metrics, the expand gestures and the chart's
+ * highlight follow the swap.
+ */
+type MediaGroupMode = "media" | "project";
+
+/** One outer row of the media table plus the inner rows behind it. */
+interface MediaTableGroup {
+  /** The outer group's value: a media channel or a 主游戏, per the mode. */
+  key: string;
+  /** Metrics for the outer row. */
+  row: MediaRow | MediaRollupRow;
+  /** The inner cut behind the outer row, in payload order. */
+  members: MediaProjectRow[];
+}
+
+function MediaBreakdownTable({
+  groups,
+  mode,
+  breakevenLine,
+  expanded,
+  onToggle,
+  onToggleAll,
+  onSwapDimensions,
+  highlighted,
+}: {
+  groups: MediaTableGroup[];
+  mode: MediaGroupMode;
+  breakevenLine: number;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+  onToggleAll: () => void;
+  /** Swaps the outer and inner dimensions; omitted with nothing to swap. */
+  onSwapDimensions?: () => void;
+  /** The media the chart is drilled into, so the table marks the same rows. */
+  highlighted?: string | null;
+}) {
+  const pct = (cur?: number | null, base?: number | null) =>
+    base ? ((cur ?? 0) - base) / base : null;
+  const numCell = briefingTable.bodyCell({ numeric: true });
+  const smallNumCell = { ...numCell, fontSize: "12px" } as const;
+  const byMedia = mode === "media";
+  const outerLabel = byMedia ? "媒体" : "主游戏";
+  const innerLabel = byMedia ? "主游戏" : "媒体";
+  const head = [
+    { label: outerLabel },
+    { label: SPEND_LABEL, numeric: true },
+    { label: USERS_LABEL, numeric: true },
+    { label: "CPA", numeric: true },
+    { label: "ROI1", numeric: true },
+    { label: "LTV1", numeric: true },
+    { label: "状态", numeric: true },
+  ];
+  const expandable = groups.some((g) => g.members.length > 0);
+  const allOpen = expandable && groups.every((g) => expanded.has(g.key));
+
+  const metricCells = (
+    row: MediaRow | MediaProjectRow | MediaRollupRow,
+    small = false,
+  ) => {
+    const cell = small ? smallNumCell : numCell;
+    return (
+      <>
+        <td style={cell}>{formatNumber(row.spend)}</td>
+        <td style={cell}>{formatNumber(row.new_users, 0)}</td>
+        <td style={cell}>{formatNumber(row.cpa)}</td>
+        <td style={cell}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 0.75,
+            }}
+          >
+            {formatPercent(row.roi1)}
+            <DeltaBadge value={pct(row.roi1, row.prev?.roi1)} />
+          </Box>
+        </td>
+        <td style={cell}>{formatNumber(row.ltv1, 2)}</td>
+        <td style={cell}>
+          <StatusDot
+            achieved={(row.roi1 ?? 0) >= breakevenLine}
+            invested={row.spend > 0}
+          />
+        </td>
+      </>
+    );
+  };
+
+  if (groups.length === 0) return null;
+
+  return (
+    <Paper sx={{ p: 2, mt: 2 }} variant="outlined">
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 1,
+          // Narrow screens: the title takes the first line and the controls
+          // wrap under it rather than squeezing the buttons into a column.
+          flexWrap: "wrap",
+          mb: 1,
+        }}
+      >
+        <Typography variant="subtitle1">
+          {expandable
+            ? `${outerLabel} × ${innerLabel} 明细（含环比）`
+            : "媒体 明细（含环比）"}
+        </Typography>
+        {expandable && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              flexShrink: 0,
+              flexWrap: "wrap",
+            }}
+          >
+            {onSwapDimensions && (
+              <Tooltip
+                // Keeps the visible label as the button's accessible name; the
+                // default (``aria-label``) would replace it with the sentence.
+                describeChild
+                title={`调换内外维度：${
+                  byMedia
+                    ? "改为按主游戏分组、媒体作内层"
+                    : "改为按媒体分组、主游戏作内层"
+                }`}
+              >
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<SwapHorizIcon />}
+                  onClick={onSwapDimensions}
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  调换维度
+                </Button>
+              </Tooltip>
+            )}
+            <Button
+              size="small"
+              variant={allOpen ? "contained" : "outlined"}
+              color="primary"
+              onClick={onToggleAll}
+              aria-expanded={allOpen}
+              sx={{ whiteSpace: "nowrap" }}
+            >
+              {allOpen ? `收起${innerLabel}` : `分${innerLabel}`}
+            </Button>
+          </Box>
+        )}
+      </Box>
+      <Box sx={{ overflowX: "auto" }}>
+        <table
+          className={BRIEFING_TABLE_CLASS}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "13px",
+            textAlign: "left",
+          }}
+        >
+          <thead>
+            <tr>
+              {head.map((c) => (
+                <th
+                  key={c.label}
+                  style={briefingTable.headCell(undefined, {
+                    numeric: c.numeric,
+                  })}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((group, idx) => {
+              const isOpen = expanded.has(group.key);
+              // In the media view the drilled media *is* the outer row; once
+              // the dimensions swap it is one of the inner rows instead.
+              const isActive = byMedia && highlighted === group.key;
+              return (
+                <Fragment key={group.key}>
+                  <tr
+                    style={{
+                      ...briefingTable.zebraRow(idx),
+                      // The drilled media keeps the mark in the table, so the
+                      // chart and the row underneath it read as one selection.
+                      ...(isActive
+                        ? { backgroundColor: supersetPalette.primary.container }
+                        : {}),
+                    }}
+                  >
+                    <td style={briefingTable.bodyCell()}>
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                      >
+                        {expandable && (
+                          <IconButton
+                            size="small"
+                            sx={{ p: 0.25 }}
+                            onClick={() => onToggle(group.key)}
+                            disabled={group.members.length === 0}
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? "收起" : "展开"} ${group.key} 的${innerLabel}明细`}
+                          >
+                            {isOpen ? (
+                              <ExpandLessIcon fontSize="small" />
+                            ) : (
+                              <ExpandMoreIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        )}
+                        {group.key}
+                      </Box>
+                    </td>
+                    {metricCells(group.row)}
+                  </tr>
+                  {isOpen &&
+                    group.members.map((member, gi) => {
+                      // The inner cell reads the dimension the outer one is
+                      // not: a media's rows disclose games, a game's disclose
+                      // media — and the key has to follow, or two rows of the
+                      // same media would collide.
+                      const memberLabel = byMedia
+                        ? member.project
+                        : member.channel;
+                      const memberActive =
+                        !byMedia && highlighted === member.channel;
+                      return (
+                        <tr
+                          key={`${group.key}-${memberLabel}`}
+                          style={{
+                            ...briefingTable.zebraRow(idx),
+                            animation: `briefingRowIn ${durationTokens.standard}ms ${easeTokens.decelerate} both`,
+                            animationDelay: `${gi * ROW_STAGGER_MS}ms`,
+                            ...(memberActive
+                              ? {
+                                  backgroundColor:
+                                    supersetPalette.primary.container,
+                                }
+                              : {}),
+                          }}
+                        >
+                          <td
+                            style={{
+                              ...briefingTable.bodyCell(),
+                              paddingLeft: 24,
+                            }}
+                            title={`${group.key} ｜ ${innerLabel}`}
+                          >
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 1,
+                              }}
+                            >
+                              <Box
+                                aria-hidden
+                                sx={{
+                                  width: 2,
+                                  height: 14,
+                                  borderRadius: 1,
+                                  bgcolor: "primary.main",
+                                  opacity: 0.5,
+                                }}
+                              />
+                              {memberLabel}
+                            </Box>
+                          </td>
+                          {metricCells(member, true)}
+                        </tr>
+                      );
+                    })}
+                  {isOpen && group.members.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={head.length}
+                        style={{
+                          ...briefingTable.bodyCell(),
+                          paddingLeft: 24,
+                          color: "text.secondary",
+                        }}
+                      >
+                        暂无{innerLabel}明细
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </Box>
     </Paper>
   );
 }
@@ -2631,6 +3201,20 @@ export default function DailyReportDetail() {
   const [splitRegion, setSplitRegion] = useState(false);
   const [drillGame, setDrillGame] = useState<string | null>(null);
   const [drillDate, setDrillDate] = useState<string | null>(null);
+  // 媒体分析: which media the ROI chart is drilled into, and which media rows
+  // the 主游戏 breakdown is expanded for underneath it.  The two are kept
+  // apart so expanding a row never moves the chart, while drilling into a bar
+  // also opens that media's row.
+  const [drillMedia, setDrillMedia] = useState<string | null>(null);
+  const [expandedMedia, setExpandedMedia] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // The media table can swap its outer and inner dimensions.  Each orientation
+  // keeps its own expansion set, so swapping back restores what was open.
+  const [mediaGroupMode, setMediaGroupMode] = useState<MediaGroupMode>("media");
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
+    () => new Set(),
+  );
   // The report scrolls inside its own container (the chapter rail tracks it).
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Once the reader touches the log panel, it stops folding itself away.
@@ -2640,6 +3224,10 @@ export default function DailyReportDetail() {
   useEffect(() => {
     setDrillGame(null);
     setDrillDate(null);
+    setDrillMedia(null);
+    setExpandedMedia(new Set());
+    setMediaGroupMode("media");
+    setExpandedProjects(new Set());
   }, [result?.report_date]);
 
   // Live elapsed timer while a job is running (so a long query doesn't look stuck).
@@ -2878,7 +3466,15 @@ export default function DailyReportDetail() {
           void loadJob(job_id);
         }, 1500);
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "任务启动失败";
+        const backendError = (
+          e as { response?: { data?: { error?: unknown } } }
+        ).response?.data?.error;
+        const msg =
+          typeof backendError === "string"
+            ? backendError
+            : e instanceof Error
+              ? e.message
+              : "任务启动失败";
         setJobError(msg);
         setJobStatus("error");
         notify({ severity: "error", message: msg });
@@ -2927,6 +3523,9 @@ export default function DailyReportDetail() {
   const core = result?.core ?? {};
   const prev = result?.core_previous ?? {};
   const breakevenLine = result?.thresholds?.default_breakeven_line ?? 0.1;
+  // The 低 line: below it a ROI1 reads 低, between it and the breakeven line
+  // it reads 中 — the same ladder the backend's alerts use.
+  const criticalLine = result?.thresholds?.roi_critical_line ?? 0.05;
 
   // The headline band's 环比 figures are derived inside ``CoreStatBand``, so
   // the same code produces the total's and each platform's.
@@ -3056,6 +3655,189 @@ export default function DailyReportDetail() {
     () => visibleLtvDays(result?.daily ?? []),
     [result?.daily],
   );
+
+  // ---- 媒体分析: the media list, the 主游戏 rows behind it, and the drill ----
+  const mediaRows = useMemo(() => result?.media ?? [], [result?.media]);
+  // A result generated before the drill existed carries no 主游戏 rows; the
+  // section then stays the media-level summary it used to be.
+  const mediaGames = useMemo(
+    () => gamesByMedia(result?.media_projects),
+    [result?.media_projects],
+  );
+  const canDrillMedia = mediaGames.size > 0;
+  // 媒体 × 客户端: the platform cut the chart's first level reads.  A result
+  // generated before it existed simply has no platforms to stack, and the
+  // chart falls back to one bar per media.
+  const platformMedia = useMemo(
+    () => mediaByPlatform(result?.media_platforms),
+    [result?.media_platforms],
+  );
+  const mediaPlatforms = useMemo(
+    () => platformsBySpend(result?.media_platforms),
+    [result?.media_platforms],
+  );
+  const mediaSpendRows = useMemo<MediaSpendRow[]>(() => {
+    if (mediaPlatforms.length === 0) {
+      return mediaRows.map((m) => ({
+        kind: "bar",
+        label: m.channel,
+        platform: "",
+        spend: m.spend,
+        roi1: m.roi1 ?? null,
+        prev: m.prev,
+      }));
+    }
+    const rows: MediaSpendRow[] = [];
+    for (const platform of mediaPlatforms) {
+      const members = platformMedia.get(platform) ?? [];
+      if (members.length === 0) continue;
+      rows.push({
+        kind: "header",
+        label: platform,
+        platform,
+        spend: members.reduce((sum, row) => sum + row.spend, 0),
+      });
+      for (const row of members) {
+        rows.push({
+          kind: "bar",
+          label: row.channel,
+          platform,
+          spend: row.spend,
+          roi1: row.roi1 ?? null,
+          prev: row.prev,
+        });
+      }
+    }
+    return rows;
+  }, [mediaRows, mediaPlatforms, platformMedia]);
+  const mediaGameRows = useMemo(
+    () => (drillMedia ? (mediaGames.get(drillMedia) ?? []) : []),
+    [drillMedia, mediaGames],
+  );
+  // The drill has no platform cut, so each 主游戏 is one bar; the payload
+  // already lists a media's games spend-descending.
+  const mediaGameSpendRows = useMemo<MediaSpendRow[]>(
+    () =>
+      mediaGameRows.map((g) => ({
+        kind: "bar",
+        label: g.project,
+        platform: "",
+        spend: g.spend,
+        roi1: g.roi1 ?? null,
+        prev: g.prev,
+      })),
+    [mediaGameRows],
+  );
+  // The swapped table groups the same 媒体 × 主游戏 rows the other way round.
+  // A game's own row has to be rolled up from its media rows, which is also
+  // what makes the two orientations add up to the same totals.
+  const projectMedia = useMemo(
+    () => mediaRowsByProject(result?.media_projects),
+    [result?.media_projects],
+  );
+  const mediaGroups = useMemo<MediaTableGroup[]>(
+    () =>
+      mediaRows.map((m) => ({
+        key: m.channel,
+        row: m,
+        members: mediaGames.get(m.channel) ?? [],
+      })),
+    [mediaRows, mediaGames],
+  );
+  const projectGroups = useMemo<MediaTableGroup[]>(() => {
+    const groups: MediaTableGroup[] = [];
+    for (const [project, rows] of projectMedia) {
+      const row = rollupMediaRows(rows);
+      if (row) groups.push({ key: project, row, members: rows });
+    }
+    return groups.sort((a, b) => b.row.spend - a.row.spend);
+  }, [projectMedia]);
+  const mediaTableGroups =
+    mediaGroupMode === "media" ? mediaGroups : projectGroups;
+  const mediaGroupKeys = useMemo(
+    () => mediaTableGroups.map((g) => g.key),
+    [mediaTableGroups],
+  );
+  // A media that no longer carries cost disappears from a re-run's payload, so
+  // the panel falls back to the overview instead of staying pinned on it.
+  useEffect(() => {
+    if (drillMedia && !mediaGames.has(drillMedia)) setDrillMedia(null);
+  }, [drillMedia, mediaGames]);
+
+  const openProjectGroups = useCallback((projects: readonly string[]) => {
+    if (projects.length === 0) return;
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      for (const project of projects) next.add(project);
+      return next;
+    });
+  }, []);
+
+  const openMediaDrill = useCallback(
+    (channel: string) => {
+      setDrillMedia(channel);
+      // Drilling is also the expand gesture for that media's row, so the chart
+      // and the table underneath never disagree about which media is open.
+      setExpandedMedia((prev) =>
+        prev.has(channel) ? prev : new Set(prev).add(channel),
+      );
+      // In the swapped view the media is an inner row, so the drill keeps it
+      // visible by opening the games it ran in.
+      if (mediaGroupMode === "project") {
+        openProjectGroups(
+          (mediaGames.get(channel) ?? []).map((row) => row.project),
+        );
+      }
+    },
+    [mediaGroupMode, mediaGames, openProjectGroups],
+  );
+
+  const toggleMediaRow = useCallback((channel: string) => {
+    setExpandedMedia((prev) => {
+      const next = new Set(prev);
+      if (next.has(channel)) next.delete(channel);
+      else next.add(channel);
+      return next;
+    });
+  }, []);
+
+  const toggleProjectRow = useCallback((project: string) => {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(project)) next.delete(project);
+      else next.add(project);
+      return next;
+    });
+  }, []);
+
+  const toggleAllMediaGroups = useCallback(() => {
+    if (mediaGroupMode === "media") {
+      setExpandedMedia((prev) =>
+        mediaRows.length > 0 && mediaRows.every((m) => prev.has(m.channel))
+          ? new Set<string>()
+          : new Set(mediaRows.map((m) => m.channel)),
+      );
+      return;
+    }
+    setExpandedProjects((prev) =>
+      mediaGroupKeys.length > 0 && mediaGroupKeys.every((key) => prev.has(key))
+        ? new Set<string>()
+        : new Set(mediaGroupKeys),
+    );
+  }, [mediaGroupMode, mediaRows, mediaGroupKeys]);
+
+  const swapMediaGroupMode = useCallback(() => {
+    const next: MediaGroupMode =
+      mediaGroupMode === "media" ? "project" : "media";
+    // Keep the drilled media on screen across the swap: the 主游戏 × 媒体
+    // orientation shows it inside the games it ran in, so open those.
+    if (next === "project" && drillMedia) {
+      openProjectGroups(
+        (mediaGames.get(drillMedia) ?? []).map((row) => row.project),
+      );
+    }
+    setMediaGroupMode(next);
+  }, [mediaGroupMode, drillMedia, mediaGames, openProjectGroups]);
 
   return (
     <Box
@@ -3367,15 +4149,76 @@ export default function DailyReportDetail() {
                 <ReportSectionHeader
                   index={4}
                   title="媒体表现分析"
-                  caption="辅助视角：媒体维度的消耗分布与质量对比"
+                  caption={
+                    canDrillMedia
+                      ? "辅助视角：条形为返点后消耗，按客户端分组、颜色区分 ROI1 质量，点击柱可下钻到主游戏，明细表可调换内外维度"
+                      : "辅助视角：条形为返点后消耗，颜色区分 ROI1 质量"
+                  }
                 />
+                {!canDrillMedia && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    当前结果不含「媒体 ×
+                    主游戏」明细，重新运行简报后即可按主游戏展开。
+                  </Alert>
+                )}
                 <MediaQualitySummary
-                  media={result.media ?? []}
+                  media={mediaRows}
                   breakevenLine={breakevenLine}
+                  onSelect={canDrillMedia ? openMediaDrill : undefined}
                 />
-                <MediaRoiChart
-                  media={result.media ?? []}
+                {/* Same drill transition as §1/§2 so every gesture reads alike. */}
+                <Fade
+                  in
+                  appear
+                  timeout={durationTokens.quick}
+                  easing={easeTokens.decelerate}
+                  key={drillMedia ?? "media-overview"}
+                >
+                  <Box>
+                    <MediaSpendChart
+                      rows={drillMedia ? mediaGameSpendRows : mediaSpendRows}
+                      title={
+                        drillMedia
+                          ? `${drillMedia} × 主游戏 消耗分布`
+                          : `媒体消耗分布${
+                              mediaPlatforms.length > 0
+                                ? "（按客户端分组）"
+                                : ""
+                            }`
+                      }
+                      breakevenLine={breakevenLine}
+                      criticalLine={criticalLine}
+                      onSelect={
+                        drillMedia || !canDrillMedia
+                          ? undefined
+                          : openMediaDrill
+                      }
+                      onBack={
+                        drillMedia ? () => setDrillMedia(null) : undefined
+                      }
+                    />
+                  </Box>
+                </Fade>
+
+                <MediaBreakdownTable
+                  groups={mediaTableGroups}
+                  mode={mediaGroupMode}
                   breakevenLine={breakevenLine}
+                  expanded={
+                    mediaGroupMode === "media"
+                      ? expandedMedia
+                      : expandedProjects
+                  }
+                  onToggle={
+                    mediaGroupMode === "media"
+                      ? toggleMediaRow
+                      : toggleProjectRow
+                  }
+                  onToggleAll={toggleAllMediaGroups}
+                  onSwapDimensions={
+                    canDrillMedia ? swapMediaGroupMode : undefined
+                  }
+                  highlighted={drillMedia}
                 />
               </Box>
             </>

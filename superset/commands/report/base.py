@@ -58,6 +58,13 @@ class BaseReportScheduleCommand(BaseCommand):
         dashboard_id = self._properties.get("dashboard")
         creation_method = self._properties.get("creation_method")
 
+        if creation_method == ReportCreationMethod.BRIEFING:
+            # Briefing schedules reference a briefing config via
+            # extra.briefing.config_id instead of a chart or dashboard.
+            if chart_id or dashboard_id:
+                exceptions.append(ReportScheduleOnlyChartOrDashboardError())
+            return
+
         if creation_method == ReportCreationMethod.CHARTS and not chart_id:
             # User has not saved chart yet in Explore view
             exceptions.append(ChartNotSavedValidationError())
@@ -66,6 +73,15 @@ class BaseReportScheduleCommand(BaseCommand):
         if creation_method == ReportCreationMethod.DASHBOARDS and not dashboard_id:
             exceptions.append(DashboardNotSavedValidationError())
             return
+
+        self._resolve_chart_dashboard(exceptions, update=update)
+
+    def _resolve_chart_dashboard(
+        self, exceptions: list[ValidationError], update: bool
+    ) -> None:
+        """Resolve chart/dashboard objects and enforce mutual exclusivity."""
+        chart_id = self._properties.get("chart")
+        dashboard_id = self._properties.get("dashboard")
 
         if chart_id and dashboard_id:
             exceptions.append(ReportScheduleOnlyChartOrDashboardError())
@@ -85,12 +101,14 @@ class BaseReportScheduleCommand(BaseCommand):
 
     def _validate_report_extra(self, exceptions: list[ValidationError]) -> None:
         extra: Optional[ReportScheduleExtra] = self._properties.get("extra")
-        dashboard = self._properties.get("dashboard")
+        if extra is not None:
+            self._validate_briefing_extra(extra, exceptions)
 
         # On PUT requests, dashboard may not be in the payload — fall back to the model
-        if dashboard is None:
-            model = getattr(self, "_model", None)
-            dashboard = getattr(model, "dashboard", None)
+        model = getattr(self, "_model", None)
+        dashboard = self._properties.get("dashboard") or getattr(
+            model, "dashboard", None
+        )
 
         if extra is None or dashboard is None:
             return
@@ -130,6 +148,51 @@ class BaseReportScheduleCommand(BaseCommand):
             )
 
         self._validate_native_filters(dashboard, dashboard_state, exceptions)
+
+    def _validate_briefing_extra(
+        self, extra: ReportScheduleExtra, exceptions: list[ValidationError]
+    ) -> None:
+        """Validate extra.briefing for briefing schedules.
+
+        Briefing schedules must reference a stored briefing configuration
+        (key_value ``daily_report_cfg`` entry) via ``extra.briefing.config_id``.
+        """
+        creation_method = self._properties.get("creation_method")
+        model = getattr(self, "_model", None)
+        if creation_method is None and model is not None:
+            creation_method = getattr(model, "creation_method", None)
+        if creation_method != ReportCreationMethod.BRIEFING:
+            return
+
+        briefing = extra.get("briefing")
+        if not isinstance(briefing, dict):
+            exceptions.append(
+                ValidationError(
+                    _("extra.briefing must be an object with a config_id"),
+                    "extra",
+                )
+            )
+            return
+
+        config_id = briefing.get("config_id")
+        if not isinstance(config_id, int) or isinstance(config_id, bool):
+            exceptions.append(
+                ValidationError(
+                    _("extra.briefing.config_id must be an integer"),
+                    "extra",
+                )
+            )
+            return
+
+        from superset.project.briefing.store import get_config
+
+        if get_config(config_id) is None:
+            exceptions.append(
+                ValidationError(
+                    _("Briefing configuration %(id)s not found", id=config_id),
+                    "extra",
+                )
+            )
 
     def _validate_native_filters(
         self,

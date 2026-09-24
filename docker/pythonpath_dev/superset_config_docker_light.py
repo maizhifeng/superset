@@ -40,5 +40,8 @@ THUMBNAIL_CACHE_CONFIG = CACHE_CONFIG
 # instead of the frontend port (9000), causing the browser to "jump" ports.
 ENABLE_PROXY_FIX = True
 
-# Disable Celery entirely for lightweight mode
-CELERY_CONFIG = None  # type: ignore[assignment,misc]
+# Celery stays enabled (inherited CeleryConfig from superset_config.py):
+# superset-worker-light / superset-worker-beat-light in
+# docker-compose-light.yml consume it so scheduled reports (Alerts/Reports,
+# including briefing schedules) execute against the superset_light database.
+# The broker is redis://redis:6379/0 (the light stack's own Redis service).

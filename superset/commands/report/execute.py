@@ -14,9 +14,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+import html
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 from uuid import UUID
 
@@ -56,6 +57,7 @@ from superset.errors import ErrorLevel, SupersetError, SupersetErrorType
 from superset.exceptions import SupersetErrorsException, SupersetException
 from superset.extensions import feature_flag_manager, machine_auth_provider_factory
 from superset.reports.models import (
+    ReportCreationMethod,
     ReportDataFormat,
     ReportExecutionLog,
     ReportRecipients,
@@ -80,7 +82,7 @@ from superset.utils.decorators import logs_context, transaction
 from superset.utils.pdf import build_pdf_from_screenshots
 from superset.utils.screenshots import ChartScreenshot, DashboardScreenshot
 from superset.utils.slack import get_channels_with_search, SlackChannelTypes
-from superset.utils.urls import get_url_path
+from superset.utils.urls import get_url_path, headless_url
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +103,10 @@ class BaseReportState:
         self._start_dttm = datetime.utcnow()
         self._execution_id = execution_id
         self._filter_warnings: list[str] = []
+
+    @property
+    def _is_briefing(self) -> bool:
+        return self._report_schedule.creation_method == ReportCreationMethod.BRIEFING
 
     def update_report_schedule_and_log(
         self,
@@ -216,8 +222,10 @@ class BaseReportState:
         **kwargs: Any,
     ) -> str:
         """
-        Get the url for this report schedule: chart or dashboard
+        Get the url for this report schedule: chart, dashboard or briefing
         """
+        if self._is_briefing:
+            return headless_url("/briefing", user_friendly=user_friendly)
         force = "true" if self._report_schedule.force_screenshot else "false"
         if self._report_schedule.chart:
             if result_format in {
@@ -620,7 +628,9 @@ class BaseReportState:
         dashboard_id = None
         report_source = None
         slack_channels = None
-        if self._report_schedule.chart:
+        if self._is_briefing:
+            report_source = ReportSourceFormat.BRIEFING
+        elif self._report_schedule.chart:
             report_source = ReportSourceFormat.CHART
             chart_id = self._report_schedule.chart_id
         else:
@@ -779,12 +789,184 @@ class BaseReportState:
             if any(error.level == ErrorLevel.WARNING for error in notification_errors):
                 raise ReportScheduleClientErrorsException(errors=notification_errors)
 
+    def _get_briefing_config(self) -> dict[str, Any]:
+        """Load the briefing configuration referenced by this schedule."""
+        from superset.project.briefing.store import get_config
+
+        extra = self._report_schedule.extra or {}
+        briefing: Any = extra.get("briefing") or {}
+        config_id = briefing.get("config_id") if isinstance(briefing, dict) else None
+        if not isinstance(config_id, int) or isinstance(config_id, bool):
+            raise ReportScheduleExecuteUnexpectedError(
+                "Briefing schedule is missing extra.briefing.config_id"
+            )
+        config = get_config(config_id)
+        if config is None:
+            raise ReportScheduleExecuteUnexpectedError(
+                f"Briefing configuration {config_id} not found"
+            )
+        return config
+
+    def _run_briefing(self) -> dict[str, Any]:
+        """
+        Generate the referenced briefing and persist its result.
+
+        Runs synchronously inside the celery task (working_timeout / soft
+        time limits apply).  Progress lines go to the task log; the result is
+        stored under key_value ``daily_report_result`` exactly like a manual
+        run, tagged with a schedule job id for the report list.
+        """
+        from superset.project.briefing.config import (
+            config_from_dict,
+            DailyReportContext,
+            normalize_report_type,
+        )
+        from superset.project.briefing.service import run_briefing
+        from superset.project.briefing.store import save_result
+
+        config_payload = self._get_briefing_config()
+        config = config_from_dict(config_payload)
+
+        # Daily briefings report on "yesterday" relative to *today*; resolve
+        # today in the schedule's timezone so runs near midnight align with
+        # the configured zone.  Weekly briefings always target the last
+        # complete week, so they take no override date.
+        override_date = None
+        if normalize_report_type(config_payload.get("report_type")) == "daily":
+            import pytz
+
+            tz = pytz.timezone(self._report_schedule.timezone or "UTC")
+            override_date = datetime.now(tz=tz).date().isoformat()
+
+        def progress(message: str, level: str = "info") -> None:
+            logger.log(
+                getattr(logging, level.upper(), logging.INFO),
+                "briefing schedule %s: %s",
+                self._report_schedule.name,
+                message,
+            )
+
+        logger.info(
+            "Running briefing (config %s, override_date=%s) - execution_id: %s",
+            config_payload.get("id"),
+            override_date,
+            self._execution_id,
+        )
+        result = run_briefing(
+            config,
+            DailyReportContext(override_date=override_date),
+            progress=progress,
+            cancel=lambda: False,
+        )
+        config_id = config_payload.get("id")
+        if isinstance(config_id, int) and not isinstance(config_id, bool):
+            save_result(
+                config_id,
+                {
+                    "job_id": f"schedule-{self._execution_id}",
+                    "source": "schedule",
+                    # Timezone-aware UTC so frontends render local time
+                    # (naive utcnow strings get misread as local timestamps).
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    **result,
+                },
+            )
+        return result
+
+    @staticmethod
+    def _build_briefing_summary(result: dict[str, Any]) -> list[str]:
+        """Render plain-text summary lines of a generated briefing."""
+        core = result.get("core") or {}
+        previous = result.get("core_previous") or {}
+
+        def fmt(value: Any) -> str:
+            if value is None:
+                return "-"
+            if isinstance(value, float):
+                return f"{value:,.2f}"
+            return str(value)
+
+        def delta(key: str, unit: str = "") -> str:
+            cur, prev = core.get(key), previous.get(key)
+            if not isinstance(cur, (int, float)) or not isinstance(prev, (int, float)):
+                return ""
+            diff = cur - prev
+            sign = "+" if diff >= 0 else ""
+            return f"（环比 {sign}{diff:,.2f}{unit}）"
+
+        date_line = f"报告日期: {result.get('report_date') or '-'}"
+        if result.get("period_start"):
+            date_line += (
+                f"（周期 {result.get('period_start')} ~ {result.get('period_end')}）"
+            )
+        lines = [
+            date_line,
+            "",
+            "核心指标:",
+            f"  消耗: {fmt(core.get('spend'))}{delta('spend')}",
+            f"  新增: {fmt(core.get('new_users'))}",
+            f"  CPA: {fmt(core.get('cpa'))}",
+            f"  流水: {fmt(core.get('recharge'))}",
+            f"  ROI1: {fmt(core.get('ROI1'))}",
+            f"  LTV1: {fmt(core.get('LTV1'))}",
+            f"  1日付费率: {fmt(core.get('pay_rate'))}",
+            f"  2日留存率: {fmt(core.get('retention_rate'))}",
+            f"  自然新增%: {fmt(core.get('natural_rate'))}",
+        ]
+        if alerts := result.get("alerts"):
+            lines.append("")
+            lines.append("告警:")
+            for alert in alerts:
+                lines.append(
+                    f"  [{alert.get('level', 'info')}] {alert.get('message', '')}"
+                )
+        if result.get("empty"):
+            lines.append("")
+            lines.append("警告: 所选日期范围内没有数据")
+        return lines
+
+    def _get_briefing_notification_content(
+        self, result: dict[str, Any]
+    ) -> NotificationContent:
+        """
+        Build notification content for a successfully generated briefing.
+
+        The summary goes in ``description`` as HTML: ``text`` is reserved for
+        error payloads (email/slack wrap it in their error templates).
+        """
+        summary_html = "<br>\n".join(
+            html.escape(line) or "&nbsp;"
+            for line in self._build_briefing_summary(result)
+        )
+        name = self._report_schedule.email_subject or self._report_schedule.name
+        return NotificationContent(
+            name=name,
+            description=f"{summary_html}",
+            url=self._get_url(user_friendly=True),
+            header_data=self._get_log_data(),
+        )
+
     def send(self) -> None:
         """
         Creates the notification content and sends them to all recipients
 
+        For briefing schedules this first generates the briefing and persists
+        its result; notification is skipped when no recipients are configured.
+
         :raises: CommandException
         """
+        if self._is_briefing:
+            result = self._run_briefing()
+            if not self._report_schedule.recipients:
+                logger.info(
+                    "Briefing generated with no recipients, skipping "
+                    "notification - execution_id: %s",
+                    self._execution_id,
+                )
+                return
+            notification_content = self._get_briefing_notification_content(result)
+            self._send(notification_content, self._report_schedule.recipients)
+            return
         notification_content = self._get_notification_content()
         self._send(notification_content, self._report_schedule.recipients)
 

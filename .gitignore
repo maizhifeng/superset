@@ -147,5 +147,12 @@ superset-frontend-new/config.json
 # npm cache from superset-frontend-new build
 superset-frontend-new/.npm-cache/
 
+# Database backups (metadata dumps carry credentials and user data)
+backups/
+
+# Ad-hoc briefing dumps and screenshots captured while debugging
+.briefing*.json
+.preview-*.png
+
 # Windows NTFS zone-tag junk copied with files from WSL/Windows
 *:Zone.Identifier
