@@ -122,11 +122,13 @@ class ReportCreationMethod(StrEnum):
     CHARTS = "charts"
     DASHBOARDS = "dashboards"
     ALERTS_REPORTS = "alerts_reports"
+    BRIEFING = "briefing"
 
 
 class ReportSourceFormat(StrEnum):
     CHART = "chart"
     DASHBOARD = "dashboard"
+    BRIEFING = "briefing"
 
 
 class ReportSchedule(AuditMixinNullable, ExtraJSONMixin, Model):

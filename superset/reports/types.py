@@ -19,8 +19,13 @@ from typing import Literal, TypedDict
 from superset.dashboards.permalink.types import DashboardPermalinkState
 
 
-class ReportScheduleExtra(TypedDict):
+class ReportScheduleBriefingExtra(TypedDict):
+    config_id: int
+
+
+class ReportScheduleExtra(TypedDict, total=False):
     dashboard: DashboardPermalinkState
+    briefing: ReportScheduleBriefingExtra
 
 
 class ReportConfigSettings(TypedDict, total=False):

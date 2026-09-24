@@ -46,16 +46,6 @@ export const BRIEFING_CHART_COLORS = {
   breakevenLine: supersetPalette.error.main,
 } as const;
 
-/**
- * Media-chart treatment for a channel under the breakeven line: a neutral wash
- * with an outline, instead of the solid status red that turned a whole panel
- * into an alarm when every channel was below target.
- */
-export const BELOW_TARGET_BAR = {
-  fill: "rgba(184, 101, 58, 0.16)",
-  line: supersetPalette.primary.main,
-} as const;
-
 /** Axis-label and grid-line chrome shared by all briefing charts. */
 export const BRIEFING_CHART_CHROME = {
   axisLabel: supersetPalette.text.secondary,

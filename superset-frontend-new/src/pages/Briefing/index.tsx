@@ -17,10 +17,15 @@ import Typography from "@mui/material/Typography";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ScheduleIcon from "@mui/icons-material/Schedule";
 import PageHeader from "@/components/PageHeader";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
 import ConfigForm from "./ConfigForm";
+import ScheduleDialog, {
+  NextRunCountdown,
+  type BriefingSchedule,
+} from "./ScheduleDialog";
 import { briefingTable } from "./reportStyles";
 import {
   EMPTY_PARAMS,
@@ -45,6 +50,7 @@ interface ReportConfigRow {
   last_job_id?: string | null;
   last_report_date?: string | null;
   last_finished_at?: string | null;
+  schedule?: BriefingSchedule | null;
   [key: string]: unknown;
 }
 
@@ -98,20 +104,31 @@ export default function BriefingList() {
     null,
   );
   const [deleting, setDeleting] = useState(false);
+  const [scheduleTarget, setScheduleTarget] = useState<ReportConfigRow | null>(
+    null,
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.get<{ result: ReportConfigRow[] }>(
-        "/briefing/configs",
-      );
-      setRows(res.data.result ?? []);
-    } catch {
-      notify({ severity: "error", message: "加载简报列表失败" });
-    } finally {
-      setLoading(false);
-    }
-  }, [notify]);
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      try {
+        const res = await api.get<{ result: ReportConfigRow[] }>(
+          "/briefing/configs",
+        );
+        setRows(res.data.result ?? []);
+      } catch {
+        notify({ severity: "error", message: "加载简报列表失败" });
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [notify],
+  );
+
+  // Refresh without the full-table spinner (used by countdown expiry).
+  const refreshSilently = useCallback(() => {
+    void load({ silent: true });
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -225,7 +242,7 @@ export default function BriefingList() {
           >
             <thead>
               <tr>
-                {["类型", "简报名称", "参数", "操作"].map((c) => (
+                {["类型", "简报名称", "参数", "定时", "操作"].map((c) => (
                   <th key={c} style={briefingTable.headCell("10px 12px")}>
                     {c}
                   </th>
@@ -235,14 +252,14 @@ export default function BriefingList() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} style={{ padding: 24, textAlign: "center" }}>
+                  <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>
                     <CircularProgress size={24} />
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     style={{
                       padding: 24,
                       textAlign: "center",
@@ -324,6 +341,91 @@ export default function BriefingList() {
                         </Typography>
                       </td>
                       <td style={{ padding: "10px 12px" }}>
+                        {cfg.schedule ? (
+                          <>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.75,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                sx={{ lineHeight: 1.3 }}
+                              >
+                                {cfg.schedule.crontab_humanized ||
+                                  cfg.schedule.crontab}
+                              </Typography>
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                color={
+                                  cfg.schedule.active ? "success" : "default"
+                                }
+                                label={
+                                  cfg.schedule.active ? "已启用" : "已停用"
+                                }
+                                sx={{ height: 18, fontSize: 11 }}
+                              />
+                            </Box>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.75,
+                                flexWrap: "wrap",
+                                mt: 0.25,
+                                color: "text.secondary",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              <span>
+                                {reportType === "weekly"
+                                  ? "上一完整周"
+                                  : "前一日"}
+                              </span>
+                              {cfg.schedule.active &&
+                                cfg.schedule.next_run_at && (
+                                  <>
+                                    <span>·</span>
+                                    <Box
+                                      component="span"
+                                      sx={{
+                                        fontVariantNumeric: "tabular-nums",
+                                        color: "primary.main",
+                                      }}
+                                    >
+                                      剩{" "}
+                                      <NextRunCountdown
+                                        nextRunAt={cfg.schedule.next_run_at}
+                                        onExpire={refreshSilently}
+                                      />
+                                    </Box>
+                                  </>
+                                )}
+                            </Typography>
+                          </>
+                        ) : (
+                          <Typography
+                            variant="caption"
+                            sx={{ color: "text.secondary" }}
+                          >
+                            未设置
+                          </Typography>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <Tooltip title="定时任务">
+                          <IconButton
+                            size="small"
+                            onClick={() => setScheduleTarget(cfg)}
+                          >
+                            <ScheduleIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="编辑参数">
                           <IconButton
                             size="small"
@@ -378,7 +480,8 @@ export default function BriefingList() {
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>删除简报</DialogTitle>
         <DialogContent>
-          确定删除简报「{deleteTarget?.name}」吗？此操作不可撤销。
+          确定删除简报「{deleteTarget?.name}
+          」吗？其定时任务将一并删除，此操作不可撤销。
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)}>取消</Button>
@@ -391,6 +494,18 @@ export default function BriefingList() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {scheduleTarget && (
+        <ScheduleDialog
+          open={!!scheduleTarget}
+          configId={scheduleTarget.id}
+          configName={scheduleTarget.name}
+          reportType={normalizeReportType(scheduleTarget.report_type)}
+          schedule={scheduleTarget.schedule ?? null}
+          onClose={() => setScheduleTarget(null)}
+          onChanged={() => void load()}
+        />
+      )}
     </Box>
   );
 }

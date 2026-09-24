@@ -185,6 +185,75 @@ services:
     healthcheck:
       disable: true
 
+  superset-worker-light:
+    # Celery worker: executes scheduled tasks (reports.scheduler -> report
+    # execution, SQL Lab offload, etc.) against the light stack's own
+    # database (superset_light) and Redis broker.
+    build:
+      <<: *common-build
+    command: ["/app/docker/docker-bootstrap.sh", "worker"]
+    env_file:
+      - path: docker/.env # default
+        required: true
+      - path: docker/.env-local # optional override
+        required: false
+    environment:
+      DATABASE_HOST: db-light
+      DATABASE_DB: superset_light
+      POSTGRES_DB: superset_light
+      EXAMPLES_HOST: db-light
+      EXAMPLES_DB: superset_light
+      EXAMPLES_USER: superset
+      EXAMPLES_PASSWORD: superset
+      SUPERSET_CONFIG_PATH: /app/docker/pythonpath_dev/superset_config_docker_light.py
+      CELERYD_CONCURRENCY: 2
+    restart: always
+    depends_on:
+      superset-init-light:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    user: *superset-user
+    volumes: *superset-volumes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME",
+        ]
+
+  superset-worker-beat-light:
+    # Celery beat: fires reports.scheduler every minute, which scans active
+    # ReportSchedules in the superset_light database (including briefing
+    # schedules with creation_method=briefing) and enqueues reports.execute.
+    build:
+      <<: *common-build
+    command: ["/app/docker/docker-bootstrap.sh", "beat"]
+    env_file:
+      - path: docker/.env # default
+        required: true
+      - path: docker/.env-local # optional override
+        required: false
+    environment:
+      DATABASE_HOST: db-light
+      DATABASE_DB: superset_light
+      POSTGRES_DB: superset_light
+      EXAMPLES_HOST: db-light
+      EXAMPLES_DB: superset_light
+      EXAMPLES_USER: superset
+      EXAMPLES_PASSWORD: superset
+      SUPERSET_CONFIG_PATH: /app/docker/pythonpath_dev/superset_config_docker_light.py
+    restart: always
+    depends_on:
+      superset-worker-light:
+        condition: service_started
+    user: *superset-user
+    volumes: *superset-volumes
+    healthcheck:
+      disable: true
+
   superset-node:
     build:
       context: .

@@ -54,6 +54,113 @@ export function gamesOf(rows: readonly { project: string }[]): Set<string> {
   return new Set(rows.map((row) => row.project));
 }
 
+/** Group rows by a string key, preserving payload order inside each group. */
+function groupByKey<T>(
+  rows: readonly T[] | undefined,
+  key: (row: T) => string,
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows ?? []) {
+    const group = grouped.get(key(row));
+    if (group) {
+      group.push(row);
+    } else {
+      grouped.set(key(row), [row]);
+    }
+  }
+  return grouped;
+}
+
+/**
+ * Index the 媒体 × 主游戏 rows by media channel.
+ *
+ * The media view ranks media and the drill behind one of them reads the same
+ * rows one channel at a time, so the page groups them once per payload instead
+ * of re-filtering on every render.  Row order is preserved, which is what lets
+ * a media's games stay spend-descending as the backend sent them.
+ */
+export function gamesByMedia<T extends { channel: string }>(
+  rows: readonly T[] | undefined,
+): Map<string, T[]> {
+  return groupByKey(rows, (row) => row.channel);
+}
+
+/**
+ * Index the 媒体 × 客户端 rows by platform, spend-descending inside each.
+ *
+ * The media chart reads 客户端 as the first level and 媒体 as the second, so a
+ * media that bought on several platforms shows up once under each of them —
+ * ordered by that platform's own spend, not by the media's total.
+ */
+export function mediaByPlatform<
+  T extends { platform: string; spend?: number | null },
+>(rows: readonly T[] | undefined): Map<string, T[]> {
+  const grouped = groupByKey(rows, (row) => row.platform);
+  for (const members of grouped.values()) {
+    members.sort((a, b) => (b.spend ?? 0) - (a.spend ?? 0));
+  }
+  return grouped;
+}
+
+/**
+ * Platforms ranked by total spend — the order the grouped bars are drawn in.
+ *
+ * A fixed order across every media is what makes a group readable without a
+ * legend: the widest platform always sits at the top of its group.
+ */
+export function platformsBySpend<
+  T extends { platform: string; spend?: number | null },
+>(rows: readonly T[] | undefined): string[] {
+  const totals = new Map<string, number>();
+  for (const row of rows ?? []) {
+    totals.set(
+      row.platform,
+      (totals.get(row.platform) ?? 0) + (row.spend ?? 0),
+    );
+  }
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([platform]) => platform);
+}
+
+/**
+ * Index the 媒体 × 主游戏 rows by 主游戏.
+ *
+ * The media table can swap its outer and inner dimensions, and the swapped
+ * view groups the very same rows the other way round.  Row order is preserved:
+ * the payload arrives media by media in the parent view's spend order, which is
+ * also the order the swapped view lists a game's media in.
+ */
+export function mediaRowsByProject<T extends { project: string }>(
+  rows: readonly T[] | undefined,
+): Map<string, T[]> {
+  return groupByKey(rows, (row) => row.project);
+}
+
+/** How a ROI1 sits against the report's thresholds, for colour coding. */
+export type RoiQuality = "good" | "warning" | "critical" | "unknown";
+
+/**
+ * Classify a ROI1 against the breakeven and critical lines.
+ *
+ * Mirrors the backend's alert ladder: below the critical line reads 低, below
+ * the breakeven line reads 中, at or above it reads 达标.  A row without a ROI1
+ * (no ROI column mapped) is ``unknown`` and gets a neutral colour rather than
+ * being read as a failure.
+ */
+export function roiQuality(
+  roi1: number | null | undefined,
+  breakeven: number,
+  critical: number,
+): RoiQuality {
+  if (roi1 === null || roi1 === undefined || Number.isNaN(roi1)) {
+    return "unknown";
+  }
+  if (roi1 >= breakeven) return "good";
+  if (roi1 >= critical) return "warning";
+  return "critical";
+}
+
 /** The metric shape a rolled-up row exposes — mirrors the table's columns. */
 export interface DailyTotals {
   spend: number;
@@ -75,7 +182,7 @@ export interface DailyTotals {
   roi_flow: number | null;
 }
 
-type DailyLike = {
+export type DailyLike = {
   spend?: number | null;
   new_users?: number | null;
   recharge?: number | null;
@@ -157,5 +264,86 @@ export function summarizeDailyRows(
     roi1: spend ? roiWeighted / spend : null,
     roi_cum: spend ? roiCumWeighted / spend : null,
     roi_flow: spend ? roiFlowWeighted / spend : null,
+  };
+}
+
+/** One 媒体 × 主游戏 row, as much of it as the swapped table reads. */
+export interface MediaProjectLike extends DailyLike {
+  prev?: DailyLike | null;
+}
+
+/** A 主游戏-level row rolled up from the media rows behind it. */
+export interface MediaRollupRow {
+  spend: number;
+  new_users: number;
+  cpa: number | null;
+  recharge: number;
+  pay_rate: number | null;
+  retention_rate: number | null;
+  natural_rate: number | null;
+  ltv1: number | null;
+  roi1: number | null;
+  prev: {
+    spend: number;
+    new_users: number;
+    cpa: number | null;
+    ltv1: number | null;
+    roi1: number | null;
+    recharge: number;
+  };
+}
+
+/**
+ * Roll a 主游戏's media rows into the row the swapped table shows.
+ *
+ * A game's spend is only cut by media inside the 媒体 × 主游戏 rows, so the
+ * swapped (主游戏 × 媒体) view has to rebuild the game's own figures from them.
+ * The rebuild follows the same weighting rules as ``summarizeDailyRows`` —
+ * additive metrics summed, user-denominated ratios weighted by new users and
+ * spend-denominated ones by spend — so a swapped outer row and the media rows
+ * it opens read on one definition.  The period-over-period block is rebuilt the
+ * same way from each row's ``prev``.
+ *
+ * Returns ``null`` when there is nothing to roll up.
+ */
+export function rollupMediaRows(
+  rows: readonly MediaProjectLike[] | undefined,
+): MediaRollupRow | null {
+  const totals = summarizeDailyRows(rows);
+  if (!totals) return null;
+  let prevSpend = 0;
+  let prevUsers = 0;
+  let prevRecharge = 0;
+  let prevLtvWeighted = 0;
+  let prevRoiWeighted = 0;
+  for (const row of rows ?? []) {
+    const prev = row.prev;
+    if (!prev) continue;
+    const spend = prev.spend ?? 0;
+    const users = prev.new_users ?? 0;
+    prevSpend += spend;
+    prevUsers += users;
+    prevRecharge += prev.recharge ?? 0;
+    prevLtvWeighted += (prev.ltv1 ?? 0) * users;
+    prevRoiWeighted += (prev.roi1 ?? 0) * spend;
+  }
+  return {
+    spend: totals.spend,
+    new_users: totals.new_users,
+    cpa: totals.cpa,
+    recharge: totals.recharge,
+    pay_rate: totals.pay_rate,
+    retention_rate: totals.retention_rate,
+    natural_rate: totals.natural_rate,
+    ltv1: totals.ltv[1] ?? null,
+    roi1: totals.roi1,
+    prev: {
+      spend: prevSpend,
+      new_users: prevUsers,
+      cpa: prevUsers ? prevSpend / prevUsers : null,
+      ltv1: prevUsers ? prevLtvWeighted / prevUsers : null,
+      roi1: prevSpend ? prevRoiWeighted / prevSpend : null,
+      recharge: prevRecharge,
+    },
   };
 }
