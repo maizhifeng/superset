@@ -118,6 +118,27 @@ WEBDRIVER_BASEURL = f"http://superset_app{os.environ.get('SUPERSET_APP_ROOT', '/
 WEBDRIVER_BASEURL_USER_FRIENDLY = (
     f"http://localhost:8888/{os.environ.get('SUPERSET_APP_ROOT', '/')}/"
 )
+
+# ---- Briefing Feishu (Lark) push -----------------------------------------
+# Custom app credentials, supplied through docker/.env-local (untracked) or the
+# shell environment.  Empty credentials disable the Feishu channel and the UI
+# reports "app not configured".
+FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+# Use https://open.larksuite.com for the international (Lark) tenant.
+FEISHU_API_BASE = os.getenv("FEISHU_API_BASE", "https://open.feishu.cn")
+# Tenant web host used for the browser links the card shows (documents and
+# Drive files); the API host above is not browsable.
+FEISHU_WEB_BASE = os.getenv("FEISHU_WEB_BASE", "")
+# The MUI frontend the briefing card's button links back to (Vite dev server of
+# the light stack).  Override with BRIEFING_FRONTEND_BASE_URL when deploying
+# behind another host/port.
+BRIEFING_FRONTEND_BASE_URL = os.getenv(
+    "BRIEFING_FRONTEND_BASE_URL", "http://localhost:9000"
+)
+# Feishu pushes are sent for real; email notifications stay in dry run above.
+BRIEFING_FEISHU_DRY_RUN = False
+
 SQLLAB_CTAS_NO_LIMIT = True
 
 log_level_text = os.getenv("SUPERSET_LOG_LEVEL", "INFO")

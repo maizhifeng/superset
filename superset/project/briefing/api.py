@@ -130,9 +130,11 @@ def list_configs() -> Any:
     from superset.project.briefing.store import (
         get_latest_result_meta,
         list_configs,
+        list_feishu_states,
     )
 
     schedules = _briefing_schedules_by_config()
+    feishu_states = list_feishu_states()
     result = []
     for cfg in list_configs():
         meta = get_latest_result_meta(cfg["id"])
@@ -142,6 +144,13 @@ def list_configs() -> Any:
         config_key = normalized.get("id")
         schedule = schedules.get(config_key) if isinstance(config_key, int) else None
         normalized["schedule"] = _serialize_schedule(schedule) if schedule else None
+        # Surface the Feishu push state so the list can badge configurations
+        # whose scheduled pushes are on.
+        from superset.project.briefing.feishu import is_enabled
+
+        state = feishu_states.get(config_key) if isinstance(config_key, int) else None
+        normalized["feishu_enabled"] = is_enabled(state)
+        normalized["feishu_last_push"] = (state or {}).get("last_push")
         result.append(normalized)
     return jsonify({"result": result}), 200
 
@@ -224,7 +233,7 @@ def update_config(config_id: int) -> Any:
 @briefing_blueprint.route("/configs/<int:config_id>", methods=["DELETE"])
 def delete_config_route(config_id: int) -> Any:
     """Delete a stored report configuration and its briefing schedule."""
-    from superset.project.briefing.store import delete_config
+    from superset.project.briefing.store import delete_config, delete_feishu_settings
 
     user = _authenticated_user()
     if user is None:
@@ -248,6 +257,9 @@ def delete_config_route(config_id: int) -> Any:
 
     if not delete_config(config_id):
         return jsonify({"error": "not found"}), 404
+    # Drop the Feishu push settings too (and its last-push record) so the
+    # key_value table does not keep rows for a configuration that is gone.
+    delete_feishu_settings(config_id)
     return jsonify({"result": "ok"}), 200
 
 
@@ -660,6 +672,200 @@ def cancel_job_route(job_id: str) -> Any:
     if not cancel_job(job_id):
         return jsonify({"error": "not found or not running"}), 404
     return jsonify({"result": "ok"}), 200
+
+
+# --------------------------------------------------------------------------- #
+# Feishu push settings
+# --------------------------------------------------------------------------- #
+
+
+def _require_user() -> Any | None:
+    """Resolve the request user and stash it on ``g`` for audit fields.
+
+    Returns the response to send when the request is unauthenticated, or None
+    when the caller may continue.
+    """
+    user = _authenticated_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    g.user = user
+    return None
+
+
+def _feishu_payload(config_id: int) -> dict[str, Any]:
+    """Settings + deployment status for the Feishu push dialog."""
+    from superset.project.briefing.feishu import (
+        app_status,
+        frontend_url,
+        latest_result_meta,
+        normalize_settings,
+        scheduled_dry_run,
+    )
+    from superset.project.briefing.store import get_feishu_settings
+
+    stored = get_feishu_settings(config_id) or {}
+    settings = normalize_settings(stored)
+    return {
+        **settings,
+        **app_status(),
+        "scheduled_dry_run": scheduled_dry_run(),
+        "frontend_url": frontend_url(config_id),
+        "last_push": stored.get("last_push"),
+        # What a push would actually send: the dialog shows this instead of
+        # letting the reader assume the content is up to date.
+        "last_result": latest_result_meta(config_id),
+    }
+
+
+@briefing_blueprint.route("/configs/<int:config_id>/feishu", methods=["GET"])
+def get_feishu_settings_route(config_id: int) -> Any:
+    """Return a briefing's Feishu push settings (never any credential)."""
+    from superset.project.briefing.store import get_config
+
+    if (unauthorized := _require_user()) is not None:
+        return unauthorized
+    if get_config(config_id) is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"result": _feishu_payload(config_id)}), 200
+
+
+@briefing_blueprint.route("/configs/<int:config_id>/feishu", methods=["PUT"])
+def put_feishu_settings(config_id: int) -> Any:
+    """Create or update a briefing's Feishu push settings.
+
+    Body: ``{enabled?, msg_type?, targets?: [{receive_id_type, receive_id}]}``.
+    Application credentials are never part of this payload — they live in the
+    deployment configuration.
+    """
+    from superset.project.briefing.feishu import normalize_settings, validate_settings
+    from superset.project.briefing.store import get_config, save_feishu_settings
+
+    if (unauthorized := _require_user()) is not None:
+        return unauthorized
+    if get_config(config_id) is None:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(force=True, silent=True) or {}
+    if errors := validate_settings(data):
+        return jsonify({"error": errors}), 422
+    save_feishu_settings(config_id, normalize_settings(data))
+    return jsonify({"result": _feishu_payload(config_id)}), 200
+
+
+def _feishu_push_response(outcome: dict[str, Any]) -> Any:
+    """Map a push outcome onto an HTTP response (per-target detail included)."""
+    if outcome.get("ok"):
+        return jsonify({"result": outcome}), 200
+    status = 422 if outcome.get("error_kind") == "param" else 502
+    return jsonify(
+        {"error": outcome.get("error") or "飞书推送失败", "result": outcome}
+    ), status
+
+
+@briefing_blueprint.route("/configs/<int:config_id>/feishu/test", methods=["POST"])
+def test_feishu_push(config_id: int) -> Any:
+    """Push the latest generated briefing to the targets being configured.
+
+    Body may carry ``{targets, msg_type, include_tables}`` to try values that
+    are not saved yet; otherwise the stored settings are used.  The content is
+    the real report — never fabricated numbers — so a test push shows exactly
+    what the scheduled push will deliver.
+    """
+    from superset.project.briefing.feishu import (
+        normalize_settings,
+        push_test,
+        validate_settings,
+    )
+    from superset.project.briefing.store import (
+        get_config,
+        get_feishu_settings,
+        get_latest_result,
+    )
+    from superset.reports.notifications.exceptions import NotificationParamException
+
+    if (unauthorized := _require_user()) is not None:
+        return unauthorized
+    cfg = get_config(config_id)
+    if cfg is None:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(force=True, silent=True) or {}
+    settings = data if data.get("targets") else (get_feishu_settings(config_id) or {})
+    if errors := validate_settings(settings):
+        return jsonify({"error": errors}), 422
+    if not normalize_settings(settings)["targets"]:
+        return jsonify({"error": ["请先填写至少一个推送目标"]}), 422
+
+    result = get_latest_result(config_id)
+    if result is None:
+        return jsonify({"error": "还没有生成的简报结果，请先运行简报"}), 404
+    try:
+        outcome = push_test(
+            config_id,
+            result,
+            settings=settings,
+            name=str(cfg.get("name") or config_id),
+        )
+    except NotificationParamException as ex:
+        return jsonify({"error": ex.message}), 422
+    return _feishu_push_response(outcome)
+
+
+@briefing_blueprint.route("/configs/<int:config_id>/feishu/push", methods=["POST"])
+def push_feishu(config_id: int) -> Any:
+    """Push the most recently generated briefing result to Feishu now.
+
+    The ``enabled`` switch only gates scheduled pushes; an explicit push works
+    as long as targets are configured and a result exists.
+    """
+    from superset.project.briefing.feishu import (
+        INTERACTIVE_MAX_TRIES,
+        push_result,
+        validate_settings,
+    )
+    from superset.project.briefing.store import (
+        get_config,
+        get_feishu_settings,
+        get_latest_result,
+    )
+    from superset.reports.notifications.exceptions import NotificationParamException
+
+    if (unauthorized := _require_user()) is not None:
+        return unauthorized
+    cfg = get_config(config_id)
+    if cfg is None:
+        return jsonify({"error": "not found"}), 404
+
+    result = get_latest_result(config_id)
+    if result is None:
+        return jsonify({"error": "还没有生成的简报结果，请先运行简报"}), 404
+
+    settings = get_feishu_settings(config_id) or {}
+    if errors := validate_settings(settings):
+        return jsonify({"error": errors}), 422
+    try:
+        outcome = push_result(
+            config_id,
+            result,
+            kind="manual",
+            name=str(cfg.get("name") or config_id),
+            settings=settings,
+            dry_run=False,
+            max_tries=INTERACTIVE_MAX_TRIES,
+        )
+    except NotificationParamException as ex:
+        return jsonify({"error": ex.message}), 422
+    return _feishu_push_response(outcome)
+
+
+@briefing_blueprint.route("/feishu/chats", methods=["GET"])
+def feishu_chats() -> Any:
+    """List the groups the Feishu bot belongs to (for the target picker)."""
+    from superset.project.briefing.feishu import list_bot_chats
+
+    if (unauthorized := _require_user()) is not None:
+        return unauthorized
+    return jsonify({"result": list_bot_chats()}), 200
 
 
 # --------------------------------------------------------------------------- #

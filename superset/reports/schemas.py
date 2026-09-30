@@ -32,6 +32,13 @@ from superset.reports.models import (
     ReportScheduleValidatorType,
 )
 
+# Mirrors superset.reports.notifications.feishu.RECEIVE_ID_TYPES /
+# MESSAGE_TYPES.  Kept local on purpose: importing the notification plugins here
+# would drag the ORM into blueprint registration, before the security manager
+# exists (see superset.models.core's module-level event listeners).
+RECEIVE_ID_TYPES = ("chat_id", "open_id", "user_id", "union_id", "email")
+MESSAGE_TYPES = ("interactive", "text")
+
 openapi_spec_methods_override = {
     "get": {"get": {"summary": "Get a report schedule"}},
     "get_list": {
@@ -124,10 +131,25 @@ class ValidatorConfigJSONSchema(Schema):
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
+class FeishuTargetSchema(Schema):
+    """One Feishu push destination (group chat or user)."""
+
+    class Meta:
+        unknown = EXCLUDE
+
+    receive_id_type = fields.String(validate=validate.OneOf(choices=RECEIVE_ID_TYPES))
+    receive_id = fields.String()
+
+
 class ReportRecipientConfigJSONSchema(Schema):
     target = fields.String()
     ccTarget = fields.String()  # noqa: N815
     bccTarget = fields.String()  # noqa: N815
+    # Feishu recipients: the multi-target shape used by briefing pushes, plus
+    # the plain ``target``/``target_type`` pair.
+    target_type = fields.String(validate=validate.OneOf(choices=RECEIVE_ID_TYPES))
+    msg_type = fields.String(validate=validate.OneOf(choices=MESSAGE_TYPES))
+    targets = fields.List(fields.Nested(FeishuTargetSchema))
 
 
 class ReportRecipientSchema(Schema):
@@ -142,11 +164,23 @@ class ReportRecipientSchema(Schema):
     recipient_config_json = fields.Nested(ReportRecipientConfigJSONSchema)
 
     @validates_schema
-    def validate_email_recipients(self, data: dict[str, Any], **kwargs: Any) -> None:
-        if data.get("type") != ReportRecipientType.EMAIL.value:
+    def validate_recipients(self, data: dict[str, Any], **kwargs: Any) -> None:
+        recipient_type = data.get("type")
+        config = data.get("recipient_config_json") or {}
+
+        if recipient_type == ReportRecipientType.FEISHU.value:
+            if not (config.get("targets") or config.get("target")):
+                raise ValidationError(
+                    {
+                        "recipient_config_json": [
+                            "Feishu recipients need at least one target"
+                        ]
+                    }
+                )
             return
 
-        config = data.get("recipient_config_json") or {}
+        if recipient_type != ReportRecipientType.EMAIL.value:
+            return
 
         def validate_addresses(field: str, value: str | None, required: bool) -> None:
             if not value or not value.strip():

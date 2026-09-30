@@ -28,6 +28,8 @@ import { keyframes } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
+import SendIcon from "@mui/icons-material/Send";
+import SettingsIcon from "@mui/icons-material/Settings";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
@@ -60,6 +62,12 @@ import {
   briefingTable,
   type JobStatus,
 } from "./reportStyles";
+import FeishuDialog from "./FeishuDialog";
+import {
+  outcomeMessage,
+  type FeishuOutcome,
+  type FeishuSettings,
+} from "./feishu";
 import {
   gamesByMedia,
   gamesOf,
@@ -3220,6 +3228,61 @@ export default function DailyReportDetail() {
   // Once the reader touches the log panel, it stops folding itself away.
   const logsTouchedRef = useRef(false);
 
+  // 飞书推送: whether targets are configured (drives the header button) and
+  // the settings dialog visibility.
+  const [feishuSettings, setFeishuSettings] = useState<FeishuSettings | null>(
+    null,
+  );
+  const [feishuOpen, setFeishuOpen] = useState(false);
+  const [feishuPushing, setFeishuPushing] = useState(false);
+
+  const loadFeishu = useCallback(async () => {
+    if (!configId) return;
+    try {
+      const res = await api.get<{ result: FeishuSettings }>(
+        `/briefing/configs/${configId}/feishu`,
+      );
+      setFeishuSettings(res.data.result);
+    } catch {
+      setFeishuSettings(null);
+    }
+  }, [configId]);
+
+  useEffect(() => {
+    void loadFeishu();
+  }, [loadFeishu]);
+
+  /** Push the displayed briefing now; configure first when no target exists. */
+  const handleFeishuPush = async () => {
+    if (!configId || !result) return;
+    if (!feishuSettings || feishuSettings.targets.length === 0) {
+      notify({ severity: "info", message: "请先配置飞书推送目标" });
+      setFeishuOpen(true);
+      return;
+    }
+    setFeishuPushing(true);
+    try {
+      const res = await api.post<{ result: FeishuOutcome }>(
+        `/briefing/configs/${configId}/feishu/push`,
+      );
+      const outcome = res.data.result;
+      notify({
+        severity: outcome?.ok ? "success" : "error",
+        message: outcomeMessage(outcome),
+      });
+      await loadFeishu();
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { error?: unknown } } })
+        ?.response?.data?.error;
+      notify({
+        severity: "error",
+        message: `推送失败：${typeof data === "string" ? data : "请稍后重试"}`,
+      });
+    } finally {
+      setFeishuPushing(false);
+    }
+  };
+
   // Reset the drill-down when a different report result is loaded.
   useEffect(() => {
     setDrillGame(null);
@@ -3891,6 +3954,27 @@ export default function DailyReportDetail() {
                 >
                   编辑参数
                 </Button>
+                <Tooltip title="飞书推送设置">
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label="飞书推送设置"
+                      onClick={() => setFeishuOpen(true)}
+                      disabled={!configId}
+                      sx={{ ml: 0.5 }}
+                    >
+                      <SettingsIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Button
+                  variant="outlined"
+                  startIcon={<SendIcon />}
+                  onClick={() => void handleFeishuPush()}
+                  disabled={!configId || !result || feishuPushing}
+                >
+                  {feishuPushing ? "推送中…" : "推送飞书"}
+                </Button>
                 <DatePicker
                   label={resultIsWeekly ? "简报周（任选日期）" : "简报日期"}
                   value={reportDate}
@@ -4247,6 +4331,17 @@ export default function DailyReportDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {configId != null && (
+        <FeishuDialog
+          open={feishuOpen}
+          configId={configId}
+          configName={reportName}
+          hasResult={!!result}
+          onClose={() => setFeishuOpen(false)}
+          onChanged={() => void loadFeishu()}
+        />
+      )}
     </Box>
   );
 }

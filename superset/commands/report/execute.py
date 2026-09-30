@@ -876,54 +876,9 @@ class BaseReportState:
     @staticmethod
     def _build_briefing_summary(result: dict[str, Any]) -> list[str]:
         """Render plain-text summary lines of a generated briefing."""
-        core = result.get("core") or {}
-        previous = result.get("core_previous") or {}
+        from superset.project.briefing.summary import build_briefing_summary
 
-        def fmt(value: Any) -> str:
-            if value is None:
-                return "-"
-            if isinstance(value, float):
-                return f"{value:,.2f}"
-            return str(value)
-
-        def delta(key: str, unit: str = "") -> str:
-            cur, prev = core.get(key), previous.get(key)
-            if not isinstance(cur, (int, float)) or not isinstance(prev, (int, float)):
-                return ""
-            diff = cur - prev
-            sign = "+" if diff >= 0 else ""
-            return f"（环比 {sign}{diff:,.2f}{unit}）"
-
-        date_line = f"报告日期: {result.get('report_date') or '-'}"
-        if result.get("period_start"):
-            date_line += (
-                f"（周期 {result.get('period_start')} ~ {result.get('period_end')}）"
-            )
-        lines = [
-            date_line,
-            "",
-            "核心指标:",
-            f"  消耗: {fmt(core.get('spend'))}{delta('spend')}",
-            f"  新增: {fmt(core.get('new_users'))}",
-            f"  CPA: {fmt(core.get('cpa'))}",
-            f"  流水: {fmt(core.get('recharge'))}",
-            f"  ROI1: {fmt(core.get('ROI1'))}",
-            f"  LTV1: {fmt(core.get('LTV1'))}",
-            f"  1日付费率: {fmt(core.get('pay_rate'))}",
-            f"  2日留存率: {fmt(core.get('retention_rate'))}",
-            f"  自然新增%: {fmt(core.get('natural_rate'))}",
-        ]
-        if alerts := result.get("alerts"):
-            lines.append("")
-            lines.append("告警:")
-            for alert in alerts:
-                lines.append(
-                    f"  [{alert.get('level', 'info')}] {alert.get('message', '')}"
-                )
-        if result.get("empty"):
-            lines.append("")
-            lines.append("警告: 所选日期范围内没有数据")
-        return lines
+        return build_briefing_summary(result)
 
     def _get_briefing_notification_content(
         self, result: dict[str, Any]
@@ -944,6 +899,7 @@ class BaseReportState:
             description=f"{summary_html}",
             url=self._get_url(user_friendly=True),
             header_data=self._get_log_data(),
+            briefing_result=result,
         )
 
     def send(self) -> None:
@@ -951,12 +907,15 @@ class BaseReportState:
         Creates the notification content and sends them to all recipients
 
         For briefing schedules this first generates the briefing and persists
-        its result; notification is skipped when no recipients are configured.
+        its result, then pushes it to the configured Feishu targets (if any) and
+        notifies the configured recipients; the notification step is skipped
+        when no recipients are configured.
 
         :raises: CommandException
         """
         if self._is_briefing:
             result = self._run_briefing()
+            self._push_feishu(result)
             if not self._report_schedule.recipients:
                 logger.info(
                     "Briefing generated with no recipients, skipping "
@@ -969,6 +928,36 @@ class BaseReportState:
             return
         notification_content = self._get_notification_content()
         self._send(notification_content, self._report_schedule.recipients)
+
+    def _push_feishu(self, result: dict[str, Any]) -> None:
+        """Push a generated briefing to its configured Feishu targets.
+
+        Best effort by design: the briefing result is already persisted and the
+        schedule must not turn into a failure because a chat webhook/target is
+        misconfigured.  ``push_scheduled`` records the outcome (visible in the
+        briefing UI) and swallows its own errors.
+        """
+        from superset.project.briefing.feishu import push_scheduled
+
+        extra = self._report_schedule.extra or {}
+        briefing: Any = extra.get("briefing") or {}
+        config_id = briefing.get("config_id") if isinstance(briefing, dict) else None
+        if not isinstance(config_id, int) or isinstance(config_id, bool):
+            return
+        outcome = push_scheduled(config_id, result, name=self._report_schedule.name)
+        if outcome is None:
+            return
+        if outcome.get("dry_run"):
+            logger.info(
+                "Briefing Feishu push is in dry run (kind=schedule) - execution_id: %s",
+                self._execution_id,
+            )
+        elif not outcome.get("ok"):
+            logger.warning(
+                "Briefing Feishu push failed: %s - execution_id: %s",
+                outcome.get("error"),
+                self._execution_id,
+            )
 
     def send_error(self, name: str, message: str) -> None:
         """

@@ -1996,6 +1996,36 @@ REPORT_MINIMUM_INTERVAL = int(timedelta(minutes=0).total_seconds())
 # Enforce HTTPS for webhook alerts/reports
 ALERT_REPORTS_WEBHOOK_HTTPS_ONLY = True
 
+# ---------------------------------------------------------------------------
+# Briefing Feishu (Lark) push
+# ---------------------------------------------------------------------------
+# Credentials of a Lark/Feishu custom app used to push briefings as interactive
+# cards through ``POST /open-apis/im/v1/messages``.  Keep both empty to disable
+# Feishu push; the app needs the ``im:message`` scope (plus ``im:chat:read`` to
+# list the groups the bot belongs to for the settings picker) and the bot must
+# be a member of every target chat.  These values are only read from the
+# deployment configuration and are never persisted nor returned by the API.
+FEISHU_APP_ID = ""
+FEISHU_APP_SECRET = ""
+# OpenAPI base; use https://open.larksuite.com for the international version.
+FEISHU_API_BASE = "https://open.feishu.cn"
+# Tenant web host used for the browser links the card shows (documents and
+# Drive files); the API host above is not browsable.
+FEISHU_WEB_BASE = ""
+# Drive folder the HTML exports are uploaded into (a folder shared with the
+# app).  Empty = the app's own space root.
+FEISHU_DOC_FOLDER_TOKEN = ""
+# Seconds before an outbound Feishu request is considered failed.
+FEISHU_REQUEST_TIMEOUT = 30
+# Base URL of the MUI frontend used by the card's "查看完整简报" button
+# (``{base}/briefing/{config_id}``).  Falls back to
+# WEBDRIVER_BASEURL_USER_FRIENDLY when empty.
+BRIEFING_FRONTEND_BASE_URL = ""
+# Dry run for briefing Feishu pushes.  ``None`` inherits
+# ALERT_REPORTS_NOTIFICATION_DRY_RUN; a bool overrides it for Feishu only, so
+# scheduled briefings can be pushed for real while email stays in dry run.
+BRIEFING_FEISHU_DRY_RUN: bool | None = None
+
 # A custom prefix to use on all Alerts & Reports emails
 EMAIL_REPORTS_SUBJECT_PREFIX = "[Report] "
 
