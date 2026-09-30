@@ -18,6 +18,7 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ScheduleIcon from "@mui/icons-material/Schedule";
+import SendIcon from "@mui/icons-material/Send";
 import PageHeader from "@/components/PageHeader";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
@@ -26,6 +27,7 @@ import ScheduleDialog, {
   NextRunCountdown,
   type BriefingSchedule,
 } from "./ScheduleDialog";
+import FeishuDialog from "./FeishuDialog";
 import { briefingTable } from "./reportStyles";
 import {
   EMPTY_PARAMS,
@@ -51,6 +53,14 @@ interface ReportConfigRow {
   last_report_date?: string | null;
   last_finished_at?: string | null;
   schedule?: BriefingSchedule | null;
+  /** Scheduled Feishu pushes enabled for this configuration. */
+  feishu_enabled?: boolean;
+  feishu_last_push?: {
+    at?: string | null;
+    ok?: boolean;
+    dry_run?: boolean;
+    message?: string | null;
+  } | null;
   [key: string]: unknown;
 }
 
@@ -105,6 +115,9 @@ export default function BriefingList() {
   );
   const [deleting, setDeleting] = useState(false);
   const [scheduleTarget, setScheduleTarget] = useState<ReportConfigRow | null>(
+    null,
+  );
+  const [feishuTarget, setFeishuTarget] = useState<ReportConfigRow | null>(
     null,
   );
 
@@ -426,6 +439,21 @@ export default function BriefingList() {
                             <ScheduleIcon fontSize="small" />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip
+                          title={
+                            cfg.feishu_enabled
+                              ? "飞书推送（定时已启用）"
+                              : "飞书推送"
+                          }
+                        >
+                          <IconButton
+                            size="small"
+                            color={cfg.feishu_enabled ? "success" : "default"}
+                            onClick={() => setFeishuTarget(cfg)}
+                          >
+                            <SendIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="编辑参数">
                           <IconButton
                             size="small"
@@ -494,6 +522,17 @@ export default function BriefingList() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {feishuTarget && (
+        <FeishuDialog
+          open={!!feishuTarget}
+          configId={feishuTarget.id}
+          configName={feishuTarget.name}
+          hasResult={!!feishuTarget.last_report_date}
+          onClose={() => setFeishuTarget(null)}
+          onChanged={() => void load({ silent: true })}
+        />
+      )}
 
       {scheduleTarget && (
         <ScheduleDialog

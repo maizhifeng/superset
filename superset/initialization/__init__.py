@@ -1794,6 +1794,10 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             # Briefing job endpoints
             csrf.exempt("superset.project.briefing.api.create_job")
             csrf.exempt("superset.project.briefing.api.cancel_job_route")
+            # Briefing Feishu push settings
+            csrf.exempt("superset.project.briefing.api.put_feishu_settings")
+            csrf.exempt("superset.project.briefing.api.test_feishu_push")
+            csrf.exempt("superset.project.briefing.api.push_feishu")
             # Global menu/route switch endpoints
             csrf.exempt("superset.project.menu.api.put_menu_settings")
 

@@ -35,6 +35,20 @@ class NotificationContent:
     description: Optional[str] = ""
     url: Optional[str] = None  # url to chart/dashboard for this screenshot
     embedded_data: Optional[pd.DataFrame] = None
+    # Generated briefing payload (see ``superset.project.briefing``).  Only
+    # briefing schedules populate it; notifications that render structured
+    # content (e.g. Feishu cards) use it and fall back to name/description/url
+    # for every other source.
+    briefing_result: Optional[dict[str, Any]] = None
+    # URL of the complete HTML export of the briefing (a Feishu document); the
+    # Feishu card renders a 「查看明细」 button for it when present.
+    briefing_detail_url: Optional[str] = None
+    # Raw interactive HTML file in Feishu Drive (the document is its imported,
+    # static form), linked from the card next to the detail button.
+    briefing_html_url: Optional[str] = None
+    # Split the report into one card per chapter, so each message gets its own
+    # 30 KB card budget and the tables can keep more rows.
+    briefing_split_chapters: bool = False
     slack_retry_deadline: Optional[float] = None
     # Populated only when this is a per-retry or final-failure notification
     retry_attempt: Optional[int] = None

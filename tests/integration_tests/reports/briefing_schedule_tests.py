@@ -22,6 +22,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from flask_appbuilder.security.sqla.models import User
 
 from superset import db, security_manager
@@ -539,3 +540,490 @@ class TestManualRunLockout(SupersetTestCase):
         finally:
             cleanup_report_schedule(schedule)
             _cleanup_config(config_id)
+
+
+FEISHU_RESOURCE = "daily_report_feishu"
+
+
+def _seed_feishu_settings(config_id: int, payload: dict[str, Any]) -> int:
+    """Persist Feishu push settings for a briefing configuration."""
+    entry = KeyValueEntry(
+        resource=FEISHU_RESOURCE,
+        value=json.dumps({"config_id": config_id, **payload}).encode("utf-8"),
+        created_on=datetime.utcnow(),
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return entry.id
+
+
+def _seed_briefing_result(config_id: int, report_date: str = "2026-09-27") -> int:
+    """Persist a generated briefing result, as a finished run would."""
+    entry = KeyValueEntry(
+        resource="daily_report_result",
+        value=json.dumps(
+            {
+                "config_id": config_id,
+                "job_id": "job-seed",
+                "report_type": "daily",
+                "report_date": report_date,
+                "core": {"spend": 100.0, "new_users": 10, "ROI1": 0.12},
+                "core_previous": {"spend": 90.0},
+                "alerts": [],
+                "empty": False,
+            }
+        ).encode("utf-8"),
+        created_on=datetime.utcnow(),
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return entry.id
+
+
+def _cleanup_entry(entry_id: int) -> None:
+    entry = db.session.query(KeyValueEntry).filter_by(id=entry_id).one_or_none()
+    if entry is not None:
+        db.session.delete(entry)
+        db.session.commit()
+
+
+@pytest.fixture(autouse=True)
+def stub_doc_export(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The schedule tests must not create documents in the tenant."""
+    from superset.project.briefing import feishu as briefing_feishu
+
+    monkeypatch.setattr(
+        briefing_feishu,
+        "publish_briefing_doc",
+        lambda html, *, title: "https://example.feishu.cn/docx/StubDoc",
+    )
+
+
+class TestBriefingFeishuScheduleExecution(SupersetTestCase):
+    """Scheduled briefings push to Feishu without affecting their own state."""
+
+    def _briefing_result(self) -> dict[str, Any]:
+        return {
+            "report_type": "daily",
+            "report_date": "2026-09-27",
+            "core": {"spend": 100.0, "new_users": 10, "ROI1": 0.12},
+            "core_previous": {},
+            "alerts": [],
+            "empty": False,
+        }
+
+    def _insert_briefing_schedule(self, config_id: int) -> ReportSchedule:
+        schedule = insert_report_schedule(
+            ReportScheduleType.REPORT,
+            name=f"briefing-feishu-{uuid4().hex[:8]}",
+            crontab="0 8 * * *",
+            owners=[_admin()],
+            recipients=[],
+            extra={"briefing": {"config_id": config_id}},
+        )
+        schedule.creation_method = ReportCreationMethod.BRIEFING
+        db.session.commit()
+        return schedule
+
+    @patch("superset.reports.notifications.feishu.FeishuNotification.send")
+    @patch("superset.project.briefing.store.save_result")
+    @patch("superset.project.briefing.service.run_briefing")
+    def test_schedule_pushes_enabled_feishu_targets(
+        self, run_briefing: Any, save_result: Any, feishu_send: Any
+    ) -> None:
+        """Enabled Feishu settings make the finished briefing push itself."""
+        run_briefing.return_value = self._briefing_result()
+        config_id = _seed_briefing_config()
+        schedule = self._insert_briefing_schedule(config_id)
+        settings_id = _seed_feishu_settings(
+            config_id,
+            {
+                "enabled": True,
+                "msg_type": "interactive",
+                "targets": [
+                    {"receive_id_type": "chat_id", "receive_id": "oc_group"},
+                    {"receive_id_type": "open_id", "receive_id": "ou_user"},
+                ],
+            },
+        )
+        dry_run = app.config.get("BRIEFING_FEISHU_DRY_RUN")
+        app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+        try:
+            AsyncExecuteReportScheduleCommand(
+                str(uuid4()), schedule.id, datetime.utcnow()
+            ).run()
+            db.session.refresh(schedule)
+            assert schedule.last_state == ReportState.SUCCESS
+            save_result.assert_called_once()
+            # One send per target, so a failure cannot hide the others.
+            assert feishu_send.call_count == 2
+        finally:
+            app.config["BRIEFING_FEISHU_DRY_RUN"] = dry_run
+            cleanup_report_schedule(schedule)
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+    @patch("superset.reports.notifications.feishu.FeishuNotification.send")
+    @patch("superset.project.briefing.store.save_result")
+    @patch("superset.project.briefing.service.run_briefing")
+    def test_schedule_skips_feishu_when_disabled(
+        self, run_briefing: Any, save_result: Any, feishu_send: Any
+    ) -> None:
+        run_briefing.return_value = self._briefing_result()
+        config_id = _seed_briefing_config()
+        schedule = self._insert_briefing_schedule(config_id)
+        settings_id = _seed_feishu_settings(
+            config_id,
+            {"enabled": False, "targets": [{"receive_id": "oc_group"}]},
+        )
+        try:
+            AsyncExecuteReportScheduleCommand(
+                str(uuid4()), schedule.id, datetime.utcnow()
+            ).run()
+            db.session.refresh(schedule)
+            assert schedule.last_state == ReportState.SUCCESS
+            feishu_send.assert_not_called()
+        finally:
+            cleanup_report_schedule(schedule)
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+    @patch("superset.reports.notifications.feishu.feishu_request")
+    @patch("superset.project.briefing.store.save_result")
+    @patch("superset.project.briefing.service.run_briefing")
+    def test_feishu_failure_keeps_briefing_success(
+        self, run_briefing: Any, save_result: Any, feishu_request: Any
+    ) -> None:
+        """A failing Feishu API must not fail the schedule or lose the result."""
+        from superset.reports.notifications.exceptions import (
+            NotificationUnprocessableException,
+        )
+
+        run_briefing.return_value = self._briefing_result()
+        feishu_request.side_effect = NotificationUnprocessableException("feishu down")
+        config_id = _seed_briefing_config()
+        schedule = self._insert_briefing_schedule(config_id)
+        settings_id = _seed_feishu_settings(
+            config_id,
+            {"enabled": True, "targets": [{"receive_id": "oc_group"}]},
+        )
+        dry_run = app.config.get("BRIEFING_FEISHU_DRY_RUN")
+        app_id = app.config.get("FEISHU_APP_ID")
+        app_secret = app.config.get("FEISHU_APP_SECRET")
+        app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+        # Credentials exist so the failure comes from the (patched) Feishu API
+        # call rather than from a missing app configuration.
+        app.config["FEISHU_APP_ID"] = "cli_test"
+        # Not a credential: the Feishu API call is patched below, so the value
+        # only has to be non-empty.
+        app.config["FEISHU_APP_SECRET"] = "test-app-secret"  # noqa: S105
+        try:
+            AsyncExecuteReportScheduleCommand(
+                str(uuid4()), schedule.id, datetime.utcnow()
+            ).run()
+            db.session.refresh(schedule)
+            assert schedule.last_state == ReportState.SUCCESS
+            save_result.assert_called_once()
+            # The failure is recorded for the UI instead of being raised.
+            stored = (
+                db.session.query(KeyValueEntry)
+                .filter_by(resource=FEISHU_RESOURCE)
+                .order_by(KeyValueEntry.id.desc())
+                .all()
+            )
+            record = next(
+                decoded
+                for entry in stored
+                if (decoded := json.loads(entry.value.decode("utf-8"))).get("config_id")
+                == config_id
+            )
+            assert record["last_push"]["ok"] is False
+            assert "feishu down" in record["last_push"]["message"]
+        finally:
+            app.config["BRIEFING_FEISHU_DRY_RUN"] = dry_run
+            app.config["FEISHU_APP_ID"] = app_id
+            app.config["FEISHU_APP_SECRET"] = app_secret
+            cleanup_report_schedule(schedule)
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+
+class TestBriefingFeishuApi(SupersetTestCase):
+    """REST surface of the briefing Feishu push settings."""
+
+    def test_endpoints_require_authentication(self) -> None:
+        config_id = _seed_briefing_config()
+        try:
+            assert (
+                self.client.get(
+                    f"/api/v1/briefing/configs/{config_id}/feishu"
+                ).status_code
+                == 401
+            )
+            assert (
+                self.client.put(
+                    f"/api/v1/briefing/configs/{config_id}/feishu",
+                    json={"enabled": True},
+                ).status_code
+                == 401
+            )
+            assert (
+                self.client.post(
+                    f"/api/v1/briefing/configs/{config_id}/feishu/test", json={}
+                ).status_code
+                == 401
+            )
+            assert (
+                self.client.post(
+                    f"/api/v1/briefing/configs/{config_id}/feishu/push", json={}
+                ).status_code
+                == 401
+            )
+            assert self.client.get("/api/v1/briefing/feishu/chats").status_code == 401
+        finally:
+            _cleanup_config(config_id)
+
+    def test_get_defaults_for_unknown_config(self) -> None:
+        self.login("admin")
+        assert (
+            self.client.get("/api/v1/briefing/configs/999999/feishu").status_code == 404
+        )
+
+    def test_get_returns_defaults_without_settings(self) -> None:
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        try:
+            rv = self.client.get(f"/api/v1/briefing/configs/{config_id}/feishu")
+            assert rv.status_code == 200
+            result = rv.get_json()["result"]
+            assert result["enabled"] is False
+            assert result["targets"] == []
+            assert result["msg_type"] == "interactive"
+            assert result["last_push"] is None
+            # Never leak credentials; only a masked id/status.
+            assert "app_configured" in result
+            assert "FEISHU_APP_SECRET" not in rv.get_data(as_text=True)
+        finally:
+            _cleanup_config(config_id)
+
+    def test_put_validates_payload(self) -> None:
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        try:
+            rv = self.client.put(
+                f"/api/v1/briefing/configs/{config_id}/feishu",
+                json={"enabled": True, "targets": []},
+            )
+            assert rv.status_code == 422
+            assert isinstance(rv.get_json()["error"], list)
+
+            rv = self.client.put(
+                f"/api/v1/briefing/configs/{config_id}/feishu",
+                json={"targets": [{"receive_id_type": "phone", "receive_id": "1"}]},
+            )
+            assert rv.status_code == 422
+        finally:
+            _cleanup_config(config_id)
+
+    def test_put_roundtrip(self) -> None:
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        entry = None
+        try:
+            rv = self.client.put(
+                f"/api/v1/briefing/configs/{config_id}/feishu",
+                json={
+                    "enabled": True,
+                    "msg_type": "text",
+                    "targets": [
+                        {"receive_id_type": "chat_id", "receive_id": "oc_group"}
+                    ],
+                },
+            )
+            assert rv.status_code == 200, rv.get_json()
+            result = rv.get_json()["result"]
+            assert result["enabled"] is True
+            assert result["msg_type"] == "text"
+            assert result["targets"] == [
+                {"receive_id_type": "chat_id", "receive_id": "oc_group"}
+            ]
+            stored = (
+                db.session.query(KeyValueEntry)
+                .filter_by(resource=FEISHU_RESOURCE)
+                .order_by(KeyValueEntry.id.desc())
+                .first()
+            )
+            assert stored is not None
+            entry = stored.id
+        finally:
+            if entry:
+                _cleanup_entry(entry)
+            _cleanup_config(config_id)
+
+    @patch("superset.project.briefing.feishu.FeishuNotification")
+    def test_test_push_uses_the_latest_real_result(self, notification_cls: Any) -> None:
+        """The dialog can try targets before saving, with real content."""
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        result_id = _seed_briefing_result(config_id, report_date="2026-09-27")
+        try:
+            rv = self.client.post(
+                f"/api/v1/briefing/configs/{config_id}/feishu/test",
+                json={"targets": [{"receive_id": "oc_group"}]},
+            )
+            assert rv.status_code == 200, rv.get_json()
+            assert rv.get_json()["result"]["ok"] is True
+            notification_cls.assert_called_once()
+            # The card carries the stored report, not sample numbers.
+            content = notification_cls.call_args[0][1]
+            assert content.briefing_result["report_date"] == "2026-09-27"
+            assert content.briefing_result["core"]["spend"] == 100.0
+        finally:
+            _cleanup_entry(result_id)
+            _cleanup_config(config_id)
+
+    def test_test_push_without_result_is_404(self) -> None:
+        """Nothing generated yet: the dialog is told to run the briefing first."""
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        try:
+            rv = self.client.post(
+                f"/api/v1/briefing/configs/{config_id}/feishu/test",
+                json={"targets": [{"receive_id": "oc_group"}]},
+            )
+            assert rv.status_code == 404
+            assert "请先运行简报" in rv.get_json()["error"]
+        finally:
+            _cleanup_config(config_id)
+
+    def test_settings_report_what_would_be_pushed(self) -> None:
+        """The dialog surfaces the report a push would send (and its staleness)."""
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        result_id = _seed_briefing_result(config_id, report_date="2026-09-27")
+        try:
+            rv = self.client.get(f"/api/v1/briefing/configs/{config_id}/feishu")
+            assert rv.status_code == 200
+            meta = rv.get_json()["result"]["last_result"]
+            assert meta["report_date"] == "2026-09-27"
+            assert meta["report_type"] == "daily"
+            assert "stale" in meta
+        finally:
+            _cleanup_entry(result_id)
+            _cleanup_config(config_id)
+
+    @patch("superset.reports.notifications.feishu.FeishuNotification.send")
+    def test_test_push_without_targets_is_422(self, feishu_send: Any) -> None:
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        try:
+            rv = self.client.post(
+                f"/api/v1/briefing/configs/{config_id}/feishu/test", json={}
+            )
+            assert rv.status_code == 422
+            feishu_send.assert_not_called()
+        finally:
+            _cleanup_config(config_id)
+
+    def test_push_without_result_is_404(self) -> None:
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        settings_id = _seed_feishu_settings(
+            config_id, {"enabled": False, "targets": [{"receive_id": "oc_group"}]}
+        )
+        try:
+            rv = self.client.post(
+                f"/api/v1/briefing/configs/{config_id}/feishu/push", json={}
+            )
+            assert rv.status_code == 404
+            assert "请先运行简报" in rv.get_json()["error"]
+        finally:
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+    @patch("superset.reports.notifications.feishu.FeishuNotification.send")
+    def test_push_sends_latest_result(self, feishu_send: Any) -> None:
+        """Manual pushes work even with the scheduled switch off."""
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        settings_id = _seed_feishu_settings(
+            config_id, {"enabled": False, "targets": [{"receive_id": "oc_group"}]}
+        )
+        result_id = _seed_briefing_result(config_id)
+        try:
+            rv = self.client.post(
+                f"/api/v1/briefing/configs/{config_id}/feishu/push", json={}
+            )
+            assert rv.status_code == 200, rv.get_json()
+            outcome = rv.get_json()["result"]
+            assert outcome["ok"] is True
+            assert outcome["dry_run"] is False
+            assert outcome["sent"][0]["target"] == "chat_id:oc_group"
+            feishu_send.assert_called_once()
+        finally:
+            _cleanup_entry(result_id)
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+    def test_push_reports_feishu_failure(self) -> None:
+        from superset.reports.notifications.exceptions import (
+            NotificationUnprocessableException,
+        )
+
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        settings_id = _seed_feishu_settings(
+            config_id, {"enabled": False, "targets": [{"receive_id": "oc_group"}]}
+        )
+        result_id = _seed_briefing_result(config_id)
+        try:
+            with patch(
+                "superset.reports.notifications.feishu.FeishuNotification.send",
+                side_effect=NotificationUnprocessableException("feishu 503"),
+            ):
+                rv = self.client.post(
+                    f"/api/v1/briefing/configs/{config_id}/feishu/push", json={}
+                )
+            assert rv.status_code == 502
+            assert "feishu 503" in rv.get_json()["error"]
+        finally:
+            _cleanup_entry(result_id)
+            _cleanup_entry(settings_id)
+            _cleanup_config(config_id)
+
+    def test_deleting_config_removes_feishu_settings(self) -> None:
+        """Deleting a briefing must not leave an orphaned Feishu settings row."""
+        self.login("admin")
+        config_id = _seed_briefing_config()
+        _seed_feishu_settings(config_id, {"enabled": True, "targets": []})
+        rv = self.client.delete(f"/api/v1/briefing/configs/{config_id}")
+        assert rv.status_code == 200
+        remaining = (
+            db.session.query(KeyValueEntry).filter_by(resource=FEISHU_RESOURCE).all()
+        )
+        assert all(
+            json.loads(entry.value.decode("utf-8")).get("config_id") != config_id
+            for entry in remaining
+        )
+
+    def test_feishu_chats_degrades_without_credentials(self) -> None:
+        """Missing credentials become a readable reason, not an error.
+
+        The deployment under test may carry real credentials, so they are
+        cleared explicitly instead of assumed absent.
+        """
+        self.login("admin")
+        app_id = app.config.get("FEISHU_APP_ID")
+        app_secret = app.config.get("FEISHU_APP_SECRET")
+        app.config["FEISHU_APP_ID"] = ""
+        app.config["FEISHU_APP_SECRET"] = ""
+        try:
+            rv = self.client.get("/api/v1/briefing/feishu/chats")
+            assert rv.status_code == 200
+            result = rv.get_json()["result"]
+            assert result["available"] is False
+            assert result["chats"] == []
+            assert "FEISHU_APP_ID" in result["reason"]
+        finally:
+            app.config["FEISHU_APP_ID"] = app_id
+            app.config["FEISHU_APP_SECRET"] = app_secret

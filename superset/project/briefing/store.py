@@ -31,6 +31,12 @@ RESOURCE = "daily_report_cfg"
 # DB migration is required.
 RESOURCE_RESULT = "daily_report_result"
 
+# Feishu push settings per briefing configuration (targets, message type,
+# enable switch) plus the outcome of the last push.  Stored outside the report
+# configuration payload on purpose: saving the parameter editor replaces that
+# payload wholesale, which would drop a nested push section.
+RESOURCE_FEISHU = "daily_report_feishu"
+
 
 def _encode(value: dict[str, Any]) -> bytes:
     return _json.dumps(value).encode("utf-8")
@@ -168,3 +174,103 @@ def get_latest_result_meta(config_id: int) -> dict[str, Any] | None:
         "report_date": data.get("report_date"),
         "finished_at": data.get("finished_at"),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Feishu push settings
+# --------------------------------------------------------------------------- #
+
+
+def _feishu_entry(config_id: int) -> KeyValueEntry | None:
+    """Return the stored Feishu settings row for a configuration, if any."""
+    entries = (
+        db.session.query(KeyValueEntry)
+        .filter(KeyValueEntry.resource == RESOURCE_FEISHU)
+        .order_by(KeyValueEntry.created_on.desc())
+        .all()
+    )
+    for entry in entries:
+        if _decode(entry.value).get("config_id") == config_id:
+            return entry
+    return None
+
+
+def get_feishu_settings(config_id: int) -> dict[str, Any] | None:
+    """Return the stored Feishu push settings for a briefing configuration."""
+    entry = _feishu_entry(config_id)
+    if entry is None:
+        return None
+    return _decode(entry.value)
+
+
+def list_feishu_states() -> dict[int, dict[str, Any]]:
+    """Return every stored Feishu state keyed by briefing configuration id.
+
+    One query for the whole list view, mirroring how the list annotates each
+    configuration with its latest result.
+    """
+    entries = (
+        db.session.query(KeyValueEntry)
+        .filter(KeyValueEntry.resource == RESOURCE_FEISHU)
+        .order_by(KeyValueEntry.created_on.desc())
+        .all()
+    )
+    states: dict[int, dict[str, Any]] = {}
+    for entry in entries:
+        data = _decode(entry.value)
+        config_id = data.get("config_id")
+        if isinstance(config_id, int) and not isinstance(config_id, bool):
+            states.setdefault(config_id, data)
+    return states
+
+
+def save_feishu_settings(config_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    """Create or replace the Feishu push settings of a briefing configuration.
+
+    ``last_push`` is preserved across saves unless the payload carries one, so
+    editing the targets does not erase the delivery history.
+    """
+    value = {"config_id": config_id, **payload}
+    entry = _feishu_entry(config_id)
+    if entry is None:
+        entry = KeyValueEntry(
+            resource=RESOURCE_FEISHU,
+            value=_encode(value),
+            created_on=datetime.now(),
+            created_by_fk=get_user_id(),
+        )
+        db.session.add(entry)
+    else:
+        previous = _decode(entry.value)
+        if "last_push" not in value and previous.get("last_push"):
+            value["last_push"] = previous["last_push"]
+        entry.value = _encode(value)
+        entry.changed_on = datetime.now()
+        entry.changed_by_fk = get_user_id()
+    db.session.commit()
+    return _decode(entry.value)
+
+
+def delete_feishu_settings(config_id: int) -> bool:
+    """Drop the Feishu push settings of a deleted briefing configuration."""
+    entry = _feishu_entry(config_id)
+    if entry is None:
+        return False
+    db.session.delete(entry)
+    db.session.commit()
+    return True
+
+
+def record_last_push(config_id: int, info: dict[str, Any]) -> None:
+    """Persist the outcome of the most recent Feishu push for a configuration."""
+    entry = _feishu_entry(config_id)
+    if entry is None:
+        # A push can happen before any settings were saved (e.g. an ad-hoc test
+        # with explicit targets); keep the record anyway so the UI can show it.
+        save_feishu_settings(config_id, {"last_push": info})
+        return
+    value = _decode(entry.value)
+    value["last_push"] = info
+    entry.value = _encode(value)
+    entry.changed_on = datetime.now()
+    db.session.commit()
