@@ -36,8 +36,10 @@ from superset.reports.notifications.exceptions import (
 )
 from superset.reports.notifications.feishu import (
     _TOKEN_CACHE,
+    _wan,
     build_briefing_card,
     build_project_daily_table,
+    build_project_table,
     build_text_card,
     CARD_BYTE_BUDGET,
     card_bytes,
@@ -53,6 +55,7 @@ from superset.reports.notifications.feishu import (
     MAX_TREND_CHART_BUCKETS,
     ROI_SERIES_ID,
     shrink_card,
+    TABLE_WAN_DIGITS,
 )
 from superset.utils import json
 from superset.utils.core import HeaderDataType
@@ -755,14 +758,86 @@ def test_breakdown_tables_share_the_metric_fields() -> None:
         assert metrics == media_metrics
 
 
-def test_project_tables_sort_by_name_then_spend() -> None:
-    """③ chapter: the primary dimension by name, spend descending inside it."""
-    card = build_briefing_card(
-        BRIEFING_RESULT, name="日报", include_tables=True, chapter="projects"
-    )
-    table = _elements(card, "table")[0]
-    keys = [(row["project"], -row["spend"]) for row in table["rows"]]
-    assert keys == sorted(keys)
+def test_project_tables_follow_the_page_order() -> None:
+    """③ chapter: the card lists 主游戏 in the page's order — whole-game spend
+    descending — with a game's channels together and spend-descending inside."""
+    result = {
+        **BRIEFING_RESULT,
+        "project_summary": [
+            {"project": "游戏B", "spend": 900.0, "roi1": 0.1},
+            {"project": "游戏A", "spend": 300.0, "roi1": 0.1},
+        ],
+        "projects": [
+            {"project": "游戏B", "channel": "ios", "spend": 600.0, "roi1": 0.1},
+            {"project": "游戏B", "channel": "android", "spend": 300.0, "roi1": 0.1},
+            {"project": "游戏A", "channel": "android", "spend": 300.0, "roi1": 0.1},
+        ],
+    }
+    table = build_project_table(result)
+    assert table is not None
+    # Name order would put 游戏A first; the payload's spend order must win.
+    assert [(row["project"], row["channel"]) for row in table["rows"]] == [
+        ("游戏B", "ios"),
+        ("游戏B", "android"),
+        ("游戏B", "小计"),
+        ("游戏A", "android"),
+        ("游戏A", "小计"),
+    ]
+
+
+def test_project_table_adds_a_whole_game_subtotal_per_game() -> None:
+    """③ chapter: each game's channels are followed by its whole-game 小计."""
+    result = {
+        **BRIEFING_RESULT,
+        "project_summary": [
+            {"project": "游戏A", "spend": 900.0, "roi1": 0.2},
+            {"project": "游戏B", "spend": 300.0, "roi1": 0.02},
+        ],
+        "projects": [
+            {"project": "游戏A", "channel": "android", "spend": 600.0, "roi1": 0.18},
+            {"project": "游戏A", "channel": "ios", "spend": 300.0, "roi1": 0.24},
+            {"project": "游戏B", "channel": "ios", "spend": 300.0, "roi1": 0.02},
+        ],
+    }
+    table = build_project_table(result)
+    assert table is not None
+    # The 小计 marker rides the 渠道 cell, so the game name stays in its own
+    # column and the reader can still sort/copy the table by game.
+    assert [(row["project"], row["channel"]) for row in table["rows"]] == [
+        ("游戏A", "android"),
+        ("游戏A", "ios"),
+        ("游戏A", "小计"),
+        ("游戏B", "ios"),
+        ("游戏B", "小计"),
+    ]
+    subtotal = table["rows"][2]
+    # 小计 quotes the whole game (project_summary), not the listed channels.
+    assert subtotal["spend"] == _wan(900.0, TABLE_WAN_DIGITS)
+    assert subtotal["roi1"][0]["text"] == "20.0%"
+
+
+def test_project_table_pages_through_every_channel() -> None:
+    """The whole Top-N travels in the card; Feishu pages through the rows."""
+    result = {
+        **BRIEFING_RESULT,
+        "project_summary": [{"project": "游戏A", "spend": 300.0, "roi1": 0.1}],
+        "projects": [
+            {
+                "project": "游戏A",
+                "channel": f"c{i}",
+                "spend": float(30 - i),
+                "roi1": 0.1,
+            }
+            for i in range(12)
+        ],
+    }
+    table = build_project_table(result)
+    assert table is not None
+    # Every channel of the payload survives, plus the game's 小计.
+    assert len(table["rows"]) == 13
+    assert table["rows"][-1]["channel"] == "小计"
+    # Feishu renders ten rows a page and adds a pager for the rest.
+    assert table["page_size"] == 10
 
 
 def test_project_daily_table_fills_its_deltas() -> None:

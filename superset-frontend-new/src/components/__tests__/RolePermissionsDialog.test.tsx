@@ -4,30 +4,36 @@ import { RolePermissionsContent } from "@/components/RolePermissionsDialog";
 
 // Mock the api used by fetchPermissionViews / fetchRolePermissionIds.
 const mockGet = vi.fn();
-vi.mock("@/api", () => ({ default: { get: (...a: unknown[]) => mockGet(...a) } }));
+vi.mock("@/api", () => ({
+  default: { get: (...a: unknown[]) => mockGet(...a) },
+}));
 
 const permissionViews = [
   { id: 10, permission: { name: "can_read" }, view_menu: { name: "Chart" } },
-  { id: 11, permission: { name: "can_write" }, view_menu: { name: "Dashboard" } },
+  {
+    id: 11,
+    permission: { name: "can_write" },
+    view_menu: { name: "Dashboard" },
+  },
   { id: 12, permission: { name: "can_read" }, view_menu: { name: "Dataset" } },
 ];
 
 beforeEach(() => {
   mockGet.mockReset();
-  mockGet.mockImplementation(async (url: string) => {
+  mockGet.mockImplementation((url: string) => {
     if (url.includes("permissions-resources")) {
-      return {
+      return Promise.resolve({
         data: { result: permissionViews, count: permissionViews.length },
-      };
+      });
     }
     if (url.includes("roles/search")) {
-      return {
+      return Promise.resolve({
         data: {
           result: [{ id: 1, name: "TestRole", permission_ids: [10, 11, 12] }],
         },
-      };
+      });
     }
-    return { data: { result: [] } };
+    return Promise.resolve({ data: { result: [] } });
   });
 });
 

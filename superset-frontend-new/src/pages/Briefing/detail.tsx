@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   Fragment,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -74,9 +75,11 @@ import {
   mediaByPlatform,
   mediaRowsByProject,
   platformsBySpend,
+  projectGroups,
   roiQuality,
   rollupMediaRows,
   summarizeDailyRows,
+  tableLtvDays,
   visibleLtvDays,
   type DailyTotals,
   type MediaRollupRow,
@@ -780,6 +783,73 @@ function totalsMetricValues(
 }
 
 /**
+ * A 主游戏 row's values, with 环比 measured against its own ``prev`` block.
+ *
+ * Used by the collapsed row and by the 分渠道 view's per-game 小计 row, so the
+ * subtotal figures and the merged (不分渠道) row read on one definition.
+ */
+function projectMetricValues(p: ProjectRow): MetricValues {
+  const pct = (cur?: number | null, base?: number | null) =>
+    base ? ((cur ?? 0) - base) / base : null;
+  return {
+    spend: p.spend,
+    spendDelta: pct(p.spend, p.prev?.spend),
+    recharge: p.recharge ?? 0,
+    newUsers: p.new_users,
+    payRate: p.pay_rate,
+    retentionRate: p.retention_rate,
+    naturalRate: p.natural_rate,
+    cpa: p.cpa,
+    ltv: {
+      1: p.ltv1,
+      2: p.ltv2,
+      3: p.ltv3,
+      4: p.ltv4,
+      5: p.ltv5,
+      6: p.ltv6,
+      7: p.ltv7,
+    },
+    roi1: p.roi1,
+    roi1Delta: pct(p.roi1, p.prev?.roi1),
+    roiCum: p.roi_cum,
+    roiFlow: p.roi_flow,
+  };
+}
+
+/**
+ * The table row a whole-game ``project_summary`` shows.
+ *
+ * The merged (不分渠道) view lists these directly; the 分渠道 view reads them
+ * again as each game's 小计, so both views quote the same whole-game figures.
+ */
+function summaryToProjectRow(p: ProjectSummaryRow): ProjectRow {
+  return {
+    project: p.project,
+    channel: MERGED_CHANNEL_LABEL,
+    region: "",
+    spend: p.spend,
+    new_users: p.new_users,
+    pay_rate: p.pay_rate,
+    retention_rate: p.retention_rate,
+    natural_rate: p.natural_rate,
+    cpa: p.cpa,
+    recharge: p.recharge,
+    ltv1: p.ltv1,
+    ltv2: p.ltv2,
+    ltv3: p.ltv3,
+    ltv4: p.ltv4,
+    ltv5: p.ltv5,
+    ltv6: p.ltv6,
+    ltv7: p.ltv7,
+    roi1: p.roi1,
+    roi_cum: p.roi_cum,
+    roi_flow: p.roi_flow,
+    prev: p.prev,
+    daily: p.daily,
+  };
+}
+
+/**
  * 分天对比's sub-table: the report's daily rows as text.
  *
  * It is rendered by ``TrendOverview``, which owns the strip that discloses it,
@@ -1162,6 +1232,9 @@ function ProjectComboTable({
   splitRegion = false,
   onToggleRegion,
   expandLabel = "分天",
+  topNote,
+  summaries,
+  showSubtotals = false,
 }: {
   projects: ProjectRow[];
   breakevenLine: number;
@@ -1175,16 +1248,33 @@ function ProjectComboTable({
   onToggleRegion?: () => void;
   /** Trend granularity word used in the toggle/caption ("分天" / "分周"). */
   expandLabel?: string;
+  /** Top-N tag under the table title, e.g. 「当日消耗Top 10 主游戏」. */
+  topNote?: string;
+  /** 主游戏 → 整游戏汇总行, read as each game's 小计 in the channel view. */
+  summaries?: Map<string, ProjectRow>;
+  /** 分渠道: append one whole-game 小计 row after each game's channels. */
+  showSubtotals?: boolean;
 }) {
   const comboLabel = (p: ProjectRow) =>
     [p.project, p.channel, p.region].filter(Boolean).join(" · ");
-  const pct = (cur?: number | null, base?: number | null) =>
-    base ? ((cur ?? 0) - base) / base : null;
+
+  // The combo payload is game-contiguous, so walking it group by group keeps
+  // every game's channels together and its 小计 row right below them.  ``idx``
+  // stays a flat row counter so the zebra shading does not change.
+  const groupedRows = useMemo(() => {
+    let idx = 0;
+    return [...projectGroups(projects)].map(([project, members]) => ({
+      project,
+      members: members.map((row) => ({ row, idx: idx++ })),
+    }));
+  }, [projects]);
 
   // A column that is empty for every row (regions are often not mapped) is
   // dropped instead of printing a column of dashes.
   const hasRegion = projects.some((p) => (p.region ?? "").trim() !== "");
-  const ltvDays = visibleLtvDays(projects.flatMap((p) => p.daily ?? []));
+  // 分天 off: the table stays at LTV1 — LTV2…LTV7 only carry their day-grain
+  // values once the days themselves are rows (分天 on).
+  const ltvDays = tableLtvDays(projects, showDaily);
   const columns = metricColumnDefs(ltvDays);
   // Leading text columns; a daily row spans them with its date cell.
   const leadCount = 2 + (hasRegion ? 1 : 0);
@@ -1203,6 +1293,69 @@ function ProjectComboTable({
     { label: "状态", numeric: true },
   ];
 
+  /**
+   * One disclosed day line.  The channel combos and the group-end 小计 share
+   * the layout, so a game's 小计 breaks down by day exactly like the channels
+   * above it do.
+   */
+  const renderDayRow = (
+    combo: ProjectRow,
+    day: { row: DailyTrendRow; values: MetricValues },
+    dayIndex: number,
+    zebra: CSSProperties,
+  ) => (
+    <tr
+      key={day.row.date}
+      style={{
+        ...zebra,
+        animation: `briefingRowIn ${durationTokens.standard}ms ${easeTokens.decelerate} both`,
+        animationDelay: `${dayIndex * ROW_STAGGER_MS}ms`,
+      }}
+    >
+      <td
+        colSpan={leadCount}
+        title={`${comboLabel(combo)} ｜ ${expandLabel}对比`}
+        style={{
+          ...briefingTable.bodyCell(),
+          paddingLeft: 24,
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <Box
+            aria-hidden
+            sx={{
+              width: 2,
+              height: 14,
+              borderRadius: 1,
+              bgcolor: "primary.main",
+              opacity: 0.5,
+            }}
+          />
+          {day.row.label ?? day.row.date}
+        </Box>
+      </td>
+      {metricCellsText(day.values, ltvDays).map((cell) => (
+        <td key={cell.key} style={smallNumCell} title={cell.title}>
+          <span style={cell.color ? { color: cell.color } : undefined}>
+            {cell.text}
+          </span>
+        </td>
+      ))}
+      <td style={smallNumCell}>
+        <StatusDot
+          achieved={(day.row.roi1 ?? 0) >= breakevenLine}
+          invested={day.row.spend > 0}
+        />
+      </td>
+    </tr>
+  );
+
   return (
     <Paper sx={{ p: 2 }} variant="outlined">
       <Box
@@ -1213,13 +1366,53 @@ function ProjectComboTable({
           mb: 1,
         }}
       >
-        <Typography variant="subtitle1">
-          {splitChannel
-            ? splitRegion
-              ? "主游戏 × 渠道商 × 地区 明细（含环比）"
-              : "主游戏 × 渠道商 明细（含环比）"
-            : "主游戏 明细（不分渠道）"}
-        </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 1,
+            minWidth: 0,
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography variant="subtitle1" sx={{ whiteSpace: "nowrap" }}>
+            {splitChannel
+              ? splitRegion
+                ? "主游戏 × 渠道商 × 地区 明细（含环比）"
+                : "主游戏 × 渠道商 明细（含环比）"
+              : "主游戏 明细（不分渠道）"}
+          </Typography>
+          {/*
+           * Top-N counts 主游戏, not 渠道商: the ranking sums each game's whole
+           * spend and every spending channel of a selected game stays listed.
+           * The tag states the rule the rows below actually follow, styled as a
+           * chip so it never reads as part of the title.
+           */}
+          {topNote && (
+            <Tooltip
+              describeChild
+              title="Top N 按主游戏汇总消耗排名取前 N 名；入选主游戏的渠道全部列出，不按渠道维度截断"
+            >
+              <Box
+                component="span"
+                sx={{
+                  px: 0.75,
+                  py: 0.25,
+                  border: `1px solid ${supersetPalette.outline}`,
+                  borderRadius: 1,
+                  bgcolor: supersetPalette.surface.variant,
+                  color: "text.secondary",
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  lineHeight: 1.6,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {topNote}
+              </Box>
+            </Tooltip>
+          )}
+        </Box>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {onToggleChannel && (
             <Tooltip
@@ -1304,158 +1497,208 @@ function ProjectComboTable({
             </tr>
           </thead>
           <tbody>
-            {projects.map((p, idx) => {
-              // Expanded, the parent row becomes the subtotal of the daily rows
-              // it discloses — same metric fields, computed over the window.
-              const totals = showDaily
-                ? summarizeDailyRows(p.daily ?? undefined)
-                : null;
-              const days = disclosedDays(p, showDaily);
-              const achieved =
-                ((totals ? totals.roi1 : p.roi1) ?? 0) >= breakevenLine;
-              const parentValues: MetricValues = totals
-                ? totalsMetricValues(totals, ltvDays)
-                : {
-                    spend: p.spend,
-                    spendDelta: pct(p.spend, p.prev?.spend),
-                    recharge: p.recharge ?? 0,
-                    newUsers: p.new_users,
-                    payRate: p.pay_rate,
-                    retentionRate: p.retention_rate,
-                    naturalRate: p.natural_rate,
-                    cpa: p.cpa,
-                    ltv: {
-                      1: p.ltv1,
-                      2: p.ltv2,
-                      3: p.ltv3,
-                      4: p.ltv4,
-                      5: p.ltv5,
-                      6: p.ltv6,
-                      7: p.ltv7,
-                    },
-                    roi1: p.roi1,
-                    roi1Delta: pct(p.roi1, p.prev?.roi1),
-                    roiCum: p.roi_cum,
-                    roiFlow: p.roi_flow,
-                  };
+            {groupedRows.map(({ project: game, members }, groupIndex) => {
+              // Every block but the first opens with a divider above its first
+              // row, so a 小计 always reads as closing the group above it.
+              const opensWithDivider = groupIndex > 0;
+              // The 小计 quotes the whole-game summary — the same figures the
+              // chart above and the merged view show — so a channel hidden by
+              // the Top-N cut never makes the subtotal disagree with the bar.
+              const summary = showSubtotals ? summaries?.get(game) : undefined;
+              // 分天 turns every row into its window total (「合计 N 天」), so
+              // the 小计 follows suit and equals the days it closes below;
+              // collapsed, it stays the report period the chart shows.
+              const subtotalTotal =
+                summary && showDaily
+                  ? summarizeDailyRows(summary.daily ?? undefined)
+                  : null;
+              const rollup = summary
+                ? null
+                : summarizeDailyRows(members.map((member) => member.row));
+              const subtotalValues = summary
+                ? subtotalTotal
+                  ? totalsMetricValues(subtotalTotal, ltvDays)
+                  : projectMetricValues(summary)
+                : rollup
+                  ? totalsMetricValues(rollup, ltvDays)
+                  : null;
+              const showSubtotal =
+                showSubtotals &&
+                subtotalValues !== null &&
+                (summary !== undefined || members.length > 1);
+              // The 小计 discloses its own days too, so the group end sums up
+              // by day exactly like every channel above it.
+              const subtotalDays = summary
+                ? disclosedDays(summary, showDaily)
+                : [];
               return (
-                <Fragment key={`${p.project}-${p.channel}-${p.region}`}>
-                  <tr style={briefingTable.zebraRow(idx)}>
-                    <td style={briefingTable.bodyCell()}>
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 0.75,
-                        }}
-                      >
-                        {p.project}
-                        {totals && <TotalTag days={p.daily?.length ?? 0} />}
-                      </Box>
-                    </td>
-                    <td style={briefingTable.bodyCell()}>{p.channel || "-"}</td>
-                    {hasRegion && (
-                      <td style={briefingTable.bodyCell()}>
-                        {p.region || "-"}
-                      </td>
-                    )}
-                    {/*
-                     * The reel lives in both states on purpose: the cell keeps
-                     * its identity, so when the row turns into a period total
-                     * the figure rolls over from the day's value instead of
-                     * being swapped in.
-                     */}
-                    {metricCellsText(parentValues, ltvDays).map((cell, i) => (
-                      <td
-                        key={cell.key}
-                        style={{ ...numCell, fontWeight: 600 }}
-                        title={cell.title}
-                      >
-                        <WheelValue
-                          text={cell.text}
-                          color={cell.color}
-                          delay={i * REEL_STAGGER_MS}
-                        />
-                      </td>
-                    ))}
-                    <td style={numCell}>
-                      <StatusDot
-                        achieved={achieved}
-                        invested={parentValues.spend > 0}
-                      />
-                    </td>
-                  </tr>
-                  {days.map((day, dayIndex) => (
+                <Fragment key={game}>
+                  {members.map(({ row: p, idx }, memberIndex) => {
+                    // Expanded, the parent row becomes the subtotal of the
+                    // daily rows it discloses — same metric fields, computed
+                    // over the window.
+                    const totals = showDaily
+                      ? summarizeDailyRows(p.daily ?? undefined)
+                      : null;
+                    const days = disclosedDays(p, showDaily);
+                    const achieved =
+                      ((totals ? totals.roi1 : p.roi1) ?? 0) >= breakevenLine;
+                    const parentValues = totals
+                      ? totalsMetricValues(totals, ltvDays)
+                      : projectMetricValues(p);
+                    return (
+                      <Fragment key={`${p.project}-${p.channel}-${p.region}`}>
+                        {/*
+                         * 分天明细在前、合计在后: a channel discloses its days
+                         * first and closes with the 「合计 N 天」 row, so the
+                         * summary sits at the end of the detail it sums — the
+                         * game's 小计 then closes the whole group.
+                         *
+                         * The keys keep the 合计 row mounted across the toggle,
+                         * so its figures still roll over from the day's value
+                         * instead of being swapped in.
+                         */}
+                        <Fragment key="days">
+                          {days.map((day, dayIndex) =>
+                            renderDayRow(
+                              p,
+                              day,
+                              dayIndex,
+                              opensWithDivider &&
+                                memberIndex === 0 &&
+                                dayIndex === 0
+                                ? briefingTable.groupStartRow(idx)
+                                : briefingTable.zebraRow(idx),
+                            ),
+                          )}
+                        </Fragment>
+                        <tr
+                          key="total"
+                          style={
+                            opensWithDivider &&
+                            memberIndex === 0 &&
+                            days.length === 0
+                              ? briefingTable.groupStartRow(idx)
+                              : briefingTable.zebraRow(idx)
+                          }
+                        >
+                          <td style={briefingTable.bodyCell()}>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 0.75,
+                              }}
+                            >
+                              {p.project}
+                              {totals && (
+                                <TotalTag days={p.daily?.length ?? 0} />
+                              )}
+                            </Box>
+                          </td>
+                          <td style={briefingTable.bodyCell()}>
+                            {p.channel || "-"}
+                          </td>
+                          {hasRegion && (
+                            <td style={briefingTable.bodyCell()}>
+                              {p.region || "-"}
+                            </td>
+                          )}
+                          {/*
+                           * The reel lives in both states on purpose: the cell
+                           * keeps its identity, so when the row turns into a
+                           * period total the figure rolls over from the day's
+                           * value instead of being swapped in.
+                           */}
+                          {metricCellsText(parentValues, ltvDays).map(
+                            (cell, i) => (
+                              <td
+                                key={cell.key}
+                                style={{ ...numCell, fontWeight: 600 }}
+                                title={cell.title}
+                              >
+                                <WheelValue
+                                  text={cell.text}
+                                  color={cell.color}
+                                  delay={i * REEL_STAGGER_MS}
+                                />
+                              </td>
+                            ),
+                          )}
+                          <td style={numCell}>
+                            <StatusDot
+                              achieved={achieved}
+                              invested={parentValues.spend > 0}
+                            />
+                          </td>
+                        </tr>
+                        {showDaily && days.length === 0 && (
+                          <tr key="empty">
+                            <td
+                              colSpan={columnCount}
+                              style={{
+                                ...briefingTable.bodyCell(),
+                                paddingLeft: 24,
+                                color: "text.secondary",
+                              }}
+                            >
+                              暂无{expandLabel}明细
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                  {showSubtotal && subtotalValues && summary && (
+                    <Fragment key="subtotal-days">
+                      {subtotalDays.map((day, dayIndex) =>
+                        renderDayRow(summary, day, dayIndex, {
+                          backgroundColor: supersetPalette.action.hover,
+                          borderBottom: `1px solid ${supersetPalette.border.light}`,
+                        }),
+                      )}
+                    </Fragment>
+                  )}
+                  {showSubtotal && subtotalValues && (
                     <tr
-                      key={day.row.date}
+                      key="subtotal"
                       style={{
-                        ...briefingTable.zebraRow(idx),
-                        animation: `briefingRowIn ${durationTokens.standard}ms ${easeTokens.decelerate} both`,
-                        animationDelay: `${dayIndex * ROW_STAGGER_MS}ms`,
+                        backgroundColor: supersetPalette.bg.selected,
+                        borderTop: `1px solid ${supersetPalette.border.medium}`,
+                        borderBottom: `1px solid ${supersetPalette.border.light}`,
                       }}
                     >
                       <td
                         colSpan={leadCount}
-                        title={`${comboLabel(p)} ｜ ${expandLabel}对比`}
-                        style={{
-                          ...briefingTable.bodyCell(),
-                          paddingLeft: 24,
-                        }}
+                        title={`${game} ｜ 全部渠道汇总`}
+                        style={briefingTable.bodyCell()}
                       >
                         <Box
                           sx={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 1,
+                            gap: 0.75,
+                            fontWeight: 700,
                           }}
                         >
-                          <Box
-                            aria-hidden
-                            sx={{
-                              width: 2,
-                              height: 14,
-                              borderRadius: 1,
-                              bgcolor: "primary.main",
-                              opacity: 0.5,
-                            }}
-                          />
-                          {day.row.label ?? day.row.date}
+                          {game}
+                          <SubtotalTag />
                         </Box>
                       </td>
-                      {metricCellsText(day.values, ltvDays).map((cell) => (
+                      {metricCellsText(subtotalValues, ltvDays).map((cell) => (
                         <td
                           key={cell.key}
-                          style={smallNumCell}
+                          style={{ ...numCell, fontWeight: 700 }}
                           title={cell.title}
                         >
-                          <span
-                            style={
-                              cell.color ? { color: cell.color } : undefined
-                            }
-                          >
-                            {cell.text}
-                          </span>
+                          <WheelValue text={cell.text} color={cell.color} />
                         </td>
                       ))}
-                      <td style={smallNumCell}>
+                      <td style={numCell}>
                         <StatusDot
-                          achieved={(day.row.roi1 ?? 0) >= breakevenLine}
-                          invested={day.row.spend > 0}
+                          achieved={(subtotalValues.roi1 ?? 0) >= breakevenLine}
+                          invested={subtotalValues.spend > 0}
                         />
-                      </td>
-                    </tr>
-                  ))}
-                  {showDaily && days.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={columnCount}
-                        style={{
-                          ...briefingTable.bodyCell(),
-                          paddingLeft: 24,
-                          color: "text.secondary",
-                        }}
-                      >
-                        暂无{expandLabel}明细
                       </td>
                     </tr>
                   )}
@@ -1545,6 +1788,31 @@ function TotalTag({ days }: { days: number }) {
       }}
     >
       合计 {days} 天
+    </Box>
+  );
+}
+
+/**
+ * Marks a game's subtotal row in the 分渠道 view: the row carries the game's
+ * whole-game figures, so it is never read as one more channel.
+ */
+function SubtotalTag() {
+  return (
+    <Box
+      component="span"
+      title="本行为该主游戏全部渠道的汇总"
+      sx={{
+        px: 0.5,
+        py: 0.1,
+        borderRadius: 0.5,
+        bgcolor: supersetPalette.primary.container,
+        color: supersetPalette.primary.onContainer,
+        fontSize: "0.6875rem",
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      小计
     </Box>
   );
 }
@@ -3653,27 +3921,7 @@ export default function DailyReportDetail() {
     }
     return (result?.project_summary ?? [])
       .filter((p) => listedGames.has(p.project))
-      .map((p) => ({
-        project: p.project,
-        channel: MERGED_CHANNEL_LABEL,
-        region: "",
-        spend: p.spend,
-        new_users: p.new_users,
-        pay_rate: p.pay_rate,
-        retention_rate: p.retention_rate,
-        cpa: p.cpa,
-        recharge: p.recharge,
-        ltv1: p.ltv1,
-        ltv2: p.ltv2,
-        ltv3: p.ltv3,
-        ltv4: p.ltv4,
-        ltv5: p.ltv5,
-        ltv6: p.ltv6,
-        ltv7: p.ltv7,
-        roi1: p.roi1,
-        prev: p.prev,
-        daily: p.daily,
-      }));
+      .map(summaryToProjectRow);
   }, [
     splitChannel,
     splitRegion,
@@ -3682,6 +3930,28 @@ export default function DailyReportDetail() {
     result?.project_regions,
     result?.project_summary,
   ]);
+
+  // 分渠道: each game's 小计 row reads its whole-game summary, the same rows
+  // the chart and the merged view quote, so a game's subtotal always matches
+  // its bar — even when the Top-N cut hides some of its channels.
+  const projectSummaries = useMemo(
+    () =>
+      new Map(
+        (result?.project_summary ?? []).map((p) => [
+          p.project,
+          summaryToProjectRow(p),
+        ]),
+      ),
+    [result?.project_summary],
+  );
+
+  // The Top-N tag beside the §3 table title states the rule the rows follow;
+  // the count comes from the report parameters the result was generated with.
+  const topProjectsNote = `${resultIsWeekly ? "当周" : "当日"}消耗Top ${
+    typeof form?.top_projects_count === "number" && form.top_projects_count > 0
+      ? form.top_projects_count
+      : "N"
+  } 主游戏`;
 
   const channelRows = useMemo<ComboRow[]>(
     () =>
@@ -4225,6 +4495,9 @@ export default function DailyReportDetail() {
                   splitRegion={splitRegion}
                   onToggleRegion={() => setSplitRegion((v) => !v)}
                   expandLabel={resultIsWeekly ? "分周" : "分天"}
+                  topNote={topProjectsNote}
+                  summaries={projectSummaries}
+                  showSubtotals={splitChannel}
                 />
               </Box>
 

@@ -1,4 +1,10 @@
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import CreateAlertDialog from "@/pages/AlertReportList/CreateAlertDialog";
 import { test, expect, vi } from "vitest";
@@ -50,7 +56,7 @@ test("renders required fields when open", () => {
 
 test("shows validation error when required fields missing", async () => {
   renderDialog();
-  await userEvent.click(screen.getByRole("button", { name: "创建" }));
+  userEvent.click(screen.getByRole("button", { name: "创建" }));
   await waitFor(() => {
     expect(screen.getByText("请填写警报名称")).toBeInTheDocument();
   });
@@ -73,14 +79,20 @@ test("posts valid payload and closes on success", async () => {
   const chartOption = screen
     .getAllByRole("option")
     .find((o) => o.textContent?.includes("营收表"));
-  if (chartOption) act(() => fireEvent.click(chartOption));
+  if (chartOption)
+    act(() => {
+      fireEvent.click(chartOption);
+    });
   act(() => {
     fireEvent.mouseDown(screen.getByLabelText(/数据库/));
   });
   const dbOption = screen
     .getAllByRole("option")
     .find((o) => o.textContent?.includes("starfly_config"));
-  if (dbOption) act(() => fireEvent.click(dbOption));
+  if (dbOption)
+    act(() => {
+      fireEvent.click(dbOption);
+    });
   act(() => {
     fireEvent.change(sqlInput(), {
       target: { value: "SELECT COUNT(*) FROM orders" },
@@ -131,7 +143,14 @@ test("edit mode prefills the report and saves via PUT", async () => {
   render(
     <CreateAlertDialog
       open
-      editing={{ id: 9, name: "旧警报", type: "Alert", active: true, crontab: "0 8 * * *", recipients: "" }}
+      editing={{
+        id: 9,
+        name: "旧警报",
+        type: "Alert",
+        active: true,
+        crontab: "0 8 * * *",
+        recipients: "",
+      }}
       onClose={onClose}
       onCreated={onCreated}
       charts={charts}

@@ -23,9 +23,11 @@ import {
   mediaByPlatform,
   mediaRowsByProject,
   platformsBySpend,
+  projectGroups,
   roiQuality,
   rollupMediaRows,
   summarizeDailyRows,
+  tableLtvDays,
   visibleLtvDays,
 } from "../reportData";
 
@@ -153,6 +155,25 @@ test("mediaRowsByProject tolerates a result generated before the drill existed",
   expect(mediaRowsByProject([]).size).toBe(0);
 });
 
+test("projectGroups keeps each game's channels together and in payload order", () => {
+  // The combo table cuts the payload on this boundary, so the game order and
+  // the order inside a game must survive the grouping untouched.
+  const groups = projectGroups([
+    { project: "A", channel: "c1" },
+    { project: "A", channel: "c2" },
+    { project: "B", channel: "c1" },
+  ]);
+
+  expect([...groups.keys()]).toEqual(["A", "B"]);
+  expect(groups.get("A")?.map((r) => r.channel)).toEqual(["c1", "c2"]);
+  expect(groups.get("B")?.map((r) => r.channel)).toEqual(["c1"]);
+});
+
+test("projectGroups tolerates a missing combo list", () => {
+  expect(projectGroups(undefined).size).toBe(0);
+  expect(projectGroups([]).size).toBe(0);
+});
+
 test("mediaByPlatform keeps each platform's media spend-descending", () => {
   // The chart's first level is the platform, so a media that bought on two
   // platforms shows up under each — ordered by that platform's own spend.
@@ -264,4 +285,21 @@ test("rollupMediaRows reports undefined ratios as null, not zero", () => {
 test("visibleLtvDays keeps only the milestones that carry data", () => {
   expect(visibleLtvDays([{ ltv1: 1, ltv2: 0, ltv3: 2 }])).toEqual([1, 3]);
   expect(visibleLtvDays([])).toEqual([]);
+});
+
+test("tableLtvDays caps the collapsed table at LTV1 and opens LTV2+ with 分天", () => {
+  // 非分天 quotes period rows: even a period-level LTV2 stays out of the
+  // collapsed table, whose deeper milestones are day-grain.  分天 puts the day
+  // rows on screen, and those carry LTV2…LTV7 for real.
+  const rows = [
+    {
+      ltv1: 1.47,
+      ltv2: 2.56,
+      ltv3: 0,
+      daily: [{ ltv1: 1.94, ltv2: 3.98, ltv3: 5.48 }],
+    },
+  ];
+
+  expect(tableLtvDays(rows, false)).toEqual([1]);
+  expect(tableLtvDays(rows, true)).toEqual([1, 2, 3]);
 });

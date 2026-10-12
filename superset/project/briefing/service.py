@@ -951,18 +951,20 @@ def _select_combo_rows(
 ) -> list[dict[str, Any]]:
     """Decide which 主游戏 × 渠道商 combos are listed.
 
-    Selection is a plain spend ranking: the ``top_n`` combos with the biggest
-    rebate-adjusted spend.  Combos with no spend are never used to fill the
-    list — a zero-spend row tells the reader nothing about where money went.
+    ``top_n`` caps the number of **games**, not combos: the ``top_n`` games
+    with the biggest full spend keep every spending channel they have, so a
+    game with several channels never takes another game's slot.  Combos with no
+    spend are never used to fill the list — a zero-spend row tells the reader
+    nothing about where money went.
 
     Channels named in ``uncapped_channels`` (``third`` for the overseas source)
-    bypass that ranking, but only for a game that already has a spend-bearing
-    combo in the list: the point is to disclose a spending game's non-ad
-    channel, not to add rows for games that are not spending (nor to smuggle
-    revenue-only rows in through a second ranking).  Matching ignores case and
-    surrounding blanks.
+    bypass that spend requirement, but only for a game that already has a
+    spend-bearing combo in the list: the point is to disclose a spending game's
+    non-ad channel, not to add rows for games that are not spending (nor to
+    smuggle revenue-only rows in through a second ranking).  Matching ignores
+    case and surrounding blanks.
     """
-    limit = top_n if top_n and top_n > 0 else len(rows)
+    limit = top_n if top_n and top_n > 0 else None
     exempt_channels = {
         str(c).strip().casefold() for c in uncapped_channels if str(c).strip()
     }
@@ -975,9 +977,21 @@ def _select_combo_rows(
             continue
         if (row.get("spend") or 0) > 0:
             ranked.append(i)
-    ranked.sort(key=lambda i: -float(rows[i].get("spend") or 0))
-    keep = list(ranked[:limit])
-    listed_games = {str(rows[i].get("project") or "") for i in keep}
+    # Rank the games (by their full spend across every channel), then take the
+    # top N; every spending combo of a selected game is kept.
+    game_spend: dict[str, float] = {}
+    for row in rows:
+        game = str(row.get("project") or "")
+        game_spend[game] = game_spend.get(game, 0.0) + float(row.get("spend") or 0)
+    eligible = {str(rows[i].get("project") or "") for i in ranked}
+    games = sorted(
+        (game for game in game_spend if game in eligible),
+        key=lambda game: -game_spend[game],
+    )
+    if limit is not None:
+        games = games[:limit]
+    listed_games = set(games)
+    keep = [i for i in ranked if str(rows[i].get("project") or "") in listed_games]
     for i in exempt_candidates:
         row = rows[i]
         if str(row.get("project") or "") not in listed_games:

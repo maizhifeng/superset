@@ -126,20 +126,17 @@ export default function SavedQueryList() {
   );
 
   /** 将保存的 SQL 下载为 .sql 文件。 */
-  const handleDownloadSql = useCallback(
-    (sql: string, label: string) => {
-      const blob = new Blob([sql], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${(label || "query").replace(/[\\/:*?"<>|]/g, "_")}.sql`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    },
-    [],
-  );
+  const handleDownloadSql = useCallback((sql: string, label: string) => {
+    const blob = new Blob([sql], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${(label || "query").replace(/[\\/:*?"<>|]/g, "_")}.sql`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, []);
 
   /** 在 SQL 实验室打开并直接运行：先取回该查询的数据库 id，再带 auto-run 跳转。 */
   const handleRunSaved = useCallback(
@@ -149,6 +146,7 @@ export default function SavedQueryList() {
           result?: {
             db_id?: number;
             sql?: string;
+            schema?: string;
             database?: { id?: number };
           };
         }>(`/saved_query/${id}`);
@@ -157,6 +155,7 @@ export default function SavedQueryList() {
           state: {
             initialSql: detail?.sql ?? "",
             initialDatabaseId: detail?.database?.id ?? detail?.db_id,
+            initialSchema: detail?.schema ?? undefined,
             initialRun: true,
           },
         });
@@ -193,7 +192,10 @@ export default function SavedQueryList() {
     }
     try {
       await navigator.clipboard.writeText(labels.join("\n"));
-      notify({ severity: "success", message: `已复制 ${labels.length} 个标签` });
+      notify({
+        severity: "success",
+        message: `已复制 ${labels.length} 个标签`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -276,7 +278,11 @@ export default function SavedQueryList() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新列表">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -349,26 +355,27 @@ export default function SavedQueryList() {
         id: "db_filter",
         priority: 1.8,
         showOnMobile: false,
-        render: databaseOptions.length > 0 ? (
-          <FormControl size="small" sx={{ minWidth: 130 }}>
-            <InputLabel id="sq-db-label">数据库</InputLabel>
-            <Select
-              labelId="sq-db-label"
-              label="数据库"
-              value={dbFilter}
-              onChange={(e) => setDbFilter(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              {databaseOptions.map((d) => (
-                <MenuItem key={d} value={d}>
-                  {d}
+        render:
+          databaseOptions.length > 0 ? (
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel id="sq-db-label">数据库</InputLabel>
+              <Select
+                labelId="sq-db-label"
+                label="数据库"
+                value={dbFilter}
+                onChange={(e) => setDbFilter(e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>全部</em>
                 </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        ) : null,
+                {databaseOptions.map((d) => (
+                  <MenuItem key={d} value={d}>
+                    {d}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null,
       },
       {
         id: "search",
@@ -386,7 +393,24 @@ export default function SavedQueryList() {
       },
     ]);
     return () => unregisterTools("saved_query_list");
-  }, [registerTools, unregisterTools, handleSearchChange, handleExportCsv, handleCopyAllLabels, favoritesOnly, setFavoritesOnly, favIds, dbFilter, setDbFilter, databaseOptions, displayRows.length, rows.length, fetchData, loading, navigate]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    handleExportCsv,
+    handleCopyAllLabels,
+    favoritesOnly,
+    setFavoritesOnly,
+    favIds,
+    dbFilter,
+    setDbFilter,
+    databaseOptions,
+    displayRows.length,
+    rows.length,
+    fetchData,
+    loading,
+    navigate,
+  ]);
 
   const columns: GridColDef[] = [
     {
@@ -416,7 +440,12 @@ export default function SavedQueryList() {
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
           <Typography
             variant="body2"
-            sx={{ fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            sx={{
+              fontWeight: 500,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
           >
             {params.value}
           </Typography>
@@ -430,14 +459,19 @@ export default function SavedQueryList() {
                   void (async () => {
                     try {
                       await navigator.clipboard.writeText(params.value);
-                      notify({ severity: "success", message: `已复制标签 ${params.value}` });
+                      notify({
+                        severity: "success",
+                        message: `已复制标签 ${params.value}`,
+                      });
                     } catch {
                       notify({ severity: "error", message: "复制失败" });
                     }
                   })();
                 }}
               >
-                <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
+                <ContentCopyIcon
+                  sx={{ fontSize: 13, color: "text.disabled" }}
+                />
               </IconButton>
             </Tooltip>
           ) : null}
@@ -509,7 +543,11 @@ export default function SavedQueryList() {
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
             <Typography
               variant="body2"
-              sx={{ fontSize: "0.8125rem", overflow: "hidden", textOverflow: "ellipsis" }}
+              sx={{
+                fontSize: "0.8125rem",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
             >
               {dbName}
             </Typography>
@@ -549,9 +587,7 @@ export default function SavedQueryList() {
         return (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
             <Tooltip
-              title={
-                favIds.includes(params.id as number) ? "取消收藏" : "收藏"
-              }
+              title={favIds.includes(params.id as number) ? "取消收藏" : "收藏"}
             >
               <IconButton
                 size="small"
@@ -839,7 +875,11 @@ export default function SavedQueryList() {
               sx={{ fontFamily: "monospace" }}
             />
             {editError && (
-              <Alert severity="error" onClose={() => setEditError(null)} sx={{ borderRadius: 1.5 }}>
+              <Alert
+                severity="error"
+                onClose={() => setEditError(null)}
+                sx={{ borderRadius: 1.5 }}
+              >
                 {editError}
               </Alert>
             )}

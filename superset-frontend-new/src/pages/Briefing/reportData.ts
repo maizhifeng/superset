@@ -44,6 +44,23 @@ export function visibleLtvDays(rows: readonly object[]): number[] {
 }
 
 /**
+ * Which LTV columns the 主游戏 × 渠道商 table prints.
+ *
+ * 分天 on: the disclosed days are rows of the table, and LTV2…LTV7 are
+ * day-grain milestones that materialise there — so the day series decides the
+ * columns.  分天 off: the table quotes period rows, where the deeper milestones
+ * read as zeros or dashes, so it stays at LTV1 rather than widening the table
+ * with columns the collapsed view cannot use.
+ */
+export function tableLtvDays(
+  rows: readonly { daily?: readonly object[] }[],
+  showDaily: boolean,
+): number[] {
+  if (!showDaily) return visibleLtvDays(rows).filter((day) => day === 1);
+  return visibleLtvDays(rows.flatMap((row) => row.daily ?? []));
+}
+
+/**
  * Games represented by a set of channel rows.
  *
  * The merged ("不分客户端") table reuses this so switching the channel split
@@ -132,6 +149,21 @@ export function platformsBySpend<
  * also the order the swapped view lists a game's media in.
  */
 export function mediaRowsByProject<T extends { project: string }>(
+  rows: readonly T[] | undefined,
+): Map<string, T[]> {
+  return groupByKey(rows, (row) => row.project);
+}
+
+/**
+ * Index the 主游戏 × 渠道商 rows by 主游戏, payload order kept.
+ *
+ * The combo payload lists a game and all its channels together (the backend
+ * sorts it that way so the table reads game by game), and the §3 table cuts it
+ * on the same boundary: each group renders its channel rows and then the
+ * game's 小计 row.  Group insertion order is the payload's game order, and the
+ * channels inside a group keep their spend-descending order.
+ */
+export function projectGroups<T extends { project: string }>(
   rows: readonly T[] | undefined,
 ): Map<string, T[]> {
   return groupByKey(rows, (row) => row.project);

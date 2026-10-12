@@ -41,6 +41,11 @@ interface ResultsTableProps {
   paginatedData: Record<string, unknown>[];
   onPageChange: (page: number) => void;
   onRowsPerPageChange: (rowsPerPage: number) => void;
+  /**
+   * 是否显示「SQL / 复制 SQL」这一组按钮。可视化模式下右侧已常显生成的
+   * SQL 面板，此组按钮与之重复，因此传入 false 隐藏。
+   */
+  showSqlToggle?: boolean;
 }
 
 export default function ResultsTable({
@@ -50,6 +55,7 @@ export default function ResultsTable({
   paginatedData,
   onPageChange,
   onRowsPerPageChange,
+  showSqlToggle = true,
 }: ResultsTableProps) {
   const columns = result.columns.map((c) => c.name);
   const notify = useNotificationStore((s) => s.notify);
@@ -66,7 +72,7 @@ export default function ResultsTable({
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
-    else void rootRef.current?.requestFullscreen();
+    else void rootRef.current?.requestFullscreen?.();
   };
   const executedSql = result.query?.sql || "";
 
@@ -86,7 +92,10 @@ export default function ResultsTable({
     if (columns.length === 0) return;
     try {
       await navigator.clipboard.writeText(columns.join("\n"));
-      notify({ severity: "success", message: `已复制 ${columns.length} 个列名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${columns.length} 个列名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -110,7 +119,9 @@ export default function ResultsTable({
     const rows = result.data;
     if (rows.length === 0) return;
     const esc = (v: unknown): string =>
-      String(v ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+      String(v ?? "")
+        .replace(/\r?\n/g, " ")
+        .replace(/\|/g, "\\|");
     const header = `| ${columns.join(" | ")} |`;
     const divider = `| ${columns.map(() => "---").join(" | ")} |`;
     const lines = rows.map(
@@ -177,7 +188,19 @@ export default function ResultsTable({
   return (
     <Box
       ref={rootRef}
-      sx={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}
+      sx={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+        // 全屏时补上主题背景与内边距，避免透明背景露出浏览器默认黑底，
+        // 让全屏视图与页面内表格样式保持一致。
+        "&:fullscreen": {
+          bgcolor: "background.default",
+          color: "text.primary",
+          p: 2,
+        },
+      }}
     >
       <Box
         sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}
@@ -194,7 +217,7 @@ export default function ResultsTable({
           {result.query?.state ? ` · ${result.query.state}` : ""}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        {executedSql && (
+        {showSqlToggle && executedSql && (
           <Button
             size="small"
             variant="text"
@@ -212,7 +235,7 @@ export default function ResultsTable({
             SQL
           </Button>
         )}
-        {executedSql && (
+        {showSqlToggle && executedSql && (
           <Tooltip title="复制执行的 SQL">
             <Button
               size="small"
@@ -280,7 +303,7 @@ export default function ResultsTable({
           </IconButton>
         </Tooltip>
       </Box>
-      <Collapse in={showSql} unmountOnExit>
+      <Collapse in={showSqlToggle && showSql} unmountOnExit>
         <Paper
           variant="outlined"
           sx={{ mt: 1, p: 1.25, borderRadius: 1.5, overflow: "auto" }}
@@ -311,7 +334,8 @@ export default function ResultsTable({
             component="pre"
             sx={{
               m: 0,
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
               fontSize: "0.75rem",
               lineHeight: 1.5,
               color: "text.primary",

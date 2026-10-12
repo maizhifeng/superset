@@ -119,12 +119,14 @@ class DailyReportConfig:
     alert_warning_threshold: float = 20.0
     roi_critical_line: float = 0.05
     roi_warning_line: float = 0.10
+    # Top N 主游戏: the N games with the biggest full spend; each selected game
+    # keeps every spending channel it has.
     top_projects_count: int = 5
-    # Channels exempt from the Top-N combo cut: every 主游戏×渠道商 row of these
-    # channels is listed (as long as it carries spend, users or recharge).  The
-    # overseas channel ``third`` carries revenue but never ad spend, so it can
-    # never make a spend-based cut and would otherwise disappear entirely.
-    # Only the combo table is affected — the 主游戏 view keeps its 95% spend cap.
+    # Channels exempt from the Top-N cut: once a game is in the Top-N, every
+    # 主游戏×渠道商 row of these channels is listed too (as long as it carries
+    # spend, users or recharge).  The overseas channel ``third`` carries revenue
+    # but never ad spend, so it can never make a spend-based cut and would
+    # otherwise disappear entirely.  Only the combo table is affected.
     uncapped_channels: list[str] = field(default_factory=list)
     days_of_history: int = 30
     # Weekly briefings: how many complete weeks (including the reported week)

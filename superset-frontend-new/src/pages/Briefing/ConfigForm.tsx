@@ -220,7 +220,7 @@ export default function ConfigForm({
           />
         </Grid>
         <Field
-          label="Top N 项目数"
+          label="Top N 主游戏数"
           value={local.top_projects_count}
           onChange={setText("top_projects_count")}
         />

@@ -3,8 +3,15 @@ import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { format as formatSql } from "sql-formatter";
 import rison from "rison";
-import type { Database, QueryResult } from "@/types/api";
+import type { Database, QueryResult, TableMetadata } from "@/types/api";
 import type { Completion } from "@codemirror/autocomplete";
+import {
+  emptyModel,
+  tableMetaKey,
+  type VisualMode,
+  type VisualQueryModel,
+} from "./visual/types";
+import { stripVisualComment } from "./visual/modelIO";
 
 const LAST_DB_KEY = "superset-sql-lab-last-database";
 const LAST_SCHEMA_KEY = "superset-sql-lab-last-schema";
@@ -28,14 +35,29 @@ function storeRecent(queries: string[]) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(queries));
 }
 
+export interface QueryTab {
+  id: number;
+  name: string;
+  sql: string;
+  mode: VisualMode;
+  /** Present when the tab was created in (or restored to) visual mode. */
+  model?: VisualQueryModel;
+}
+
 export interface UseSqlLabOptions {
   /** 初始 SQL，如从已保存查询"在 SQL 实验室中打开"时预填到首个标签页。 */
   initialSql?: string;
   /** 初始数据库 id，如从数据库详情"在 SQL 实验室中打开"时预选。 */
   initialDatabaseId?: number;
+  /** 初始模式名，与初始 SQL/数据库一起恢复上下文。 */
+  initialSchema?: string;
 }
 
-export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = {}) {
+export function useSqlLab({
+  initialSql,
+  initialDatabaseId,
+  initialSchema,
+}: UseSqlLabOptions = {}) {
   const [databases, setDatabases] = useState<Database[]>([]);
   // 记住上次使用的数据库，便于再次进入 SQL 实验室时延续上下文。
   const [databaseId, setDatabaseId] = useState<number | "">(() => {
@@ -45,8 +67,8 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
   });
   const [schemas, setSchemas] = useState<string[]>([]);
   // 记住上次选中的模式，便于再次进入时延续上下文。
-  const [schema, setSchema] = useState(() =>
-    localStorage.getItem(LAST_SCHEMA_KEY) ?? "",
+  const [schema, setSchema] = useState(
+    () => initialSchema ?? localStorage.getItem(LAST_SCHEMA_KEY) ?? "",
   );
   const [schemasLoading, setSchemasLoading] = useState(false);
   const [columnCache, setColumnCache] = useState<
@@ -87,9 +109,16 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     column?: string;
   } | null>(null);
 
-  // 查询标签页：每个标签独立保存 SQL，切换标签不会丢失编辑内容。
-  const [tabs, setTabs] = useState<{ id: number; name: string; sql: string }[]>([
-    { id: 1, name: "未命名查询 1", sql: initialSql ?? "" },
+  // 查询标签页：每个标签独立保存 SQL 与编辑模式，切换标签不会丢失编辑内容。
+  // 初始化默认给出一个可视化类型的空白查询。
+  const [tabs, setTabs] = useState<QueryTab[]>(() => [
+    {
+      id: 1,
+      name: "未命名查询 1",
+      sql: initialSql ?? "",
+      mode: "visual",
+      model: emptyModel(Number(databaseId) || 0, schema),
+    },
   ]);
   const [activeTabId, setActiveTabId] = useState(1);
   const nextTabIdRef = useRef(2);
@@ -101,26 +130,77 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     );
   }, [sql, activeTabId]);
 
-  const newQueryTab = useCallback(() => {
-    const id = nextTabIdRef.current++;
-    setTabs((prev) => [...prev, { id, name: `未命名查询 ${id}`, sql: "" }]);
-    setActiveTabId(id);
-    setSql("");
-    setResult(null);
-    setError(null);
-    setPage(0);
-  }, []);
+  /** 更新活动标签页的任意字段（模式、可视模型等）。 */
+  const updateActiveTab = useCallback(
+    (patch: Partial<QueryTab>) => {
+      setTabs((prev) =>
+        prev.map((t) => (t.id === activeTabId ? { ...t, ...patch } : t)),
+      );
+    },
+    [activeTabId],
+  );
 
-  /** 关闭全部标签页，回到单一空白标签。 */
+  /**
+   * 新建标签页；mode 缺省时继承当前标签页的类型
+   * （点击事件等非法值会被忽略，避免把事件对象当成模式）。
+   */
+  const newQueryTab = useCallback(
+    (mode?: VisualMode) => {
+      const id = nextTabIdRef.current++;
+      setTabs((prev) => {
+        const active = prev.find((t) => t.id === activeTabId);
+        const nextMode: VisualMode =
+          mode === "sql" || mode === "visual"
+            ? mode
+            : (active?.mode ?? "visual");
+        return [
+          ...prev,
+          {
+            id,
+            name: `未命名查询 ${id}`,
+            sql: "",
+            mode: nextMode,
+            model:
+              nextMode === "visual"
+                ? emptyModel(Number(databaseId) || 0, schema)
+                : undefined,
+          },
+        ];
+      });
+      setActiveTabId(id);
+      setSql("");
+      setResult(null);
+      setError(null);
+      setPage(0);
+    },
+    [activeTabId, databaseId, schema],
+  );
+
+  /** 关闭全部标签页，回到单一空白标签（沿用当前模式）。 */
   const closeAllTabs = useCallback(() => {
     const id = nextTabIdRef.current++;
-    setTabs([{ id, name: "未命名查询 1", sql: "" }]);
+    setTabs((prev) => {
+      const active = prev.find((t) => t.id === activeTabId);
+      const mode: VisualMode = active?.mode ?? "visual";
+      return [
+        {
+          id,
+          name: "未命名查询 1",
+          sql: "",
+          mode,
+          model:
+            mode === "visual"
+              ? emptyModel(Number(databaseId) || 0, schema)
+              : undefined,
+        },
+      ];
+    });
     setActiveTabId(id);
     setSql("");
     setResult(null);
     setError(null);
     setPage(0);
-  }, []);
+  }, [activeTabId, databaseId, schema]);
 
   const activateQueryTab = useCallback(
     (id: number) => {
@@ -141,7 +221,17 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         const next = prev.filter((t) => t.id !== id);
         if (next.length === 0) {
           const nid = nextTabIdRef.current++;
-          next.push({ id: nid, name: `未命名查询 ${nid}`, sql: "" });
+          const mode: VisualMode = prev[idx]?.mode ?? "visual";
+          next.push({
+            id: nid,
+            name: `未命名查询 ${nid}`,
+            sql: "",
+            mode,
+            model:
+              mode === "visual"
+                ? emptyModel(Number(databaseId) || 0, schema)
+                : undefined,
+          });
         }
         if (activeTabId === id) {
           const target = next[Math.min(idx, next.length - 1)];
@@ -154,10 +244,52 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         return next;
       });
     },
-    [activeTabId],
+    [activeTabId, databaseId, schema],
   );
 
   const quoteId = (id: string) => (/[^a-zA-Z_0-9]/.test(id) ? `"${id}"` : id);
+
+  // 表结构元数据缓存（列类型、主键、外键），供可视化组装器与表浏览器共用。
+  const [tableMetas, setTableMetas] = useState<Record<string, TableMetadata>>(
+    {},
+  );
+  const tableMetasRef = useRef(tableMetas);
+  tableMetasRef.current = tableMetas;
+  const inflightMetaRef = useRef<Map<string, Promise<TableMetadata | null>>>(
+    new Map(),
+  );
+
+  const fetchTableMetadata = useCallback(
+    async (
+      dbId: number | "",
+      sch: string,
+      table: string,
+    ): Promise<TableMetadata | null> => {
+      if (dbId === "" || !sch || !table) return null;
+      const key = tableMetaKey(dbId, sch, table);
+      const cached = tableMetasRef.current[key];
+      if (cached) return cached;
+      const inflight = inflightMetaRef.current.get(key);
+      if (inflight) return inflight;
+      const promise = api
+        .get<TableMetadata>(
+          `/database/${dbId}/table/${encodeURIComponent(table)}/${encodeURIComponent(sch)}/`,
+        )
+        .then((res) => {
+          setTableMetas((prev) =>
+            prev[key] ? prev : { ...prev, [key]: res.data },
+          );
+          return res.data;
+        })
+        .catch(() => null)
+        .finally(() => {
+          inflightMetaRef.current.delete(key);
+        });
+      inflightMetaRef.current.set(key, promise);
+      return promise;
+    },
+    [],
+  );
 
   const allCompletions = useMemo<Completion[]>(() => {
     const items: Completion[] = [];
@@ -242,9 +374,7 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         const list = res.data.result;
         setSchemas(list);
         // 模式列表已随数据库变化而更新，若上次记忆的模式已失效则复位。
-        setSchema((prev) =>
-          prev && list.includes(prev) ? prev : "",
-        );
+        setSchema((prev) => (prev && list.includes(prev) ? prev : ""));
         setSchemasLoading(false);
       })
       .catch(() => {
@@ -261,6 +391,7 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
       return;
     }
     setFailedTables(new Set());
+    let cancelled = false;
     const qs = rison.encode({ schema_name: schema });
     api
       .get<{ result: { value: string; type: string }[] }>(
@@ -270,7 +401,6 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         const tables = res.data.result;
         setTableList(tables);
         const CONCURRENCY = 4;
-        let cancelled = false;
         void (async () => {
           const map: Record<string, string[]> = {};
           const failed: string[] = [];
@@ -279,12 +409,14 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
             const batch = tables.slice(i, i + CONCURRENCY);
             await Promise.allSettled(
               batch.map(async (t) => {
-                try {
-                  const meta = await api.get<{ columns: { name: string }[] }>(
-                    `/database/${databaseId}/table/${encodeURIComponent(t.value)}/${encodeURIComponent(schema)}/`,
-                  );
-                  map[t.value] = meta.data.columns.map((c) => c.name);
-                } catch {
+                const meta = await fetchTableMetadata(
+                  databaseId,
+                  schema,
+                  t.value,
+                );
+                if (meta) {
+                  map[t.value] = meta.columns.map((c) => c.name);
+                } else {
                   map[t.value] = [];
                   failed.push(t.value);
                 }
@@ -296,17 +428,43 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
             if (failed.length > 0) setFailedTables(new Set(failed));
           }
         })();
-        return () => {
-          cancelled = true;
-        };
       })
-      .catch(() => setTableList([]));
-  }, [databaseId, schema, tableRefreshKey]);
+      .catch(() => {
+        if (!cancelled) setTableList([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [databaseId, schema, tableRefreshKey, fetchTableMetadata]);
 
   /** 手动刷新 schema 浏览器（重新拉取表与列元数据）。 */
   const refreshSchemaBrowser = useCallback(() => {
     setTableRefreshKey((k) => k + 1);
   }, []);
+
+  // 任意模式的表列表缓存（键含数据库，供关联表对话框跨模式选择使用）。
+  const schemaTableListsRef = useRef<Map<string, string[]>>(new Map());
+
+  const fetchTableListForSchema = useCallback(
+    async (sch: string): Promise<string[]> => {
+      if (databaseId === "" || !sch) return [];
+      const key = `${databaseId}:${sch}`;
+      const cached = schemaTableListsRef.current.get(key);
+      if (cached) return cached;
+      try {
+        const qs = rison.encode({ schema_name: sch });
+        const res = await api.get<{ result: { value: string }[] }>(
+          `/database/${databaseId}/tables/?q=${qs}`,
+        );
+        const list = (res.data.result ?? []).map((t) => t.value);
+        schemaTableListsRef.current.set(key, list);
+        return list;
+      } catch {
+        return [];
+      }
+    },
+    [databaseId],
+  );
 
   const fetchTableColumns = useCallback(
     async (tableName: string) => {
@@ -317,29 +475,38 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         failedTables.has(tableName)
       )
         return;
-      setLoadingTable(tableName);
-      try {
-        const meta = await api.get<{ columns: { name: string }[] }>(
-          `/database/${databaseId}/table/${encodeURIComponent(tableName)}/${encodeURIComponent(schema)}/`,
-        );
+      const cachedMeta =
+        tableMetasRef.current[tableMetaKey(databaseId, schema, tableName)];
+      if (cachedMeta) {
         setColumnCache((prev) => ({
           ...prev,
           [schema]: {
             ...prev[schema],
-            [tableName]: meta.data.columns.map((c) => c.name),
+            [tableName]: cachedMeta.columns.map((c) => c.name),
           },
         }));
-      } catch {
+        return;
+      }
+      setLoadingTable(tableName);
+      const meta = await fetchTableMetadata(databaseId, schema, tableName);
+      if (meta) {
+        setColumnCache((prev) => ({
+          ...prev,
+          [schema]: {
+            ...prev[schema],
+            [tableName]: meta.columns.map((c) => c.name),
+          },
+        }));
+      } else {
         setColumnCache((prev) => ({
           ...prev,
           [schema]: { ...prev[schema], [tableName]: [] },
         }));
         setFailedTables((prev) => new Set(prev).add(tableName));
-      } finally {
-        setLoadingTable(null);
       }
+      setLoadingTable(null);
     },
-    [databaseId, schema, columnCache, failedTables],
+    [databaseId, schema, columnCache, failedTables, fetchTableMetadata],
   );
 
   useEffect(() => {
@@ -378,10 +545,10 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
         });
         setResult(res.data);
         setRecentQueries((prev) => {
-          const next = [
-            runSql,
-            ...prev.filter((q) => q !== runSql),
-          ].slice(0, MAX_RECENT);
+          const next = [runSql, ...prev.filter((q) => q !== runSql)].slice(
+            0,
+            MAX_RECENT,
+          );
           storeRecent(next);
           return next;
         });
@@ -408,11 +575,10 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     setSaveSuccess(false);
     setSaveDialogOpen(true);
   };
-
   /** 从 SQL 中提取一个友好的默认数据集名（取第一个 FROM/JOIN 的表名）。 */
   function datasetNameFromSql(sql?: string): string {
     if (!sql) return "未命名";
-    const trimmed = sql.trim();
+    const trimmed = stripVisualComment(sql).trim();
     // 匹配 FROM/JOIN 后的表名（可带 schema 前缀、引号），取最后一个标识符段。
     const m = trimmed.match(
       /\b(?:from|join)\s+[`"[]?(?:[\w$-]+\.)?[`"[]?([\w$-]+)[`"\]]?/i,
@@ -427,6 +593,8 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     setSaveError(null);
     setSaveSuccess(false);
     setSavedDatasetId(null);
+    // 以实际执行的 SQL 创建数据集；剥离可视化模型注释。
+    const datasetSql = stripVisualComment(result?.query?.sql ?? sql);
     try {
       const res = await api.post<{ id?: number; result?: { id?: number } }>(
         "/dataset/",
@@ -434,7 +602,7 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
           database: databaseId,
           table_name: datasetName,
           schema,
-          sql,
+          sql: datasetSql,
         },
       );
       const createdId = res.data?.id ?? res.data?.result?.id ?? null;
@@ -511,6 +679,7 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     setCtxMenu,
     tabs,
     activeTabId,
+    updateActiveTab,
     newQueryTab,
     closeAllTabs,
     activateQueryTab,
@@ -528,6 +697,9 @@ export function useSqlLab({ initialSql, initialDatabaseId }: UseSqlLabOptions = 
     handleSaveDataset,
     setSaveDialogOpen,
     fetchTableColumns,
+    fetchTableListForSchema,
+    tableMetas,
+    fetchTableMetadata,
     insertTable,
     insertColumn,
     setLoading,

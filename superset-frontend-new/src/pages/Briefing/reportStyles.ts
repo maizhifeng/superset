@@ -126,4 +126,15 @@ export const briefingTable = {
       borderBottom: `1px solid ${supersetPalette.border.light}`,
     };
   },
+  /**
+   * The first row of a 主游戏 block: the usual zebra plus a heavy ink divider
+   * above, so neighbouring groups do not read as one run of rows — the 小计
+   * closing a block would otherwise look attached to whichever side is closer.
+   */
+  groupStartRow(index: number): CSSProperties {
+    return {
+      ...this.zebraRow(index),
+      borderTop: `3px solid ${supersetPalette.text.primary}`,
+    };
+  },
 } as const;
