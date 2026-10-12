@@ -162,16 +162,21 @@ def test_region_rows_sum_back_to_their_parent_combo() -> None:
 
 
 def test_region_rows_only_cover_the_combos_the_cut_kept() -> None:
-    """A combo dropped by the channel view's Top-N must not reappear."""
+    """A game dropped by the channel view's Top-N must not reappear."""
     frame = _frame()
     config = _config()
     combos = _combos(frame, config, top_projects_count=1)
-    assert len(combos) == 1  # only the biggest combo survives the cut
+    # Top N counts 主游戏: game A (550) keeps both of its channels...
+    assert {(c["project"], c["channel"]) for c in combos} == {("A", "c1"), ("A", "c2")}
 
     regions = _regions(frame, config, combos, top_projects_count=1)
 
-    assert {(r["project"], r["channel"]) for r in regions} == {("A", "c1")}
-    assert len(regions) == 2  # TH + ID, not the other games
+    # ...and B's regions never come back through the region subdivision.
+    assert {(r["project"], r["channel"]) for r in regions} == {
+        ("A", "c1"),
+        ("A", "c2"),
+    }
+    assert len(regions) == 3  # c1 TH + c1 ID + c2 TH
 
 
 def test_region_rows_follow_the_parent_tables_order() -> None:

@@ -321,11 +321,11 @@ CARD_BYTE_BUDGET = MAX_CARD_BYTES - 1024
 # Superset.  Feishu renders at most 10 rows per page.
 # Rows per detail table.  The card's five tables together have to stay inside
 # the 30 KB budget together with the charts, so the caps are deliberately below
-# the ten rows a Feishu table can show at once.
+# the ten rows a Feishu table can show at once.  The project table is exempt:
+# it lists the whole Top-N 主游戏 and lets Feishu page through the rows.
 TABLE_ROW_CAPS = {
     "platform": 10,
     "daily": 10,
-    "project": 10,
     "media": 10,
     # The narrower breakdown tables (主游戏 × 分天, 媒体 × 主游戏 / 客户端).
     "breakdown": 10,
@@ -1079,20 +1079,60 @@ def build_daily_table(
 def build_project_table(
     result: dict[str, Any], *, limit: int | None = None
 ) -> dict[str, Any] | None:
-    """主游戏 × 渠道 detail behind the project chart."""
+    """主游戏 × 渠道 detail behind the project chart.
+
+    Every game's channel rows are followed by one 小计 row carrying the game's
+    whole-game figures (``project_summary``) — the same totals the chart and the
+    page's 分渠道 table quote — so a channel hidden by the Top-N cut never makes
+    the subtotal disagree with the game it belongs to.  The marker sits in the
+    渠道 column, where the row's missing channel would otherwise be a dash.
+
+    The table lists every combo the payload carries: the backend already cut it
+    to the configured Top-N 主游戏, and Feishu pages through the rows, so the
+    card shows the whole Top-N instead of a truncated first page.  ``limit``
+    stays for callers that must bound the table themselves (the HTML export).
+
+    Rows keep the payload order the report page renders — 主游戏 by whole-game
+    spend descending, 渠道 spend-descending inside a game — and games are cut on
+    the same boundaries, so the card and the page read identically.
+    """
     breakeven, critical = _roi_thresholds(result)
-    cap = limit if limit is not None else TABLE_ROW_CAPS["project"]
-    # 一级维度按名称升序，组内按消耗降序。
-    rows = sorted(
-        _rows_of(result, "projects"),
-        key=lambda row: (
-            str(row.get("project") or ""),
-            -(_as_float(row.get("spend")) or 0.0),
-        ),
-    )[:cap]
-    if not rows:
-        return None
     ltv_days = LTV_DAYS_SINGLE
+
+    def game_of(row: dict[str, Any]) -> str:
+        return str(row.get("project") or "")
+
+    combos = list(_rows_of(result, "projects"))
+    if limit is not None:
+        combos = combos[:limit]
+    if not combos:
+        return None
+    summaries = {game_of(row): row for row in _rows_of(result, "project_summary")}
+    # Group without re-sorting: the payload arrives 主游戏 by whole-game spend
+    # descending (its channels together), which is exactly the page's order.
+    by_game: dict[str, list[dict[str, Any]]] = {}
+    for row in combos:
+        by_game.setdefault(game_of(row), []).append(row)
+    rows: list[dict[str, Any]] = []
+    for project, group in by_game.items():
+        for row in group:
+            rows.append(
+                {
+                    "project": project or "-",
+                    "channel": str(row.get("channel") or "-"),
+                    **_metric_cells(row, breakeven, critical, ltv_days),
+                }
+            )
+        summary = summaries.get(project)
+        if summary is None:
+            continue
+        rows.append(
+            {
+                "project": project or "-",
+                "channel": "小计",
+                **_metric_cells(summary, breakeven, critical, ltv_days),
+            }
+        )
     return _table(
         _columns(
             [
@@ -1101,14 +1141,7 @@ def build_project_table(
             ],
             ltv_days,
         ),
-        [
-            {
-                "project": str(row.get("project") or "-"),
-                "channel": str(row.get("channel") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
-            }
-            for row in rows
-        ],
+        rows,
         page_size=len(rows),
     )
 

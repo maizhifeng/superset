@@ -106,9 +106,11 @@ export interface Database {
   id: number;
   database_name: string;
   backend?: string;
+  driver?: string;
   expose_in_sqllab?: boolean;
   allow_dml?: boolean;
   changed_on_delta_humanized?: string;
+  schema?: string | null;
 }
 
 export interface DatabaseDetail {
@@ -300,4 +302,35 @@ export interface AdminPermission {
   id: number;
   permission: { id: number; name: string };
   view_menu: { id: number; name: string };
+}
+
+export interface TableColumnMeta {
+  name: string;
+  type?: string;
+  longType?: string;
+  keys?: string[];
+  comment?: string | null;
+}
+
+export interface TableForeignKeyMeta {
+  name?: string;
+  column_names: string[];
+  referred_schema?: string;
+  referred_table: string;
+  referred_columns: string[];
+}
+
+export interface TablePrimaryKeyMeta {
+  column_names: string[];
+  name?: string;
+  type?: string;
+}
+
+export interface TableMetadata {
+  name: string;
+  columns: TableColumnMeta[];
+  foreignKeys?: TableForeignKeyMeta[];
+  primaryKey?: TablePrimaryKeyMeta;
+  selectStar?: string;
+  comment?: string | null;
 }

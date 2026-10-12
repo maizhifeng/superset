@@ -17,14 +17,16 @@
 
 """Selection and ordering of the 主游戏 × 渠道商 rows.
 
-A combo is listed when it ranks in the top N by spend **or** by 充值流水.  The
-listed rows then group a game's channels together, order the games by their
-full spend, and keep the channels inside a game spend-descending.
+Top N counts 主游戏, not combos: the N games with the biggest full spend keep
+every spending channel they have.  The listed rows then group a game's channels
+together, order the games by their full spend, and keep the channels inside a
+game spend-descending.
 """
 
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 import pandas as pd
 
@@ -37,7 +39,7 @@ from superset.project.briefing.service import (
 
 
 def _config(**overrides) -> DailyReportConfig:
-    base: dict = {
+    base: dict[str, Any] = {
         "date_column": "report_date",
         "project_column": "主游戏",
         "channel_column": "渠道商",
@@ -188,8 +190,24 @@ def test_exempt_channel_follows_a_listed_spending_game() -> None:
     assert _pairs(rows) == [("O", "ios"), ("O", "third")]
 
 
+def test_top_n_counts_games_not_combos() -> None:
+    """Top 2 lists two games with all of their channels, not two combos.
+
+    A game with several channels must not take another game's slot — the
+    regression where Top 10 showed only the 7 games whose combos fit the cut.
+    """
+    rows = _rows(top_projects_count=2)  # A = 310, C = 150, B = 140, D = 10
+
+    assert _pairs(rows) == [
+        ("A", "taptap"),
+        ("A", "douyin"),
+        ("A", "huawei"),
+        ("C", "ios"),
+    ]
+
+
 def test_group_order_uses_the_games_full_spend_not_the_listed_rows() -> None:
-    """A game whose biggest channels fall outside both cuts still ranks by its
+    """A game whose biggest channels fall outside the cut still ranks by its
     full spend, so the table matches the 主游戏明细 chart."""
     frame = _frame(
         [
@@ -200,14 +218,15 @@ def test_group_order_uses_the_games_full_spend_not_the_listed_rows() -> None:
             ("B", "wechat", 140.0, 1.0),
         ]
     )
-    rows = _rows(top_projects_count=3, frame=frame)
+    rows = _rows(top_projects_count=2, frame=frame)
 
-    # Listed combos are C/ios 150, B/wechat 140, A/taptap 120 — but game A's full
-    # total (310) leads, so A comes first despite its listed row being smallest.
+    # Top 2 games are A (310) and C (150): A leads with all of its channels,
+    # even though C's rows are the biggest individually.
     assert [(r["project"], r["channel"], r["spend"]) for r in rows] == [
         ("A", "taptap", 120.0),
+        ("A", "douyin", 100.0),
+        ("A", "huawei", 90.0),
         ("C", "ios", 150.0),
-        ("B", "wechat", 140.0),
     ]
 
 
