@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { format as formatSql } from "sql-formatter";
 import rison from "rison";
@@ -519,10 +519,14 @@ export function useSqlLab({
     setError(null);
     setResult(null);
     try {
-      const res = await api.post<QueryResult>("/sqllab/execute/", {
-        database_id: databaseId,
-        sql,
-      });
+      const res = await api.post<QueryResult>(
+        "/sqllab/execute/",
+        {
+          database_id: databaseId,
+          sql,
+        },
+        { timeout: QUERY_TIMEOUT_MS },
+      );
       setResult(res.data);
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "执行查询时发生错误"));
@@ -539,10 +543,14 @@ export function useSqlLab({
       setError(null);
       setResult(null);
       try {
-        const res = await api.post<QueryResult>("/sqllab/execute/", {
-          database_id: databaseId,
-          sql: runSql,
-        });
+        const res = await api.post<QueryResult>(
+          "/sqllab/execute/",
+          {
+            database_id: databaseId,
+            sql: runSql,
+          },
+          { timeout: QUERY_TIMEOUT_MS },
+        );
         setResult(res.data);
         setRecentQueries((prev) => {
           const next = [runSql, ...prev.filter((q) => q !== runSql)].slice(

@@ -28,7 +28,7 @@ import Autocomplete from "@mui/material/Autocomplete";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import Checkbox from "@mui/material/Checkbox";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
 import Tabs from "@mui/material/Tabs";
@@ -110,10 +110,14 @@ export default function ChannelConfig() {
     setSyncing(true);
     setError(null);
     try {
-      const q = await api.post<QueryResult>("/sqllab/execute/", {
-        database_id: source.databaseId,
-        sql: source.sql,
-      });
+      const q = await api.post<QueryResult>(
+        "/sqllab/execute/",
+        {
+          database_id: source.databaseId,
+          sql: source.sql,
+        },
+        { timeout: QUERY_TIMEOUT_MS },
+      );
 
       // 整表一次性回写：逐行 PUT 会触发应用级 50 req/s 限流。
       const channels = (q.data.data ?? [])
@@ -125,7 +129,9 @@ export default function ChannelConfig() {
         { region, channels },
       );
       await fetchRows(region);
-      setSuccess(`已同步 ${REGION_LABELS[region]}渠道 ${res.data.result.count} 条`);
+      setSuccess(
+        `已同步 ${REGION_LABELS[region]}渠道 ${res.data.result.count} 条`,
+      );
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "同步失败"));
     } finally {
@@ -508,171 +514,179 @@ export default function ChannelConfig() {
                       {visibleRows.map((row) => {
                         const editing = editingIds.has(row.channel_key);
                         return (
-                        <TableRow key={row.channel_key}>
-                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography
-                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                          >
-                            {row.channel_key}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography
-                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                          >
-                            {row.channel_name}
-                          </Typography>
-                        </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Typography
-                            sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                          >
-                            {row.updated_at}
-                          </Typography>
-                        </TableCell>
-                        <TableCell
-                          sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
-                        >
-                          {editing ? (
-                            <TextField
-                              size="small"
-                              variant="standard"
-                              value={row.默认分成}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (/^\d*\.?\d*$/.test(v) || v === "") {
-                                  updateDefaultSplit(row.channel_key, v);
-                                }
-                              }}
-                              slotProps={{
-                                input: {
-                                  sx: {
-                                    fontSize: "0.75rem",
-                                    textAlign: "center",
-                                    py: 0.5,
-                                  },
-                                  endAdornment: (
-                                    <InputAdornment
-                                      position="end"
-                                      sx={{
-                                        "& .MuiTypography-root": {
-                                          fontSize: "0.75rem",
-                                        },
-                                      }}
-                                    >
-                                      %
-                                    </InputAdornment>
-                                  ),
-                                },
-                              }}
-                              sx={{ "& input": { textAlign: "center" } }}
-                            />
-                          ) : (
-                            renderText(row.默认分成)
-                          )}
-                        </TableCell>
-                        <TableCell
-                          sx={{ p: 0.5, textAlign: "center", minWidth: 120 }}
-                        >
-                          {editing ? (
-                            <TextField
-                              size="small"
-                              variant="standard"
-                              value={row.ios虚拟支付分成}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (/^\d*\.?\d*$/.test(v) || v === "") {
-                                  updateIosSplit(row.channel_key, v);
-                                }
-                              }}
-                              slotProps={{
-                                input: {
-                                  sx: {
-                                    fontSize: "0.75rem",
-                                    textAlign: "center",
-                                    py: 0.5,
-                                  },
-                                  endAdornment: (
-                                    <InputAdornment
-                                      position="end"
-                                      sx={{
-                                        "& .MuiTypography-root": {
-                                          fontSize: "0.75rem",
-                                        },
-                                      }}
-                                    >
-                                      %
-                                    </InputAdornment>
-                                  ),
-                                },
-                              }}
-                              sx={{ "& input": { textAlign: "center" } }}
-                            />
-                          ) : (
-                            renderText(row.ios虚拟支付分成)
-                          )}
-                        </TableCell>
-                        <TableCell
-                          sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
-                        >
-                          {editing ? (
-                            <Checkbox
-                              size="small"
-                              checked={row.白名单控制参数 === "Y"}
-                              onChange={(_, checked) =>
-                                updateWhitelist(
-                                  row.channel_key,
-                                  checked ? "Y" : "",
-                                )
-                              }
-                            />
-                          ) : (
-                            renderText(
-                              row.白名单控制参数 === "Y" ? "白名单" : "",
-                              true,
-                            )
-                          )}
-                        </TableCell>
-                        <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                          <Box
-                            sx={{
-                              display: "flex",
-                              justifyContent: "center",
-                              gap: 0.25,
-                            }}
-                          >
-                            {editing ? (
-                              <>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => void handleSave(row)}
-                                  disabled={saving[row.channel_key]}
-                                  color="primary"
-                                  aria-label="保存"
-                                >
-                                  <SaveIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton
-                                  size="small"
-                                  onClick={() => exitEdit(row.channel_key)}
-                                  disabled={saving[row.channel_key]}
-                                  aria-label="取消编辑"
-                                >
-                                  <CloseIcon fontSize="small" />
-                                </IconButton>
-                              </>
-                            ) : (
-                              <IconButton
-                                size="small"
-                                onClick={() => toggleEdit(row.channel_key)}
-                                aria-label="编辑"
+                          <TableRow key={row.channel_key}>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
                               >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            )}
-                          </Box>
-                        </TableCell>
-                        </TableRow>
+                                {row.channel_key}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                              >
+                                {row.channel_name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                              >
+                                {row.updated_at}
+                              </Typography>
+                            </TableCell>
+                            <TableCell
+                              sx={{
+                                p: 0.5,
+                                textAlign: "center",
+                                minWidth: 120,
+                              }}
+                            >
+                              {editing ? (
+                                <TextField
+                                  size="small"
+                                  variant="standard"
+                                  value={row.默认分成}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                      updateDefaultSplit(row.channel_key, v);
+                                    }
+                                  }}
+                                  slotProps={{
+                                    input: {
+                                      sx: {
+                                        fontSize: "0.75rem",
+                                        textAlign: "center",
+                                        py: 0.5,
+                                      },
+                                      endAdornment: (
+                                        <InputAdornment
+                                          position="end"
+                                          sx={{
+                                            "& .MuiTypography-root": {
+                                              fontSize: "0.75rem",
+                                            },
+                                          }}
+                                        >
+                                          %
+                                        </InputAdornment>
+                                      ),
+                                    },
+                                  }}
+                                  sx={{ "& input": { textAlign: "center" } }}
+                                />
+                              ) : (
+                                renderText(row.默认分成)
+                              )}
+                            </TableCell>
+                            <TableCell
+                              sx={{
+                                p: 0.5,
+                                textAlign: "center",
+                                minWidth: 120,
+                              }}
+                            >
+                              {editing ? (
+                                <TextField
+                                  size="small"
+                                  variant="standard"
+                                  value={row.ios虚拟支付分成}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    if (/^\d*\.?\d*$/.test(v) || v === "") {
+                                      updateIosSplit(row.channel_key, v);
+                                    }
+                                  }}
+                                  slotProps={{
+                                    input: {
+                                      sx: {
+                                        fontSize: "0.75rem",
+                                        textAlign: "center",
+                                        py: 0.5,
+                                      },
+                                      endAdornment: (
+                                        <InputAdornment
+                                          position="end"
+                                          sx={{
+                                            "& .MuiTypography-root": {
+                                              fontSize: "0.75rem",
+                                            },
+                                          }}
+                                        >
+                                          %
+                                        </InputAdornment>
+                                      ),
+                                    },
+                                  }}
+                                  sx={{ "& input": { textAlign: "center" } }}
+                                />
+                              ) : (
+                                renderText(row.ios虚拟支付分成)
+                              )}
+                            </TableCell>
+                            <TableCell
+                              sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
+                            >
+                              {editing ? (
+                                <Checkbox
+                                  size="small"
+                                  checked={row.白名单控制参数 === "Y"}
+                                  onChange={(_, checked) =>
+                                    updateWhitelist(
+                                      row.channel_key,
+                                      checked ? "Y" : "",
+                                    )
+                                  }
+                                />
+                              ) : (
+                                renderText(
+                                  row.白名单控制参数 === "Y" ? "白名单" : "",
+                                  true,
+                                )
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "center",
+                                  gap: 0.25,
+                                }}
+                              >
+                                {editing ? (
+                                  <>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => void handleSave(row)}
+                                      disabled={saving[row.channel_key]}
+                                      color="primary"
+                                      aria-label="保存"
+                                    >
+                                      <SaveIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => exitEdit(row.channel_key)}
+                                      disabled={saving[row.channel_key]}
+                                      aria-label="取消编辑"
+                                    >
+                                      <CloseIcon fontSize="small" />
+                                    </IconButton>
+                                  </>
+                                ) : (
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => toggleEdit(row.channel_key)}
+                                    aria-label="编辑"
+                                  >
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                              </Box>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
                     </TableBody>

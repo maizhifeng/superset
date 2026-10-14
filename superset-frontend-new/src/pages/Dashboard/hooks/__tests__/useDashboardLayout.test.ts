@@ -4,6 +4,7 @@ import { useDashboardLayout } from "@/pages/Dashboard/hooks/useDashboardLayout";
 
 vi.mock("@/api", () => ({
   default: { put: vi.fn(), defaults: { headers: { common: {} } } },
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 beforeEach(() => {

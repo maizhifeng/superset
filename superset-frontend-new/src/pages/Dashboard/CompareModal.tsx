@@ -88,7 +88,7 @@ function gameKey(game: { region: GameRegion; papp_id: string }): string {
   return startKey(game.region, game.papp_id);
 }
 
-const PERIOD_DAYS = [7, 14, 30, 60, 90];
+const PERIOD_DAYS = [7, 14, 30, 60, 90, 180, 360];
 
 function fmtValue(
   key: string,
@@ -333,9 +333,9 @@ export default function CompareModal({
     // Games list — fires in parallel with column value calls.
     // 国内与海外一起加载：两者可以直接对比，日期按「区域 + papp_id」区分。
     const gamesPromise = api
-      .get<{ result: { papp_id: number; region: string; papp_name: string }[] }>(
-        "/project/papp",
-      )
+      .get<{
+        result: { papp_id: number; region: string; papp_name: string }[];
+      }>("/project/papp")
       .then((res) => res.data?.result ?? []);
     const profitSharingPromise = api
       .get<{ result: ProfitSharingStartRow[] }>("/project/profit-sharing")
@@ -402,13 +402,7 @@ export default function CompareModal({
   // 轮测试,不生成分表;上线时间锚点使用上线时间(见 resolveStartWindow)。
   const resolveDateRange = useCallback(
     (game: SelectedGame, cchName?: string, anchor: AnchorKey = "上线时间") =>
-      resolveStartWindow(
-        startMaps,
-        anchor,
-        gameKey(game),
-        periodDays,
-        cchName,
-      ),
+      resolveStartWindow(startMaps, anchor, gameKey(game), periodDays, cchName),
     [startMaps, periodDays],
   );
 
@@ -1549,7 +1543,14 @@ export default function CompareModal({
             </Box>
           )}
         </Box>
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           {PERIOD_DAYS.map((days) => (
             <Chip
               key={days}

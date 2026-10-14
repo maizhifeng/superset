@@ -18,7 +18,7 @@
  */
 import type { ChartDataPayload } from "@/types/api";
 import type { ChartDataResponseResult } from "@/utils/query/types";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import type { WideDataRequest } from "@/types/pivot";
 
 /** Cap for the day-granularity wide rows fetched from ``/bi/pivot/wide-data``. */
@@ -32,7 +32,10 @@ export async function fetchWideData(
   body: WideDataRequest,
   signal?: AbortSignal,
 ): Promise<ChartDataPayload> {
-  const postRes = await api.post("/bi/pivot/wide-data", body, { signal });
+  const postRes = await api.post("/bi/pivot/wide-data", body, {
+    timeout: QUERY_TIMEOUT_MS,
+    signal,
+  });
   const results = (
     Array.isArray(postRes.data?.result) ? postRes.data.result : []
   ) as ChartDataResponseResult[];

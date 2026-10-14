@@ -4,10 +4,11 @@ vi.mock("@/api", () => ({
   default: {
     post: vi.fn(() => Promise.resolve({ data: {} })),
   },
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 import { getChartDataUrl, postChartData } from "@/api/chartData";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -30,13 +31,17 @@ test("postChartData posts to /bi/chart/data for federated datasource id", async 
     result_type: "full",
   };
   await postChartData(payload);
-  expect(api.post).toHaveBeenCalledWith("/bi/chart/data", payload, undefined);
+  expect(api.post).toHaveBeenCalledWith("/bi/chart/data", payload, {
+    timeout: QUERY_TIMEOUT_MS,
+  });
 });
 
 test("postChartData posts to /chart/data for non-federated datasource id", async () => {
   const payload = { datasource: { id: 7, type: "table" }, queries: [] };
   await postChartData(payload);
-  expect(api.post).toHaveBeenCalledWith("/chart/data", payload, undefined);
+  expect(api.post).toHaveBeenCalledWith("/chart/data", payload, {
+    timeout: QUERY_TIMEOUT_MS,
+  });
 });
 
 test("postChartData forwards AbortSignal config", async () => {
@@ -45,6 +50,6 @@ test("postChartData forwards AbortSignal config", async () => {
   expect(api.post).toHaveBeenCalledWith(
     "/bi/chart/data",
     { datasource: { id: 26 } },
-    { signal },
+    { timeout: QUERY_TIMEOUT_MS, signal },
   );
 });

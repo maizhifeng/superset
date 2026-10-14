@@ -9,7 +9,7 @@
  * from hardcoding the URL themselves.
  */
 
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { isFederatedDataset } from "@/config/federatedDatasets";
 
 export function getChartDataUrl(dsId: number | undefined): string {
@@ -21,5 +21,8 @@ export async function postChartData(
   config?: { signal?: AbortSignal },
 ) {
   const dsId = (payload.datasource as { id?: number } | undefined)?.id;
-  return api.post(getChartDataUrl(dsId), payload, config);
+  return api.post(getChartDataUrl(dsId), payload, {
+    timeout: QUERY_TIMEOUT_MS,
+    ...config,
+  });
 }

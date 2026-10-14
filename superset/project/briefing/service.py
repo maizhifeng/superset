@@ -67,6 +67,13 @@ SCATTERED_PROJECT_LABELS: set[str] = {
     "总计",
 }
 
+# 波动门槛：|环比| 低于该比例的核心指标不进入 §1「关键指标波动」小节。
+# 先设 10%（业务口径）；如需按报告调整，可提为配置项而不是改代码。
+FLUCTUATION_MIN_PCT = 0.10
+
+# 每个维度保留的因素数，其余并入「其他」一行，保证贡献仍可加总。
+FLUCTUATION_TOP_FACTORS = 8
+
 
 def _set_stage(stage: str, message: str | None = None) -> None:
     """Record the current long-running stage (shared, for the frontend)."""
@@ -1372,6 +1379,397 @@ def _build_platform_rows(
     return rows
 
 
+# --------------------------------------------------------------------------- #
+# §1 关键指标波动: which factors moved a headline metric, and by how much
+# --------------------------------------------------------------------------- #
+
+# 自然新增% 的分子不是一列，而是「媒体 == natural_media_label」的新增进入，
+# 这里用一个哨兵值让所有指标保持同一种形状。
+_NATURAL_NUMERATOR = "__natural__"
+
+
+@dataclass(frozen=True)
+class _FluctuationMetric:
+    """One headline metric's decomposition recipe.
+
+    ``kind`` decides the math: additive metrics decompose the absolute change
+    (贡献 = 增量), ratio metrics the change of the ratio (费率效应 + 结构效应).
+    ``base_kind`` picks the ``baseline_thresholds`` entry the metric's base is
+    checked against — for a ratio that base is its own denominator.
+    """
+
+    key: str
+    label: str
+    kind: str
+    numerator: str
+    denominator: str
+    weighted: bool
+    base_kind: str
+
+
+def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
+    """The overview band's metrics, in the order the payload lists them."""
+    money = config.spend_column
+    users = config.new_users_column
+    ltv_col = config.ltv_columns[0] if config.ltv_columns else ""
+    roi_col = config.roi_columns[0] if config.roi_columns else ""
+    return [
+        _FluctuationMetric("spend", money, "additive", money, "", False, "money"),
+        _FluctuationMetric(
+            "recharge",
+            config.recharge_column,
+            "additive",
+            config.recharge_column,
+            "",
+            False,
+            "flow",
+        ),
+        _FluctuationMetric("new_users", users, "additive", users, "", False, "users"),
+        _FluctuationMetric(
+            "natural_rate",
+            "自然新增%",
+            "ratio",
+            _NATURAL_NUMERATOR,
+            users,
+            False,
+            "users",
+        ),
+        _FluctuationMetric("cpa", "CPA", "ratio", money, users, False, "users"),
+        _FluctuationMetric(
+            "ltv1",
+            "LTV1",
+            "ratio",
+            ltv_col,
+            users,
+            config.ltv_weighted_average,
+            "users",
+        ),
+        _FluctuationMetric(
+            "roi1",
+            "ROI1",
+            "ratio",
+            roi_col,
+            money,
+            config.roi_weighted_average,
+            "money",
+        ),
+    ]
+
+
+def _sum_column(df: pd.DataFrame, column: str) -> float:
+    """SUM of an additive column, tolerating an unmapped/absent column."""
+    if not column or column not in df.columns or df.empty:
+        return 0.0
+    return float(pd.to_numeric(df[column], errors="coerce").sum())
+
+
+def _metric_pieces(
+    df: pd.DataFrame, metric: _FluctuationMetric, config: DailyReportConfig
+) -> tuple[float, float]:
+    """One segment's ``(numerator, denominator)`` for a metric.
+
+    Reproduces ``_weighted_ratio`` column-for-column — same fill/weight rules —
+    so a group's pieces sum back to the headline value the band shows.
+    """
+    if metric.kind == "additive":
+        return _sum_column(df, metric.numerator), 0.0
+    den_col = metric.denominator
+    if not den_col or den_col not in df.columns or df.empty:
+        return 0.0, 0.0
+    weight = pd.to_numeric(df[den_col], errors="coerce").fillna(0.0)
+    if metric.numerator == _NATURAL_NUMERATOR:
+        ad_col = config.ad_channel_column
+        if not ad_col or ad_col not in df.columns:
+            return 0.0, 0.0
+        organic = weight[df[ad_col].astype(str) == config.natural_media_label]
+        return float(organic.sum()), float(weight.sum())
+    if metric.numerator not in df.columns:
+        return 0.0, float(weight.sum())
+    if metric.weighted:
+        value = pd.to_numeric(df[metric.numerator], errors="coerce").fillna(0.0)
+        return float((value * weight).sum()), float(weight.sum())
+    return float(pd.to_numeric(df[metric.numerator], errors="coerce").sum()), float(
+        weight.sum()
+    )
+
+
+def _dimension_name(value: Any) -> str:
+    """Stringify one dimension cell; NaN/None collapse onto the empty bucket."""
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    return str(value)
+
+
+def _pieces_by_dimension(
+    df: pd.DataFrame, column: str, metric: _FluctuationMetric, config: DailyReportConfig
+) -> dict[str, tuple[float, float]]:
+    """``{dimension value: (numerator, denominator)}`` for one bucket."""
+    pieces: dict[str, tuple[float, float]] = {}
+    if df.empty or not column or column not in df.columns:
+        return pieces
+    for value, group in df.groupby(column, dropna=False):
+        name = _dimension_name(value)
+        num, den = _metric_pieces(group, metric, config)
+        prev = pieces.get(name, (0.0, 0.0))
+        pieces[name] = (prev[0] + num, prev[1] + den)
+    return pieces
+
+
+def _base_threshold(metric: _FluctuationMetric, config: DailyReportConfig) -> float:
+    """The ``baseline_thresholds`` floor this metric's base must clear."""
+    if metric.base_kind == "flow":
+        # 充值流水 has no threshold of its own: any revenue movement counts.
+        return 0.0
+    key = (
+        config.spend_column if metric.base_kind == "money" else config.new_users_column
+    )
+    return float(config.baseline_thresholds.get(key, 0.0) or 0.0)
+
+
+def _ratio_factor(
+    name: str,
+    cur: tuple[float, float],
+    prev: tuple[float, float],
+    den_cur: float,
+    den_prev: float,
+    delta: float,
+) -> dict[str, Any]:
+    """One ratio item's exact 费率/结构 decomposition of the ratio change.
+
+    ``rate`` is the within-item rate move weighted by the previous mix, ``mix``
+    the weight move valued at the current rate; their sum over every item is
+    ``R_cur − R_prev`` exactly (``Σw = 1`` per bucket).  A zero denominator
+    reads as rate 0, so an item that appeared lands entirely in ``mix``.
+    """
+    r_cur = cur[0] / cur[1] if cur[1] else 0.0
+    r_prev = prev[0] / prev[1] if prev[1] else 0.0
+    w_cur = cur[1] / den_cur if den_cur else 0.0
+    w_prev = prev[1] / den_prev if den_prev else 0.0
+    rate = w_prev * (r_cur - r_prev)
+    mix = (w_cur - w_prev) * r_cur
+    contribution = rate + mix
+    return {
+        "name": name or "-",
+        "current": r_cur,
+        "previous": r_prev,
+        "contribution": contribution,
+        "share": contribution / delta if delta else None,
+        "rate_effect": rate,
+        "mix_effect": mix,
+    }
+
+
+def _additive_factor(
+    name: str,
+    cur: tuple[float, float],
+    prev: tuple[float, float],
+    delta: float,
+) -> dict[str, Any]:
+    contribution = cur[0] - prev[0]
+    return {
+        "name": name or "-",
+        "current": cur[0],
+        "previous": prev[0],
+        "contribution": contribution,
+        "share": contribution / delta if delta else None,
+    }
+
+
+def _fold_tail(
+    factors: list[dict[str, Any]],
+    cur_pieces: dict[str, tuple[float, float]],
+    prev_pieces: dict[str, tuple[float, float]],
+    den_cur: float,
+    den_prev: float,
+    delta: float,
+    *,
+    ratio: bool,
+) -> list[dict[str, Any]]:
+    """Keep the strongest factors, fold the rest into one 「其他」 row.
+
+    The folded row re-aggregates the tail's pieces (never sums its
+    contributions) so it still reproduces the tail's exact share of the move.
+    """
+    if len(factors) <= FLUCTUATION_TOP_FACTORS:
+        return factors
+    kept = factors[:FLUCTUATION_TOP_FACTORS]
+    tail = factors[FLUCTUATION_TOP_FACTORS:]
+    tail_names = {f["name"] for f in tail}
+    names = {name for name in cur_pieces if (name or "-") in tail_names} | {
+        name for name in prev_pieces if (name or "-") in tail_names
+    }
+    cur = (0.0, 0.0)
+    prev = (0.0, 0.0)
+    for name in names:
+        cur_part = cur_pieces.get(name, (0.0, 0.0))
+        prev_part = prev_pieces.get(name, (0.0, 0.0))
+        cur = (cur[0] + cur_part[0], cur[1] + cur_part[1])
+        prev = (prev[0] + prev_part[0], prev[1] + prev_part[1])
+    if ratio:
+        other = _ratio_factor("其他", cur, prev, den_cur, den_prev, delta)
+    else:
+        other = _additive_factor("其他", cur, prev, delta)
+    kept.append(other)
+    return kept
+
+
+def _dimension_block(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    column: str,
+    metric: _FluctuationMetric,
+    config: DailyReportConfig,
+    delta: float,
+) -> list[dict[str, Any]] | None:
+    """One dimension's ranked factor list for a metric (None when empty)."""
+    if column not in current_df.columns and column not in prev_df.columns:
+        return None
+    cur_pieces = _pieces_by_dimension(current_df, column, metric, config)
+    prev_pieces = _pieces_by_dimension(prev_df, column, metric, config)
+    if not cur_pieces and not prev_pieces:
+        return None
+    den_cur = sum(piece[1] for piece in cur_pieces.values())
+    den_prev = sum(piece[1] for piece in prev_pieces.values())
+    factors: list[dict[str, Any]] = []
+    for name in sorted(set(cur_pieces) | set(prev_pieces)):
+        cur = cur_pieces.get(name, (0.0, 0.0))
+        prev = prev_pieces.get(name, (0.0, 0.0))
+        if metric.kind == "ratio":
+            factors.append(_ratio_factor(name, cur, prev, den_cur, den_prev, delta))
+        else:
+            factors.append(_additive_factor(name, cur, prev, delta))
+    factors.sort(key=lambda f: (-abs(f["contribution"]), f["name"]))
+    factors = _fold_tail(
+        factors,
+        cur_pieces,
+        prev_pieces,
+        den_cur,
+        den_prev,
+        delta,
+        ratio=metric.kind == "ratio",
+    )
+    for rank, factor in enumerate(factors):
+        if factor["name"] == "其他":
+            continue
+        if rank == 0:
+            factor["rank"] = "primary"
+        elif rank <= 2:
+            factor["rank"] = "secondary"
+    return factors
+
+
+def _fluctuation_entry(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    metric: _FluctuationMetric,
+    dimensions: list[tuple[str, str, str]],
+    config: DailyReportConfig,
+) -> dict[str, Any] | None:
+    """One metric's entry, or None when it is not a material fluctuation."""
+    if metric.kind == "additive":
+        cur_total = _sum_column(current_df, metric.numerator)
+        prev_total = _sum_column(prev_df, metric.numerator)
+        current, previous = cur_total, prev_total
+        base_cur, base_prev = cur_total, prev_total
+    else:
+        cur_pieces = _metric_pieces(current_df, metric, config)
+        prev_pieces = _metric_pieces(prev_df, metric, config)
+        if not cur_pieces[1] or not prev_pieces[1]:
+            return None
+        current = cur_pieces[0] / cur_pieces[1]
+        previous = prev_pieces[0] / prev_pieces[1]
+        # A ratio is only judged on a material denominator: its own base.
+        base_cur, base_prev = cur_pieces[1], prev_pieces[1]
+    if max(base_cur, base_prev) < _base_threshold(metric, config):
+        return None
+    delta_pct: float | None
+    if previous:
+        pct = (current - previous) / abs(previous)
+        if abs(pct) < FLUCTUATION_MIN_PCT:
+            return None
+        delta_pct = pct
+        is_new = False
+    elif current:
+        # 新增: the comparison bucket had nothing, so there is no percentage.
+        delta_pct = None
+        is_new = True
+    else:
+        return None
+    delta = current - previous
+    blocks: list[dict[str, Any]] = []
+    for key, column, label in dimensions:
+        block = _dimension_block(current_df, prev_df, column, metric, config, delta)
+        if block:
+            blocks.append({"key": key, "label": label, "items": block})
+    if not blocks:
+        return None
+    return {
+        "key": metric.key,
+        "label": metric.label,
+        "kind": metric.kind,
+        "current": current,
+        "previous": previous,
+        "delta": delta,
+        "delta_pct": delta_pct,
+        "new": is_new,
+        "dimensions": blocks,
+    }
+
+
+def _build_fluctuations(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    config: DailyReportConfig,
+) -> list[dict[str, Any]]:
+    """§1「关键指标波动」: the headline metrics worth explaining, each with the
+    平台 / 媒体 / 主游戏 factors that moved it.
+
+    A metric is listed when its 环比 clears ``FLUCTUATION_MIN_PCT`` on a base
+    above ``baseline_thresholds`` (a ratio is judged on its own denominator).
+    Additive metrics list each factor's 增量; ratio metrics decompose the move
+    into 费率效应 + 结构效应 — both add up to the metric's change exactly.
+
+    The 主游戏 axis deliberately ignores the Top-N cut and the scattered-label
+    filter the display views apply: attribution has to add up to the total, and
+    a game outside the Top-N is often exactly what moved it.
+    """
+    dimensions = [
+        (key, column, label)
+        for key, column, label in (
+            ("platform", config.platform_column, "平台"),
+            ("media", config.ad_channel_column, "媒体"),
+            ("project", config.project_column, "主游戏"),
+        )
+        if column
+    ]
+    if not dimensions:
+        return []
+    entries: list[dict[str, Any]] = []
+    for metric in _fluctuation_metrics(config):
+        if (
+            metric.numerator not in current_df.columns
+            and metric.numerator not in prev_df.columns
+        ):
+            continue
+        entry = _fluctuation_entry(current_df, prev_df, metric, dimensions, config)
+        if entry is not None:
+            entries.append(entry)
+    # Biggest relative move first; a 新增 (no percentage) leads the list.
+    entries.sort(
+        key=lambda e: (
+            e["delta_pct"] is not None,
+            -abs(e["delta_pct"]) if e["delta_pct"] is not None else 0.0,
+            e["key"],
+        )
+    )
+    return entries
+
+
 def _build_report(
     df: pd.DataFrame,
     config: DailyReportConfig,
@@ -1430,6 +1828,8 @@ def _build_report(
     media_platforms = _build_media_platform_rows(current_df, prev_df, config, media)
     platforms = _build_platform_rows(current_df, prev_df, config)
 
+    fluctuations = _build_fluctuations(current_df, prev_df, config)
+
     alerts = _detect_alerts(core, config)
 
     return {
@@ -1455,10 +1855,13 @@ def _build_report(
         "media_platforms": media_platforms,
         "platforms": platforms,
         "alerts": alerts,
+        "fluctuations": fluctuations,
         "thresholds": {
             "roi_critical_line": config.roi_critical_line,
             "roi_warning_line": config.roi_warning_line,
             "default_breakeven_line": config.default_breakeven_line,
+            # §1「关键指标波动」的入选门槛，让前端文案与后端判定保持一致。
+            "fluctuation_min_pct": FLUCTUATION_MIN_PCT,
         },
         "empty": False,
     }
@@ -1864,6 +2267,7 @@ def _empty_payload(
                 "message": "所选日期范围内没有数据，请检查数据集/字段映射配置。",
             }
         ],
+        "fluctuations": [],
         "history_dates": [b.label for b in history],
         "daily": [],
         "daily_projects": [],

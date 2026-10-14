@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { EChartsOption } from "echarts";
 import { buildEChartsOption, loadECharts } from "@/utils/echarts";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
-import api, { getDataset, getMetricFormatMap } from "@/api";
+import api, { getDataset, getMetricFormatMap, QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -556,7 +556,7 @@ export function useChartEditor({
               filters: toWideFilters,
               row_limit: 100000,
             },
-            { signal: controller.signal },
+            { timeout: QUERY_TIMEOUT_MS, signal: controller.signal },
           )
           .then((res) => {
             if (controller.signal.aborted) return;
@@ -711,7 +711,7 @@ export function useChartEditor({
                 metricsLayout: previewParams.pivotConfig?.metricsLayout,
               },
             },
-            { signal: controller.signal },
+            { timeout: QUERY_TIMEOUT_MS, signal: controller.signal },
           )
           .then((res) => {
             if (controller.signal.aborted) return;

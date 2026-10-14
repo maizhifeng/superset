@@ -307,6 +307,8 @@ interface DailyReportResult {
   media_platforms?: MediaPlatformRow[];
   /** 核心指标的平台拆分（核心指标速览的「查看数据表」）。 */
   platforms?: PlatformRow[];
+  /** §1「关键指标波动」: material 环比 moves with their 主次因素。 */
+  fluctuations?: FluctuationMetric[];
   alerts?: AlertItem[];
   empty?: boolean;
   error?: string;
@@ -316,6 +318,8 @@ interface DailyReportResult {
     roi_critical_line: number;
     roi_warning_line: number;
     default_breakeven_line: number;
+    /** §1「关键指标波动」的入选门槛（比例，0.1 = 10%）。 */
+    fluctuation_min_pct?: number;
   };
 }
 
@@ -362,6 +366,47 @@ interface DailyTrendRow extends MetricRow {
 interface PlatformRow extends MetricRow {
   platform: string;
   prev?: MetricRow;
+}
+
+/**
+ * One factor behind a headline metric's 环比 move (§1「关键指标波动」).
+ *
+ * ``contribution`` is the factor's exact share of the metric's change (增量
+ * for additive metrics, 费率效应 + 结构效应 for ratios).  The panel renders
+ * only the factor name and the effect's direction; the numeric fields stay in
+ * the payload for tooling and future views.
+ */
+interface FluctuationFactor {
+  name: string;
+  current: number;
+  previous: number;
+  contribution: number;
+  share: number | null;
+  /** Ratio metrics only: the exact 费率 / 结构 split of ``contribution``. */
+  rate_effect?: number;
+  mix_effect?: number;
+  rank?: "primary" | "secondary";
+}
+
+/** One dimension's ranked factors for a metric. */
+interface FluctuationDimension {
+  key: string;
+  label: string;
+  items: FluctuationFactor[];
+}
+
+/** A headline metric whose 环比 move is material, with its factor columns. */
+interface FluctuationMetric {
+  key: string;
+  label: string;
+  kind: "additive" | "ratio";
+  current: number;
+  previous: number;
+  delta: number;
+  /** null when the comparison bucket was empty (新增). */
+  delta_pct: number | null;
+  new: boolean;
+  dimensions: FluctuationDimension[];
 }
 
 interface JobLog {
@@ -1219,6 +1264,335 @@ function CoreOverview({
         </Box>
       </Collapse>
     </>
+  );
+}
+
+/** The band's direction semantics, keyed for the 波动 rows. */
+const FLUCTUATION_TONE: Record<
+  string,
+  { neutral?: boolean; higherIsBetter?: boolean }
+> = {
+  spend: { neutral: true },
+  cpa: { higherIsBetter: false },
+};
+
+/** A metric value, formatted by metric (used for both 对比期 and 本期). */
+function fluctuationValue(
+  metric: FluctuationMetric,
+  value: number | null | undefined,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  switch (metric.key) {
+    case "roi1":
+    case "natural_rate":
+      return formatPercent(value);
+    case "new_users":
+      return formatNumber(value, 0);
+    case "ltv1":
+      return formatNumber(value, 2);
+    default:
+      return formatNumber(value);
+  }
+}
+
+/**
+ * A factor's contribution in the metric's own unit.
+ *
+ * 百分比指标（ROI1、自然新增%）按指标自身的 x% 口径给出绝对变化（如 +2.63%）；
+ * LTV1、CPA 是「每用户数值」，保留原单位（LTV1 两位小数）；增量型指标给出
+ * 金额/人数。
+ */
+function fluctuationContribution(
+  metric: FluctuationMetric,
+  value: number,
+): string {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  const abs = Math.abs(value);
+  switch (metric.key) {
+    case "roi1":
+    case "natural_rate":
+      return `${sign}${(abs * 100).toFixed(2)}%`;
+    case "new_users":
+      return `${sign}${formatNumber(abs, 0)}`;
+    case "ltv1":
+      return `${sign}${abs.toFixed(2)}`;
+    default:
+      return `${sign}${formatNumber(abs)}`;
+  }
+}
+
+/** The factor colour: the effect's direction under the metric's semantics. */
+function fluctuationColor(metric: FluctuationMetric, value: number): string {
+  const tone = FLUCTUATION_TONE[metric.key] ?? {};
+  if (tone.neutral) return supersetPalette.text.secondary;
+  const higherIsBetter = tone.higherIsBetter ?? true;
+  return value >= 0 === higherIsBetter
+    ? supersetPalette.status.success
+    : supersetPalette.status.error;
+}
+
+/** The 新增 marker: nothing to compare against, so no percentage. */
+function NewTag() {
+  return (
+    <Box
+      component="span"
+      title="对比期为 0，本期新增"
+      sx={{
+        px: 0.5,
+        py: 0.1,
+        borderRadius: 0.5,
+        bgcolor: supersetPalette.primary.container,
+        color: supersetPalette.primary.onContainer,
+        fontSize: "0.6875rem",
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+        justifySelf: "start",
+      }}
+    >
+      新增
+    </Box>
+  );
+}
+
+/**
+ * One factor column (平台 / 媒体 / 主游戏) inside an open 波动 row.
+ *
+ * Only its 主因 and 次因 are listed — with the factor's own contribution
+ * value, not its share of the move — ranked by the factor's influence, so the
+ * column points at where the move came from without reprinting the tables.
+ */
+function FluctuationDimensionColumn({
+  metric,
+  dimension,
+}: {
+  metric: FluctuationMetric;
+  dimension: FluctuationDimension;
+}) {
+  // 「其他」 is the folded tail of the ranking, never a named factor.
+  const ranked = dimension.items.filter((item) => item.name !== "其他");
+  const leading = ranked.slice(0, 2);
+  return (
+    <Box>
+      <Typography variant="subtitle2" sx={{ color: TEXT_MUTED, mb: 0.5 }}>
+        {dimension.label}
+      </Typography>
+      {leading.map((item, index) => (
+        <Box
+          key={item.name}
+          sx={{ display: "flex", alignItems: "baseline", gap: 0.75, py: 0.25 }}
+        >
+          <Box
+            component="span"
+            sx={{
+              px: 0.5,
+              py: 0.1,
+              borderRadius: 0.5,
+              bgcolor: supersetPalette.primary.container,
+              color: supersetPalette.primary.onContainer,
+              fontSize: "0.6875rem",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {index === 0 ? "主因" : "次因"}
+          </Box>
+          <Typography
+            variant="body2"
+            noWrap
+            title={item.name}
+            sx={{ flex: 1, minWidth: 0, fontWeight: index === 0 ? 600 : 400 }}
+          >
+            {item.name}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              color: fluctuationColor(metric, item.contribution),
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {fluctuationContribution(metric, item.contribution)}
+          </Typography>
+        </Box>
+      ))}
+      {leading.length === 0 && (
+        <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
+          -
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/**
+ * §1「关键指标波动」: the headline metrics whose 环比 move is material, each
+ * opening into the 平台 / 媒体 / 主游戏 factors behind it.
+ *
+ * Every column lists just its 主因 and 次因 — ranked by the factor's exact
+ * contribution (增量 for additive metrics, 费率+结构 for ratios, computed by
+ * the backend) — so the row points at where the move came from without
+ * reprinting the numbers the detail tables already carry.
+ */
+function FluctuationList({
+  rows,
+  minPct,
+}: {
+  rows: FluctuationMetric[];
+  /** The backend's fluctuation gate (fraction), for the caption. */
+  minPct: number;
+}) {
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ overflow: "hidden", bgcolor: supersetPalette.surface.main }}
+    >
+      <Box
+        sx={{ px: 2, pt: 1.25, pb: 1, borderBottom: `1px solid ${DIVIDER}` }}
+      >
+        <Typography variant="subtitle1">关键指标波动</Typography>
+        <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+          环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
+          对比期 → 本期 ；点击查看平台 / 媒体 / 主游戏的主次因素
+        </Typography>
+      </Box>
+      {rows.map((metric) => {
+        const open = openKeys.has(metric.key);
+        const tone = FLUCTUATION_TONE[metric.key] ?? {};
+        // 摘要取第一个维度（平台）里最强、且真正有变化的因素。
+        const primary =
+          metric.dimensions[0]?.items.find(
+            (item) => item.contribution !== 0 && item.name !== "其他",
+          ) ?? metric.dimensions[0]?.items[0];
+        return (
+          <Box
+            key={metric.key}
+            sx={{
+              borderBottom: `1px solid ${DIVIDER}`,
+              "&:last-of-type": { borderBottom: 0 },
+            }}
+          >
+            <Box
+              component="button"
+              type="button"
+              aria-expanded={open}
+              onClick={() => toggle(metric.key)}
+              sx={{
+                display: "grid",
+                gridTemplateColumns:
+                  "minmax(84px, 0.7fr) auto auto minmax(0, 1.6fr) 24px",
+                alignItems: "center",
+                gap: 1,
+                width: "100%",
+                px: 2,
+                py: 1,
+                border: 0,
+                bgcolor: "transparent",
+                color: "inherit",
+                font: "inherit",
+                textAlign: "left",
+                cursor: "pointer",
+                transition: "background-color 150ms ease",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {metric.label}
+              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 0.5,
+                  whiteSpace: "nowrap",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
+                <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
+                  {fluctuationValue(metric, metric.previous)}
+                </Typography>
+                <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
+                  →
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {fluctuationValue(metric, metric.current)}
+                </Typography>
+              </Box>
+              {metric.new ? (
+                <NewTag />
+              ) : (
+                <DeltaBadge
+                  value={metric.delta_pct}
+                  higherIsBetter={tone.higherIsBetter ?? true}
+                  neutral={tone.neutral}
+                />
+              )}
+              <Typography
+                variant="caption"
+                title={
+                  primary
+                    ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
+                    : undefined
+                }
+                sx={{
+                  color: TEXT_MUTED,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {primary
+                  ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
+                  : ""}
+              </Typography>
+              {open ? (
+                <ExpandLessIcon sx={{ fontSize: 18, color: TEXT_MUTED }} />
+              ) : (
+                <ExpandMoreIcon sx={{ fontSize: 18, color: TEXT_MUTED }} />
+              )}
+            </Box>
+            <Collapse
+              in={open}
+              unmountOnExit
+              timeout={{
+                enter: durationTokens.standard,
+                exit: durationTokens.exit,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: "repeat(3, minmax(0, 1fr))",
+                  },
+                  gap: 2,
+                  px: 2,
+                  pb: 1.5,
+                }}
+              >
+                {metric.dimensions.map((dimension) => (
+                  <FluctuationDimensionColumn
+                    key={dimension.key}
+                    metric={metric}
+                    dimension={dimension}
+                  />
+                ))}
+              </Box>
+            </Collapse>
+          </Box>
+        );
+      })}
+    </Paper>
   );
 }
 
@@ -4398,6 +4772,16 @@ export default function DailyReportDetail() {
                     rows={result.platforms ?? []}
                   />
                 </Box>
+
+                {/* 关键指标波动: 每条指标展开 平台/媒体/主游戏 的主次因素。 */}
+                {(result.fluctuations?.length ?? 0) > 0 && (
+                  <Box sx={{ mb: 3 }}>
+                    <FluctuationList
+                      rows={result.fluctuations ?? []}
+                      minPct={result.thresholds?.fluctuation_min_pct ?? 0.1}
+                    />
+                  </Box>
+                )}
               </Box>
 
               {result.daily && result.daily.length > 0 && (

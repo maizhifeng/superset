@@ -9,6 +9,7 @@ vi.mock("@/api", () => ({
     defaults: { headers: { common: {} } },
   },
   getDataset: vi.fn(() => Promise.resolve({ columns: [] })),
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 beforeEach(() => {

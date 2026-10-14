@@ -15,6 +15,7 @@ vi.mock("@/api", () => ({
     defaults: { headers: { common: {} } },
   },
   getDataset: vi.fn(() => Promise.resolve({ columns: [], metrics: [] })),
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 beforeEach(() => {
@@ -153,8 +154,12 @@ test("a superseded getChartDataWithFilters result is dropped (race protection)",
   // calls race with distinct requests.  The slower (older filter) response
   // resolves last; its results must be dropped so the caller merges only the
   // latest epoch's data.
-  const buildSlow = () => [{ subject: "dim", operator: "!=", comparator: "slow" }];
-  const buildFast = () => [{ subject: "dim", operator: "!=", comparator: "fast" }];
+  const buildSlow = () => [
+    { subject: "dim", operator: "!=", comparator: "slow" },
+  ];
+  const buildFast = () => [
+    { subject: "dim", operator: "!=", comparator: "fast" },
+  ];
 
   let resolveFirst: (() => void) | null = null;
   (api.default.post as any).mockImplementationOnce(() => {
@@ -179,11 +184,7 @@ test("a superseded getChartDataWithFilters result is dropped (race protection)",
   let firstResolved: BatchResult | undefined;
   await act(async () => {
     // Second call bumps the epoch and resolves immediately with the fast row.
-    second = await result.current.getChartDataWithFilters(
-      [8],
-      meta,
-      buildFast,
-    );
+    second = await result.current.getChartDataWithFilters([8], meta, buildFast);
   });
   expect(second?.dataMap[8]).toEqual({ data: [{ dim: "fast" }] });
 
@@ -346,7 +347,9 @@ test("changing the end time while the start-time fetch is in flight lands both f
     true,
   );
   await act(async () => {});
-  expect(capturedFilters[0]).toEqual([{ col: "day", op: ">=", val: "2024/01/01" }]);
+  expect(capturedFilters[0]).toEqual([
+    { col: "day", op: ">=", val: "2024/01/01" },
+  ]);
 
   // Change the end time mid-flight -> the second forced fetch must carry BOTH
   // bounds under its own cache key instead of joining the first request.
