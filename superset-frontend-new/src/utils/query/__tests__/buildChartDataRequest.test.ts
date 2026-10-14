@@ -14,6 +14,7 @@ vi.mock("@/api", () => ({
     defaults: { headers: { common: {} } },
   },
   getDataset: vi.fn(() => Promise.resolve({ columns: [], metrics: [] })),
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 vi.mock("@/config/federatedDatasets", () => ({
@@ -109,12 +110,7 @@ test("fetchChartData uses wide path for federated pivot datasets", async () => {
       groupbyColumns: ["col"],
     }),
   };
-  const result = await fetchChartData(
-    chart,
-    {},
-    () => [],
-    {},
-  );
+  const result = await fetchChartData(chart, {}, () => [], {});
   expect(result.data.data).toEqual([{ row: "x", col: "y" }]);
   expect(result.totalRow).toBeNull();
   expect(fetchWideData).toHaveBeenCalledTimes(1);
@@ -124,7 +120,12 @@ test("fetchChartData posts classic multi-query and computes 分成后流水 tota
   (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({
     data: {
       result: [
-        { data: [{ dim: "a", 分成后流水: 5 }, { dim: "b", 分成后流水: 7 }] },
+        {
+          data: [
+            { dim: "a", 分成后流水: 5 },
+            { dim: "b", 分成后流水: 7 },
+          ],
+        },
         { data: [{ 分成后流水: 0 }] },
       ],
     },

@@ -23,9 +23,19 @@ import {
  * token on CSRF failures.
  */
 
+/** Default timeout for ordinary API calls. */
+export const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * Timeout for data-query endpoints (chart data, wide pivot data and SQL Lab
+ * execution).  These can legitimately run much longer than regular CRUD
+ * calls, so they get a separate, more permissive budget.
+ */
+export const QUERY_TIMEOUT_MS = 300_000;
+
 const api = axios.create({
   baseURL: "/api/v1",
-  timeout: 30000,
+  timeout: DEFAULT_TIMEOUT_MS,
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });

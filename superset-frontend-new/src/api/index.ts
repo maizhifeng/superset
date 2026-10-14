@@ -6,7 +6,7 @@
  * axios instance + interceptors, tokenStorage.ts for token persistence,
  * csrf.ts, refresh.ts and datasetCache.ts).
  */
-export { default } from "@/api/client";
+export { default, DEFAULT_TIMEOUT_MS, QUERY_TIMEOUT_MS } from "@/api/client";
 
 export {
   getStoredToken,
@@ -27,7 +27,4 @@ export {
   cancelTokenRefresh,
 } from "@/api/refresh";
 
-export {
-  getDataset,
-  getMetricFormatMap,
-} from "@/api/datasetCache";
+export { getDataset, getMetricFormatMap } from "@/api/datasetCache";

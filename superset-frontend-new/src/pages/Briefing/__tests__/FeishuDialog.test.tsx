@@ -11,6 +11,7 @@ vi.mock("@/api", () => ({
     post: vi.fn(),
     put: vi.fn(),
   },
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 /** Typed so the mocked endpoints may return promises. */
@@ -272,9 +273,7 @@ test("a chat_id can always be typed by hand", async () => {
   expect(mockApi.put).toHaveBeenCalledWith(
     "/briefing/configs/1/feishu",
     expect.objectContaining({
-      targets: [
-        { receive_id_type: "chat_id", receive_id: "oc_typed_by_hand" },
-      ],
+      targets: [{ receive_id_type: "chat_id", receive_id: "oc_typed_by_hand" }],
     }),
   );
 });

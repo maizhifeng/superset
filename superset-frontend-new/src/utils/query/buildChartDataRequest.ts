@@ -4,7 +4,7 @@ import type {
   ChartDataRow,
   FormData,
 } from "@/types/api";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { buildQueryObject } from "@/utils/query/extractQueryFields";
 import type { ChartDataResponseResult } from "@/utils/query/types";
 import { getChartDataUrl } from "@/api/chartData";
@@ -157,9 +157,7 @@ export function parseChartDataResponse(
   const data = (results[0] || {}) as ChartDataPayload;
   const totalRaw = results[1] as ChartDataResponseResult | undefined;
   const totalRow: ChartDataRow | null =
-    totalRaw?.data &&
-    Array.isArray(totalRaw.data) &&
-    totalRaw.data.length > 0
+    totalRaw?.data && Array.isArray(totalRaw.data) && totalRaw.data.length > 0
       ? totalRaw.data[0]
       : null;
 
@@ -287,7 +285,10 @@ export async function fetchChartData(
   if (opts.force) body.force = true;
   if (opts.includeFormData) body.form_data = fd;
   const chartDataUrl = getChartDataUrl(dsId);
-  const postRes = await api.post(chartDataUrl, body, { signal: opts.signal });
+  const postRes = await api.post(chartDataUrl, body, {
+    timeout: QUERY_TIMEOUT_MS,
+    signal: opts.signal,
+  });
   const results = (
     Array.isArray(postRes.data?.result) ? postRes.data.result : []
   ) as ChartDataResponseResult[];

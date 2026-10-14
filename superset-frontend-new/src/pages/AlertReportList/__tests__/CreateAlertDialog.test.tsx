@@ -18,6 +18,7 @@ vi.mock("@/api", () => ({
     put: (...a: unknown[]) => mockApiPut(...a),
     get: (...a: unknown[]) => mockApiGet(...a),
   },
+  QUERY_TIMEOUT_MS: 300_000,
 }));
 
 const charts = [

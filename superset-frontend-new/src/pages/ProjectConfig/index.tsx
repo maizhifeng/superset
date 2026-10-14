@@ -29,7 +29,7 @@ import Checkbox from "@mui/material/Checkbox";
 import Autocomplete from "@mui/material/Autocomplete";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
-import api from "@/api";
+import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import type { QueryResult } from "@/types/api";
 import {
@@ -92,10 +92,14 @@ export default function ProjectConfig() {
     setError(null);
     try {
       const sql = `SELECT * FROM ${source.schema}.${source.table}`;
-      const q = await api.post<QueryResult>("/sqllab/execute/", {
-        database_id: source.databaseId,
-        sql,
-      });
+      const q = await api.post<QueryResult>(
+        "/sqllab/execute/",
+        {
+          database_id: source.databaseId,
+          sql,
+        },
+        { timeout: QUERY_TIMEOUT_MS },
+      );
 
       // 整表一次性回写：逐行 PUT 会触发应用级 50 req/s 限流。
       const games = (q.data.data ?? [])
@@ -111,7 +115,9 @@ export default function ProjectConfig() {
         { region, games },
       );
       await fetchRows(region);
-      setSuccess(`已同步 ${REGION_LABELS[region]}游戏 ${res.data.result.count} 条`);
+      setSuccess(
+        `已同步 ${REGION_LABELS[region]}游戏 ${res.data.result.count} 条`,
+      );
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "同步失败"));
     } finally {
@@ -426,10 +432,7 @@ export default function ProjectConfig() {
                             colSpan={COLUMNS.length + 1}
                             sx={{ textAlign: "center", py: 4 }}
                           >
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                            >
+                            <Typography variant="body2" color="text.secondary">
                               {whitelistOnly
                                 ? "暂无白名单游戏，关闭「仅白名单」可查看全部。"
                                 : "当前筛选条件下没有游戏。"}
@@ -440,86 +443,86 @@ export default function ProjectConfig() {
                       {visibleRows.map((row) => {
                         const editing = editingIds.has(row.papp_id);
                         return (
-                        <TableRow key={row.papp_id}>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.papp_id}
-                            </Typography>
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.papp_name}
-                            </Typography>
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Typography
-                              sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
-                            >
-                              {row.updated_at}
-                            </Typography>
-                          </TableCell>
-                          <TableCell
-                            sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
-                          >
-                            {editing ? (
-                              <Checkbox
-                                size="small"
-                                checked={row.白名单控制参数 === "Y"}
-                                onChange={(_, checked) =>
-                                  updateWhitelist(row.papp_id, checked)
-                                }
-                              />
-                            ) : (
-                              renderText(
-                                row.白名单控制参数 === "Y" ? "白名单" : "",
-                                true,
-                              )
-                            )}
-                          </TableCell>
-                          <TableCell sx={{ p: 0.5, textAlign: "center" }}>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                justifyContent: "center",
-                                gap: 0.25,
-                              }}
+                          <TableRow key={row.papp_id}>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                              >
+                                {row.papp_id}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                              >
+                                {row.papp_name}
+                              </Typography>
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Typography
+                                sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
+                              >
+                                {row.updated_at}
+                              </Typography>
+                            </TableCell>
+                            <TableCell
+                              sx={{ p: 0.5, textAlign: "center", minWidth: 80 }}
                             >
                               {editing ? (
-                                <>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => void handleSave(row)}
-                                    disabled={saving[row.papp_id]}
-                                    color="primary"
-                                    aria-label="保存"
-                                  >
-                                    <SaveIcon fontSize="small" />
-                                  </IconButton>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => exitEdit(row.papp_id)}
-                                    disabled={saving[row.papp_id]}
-                                    aria-label="取消编辑"
-                                  >
-                                    <CloseIcon fontSize="small" />
-                                  </IconButton>
-                                </>
-                              ) : (
-                                <IconButton
+                                <Checkbox
                                   size="small"
-                                  onClick={() => toggleEdit(row.papp_id)}
-                                  aria-label="编辑"
-                                >
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
+                                  checked={row.白名单控制参数 === "Y"}
+                                  onChange={(_, checked) =>
+                                    updateWhitelist(row.papp_id, checked)
+                                  }
+                                />
+                              ) : (
+                                renderText(
+                                  row.白名单控制参数 === "Y" ? "白名单" : "",
+                                  true,
+                                )
                               )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
+                            </TableCell>
+                            <TableCell sx={{ p: 0.5, textAlign: "center" }}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "center",
+                                  gap: 0.25,
+                                }}
+                              >
+                                {editing ? (
+                                  <>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => void handleSave(row)}
+                                      disabled={saving[row.papp_id]}
+                                      color="primary"
+                                      aria-label="保存"
+                                    >
+                                      <SaveIcon fontSize="small" />
+                                    </IconButton>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => exitEdit(row.papp_id)}
+                                      disabled={saving[row.papp_id]}
+                                      aria-label="取消编辑"
+                                    >
+                                      <CloseIcon fontSize="small" />
+                                    </IconButton>
+                                  </>
+                                ) : (
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => toggleEdit(row.papp_id)}
+                                    aria-label="编辑"
+                                  >
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                )}
+                              </Box>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
                     </TableBody>
