@@ -75,6 +75,11 @@ x-superset-volumes: &superset-volumes
   # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
   - ./docker:/app/docker
   - ./superset:/app/superset
+  # Editable installs (-e ./superset-core, -e ./superset-extensions-cli in
+  # requirements): mount their sources like ./superset so the dev stack always
+  # runs the working-tree code instead of the copy baked at image-build time.
+  - ./superset-core:/app/superset-core
+  - ./superset-extensions-cli:/app/superset-extensions-cli
   - superset_home_light:/app/superset_home
   - ./tests:/app/tests
 

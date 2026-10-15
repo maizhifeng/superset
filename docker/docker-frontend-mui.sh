@@ -21,8 +21,12 @@ echo "Starting Superset MUI frontend (Vite dev server)"
 
 cd /app/superset-frontend-new
 
-echo "Running npm install"
-npm install
+echo "Running npm ci"
+# npm ci (not npm install): it never rewrites package-lock.json, so the
+# bind-mounted working tree stays clean. `npm install` here used to prune
+# peer-only @esbuild/* platform entries from the lock, which then broke
+# `npm ci` in the Docker build stages.
+npm ci
 
 # The Pi agent service runs as its own compose service (`pi-agent`); the
 # Vite dev server proxies /agent/ws to it via PI_AGENT_WS_TARGET.
