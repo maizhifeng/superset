@@ -130,7 +130,6 @@ from superset.utils.report_execution import (
 )
 from superset.utils.screenshot_utils import validate_report_screenshot
 from superset.utils.screenshots import ChartScreenshot, DashboardScreenshot
-from superset.utils.slack import get_channels_with_search, SlackChannelTypes
 from superset.utils.urls import get_url_path, headless_url
 
 if TYPE_CHECKING:
@@ -1867,6 +1866,7 @@ class BaseReportState:
         )
         if disallowed:
             raise ReportScheduleRecipientsNotAllowedError(disallowed)
+
     def _get_briefing_config(self) -> dict[str, Any]:
         """Load the briefing configuration referenced by this schedule."""
         from superset.project.briefing.store import get_config
@@ -1979,6 +1979,7 @@ class BaseReportState:
             header_data=self._get_log_data(),
             briefing_result=result,
         )
+
     def send(self) -> None:
         """
         Creates the notification content and sends them to all recipients

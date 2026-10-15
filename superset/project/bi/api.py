@@ -138,7 +138,7 @@ def _build_predicate(col: Any, op: str | None, val: Any) -> Any | None:  # noqa:
     if op in ("is_null",):
         return col.is_(None)
     if op in ("not_null", "not null"):
-        return col.isnot(None)
+        return col.is_not(None)
     return None
 
 
@@ -409,7 +409,7 @@ def _distinct_values(  # noqa: C901
     target_col = (
         cols[column_name].get_sqla_col(template_processor=tp).label("column_values")
     )
-    qry = sa.select([target_col]).select_from(tbl).distinct()
+    qry = sa.select(target_col).select_from(tbl).distinct()
     if filters:
         preds = []
         for f in filters:
@@ -1167,7 +1167,7 @@ def _wide_sql(  # noqa: C901
     if not select_cols:
         return None
 
-    qry = sa.select(select_cols).select_from(tbl)
+    qry = sa.select(*select_cols).select_from(tbl)
     preds: list[Any] = []
     for f in filters:
         col = f.get("col")
