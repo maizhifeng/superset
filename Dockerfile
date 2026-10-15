@@ -59,9 +59,6 @@ RUN --mount=type=cache,target=/root/.npm \
 # superset-node-ci used as a base for building frontend assets and CI
 ######################################################################
 FROM --platform=${BUILDPLATFORM} node:24-trixie-slim AS superset-node-ci
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    sed -i 's/security.debian.org/mirrors.aliyun.com\/debian-security/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
-    : # fallback: also update traditional sources.list if it exists
 
 ARG BUILD_TRANSLATIONS
 ENV BUILD_TRANSLATIONS=${BUILD_TRANSLATIONS}
@@ -69,6 +66,10 @@ ARG DEV_MODE="false"           # Skip frontend build in dev mode
 ENV DEV_MODE=${DEV_MODE}
 
 COPY docker/ /app/docker/
+
+# Aliyun apt mirrors + acquire timeouts for the build containers
+RUN /app/docker/setup-mirrors.sh
+
 # Arguments for build configuration
 ARG NPM_BUILD_CMD="build"
 
@@ -271,6 +272,9 @@ RUN /app/docker/apt-install.sh \
 # The database file will be created at runtime when examples are loaded from Parquet files
 RUN mkdir -p /app/data && chown -R superset:superset /app/data
 
+# Copy MUI frontend build output
+COPY --from=superset-node-mui /app/superset-frontend-new/dist /app/mui-static
+
 # --- Realtime WebSocket server (part of the official image) ---------------
 # The realtime transport (superset-websocket) is a Node service, bundled by
 # esbuild into a single self-contained file. Copy the Node runtime plus that
@@ -283,9 +287,6 @@ RUN /app/docker/apt-install.sh libstdc++6
 COPY --from=superset-websocket /usr/local/bin/node /usr/local/bin/node
 COPY --from=superset-websocket --chown=superset:superset \
     /app/superset-websocket/dist /app/superset-websocket/dist
-
-# Copy MUI frontend build output
-COPY --from=superset-node-mui /app/superset-frontend-new/dist /app/mui-static
 
 HEALTHCHECK CMD /app/docker/docker-healthcheck.sh
 CMD ["/app/docker/entrypoints/run-server.sh"]
