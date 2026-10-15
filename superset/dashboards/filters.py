@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from typing import Any, Optional
+from typing import Any
 
 from flask import g
 from flask_appbuilder.security.sqla.models import Role
@@ -29,11 +29,19 @@ from superset.models.dashboard import Dashboard, is_uuid
 from superset.models.embedded_dashboard import EmbeddedDashboard
 from superset.models.slice import Slice
 from superset.security.guest_token import GuestTokenResourceType, GuestUser
+from superset.subjects.filters import (
+    EditableFilter,
+)
+from superset.subjects.models import dashboard_editors
 from superset.tags.filters import BaseTagIdFilter, BaseTagNameFilter
 from superset.utils.core import get_user_id
-from superset.utils.filters import get_dataset_access_filters
+from superset.utils.filters import (
+    get_dataset_access_filters,
+    guest_embedded_dashboard_filter,
+)
 from superset.views.base import BaseFilter
 from superset.views.base_api import BaseFavoriteFilter
+from superset.views.filters import BaseDeletedRecencyFilter, BaseDeletedStateFilter
 
 
 class DashboardTitleOrSlugFilter(BaseFilter):  # pylint: disable=too-few-public-methods
@@ -114,6 +122,11 @@ class DashboardAccessFilter(BaseFilter):  # pylint: disable=too-few-public-metho
     """
 
     def apply(self, query: Query, value: Any) -> Query:
+        # Guests are scoped to their token's dashboards only, never widened by
+        # the role paths below (mirrors ChartFilter).
+        if (guest_condition := guest_embedded_dashboard_filter()) is not None:
+            return query.filter(guest_condition)
+
         if security_manager.is_admin():
             return query
 
@@ -203,26 +216,12 @@ class DashboardAccessFilter(BaseFilter):  # pylint: disable=too-few-public-metho
         return query
 
 
-class FilterRelatedRoles(BaseFilter):  # pylint: disable=too-few-public-methods
-    """
-    A filter to allow searching for related roles of a resource.
+class DashboardEditableFilter(EditableFilter):  # pylint: disable=too-few-public-methods
+    """Filter for dashboards the user can edit."""
 
-    Use in the api by adding something like:
-    related_field_filters = {
-      "roles": RelatedFieldFilter("name", FilterRelatedRoles),
-    }
-    """
-
-    name = _("Role")
-    arg_name = "roles"
-
-    def apply(self, query: Query, value: Optional[Any]) -> Query:
-        role_model = security_manager.role_model
-        if value:
-            return query.filter(
-                role_model.name.ilike(f"%{value}%"),
-            )
-        return query
+    model = Dashboard
+    editors_table = dashboard_editors
+    editors_fk_column = "dashboard_id"
 
 
 class DashboardCertifiedFilter(BaseFilter):  # pylint: disable=too-few-public-methods
@@ -265,3 +264,27 @@ class DashboardHasCreatedByFilter(BaseFilter):  # pylint: disable=too-few-public
         if value is False:
             return query.filter(and_(Dashboard.created_by_fk.is_(None)))
         return query
+
+
+class DashboardDeletedRecencyFilter(  # pylint: disable=too-few-public-methods
+    BaseDeletedRecencyFilter
+):
+    """Archive time-range preset: rows archived within the last N days."""
+
+    arg_name = "dashboard_deleted_recency"
+
+
+class DashboardDeletedStateFilter(  # pylint: disable=too-few-public-methods
+    BaseDeletedStateFilter
+):
+    """Rison filter for the GET list that exposes soft-deleted dashboards.
+
+    Soft-deleted rows are scoped to the **restore audience** (editors or
+    admins) by ``BaseDeletedStateFilter._scope_to_restore_audience`` — the
+    cross-entity contract lives on the base, so this class is a pure
+    declaration. Live rows keep their normal ``DashboardAccessFilter``
+    visibility.
+    """
+
+    arg_name = "dashboard_deleted_state"
+    model = Dashboard

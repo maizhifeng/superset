@@ -18,6 +18,7 @@
  */
 
 import {
+  configure,
   render,
   screen,
   userEvent,
@@ -29,16 +30,34 @@ import * as chartAction from 'src/components/Chart/chartAction';
 import * as saveModalActions from 'src/explore/actions/saveModalActions';
 import * as downloadAsImage from 'src/utils/downloadAsImage';
 import * as exploreUtils from 'src/explore/exploreUtils';
-import { FeatureFlag, VizType } from '@superset-ui/core';
+import {
+  FeatureFlag,
+  QueryFormData,
+  VizType,
+  getChartMetadataRegistry,
+} from '@superset-ui/core';
+import { toChartStateHistoryState } from 'src/explore/exploreUtils/exploreHistory';
 import { useUnsavedChangesPrompt } from 'src/hooks/useUnsavedChangesPrompt';
 import ExploreHeader, { ExploreChartHeaderProps } from '.';
-import { getChartMetadataRegistry } from '@superset-ui/core';
+import * as bootstrapData from 'src/utils/getBootstrapData';
+import { UserRoles } from 'src/types/bootstrapTypes';
 import fs from 'fs';
 import path from 'path';
 
 const chartEndpoint = 'glob:*api/v1/chart/*';
 
+const EDIT_PROPERTIES_INITIAL_STATE = {
+  explore: { can_overwrite: true, can_add: true },
+};
+
 fetchMock.get(chartEndpoint, { json: 'foo' });
+
+// antd submenus mount their popups asynchronously (through rc-motion), so a
+// nested menu item may not be queryable immediately after hovering its parent.
+// Under parallel CI load that deferred mount can exceed the default 1s
+// async query timeout, which made the export submenu tests flaky. Give async
+// queries a wider budget so they keep polling until the popup renders.
+configure({ asyncUtilTimeout: 5000 });
 
 window.featureFlags = {
   [FeatureFlag.EmbeddableCharts]: true,
@@ -114,12 +133,6 @@ const createProps = (additionalProps = {}) =>
         y_axis_label: 'count',
       },
       modified: '<span class="no-wrap">7 days ago</span>',
-      owners: [
-        {
-          text: 'Superset Admin',
-          value: 1,
-        },
-      ],
       slice_id: 318,
       slice_name: 'Age distribution of respondents',
       slice_url: '/explore/?form_data=%7B%22slice_id%22%3A%20318%7D',
@@ -138,7 +151,7 @@ const createProps = (additionalProps = {}) =>
     metadata: {
       created_on_humanized: 'a week ago',
       changed_on_humanized: '2 days ago',
-      owners: ['John Doe'],
+      editors: ['John Doe'],
       created_by: 'John Doe',
       changed_by: 'John Doe',
       dashboards: [{ id: 1, dashboard_title: 'Test' }],
@@ -169,9 +182,170 @@ describe('ExploreChartHeader', () => {
     });
   });
 
+  test.each<{
+    name: string;
+    roles: UserRoles;
+    editors: number[];
+    extraEditors: number[];
+    granted: boolean;
+    canOverwrite?: boolean;
+    managed?: boolean;
+    preview?: boolean;
+    newChart?: boolean;
+    canWrite?: boolean;
+  }>([
+    {
+      name: 'admin',
+      roles: { Admin: [] },
+      editors: [],
+      extraEditors: [],
+      granted: true,
+    },
+    {
+      name: 'extra editor',
+      roles: { Gamma: [] },
+      editors: [],
+      extraEditors: [7],
+      granted: true,
+    },
+    {
+      name: 'read-only extra editor',
+      roles: { Gamma: [] },
+      editors: [],
+      extraEditors: [7],
+      canWrite: false,
+      granted: false,
+    },
+    {
+      name: 'unrecoverable malformed editor IDs',
+      roles: { Gamma: [] },
+      editors: JSON.parse('[null]'),
+      extraEditors: [],
+      granted: false,
+    },
+    {
+      name: 'valid extra editor with malformed editors',
+      roles: { Gamma: [] },
+      editors: JSON.parse('[null, "invalid", {}]'),
+      extraEditors: [7],
+      granted: true,
+    },
+    {
+      name: 'owner subject',
+      roles: { Gamma: [] },
+      editors: [8],
+      extraEditors: [],
+      granted: true,
+    },
+    {
+      name: 'unrelated viewer',
+      roles: { Gamma: [] },
+      editors: [99],
+      extraEditors: [98],
+      granted: false,
+    },
+    {
+      name: 'store grant',
+      roles: { Gamma: [] },
+      editors: [],
+      extraEditors: [],
+      canOverwrite: true,
+      granted: true,
+    },
+    {
+      name: 'managed admin',
+      roles: { Admin: [] },
+      editors: [],
+      extraEditors: [],
+      managed: true,
+      canOverwrite: true,
+      granted: false,
+    },
+    {
+      name: 'admin preview',
+      roles: { Admin: [] },
+      editors: [],
+      extraEditors: [],
+      preview: true,
+      granted: false,
+    },
+    {
+      name: 'new chart',
+      roles: { Gamma: [] },
+      editors: [],
+      extraEditors: [],
+      newChart: true,
+      canWrite: false,
+      granted: true,
+    },
+  ])(
+    'chart title editability for $name',
+    async ({
+      roles,
+      editors,
+      extraEditors,
+      granted,
+      canOverwrite = false,
+      managed = false,
+      preview = false,
+      newChart = false,
+      canWrite = true,
+    }) => {
+      const bootstrap = bootstrapData.default();
+      const bootstrapSpy = jest
+        .spyOn(bootstrapData, 'default')
+        .mockReturnValue({
+          ...bootstrap,
+          common: { ...bootstrap.common, user_subjects: [7, 8] },
+        });
+      const props = createProps({
+        canOverwrite,
+        user: { userId: 1, username: 'viewer', permissions: {}, roles },
+      });
+      props.slice = newChart
+        ? null
+        : {
+            ...props.slice!,
+            editors,
+            extra_editors: extraEditors,
+            is_managed_externally: managed,
+          };
+      try {
+        render(<ExploreHeader {...props} />, {
+          useRedux: true,
+          initialState: {
+            explore: { can_add: canWrite },
+            versionHistory: {
+              entityType: 'chart',
+              preview: preview ? { versionUuid: 'old-version' } : null,
+            },
+          },
+        });
+        const title = screen.getByRole('textbox', { name: 'Chart title' });
+        if (granted) {
+          expect(title).toBeEnabled();
+          await userEvent.clear(title);
+          await userEvent.type(title, 'Renamed chart');
+          await userEvent.tab();
+          expect(props.actions.updateChartTitle).toHaveBeenCalledWith(
+            'Renamed chart',
+          );
+        } else {
+          expect(title).toBeDisabled();
+          expect(props.actions.updateChartTitle).not.toHaveBeenCalled();
+        }
+      } finally {
+        bootstrapSpy.mockRestore();
+      }
+    },
+  );
+
   test('Cancelling changes to the properties should reset previous properties', async () => {
     const props = createProps();
-    render(<ExploreHeader {...props} />, { useRedux: true });
+    render(<ExploreHeader {...props} />, {
+      useRedux: true,
+      initialState: EDIT_PROPERTIES_INITIAL_STATE,
+    });
     const newChartName = 'New chart name';
     const prevChartName = props.sliceName;
 
@@ -391,6 +565,33 @@ describe('ExploreChartHeader', () => {
     );
   });
 
+  test('treats chart states of the same chart as in place transitions', async () => {
+    const formData = {
+      viz_type: VizType.Histogram,
+      datasource: '49__table',
+      slice_id: 318,
+    } as QueryFormData;
+    render(<ExploreHeader {...createProps({ formData })} />, {
+      useRedux: true,
+    });
+
+    const [{ isInPlaceTransition }] = (useUnsavedChangesPrompt as jest.Mock)
+      .mock.lastCall;
+
+    expect(
+      isInPlaceTransition(
+        toChartStateHistoryState({ ...formData, row_limit: 10 }),
+      ),
+    ).toBe(true);
+    expect(
+      isInPlaceTransition(
+        toChartStateHistoryState({ ...formData, slice_id: 42 }),
+      ),
+    ).toBe(false);
+    expect(isInPlaceTransition({ fromDashboard: true })).toBe(false);
+    expect(isInPlaceTransition(undefined)).toBe(false);
+  });
+
   test('Save chart', async () => {
     const setSaveChartModalVisibilitySpy = jest.spyOn(
       saveModalActions,
@@ -419,7 +620,7 @@ describe('ExploreChartHeader', () => {
       name: /save/i,
     });
 
-    userEvent.click(saveButton);
+    await userEvent.click(saveButton);
 
     expect(triggerManualSave).toHaveBeenCalled();
     expect(setSaveChartModalVisibilityMock).toHaveBeenCalledWith(true);
@@ -447,7 +648,7 @@ describe('ExploreChartHeader', () => {
 
     expect(saveButton).toBeDisabled();
 
-    userEvent.click(saveButton);
+    await userEvent.click(saveButton);
 
     expect(triggerManualSave).not.toHaveBeenCalled();
   });
@@ -493,7 +694,7 @@ describe('ExploreChartHeader', () => {
       name: /save/i,
     });
 
-    userEvent.click(saveButton);
+    await userEvent.click(saveButton);
 
     expect(handleSaveAndCloseModal).toHaveBeenCalled();
   });
@@ -517,7 +718,7 @@ describe('ExploreChartHeader', () => {
       name: /discard/i,
     });
 
-    userEvent.click(discardButton);
+    await userEvent.click(discardButton);
 
     expect(handleConfirmNavigation).toHaveBeenCalled();
   });
@@ -540,7 +741,7 @@ describe('ExploreChartHeader', () => {
       name: /close/i,
     });
 
-    userEvent.click(closeButton);
+    await userEvent.click(closeButton);
 
     expect(setShowModal).toHaveBeenCalledWith(false);
   });
@@ -600,9 +801,10 @@ describe('Additional actions tests', () => {
     const props = createProps();
     render(<ExploreHeader {...props} />, {
       useRedux: true,
+      initialState: EDIT_PROPERTIES_INITIAL_STATE,
     });
 
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
 
     expect(
       await screen.findByText('Edit chart properties'),
@@ -624,10 +826,10 @@ describe('Additional actions tests', () => {
       useRedux: true,
     });
 
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
 
-    userEvent.hover(await screen.findByText('Data Export Options'));
-    userEvent.hover(await screen.findByText('Export All Data'));
+    await userEvent.hover(await screen.findByText('Data Export Options'));
+    await userEvent.hover(await screen.findByText('Export All Data'));
 
     expect(await screen.findByText('Export to .CSV')).toBeInTheDocument();
     expect(await screen.findByText('Export to .JSON')).toBeInTheDocument();
@@ -649,11 +851,11 @@ describe('Additional actions tests', () => {
 
     render(<ExploreHeader {...props} />, { useRedux: true });
 
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
-    userEvent.hover(await screen.findByText('Data Export Options'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.hover(await screen.findByText('Data Export Options'));
 
     // Now the submenu should exist
-    userEvent.hover(await screen.findByText('Export Current View'));
+    await userEvent.hover(await screen.findByText('Export Current View'));
 
     expect(await screen.findByText('Export to .CSV')).toBeInTheDocument();
     expect(await screen.findByText('Export to .JSON')).toBeInTheDocument();
@@ -673,7 +875,7 @@ describe('Additional actions tests', () => {
       useRedux: true,
     });
 
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
 
     expect(
       screen.queryByText('Copy permalink to clipboard'),
@@ -682,7 +884,7 @@ describe('Additional actions tests', () => {
     expect(screen.queryByText('Share chart by email')).not.toBeInTheDocument();
 
     expect(screen.getByText('Share')).toBeInTheDocument();
-    userEvent.hover(screen.getByText('Share'));
+    await userEvent.hover(screen.getByText('Share'));
     expect(
       await screen.findByText('Copy permalink to clipboard'),
     ).toBeInTheDocument();
@@ -694,10 +896,11 @@ describe('Additional actions tests', () => {
     const props = createProps();
     render(<ExploreHeader {...props} />, {
       useRedux: true,
+      initialState: EDIT_PROPERTIES_INITIAL_STATE,
     });
     expect(props.actions.redirectSQLLab).toHaveBeenCalledTimes(0);
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
-    userEvent.click(
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(
       screen.getByRole('menuitem', { name: 'Edit chart properties' }),
     );
     expect(
@@ -713,11 +916,11 @@ describe('Additional actions tests', () => {
     });
 
     expect(getChartDataRequest).toHaveBeenCalledTimes(0);
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
     expect(getChartDataRequest).toHaveBeenCalledTimes(0);
 
     const menuItem = screen.getByText('View query').parentElement!;
-    userEvent.click(menuItem);
+    await userEvent.click(menuItem);
 
     await waitFor(() => expect(getChartDataRequest).toHaveBeenCalledTimes(1));
   });
@@ -730,10 +933,12 @@ describe('Additional actions tests', () => {
     expect(await screen.findByText('Save')).toBeInTheDocument();
 
     expect(props.actions.redirectSQLLab).toHaveBeenCalledTimes(0);
-    userEvent.click(screen.getByLabelText('Menu actions trigger'));
+    await userEvent.click(screen.getByLabelText('Menu actions trigger'));
     expect(props.actions.redirectSQLLab).toHaveBeenCalledTimes(0);
 
-    userEvent.click(screen.getByRole('menuitem', { name: 'Run in SQL Lab' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Run in SQL Lab' }),
+    );
     expect(props.actions.redirectSQLLab).toHaveBeenCalledTimes(1);
   });
 
@@ -769,14 +974,14 @@ describe('Additional actions tests', () => {
         initialState: { explore: { can_export_image: true } },
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
 
       const downloadAsImageElement = await screen.findByText(
         'Export screenshot (jpeg)',
       );
-      userEvent.click(downloadAsImageElement);
+      await userEvent.click(downloadAsImageElement);
 
       await waitFor(() => {
         expect(spyDownloadAsImage.mock.calls.length).toBe(1);
@@ -788,11 +993,11 @@ describe('Additional actions tests', () => {
       render(<ExploreHeader {...props} />, {
         useRedux: true,
       });
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportCSVElement = await screen.findByText('Export to .CSV');
-      userEvent.click(exportCSVElement);
+      await userEvent.click(exportCSVElement);
       expect(spyExportChart.mock.calls.length).toBe(0);
       spyExportChart.mockRestore();
     });
@@ -804,11 +1009,11 @@ describe('Additional actions tests', () => {
         useRedux: true,
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportCSVElement = await screen.findByText('Export to .CSV');
-      userEvent.click(exportCSVElement);
+      await userEvent.click(exportCSVElement);
       expect(spyExportChart.mock.calls.length).toBe(1);
       spyExportChart.mockRestore();
     });
@@ -818,11 +1023,11 @@ describe('Additional actions tests', () => {
       render(<ExploreHeader {...props} />, {
         useRedux: true,
       });
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportJsonElement = await screen.findByText('Export to .JSON');
-      userEvent.click(exportJsonElement);
+      await userEvent.click(exportJsonElement);
       expect(spyExportChart.mock.calls.length).toBe(0);
       spyExportChart.mockRestore();
     });
@@ -834,11 +1039,11 @@ describe('Additional actions tests', () => {
         useRedux: true,
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportJsonElement = await screen.findByText('Export to .JSON');
-      userEvent.click(exportJsonElement);
+      await userEvent.click(exportJsonElement);
       expect(spyExportChart.mock.calls.length).toBe(1);
     });
 
@@ -849,13 +1054,13 @@ describe('Additional actions tests', () => {
         useRedux: true,
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportCSVElement = await screen.findByText(
         'Export to pivoted .CSV',
       );
-      userEvent.click(exportCSVElement);
+      await userEvent.click(exportCSVElement);
       expect(spyExportChart.mock.calls.length).toBe(0);
     });
 
@@ -867,13 +1072,13 @@ describe('Additional actions tests', () => {
         useRedux: true,
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportCSVElement = await screen.findByText(
         'Export to pivoted .CSV',
       );
-      userEvent.click(exportCSVElement);
+      await userEvent.click(exportCSVElement);
       expect(spyExportChart.mock.calls.length).toBe(1);
     });
 
@@ -882,11 +1087,11 @@ describe('Additional actions tests', () => {
       render(<ExploreHeader {...props} />, {
         useRedux: true,
       });
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportExcelElement = await screen.findByText('Export to Excel');
-      userEvent.click(exportExcelElement);
+      await userEvent.click(exportExcelElement);
       expect(spyExportChart.mock.calls.length).toBe(0);
       spyExportChart.mockRestore();
     });
@@ -897,11 +1102,11 @@ describe('Additional actions tests', () => {
       render(<ExploreHeader {...props} />, {
         useRedux: true,
       });
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export All Data'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export All Data'));
       const exportExcelElement = await screen.findByText('Export to Excel');
-      userEvent.click(exportExcelElement);
+      await userEvent.click(exportExcelElement);
       expect(spyExportChart.mock.calls.length).toBe(1);
     });
   });
@@ -910,23 +1115,28 @@ describe('Additional actions tests', () => {
     let spyDownloadAsImage: jest.SpyInstance;
     let spyExportChart: jest.SpyInstance;
 
-    let originalURL: typeof URL;
     let anchorClickSpy: jest.SpyInstance;
+    let createObjectURLSpy: jest.SpyInstance;
+    let revokeObjectURLSpy: jest.SpyInstance;
 
     beforeAll(() => {
-      originalURL = global.URL;
-
-      // Replace global.URL with a version that has the blob helpers
-      const mockedURL = {
-        ...originalURL,
-        createObjectURL: jest.fn(() => 'blob:mock-url'),
-        revokeObjectURL: jest.fn(),
-      } as unknown as typeof URL;
-
-      Object.defineProperty(global, 'URL', {
-        writable: true,
-        value: mockedURL,
-      });
+      // jsdom does not define URL.createObjectURL / URL.revokeObjectURL, so we
+      // stub them before spying so that jest.spyOn finds a real property to wrap.
+      if (!URL.createObjectURL) {
+        URL.createObjectURL = () => '';
+      }
+      if (!URL.revokeObjectURL) {
+        URL.revokeObjectURL = () => {};
+      }
+      // Spy on static URL methods rather than replacing the constructor so that
+      // code paths calling `new URL(...)` (e.g. @braintree/sanitize-url) keep
+      // working while tests can assert on blob URL creation/revocation.
+      createObjectURLSpy = jest
+        .spyOn(URL, 'createObjectURL')
+        .mockReturnValue('blob:mock-url');
+      revokeObjectURLSpy = jest
+        .spyOn(URL, 'revokeObjectURL')
+        .mockImplementation(() => {});
 
       // Avoid jsdom navigation side-effects on <a>.click()
       anchorClickSpy = jest
@@ -935,11 +1145,8 @@ describe('Additional actions tests', () => {
     });
 
     afterAll(() => {
-      // restore URL
-      Object.defineProperty(global, 'URL', {
-        writable: true,
-        value: originalURL,
-      });
+      createObjectURLSpy.mockRestore();
+      revokeObjectURLSpy.mockRestore();
       anchorClickSpy.mockRestore();
     });
 
@@ -973,15 +1180,15 @@ describe('Additional actions tests', () => {
         initialState: { explore: { can_export_image: true } },
       });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       // clear previous calls on the jest spy created in beforeEach
       spyDownloadAsImage.mockClear();
 
       const item = await screen.findByText('Export screenshot (jpeg)');
-      userEvent.click(item);
+      await userEvent.click(item);
 
       await waitFor(() => {
         expect(spyDownloadAsImage).toHaveBeenCalled();
@@ -1013,13 +1220,13 @@ describe('Additional actions tests', () => {
 
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       spyExportChart.mockClear();
 
-      userEvent.click(await screen.findByText('Export to .CSV'));
+      await userEvent.click(await screen.findByText('Export to .CSV'));
 
       expect(spyExportChart).not.toHaveBeenCalled();
 
@@ -1043,12 +1250,12 @@ describe('Additional actions tests', () => {
 
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       spyExportChart.mockClear();
-      userEvent.click(await screen.findByText('Export to .JSON'));
+      await userEvent.click(await screen.findByText('Export to .JSON'));
 
       expect(spyExportChart).not.toHaveBeenCalled();
 
@@ -1065,15 +1272,15 @@ describe('Additional actions tests', () => {
 
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       spyExportChart.mockClear();
-      userEvent.click(await screen.findByText('Export to .CSV'));
+      await userEvent.click(await screen.findByText('Export to .CSV'));
 
       expect(spyExportChart.mock.calls.length).toBe(1);
-      const args = spyExportChart.mock.calls[0][0];
+      const [[args]] = spyExportChart.mock.calls;
       expect(args.resultType).toBe('results');
       expect(args.resultFormat).toBe('csv');
 
@@ -1096,12 +1303,16 @@ describe('Additional actions tests', () => {
       const getSpy = mockExportCurrentViewBehavior();
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(await screen.findByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(
+        await screen.findByLabelText('Menu actions trigger'),
+      );
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       spyExportChart.mockClear();
-      userEvent.click(await screen.findByText(/Export to (Excel|\.XLSX)/i));
+      await userEvent.click(
+        await screen.findByText(/Export to (Excel|\.XLSX)/i),
+      );
 
       expect(spyExportChart).not.toHaveBeenCalled();
       getSpy.mockRestore();
@@ -1116,15 +1327,19 @@ describe('Additional actions tests', () => {
       const getSpy = mockExportCurrentViewBehavior();
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(await screen.findByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(
+        await screen.findByLabelText('Menu actions trigger'),
+      );
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       spyExportChart.mockClear();
-      userEvent.click(await screen.findByText(/Export to (Excel|\.XLSX)/i));
+      await userEvent.click(
+        await screen.findByText(/Export to (Excel|\.XLSX)/i),
+      );
 
       expect(spyExportChart.mock.calls.length).toBe(1);
-      const args = spyExportChart.mock.calls[0][0];
+      const [[args]] = spyExportChart.mock.calls;
       expect(args.resultType).toBe('results');
       expect(args.resultFormat).toBe('xlsx');
       getSpy.mockRestore();
@@ -1148,21 +1363,21 @@ describe('Additional actions tests', () => {
 
       render(<ExploreHeader {...props} />, { useRedux: true });
 
-      userEvent.click(screen.getByLabelText('Menu actions trigger'));
-      userEvent.hover(await screen.findByText('Data Export Options'));
-      userEvent.hover(await screen.findByText('Export Current View'));
+      await userEvent.click(screen.getByLabelText('Menu actions trigger'));
+      await userEvent.hover(await screen.findByText('Data Export Options'));
+      await userEvent.hover(await screen.findByText('Export Current View'));
 
       // server path expected - use the jest spy and inspect call args
       spyExportChart.mockClear();
 
       const jsonItem = await screen.findByText('Export to .JSON');
-      userEvent.click(jsonItem);
+      await userEvent.click(jsonItem);
 
       await waitFor(() => {
         expect(spyExportChart.mock.calls.length).toBe(1);
       });
 
-      const args = spyExportChart.mock.calls[0][0];
+      const [[args]] = spyExportChart.mock.calls;
       expect(args.resultType).toBe('results');
       expect(args.resultFormat).toBe('json');
 

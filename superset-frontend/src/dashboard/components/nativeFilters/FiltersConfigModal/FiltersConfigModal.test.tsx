@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Preset } from '@superset-ui/core';
+import { Preset, DatasourceType, Filter } from '@superset-ui/core';
 import fetchMock from 'fetch-mock';
 import chartQueries from 'spec/fixtures/mockChartQueries';
 import { dashboardLayout } from 'spec/fixtures/mockDashboardLayout';
@@ -93,6 +93,9 @@ const bigIntChartDataState = () => {
             data: [
               { name: 'Abigail', count: 228 },
               { name: 'Aaron', count: 123012930123123n },
+              // Exceeds Number.MAX_SAFE_INTEGER, mirroring the BigInt values
+              // that parseResponse produces for large integer columns
+              { name: 'Adah', count: 9007199254740993n },
               { name: 'Adam', count: 454 },
             ],
             applied_filters: [{ column: 'name' }],
@@ -170,7 +173,10 @@ const FILTER_SETTINGS_REGEX = /^filter settings$/i;
 const DEFAULT_VALUE_REGEX = /^filter has default value$/i;
 const MULTIPLE_REGEX = /^can select multiple values$/i;
 const FILTER_REQUIRED_REGEX = /^filter value is required/i;
-const DEPENDENCIES_REGEX = /^values are dependent on other filters$/i;
+// No trailing `$`: like the other tooltip-bearing checkboxes below, the
+// accessible name includes the trailing info icon (e.g. "... other filters
+// info-circle"), so an exact-end anchor would never match.
+const DEPENDENCIES_REGEX = /^values are dependent on other filters/i;
 const FIRST_VALUE_REGEX = /^select first filter value by default/i;
 const INVERSE_SELECTION_REGEX = /^inverse selection/i;
 const SEARCH_ALL_REGEX = /^dynamically search all filter values/i;
@@ -181,6 +187,7 @@ const NAME_REQUIRED_REGEX = /^name is required$/i;
 const COLUMN_REQUIRED_REGEX = /^column is required$/i;
 const PRE_FILTER_REQUIRED_REGEX = /^pre-filter is required$/i;
 const DEFAULT_VALUE_INVALID_REGEX = /choose.*valid value/i;
+const REMOVE_FILTER_BUTTON_REGEX = /Remove filter/i;
 
 const props: FiltersConfigModalProps = {
   isOpen: true,
@@ -528,6 +535,43 @@ test('deletes a filter including dependencies', async () => {
   );
 }, 30000);
 
+test('shows the dependency control on first render for a saved cascade filter', () => {
+  const nativeFilterConfig = [
+    buildNativeFilter('NATIVE_FILTER-1', 'state', ['NATIVE_FILTER-2']),
+    buildNativeFilter('NATIVE_FILTER-2', 'country', []),
+  ];
+  const state = {
+    ...defaultState(),
+    dashboardInfo: {
+      metadata: {
+        native_filter_configuration: nativeFilterConfig,
+      },
+    },
+    dashboardLayout,
+  };
+  defaultRender(state, { ...props, createNewOnOpen: false });
+
+  // No interaction: the dependency control must be checked as soon as the
+  // modal opens on a filter that already has a cascade parent, without
+  // waiting for a rerender.
+  expect(getCheckbox(DEPENDENCIES_REGEX)).toBeChecked();
+
+  // The saved parent ("country") must render as the actual selected
+  // dependency, not a "(deleted or invalid type)" placeholder. antd Select
+  // renders the active selection as a span whose title attribute is the
+  // picked option's label.
+  expect(
+    document.querySelector(
+      '.ant-select-content-has-value[title="country"], .ant-select-selection-item[title="country"]',
+    ),
+  ).toBeInTheDocument();
+
+  // hasAdditionalFilters has the same first-render read as
+  // canDependOnOtherFilters above: the pre-filter control must also be
+  // present (not merely unchecked) on the very first paint.
+  expect(getCheckbox(PRE_FILTER_REGEX)).not.toBeChecked();
+});
+
 const SORTABLE_ITEM_HEIGHT = 40;
 const SORTABLE_ITEM_WIDTH = 200;
 
@@ -695,7 +739,7 @@ test.skip('updates sidebar title when filter name changes', async () => {
 });
 
 test('modifies the name of a filter', async () => {
-  jest.useFakeTimers();
+  jest.useFakeTimers({ advanceTimers: true });
 
   const nativeFilterConfig = [
     buildNativeFilter('NATIVE_FILTER-1', 'state', []),
@@ -773,6 +817,18 @@ test('renders a filter with a chart containing BigInt values', async () => {
   expect(screen.getByText(FILTER_TYPE_REGEX)).toBeInTheDocument();
 });
 
+test('creates a new filter when a chart contains BigInt values', () => {
+  // Repro for #35087: opening "Add or edit filters" on a dashboard where a
+  // chart queried a BigInt column must not throw
+  // "TypeError: Do not know how to serialize a BigInt"
+  defaultRender(bigIntChartDataState(), props);
+
+  expect(screen.getByText(FILTER_TYPE_REGEX)).toBeInTheDocument();
+  expect(screen.getByText(FILTER_NAME_REGEX)).toBeInTheDocument();
+  expect(screen.getByText(DATASET_REGEX)).toBeInTheDocument();
+  expect(screen.getByText(COLUMN_REGEX)).toBeInTheDocument();
+});
+
 test('displays empty state when modal opens with no filters and createNewOnOpen is false', () => {
   defaultRender(defaultState(), { ...props, createNewOnOpen: false });
 
@@ -800,6 +856,135 @@ test('does not auto-create a filter when createNewOnOpen is false', () => {
   expect(screen.queryByText(DATASET_REGEX)).not.toBeInTheDocument();
 });
 
+test('enables save button and includes updated title when editing an existing divider', async () => {
+  jest.useFakeTimers({ advanceTimers: true });
+
+  const nativeFilterDividerConfig = [
+    {
+      id: 'NATIVE_FILTER_DIVIDER-1',
+      type: 'DIVIDER' as const,
+      title: 'First Edit',
+      description: '',
+      scope: { rootPath: ['ROOT'], excluded: [] },
+    },
+  ];
+
+  const state = {
+    ...defaultState(),
+    dashboardInfo: {
+      metadata: {
+        native_filter_configuration: nativeFilterDividerConfig,
+      },
+    },
+    dashboardLayout,
+  };
+
+  const onSave = jest.fn();
+
+  defaultRender(state, {
+    ...props,
+    createNewOnOpen: false,
+    initialFilterId: 'NATIVE_FILTER_DIVIDER-1',
+    onSave,
+  });
+
+  // Save button should be disabled when no changes have been made
+  expect(screen.getByRole('button', { name: SAVE_REGEX })).toBeDisabled();
+
+  // Editing the title field should mark the divider modified and enable save
+  const titleInput = screen.getByRole('textbox', { name: /^title$/i });
+  await userEvent.clear(titleInput);
+  await userEvent.type(titleInput, 'Second Edit');
+
+  jest.advanceTimersByTime(500);
+  jest.useRealTimers();
+
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: SAVE_REGEX })).not.toBeDisabled(),
+  );
+
+  await userEvent.click(screen.getByRole('button', { name: SAVE_REGEX }));
+
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filterChanges: expect.objectContaining({
+          modified: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'NATIVE_FILTER_DIVIDER-1',
+              title: 'Second Edit',
+            }),
+          ]),
+        }),
+      }),
+    ),
+  );
+}, 30000);
+
+test('enables save button and includes updated title when editing an existing chart customization divider', async () => {
+  jest.useFakeTimers({ advanceTimers: true });
+
+  const chartCustomizationDividerConfig = [
+    {
+      id: 'CHART_CUSTOMIZATION_DIVIDER-1',
+      type: 'CHART_CUSTOMIZATION_DIVIDER' as const,
+      title: 'First Edit',
+      description: '',
+    },
+  ];
+
+  const state = {
+    ...defaultState(),
+    dashboardInfo: {
+      metadata: {
+        chart_customization_config: chartCustomizationDividerConfig,
+      },
+    },
+    dashboardLayout,
+  };
+
+  const onSave = jest.fn();
+
+  defaultRender(state, {
+    ...props,
+    createNewOnOpen: false,
+    initialFilterId: 'CHART_CUSTOMIZATION_DIVIDER-1',
+    onSave,
+  });
+
+  // Save button should be disabled when no changes have been made
+  expect(screen.getByRole('button', { name: SAVE_REGEX })).toBeDisabled();
+
+  // Editing the title field should mark the divider modified and enable save
+  const titleInput = screen.getByRole('textbox', { name: /^title$/i });
+  await userEvent.clear(titleInput);
+  await userEvent.type(titleInput, 'Second Edit');
+
+  jest.advanceTimersByTime(500);
+  jest.useRealTimers();
+
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: SAVE_REGEX })).not.toBeDisabled(),
+  );
+
+  await userEvent.click(screen.getByRole('button', { name: SAVE_REGEX }));
+
+  await waitFor(() =>
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customizationChanges: expect.objectContaining({
+          modified: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'CHART_CUSTOMIZATION_DIVIDER-1',
+              title: 'Second Edit',
+            }),
+          ]),
+        }),
+      }),
+    ),
+  );
+}, 30000);
+
 test('empty state disappears when a filter is added via dropdown', async () => {
   defaultRender(defaultState(), {
     ...props,
@@ -826,4 +1011,256 @@ test('empty state disappears when a filter is added via dropdown', async () => {
     ).not.toBeInTheDocument();
   });
   expect(screen.getByText(FILTER_TYPE_REGEX)).toBeInTheDocument();
+});
+
+test('restores a deleted filter via the "Restore filter" button', async () => {
+  const nativeFilterConfig = [
+    buildNativeFilter('NATIVE_FILTER-1', 'state', []),
+    buildNativeFilter('NATIVE_FILTER-2', 'country', []),
+  ];
+  const state = {
+    ...defaultState(),
+    dashboardInfo: {
+      metadata: { native_filter_configuration: nativeFilterConfig },
+    },
+    dashboardLayout,
+  };
+
+  defaultRender(state, { ...props, createNewOnOpen: false });
+
+  const filterContainer = screen.getByTestId('filter-title-container');
+  const firstTab = within(filterContainer).getAllByRole('tab')[0];
+  fireEvent.click(
+    within(firstTab).getByRole('button', { name: REMOVE_FILTER_BUTTON_REGEX }),
+  );
+
+  expect(
+    await screen.findByText(/you have removed this filter/i),
+  ).toBeInTheDocument();
+  const restoreButton = screen.getByTestId('restore-filter-button');
+  await userEvent.click(restoreButton);
+
+  await waitFor(() => {
+    expect(
+      screen.queryByText(/you have removed this filter/i),
+    ).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole('textbox', { name: FILTER_NAME_REGEX })).toHaveValue(
+    'state',
+  );
+}, 30000);
+
+test('undoes a filter deletion via the sidebar "Undo?" link', async () => {
+  const nativeFilterConfig = [
+    buildNativeFilter('NATIVE_FILTER-1', 'state', []),
+    buildNativeFilter('NATIVE_FILTER-2', 'country', []),
+  ];
+  const state = {
+    ...defaultState(),
+    dashboardInfo: {
+      metadata: { native_filter_configuration: nativeFilterConfig },
+    },
+    dashboardLayout,
+  };
+
+  defaultRender(state, { ...props, createNewOnOpen: false });
+
+  const filterContainer = screen.getByTestId('filter-title-container');
+  const firstTab = within(filterContainer).getAllByRole('tab')[0];
+  fireEvent.click(
+    within(firstTab).getByRole('button', { name: REMOVE_FILTER_BUTTON_REGEX }),
+  );
+
+  const undoButton = await screen.findByTestId('undo-button');
+  expect(undoButton).toHaveTextContent(/undo\?/i);
+  await userEvent.click(undoButton);
+
+  await waitFor(() => {
+    expect(
+      screen.queryByText(/you have removed this filter/i),
+    ).not.toBeInTheDocument();
+  });
+  expect(screen.getByRole('textbox', { name: FILTER_NAME_REGEX })).toHaveValue(
+    'state',
+  );
+}, 30000);
+
+test('shows info tooltips beside value-filter options and reveals tooltip text on hover', async () => {
+  defaultRender();
+
+  // Upstream Cypress checked six tooltips on the value filter (nativeFilterTooltips
+  // 0..5); asserting the count keeps this test honest if tooltips get added or
+  // removed alongside a regression to the option list.
+  const tooltipIcons = screen.getAllByLabelText(/show info tooltip/i);
+  expect(tooltipIcons.length).toBeGreaterThanOrEqual(6);
+
+  await userEvent.hover(tooltipIcons[0]);
+
+  // role='tooltip' trips an nwsapi bug on antd's internal :only-child selectors;
+  // query the portal node by class and require non-empty text content so an empty
+  // tooltip render does not pass.
+  await waitFor(() => {
+    const tooltip = document.querySelector('.ant-tooltip-container');
+    expect(tooltip).toBeInTheDocument();
+    expect(tooltip?.textContent?.trim()).toBeTruthy();
+  });
+}, 30000);
+
+test('numerical range filter — Range Type selector lets the user pick a display mode', async () => {
+  defaultRender();
+
+  await userEvent.click(screen.getByText(VALUE_REGEX));
+  await userEvent.click(await screen.findByText(NUMERICAL_RANGE_REGEX));
+
+  const rangeTypeCombobox = await screen.findByRole('combobox', {
+    name: /range type/i,
+  });
+
+  // Default render is "Slider and range input"; asserting Slider is absent first
+  // ensures the post-click assertion proves a state change rather than passing on
+  // the default selection.
+  expect(
+    document.querySelector(
+      '.ant-select-content-has-value[title="Slider"], .ant-select-selection-item[title="Slider"]',
+    ),
+  ).not.toBeInTheDocument();
+
+  await userEvent.click(rangeTypeCombobox);
+  const sliderOption = await screen.findByRole('option', {
+    name: /^slider$/i,
+  });
+  await userEvent.click(sliderOption);
+
+  // antd Select renders the active selection as a span whose title attribute is
+  // the picked option's label.
+  await waitFor(() => {
+    expect(
+      document.querySelector(
+        '.ant-select-content-has-value[title="Slider"], .ant-select-selection-item[title="Slider"]',
+      ),
+    ).toBeInTheDocument();
+  });
+}, 30000);
+
+test('toggles "Filter has default value" to show and hide the Default Value control', async () => {
+  defaultRender();
+
+  const defaultValueCheckbox = getCheckbox(DEFAULT_VALUE_REGEX);
+  expect(defaultValueCheckbox).not.toBeChecked();
+  expect(screen.queryByText(/^default value$/i)).not.toBeInTheDocument();
+
+  await userEvent.click(defaultValueCheckbox);
+
+  expect(defaultValueCheckbox).toBeChecked();
+  expect(await screen.findByText(/^default value$/i)).toBeInTheDocument();
+
+  await userEvent.click(defaultValueCheckbox);
+
+  expect(defaultValueCheckbox).not.toBeChecked();
+  await waitFor(() => {
+    expect(screen.queryByText(/^default value$/i)).not.toBeInTheDocument();
+  });
+});
+
+test('semantic filter reset requires reselection and survives save and reopen', async () => {
+  fetchMock.get('glob:*/api/v1/semantic_view/987/structure', {
+    result: {
+      name: 'Orders',
+      semantic_selection_version: 'cube-member-id-v1',
+      dimensions: [{ name: 'Orders.status', type: 'string' }],
+      metrics: [],
+    },
+  });
+  const filter = {
+    ...buildNativeFilter('NATIVE_FILTER-identity', 'Legacy', []),
+    targets: [
+      {
+        datasetId: 987,
+        datasourceType: DatasourceType.SemanticView,
+        column: { name: 'Orders.status' },
+      },
+    ],
+    time_range: 'Last week',
+    time_grains: ['P1D'],
+    defaultDataMask: {
+      filterState: { value: ['old default'] },
+      extraFormData: {
+        filters: [
+          { col: 'Orders.status', op: 'IN' as const, val: ['old default'] },
+        ],
+      },
+    },
+  };
+  const state = {
+    ...defaultState(),
+    dashboardInfo: { metadata: { native_filter_configuration: [filter] } },
+    dashboardLayout,
+  };
+  const onSave = jest
+    .fn<
+      ReturnType<FiltersConfigModalProps['onSave']>,
+      Parameters<FiltersConfigModalProps['onSave']>
+    >()
+    .mockResolvedValue(undefined);
+  const { unmount } = defaultRender(state, {
+    ...props,
+    onSave,
+    createNewOnOpen: false,
+  });
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Start field selection' }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Choose current semantic filter fields'),
+    ).not.toBeInTheDocument(),
+  );
+  expect(getCheckbox(PRE_FILTER_REGEX)).not.toBeChecked();
+  expect(getCheckbox(DEFAULT_VALUE_REGEX)).not.toBeChecked();
+  expect(screen.queryByText('old default')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: SAVE_REGEX }));
+  expect(await screen.findByText(COLUMN_REQUIRED_REGEX)).toBeInTheDocument();
+  expect(onSave).not.toHaveBeenCalled();
+
+  // This ID also spelled the legacy title; only explicit reselection certifies it.
+  await userEvent.click(
+    screen.getByRole('combobox', { name: 'Column select' }),
+  );
+  await userEvent.click(await screen.findByText('Orders.status'));
+  // Column validation clears the previous save error asynchronously.
+  await waitFor(
+    () =>
+      expect(screen.getByRole('button', { name: SAVE_REGEX })).toBeEnabled(),
+    { timeout: 5000 },
+  );
+  await userEvent.click(screen.getByRole('button', { name: SAVE_REGEX }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  const changes = onSave.mock.calls[0][0].filterChanges;
+  expect(changes?.modified).toHaveLength(1);
+  const saved = changes?.modified[0];
+  const reopened: Filter = JSON.parse(JSON.stringify(saved));
+  expect(reopened.targets).toEqual([
+    {
+      datasetId: 987,
+      datasourceType: DatasourceType.SemanticView,
+      column: { name: 'Orders.status' },
+      semantic_selection_version: 'cube-member-id-v1',
+    },
+  ]);
+  expect(reopened.time_range).toBeUndefined();
+  expect(reopened.time_grains).toBeUndefined();
+  expect(reopened.defaultDataMask.filterState?.value).toBeUndefined();
+  expect(reopened.defaultDataMask.extraFormData?.filters).toBeUndefined();
+
+  unmount();
+  const reopenedState = {
+    ...state,
+    dashboardInfo: { metadata: { native_filter_configuration: [reopened] } },
+  };
+  defaultRender(reopenedState, { ...props, createNewOnOpen: false });
+  expect(await screen.findByText('Orders.status')).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Start field selection' }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText('old default')).not.toBeInTheDocument();
 });

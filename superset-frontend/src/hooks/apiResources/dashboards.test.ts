@@ -27,7 +27,7 @@ test('useDashboard excludes thumbnail_url from request', async () => {
       dashboard_title: 'Test',
       json_metadata: '{}',
       position_json: '{}',
-      owners: [],
+      editors: [],
     },
   });
 
@@ -110,5 +110,19 @@ describe('useDashboardDatasets', () => {
     await waitFor(() => {
       expect(result.current.result).toEqual(expectedContent);
     });
+  });
+
+  test('keeps transformed datasets stable across unrelated rerenders', async () => {
+    fetchMock.get('glob:*/api/v1/dashboard/*/datasets', {
+      result: mockDatasets,
+    });
+
+    const { result, rerender } = renderHook(() => useDashboardDatasets(1));
+    await waitFor(() => expect(result.current.result).not.toBeNull());
+    const datasets = result.current.result;
+
+    rerender();
+
+    expect(result.current.result).toBe(datasets);
   });
 });

@@ -63,6 +63,7 @@ export default function transformProps(
     currencyFormat,
     subheader,
     subheaderFontSize,
+    headerAlignment,
   } = formData;
   const refs: Refs = {};
   const {
@@ -79,8 +80,15 @@ export default function transformProps(
   const formattedSubtitleFontSize = subtitle?.trim()
     ? (subtitleFontSize ?? PROPORTION.SUBHEADER)
     : (subheaderFontSize ?? subtitleFontSize ?? PROPORTION.SUBHEADER);
+  const rawValue = data.length === 0 ? null : data[0][metricName];
+  const parsedValue = rawValue == null ? null : parseMetricValue(rawValue);
+
   const bigNumber =
-    data.length === 0 ? null : parseMetricValue(data[0][metricName]);
+    parsedValue === null &&
+    typeof rawValue === 'string' &&
+    rawValue.trim() !== ''
+      ? rawValue
+      : parsedValue;
 
   let metricEntry: Metric | undefined;
   if (chartProps.datasource?.metrics) {
@@ -136,5 +144,6 @@ export default function transformProps(
     metricName: originalLabel,
     showMetricName,
     metricNameFontSize,
+    headerAlignment,
   };
 }

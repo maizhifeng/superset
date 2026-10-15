@@ -18,6 +18,10 @@
 # Configuration for docker-compose-light.yml - uses Redis for caching
 
 # Import all settings from the main config first
+import os
+
+from flask_caching.backends.filesystemcache import FileSystemCache
+
 from superset_config import *  # noqa: F403
 
 # Override caching to use Redis (same as full config, with light prefix)
@@ -27,9 +31,9 @@ CACHE_CONFIG = {
     "CACHE_TYPE": "RedisCache",
     "CACHE_DEFAULT_TIMEOUT": 300,
     "CACHE_KEY_PREFIX": "superset_light_",
-    "CACHE_REDIS_HOST": REDIS_HOST,
-    "CACHE_REDIS_PORT": REDIS_PORT,
-    "CACHE_REDIS_DB": REDIS_RESULTS_DB,
+    "CACHE_REDIS_HOST": REDIS_HOST,  # noqa: F405
+    "CACHE_REDIS_PORT": REDIS_PORT,  # noqa: F405
+    "CACHE_REDIS_DB": REDIS_RESULTS_DB,  # noqa: F405
 }
 DATA_CACHE_CONFIG = CACHE_CONFIG
 THUMBNAIL_CACHE_CONFIG = CACHE_CONFIG
@@ -45,3 +49,32 @@ ENABLE_PROXY_FIX = True
 # docker-compose-light.yml consume it so scheduled reports (Alerts/Reports,
 # including briefing schedules) execute against the superset_light database.
 # The broker is redis://redis:6379/0 (the light stack's own Redis service).
+
+# Honor SUPERSET_FEATURE_<NAME> env vars on top of any flags inherited from
+# superset_config. Lets local dev/e2e enable features (e.g. EMBEDDED_SUPERSET)
+# without editing shipped config files. Only the literal string "true"
+# (case-insensitive) is treated as enabled — "1"/"yes"/"on" are not, matching
+# the strict-string convention used elsewhere in Superset's env parsing.
+FEATURE_FLAGS = {
+    **FEATURE_FLAGS,  # noqa: F405
+    **{
+        name[len("SUPERSET_FEATURE_") :]: value.strip().lower() == "true"
+        for name, value in os.environ.items()
+        if name.startswith("SUPERSET_FEATURE_")
+    },
+}
+
+if os.environ.get("SUPERSET_FEATURE_EMBEDDED_SUPERSET", "").strip().lower() == "true":
+    # Disable Talisman so /embedded/<uuid> doesn't return X-Frame-Options:SAMEORIGIN.
+    # Without this, browsers refuse to render Superset inside an iframe from a
+    # different origin (i.e. the embedded SDK use case). Production/CI configures
+    # Talisman with explicit `frame-ancestors`; for the lightweight local stack we
+    # just turn it off.
+    TALISMAN_ENABLED = False
+
+    # Guest tokens (used by the embedded SDK) inherit the "Public" role's perms.
+    # Out of the box Public has zero perms, so embedded dashboards immediately fail
+    # their first call (`/api/v1/me/roles/`) with 403. Mirror Public to Gamma —
+    # the standard read-only viewer role — so the embedded flow can authenticate
+    # and load dashboard data in local dev.
+    PUBLIC_ROLE_LIKE = "Gamma"

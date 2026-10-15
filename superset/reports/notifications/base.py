@@ -28,6 +28,7 @@ class NotificationContent:
     name: str
     header_data: HeaderDataType  # this is optional to account for error states
     csv: Optional[bytes] = None  # bytes for csv file
+    xlsx: Optional[bytes] = None  # bytes for Excel file
     pdf: Optional[bytes] = None  # bytes for PDF file
     screenshots: Optional[list[bytes]] = None  # bytes for a list of screenshots
     text: Optional[str] = None
@@ -48,6 +49,17 @@ class NotificationContent:
     # Split the report into one card per chapter, so each message gets its own
     # 30 KB card budget and the tables can keep more rows.
     briefing_split_chapters: bool = False
+    slack_retry_deadline: Optional[float] = None
+    # Populated only when this is a per-retry or final-failure notification
+    retry_attempt: Optional[int] = None
+    retry_max_attempts: Optional[int] = None
+    include_cta: bool = True  # include the call-to-action link back to Superset
+    is_editor_error: bool = False  # diagnostic email restricted to schedule editors
+
+    @property
+    def has_attachments(self) -> bool:
+        """Return whether the notification contains any file attachment."""
+        return bool(self.csv or self.xlsx or self.pdf or self.screenshots)
 
 
 class BaseNotification:  # pylint: disable=too-few-public-methods
