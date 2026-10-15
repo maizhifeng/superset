@@ -262,7 +262,7 @@ def _header_data(config_id: int) -> HeaderDataType:
     """Minimal execution header for a manually triggered push."""
     return {
         "notification_format": "TEXT",
-        "owners": [],
+        "editors": [],
         "notification_type": "Report",
         "notification_source": "briefing",
         "chart_id": None,
