@@ -2880,7 +2880,7 @@ ALERT_REPORTS_WEBHOOK_ALLOW_INTERNAL_HOSTS: bool = False
 # default) in any deployment where untrusted users can create Impala database
 # connections, so a maliciously-configured impala:// URL cannot be used to
 # trigger outbound requests to internal targets via the cancel endpoint.
-IMPALA_CANCEL_QUERY_ALLOW_INTERNAL_HOSTS: bool = False (feat(briefing): 新增飞书通知渠道与HTML导出，完善简报排程)
+IMPALA_CANCEL_QUERY_ALLOW_INTERNAL_HOSTS: bool = False
 
 # A custom prefix to use on all Alerts & Reports emails
 EMAIL_REPORTS_SUBJECT_PREFIX = "[Report] "
