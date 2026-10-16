@@ -327,8 +327,15 @@ COPY --from=python-translation-compiler /app/translations_mo superset/translatio
 # Install the superset package itself. --no-deps because its dependencies
 # were already installed from requirements/base.txt above, so this layer
 # stays fast even though the source copy above changes on every edit.
+# NOTE: --no-deps also skips the extras' requirements (uv treats extras
+# as dependencies), so the [postgres] extra's psycopg2-binary is NOT
+# installed by the command above; add it explicitly below. Keep the pin
+# in sync with the `postgres` extra in pyproject.toml -- the metadata
+# database needs this driver at runtime.
 RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
     uv pip install -e .[postgres] --no-deps
+RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
+    uv pip install --no-deps psycopg2-binary==2.9.13
 RUN python -m compileall /app/superset
 
 USER superset
