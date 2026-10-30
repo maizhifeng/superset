@@ -30,6 +30,34 @@ Common pre-commit failures:
 - **Type errors** - mypy failures need manual fixes
 - **Linting** - ruff, pylint issues need manual fixes
 
+### WSL / sandboxed / low-resource environments
+
+A full `pre-commit run` over many staged files can exhaust WSL memory and crash
+the VM. In these environments:
+
+- Prefer explicit files / hooks instead of all hooks:
+  ```bash
+  pre-commit run --files <changed-file-1> <changed-file-2>
+  pre-commit run eslint-frontend-new type-checking-frontend-new ruff --files <...>
+  ```
+- Skip the frontend-new prettier hook when many files are staged. Its entry
+  loops per file and starts one `npx prettier` per filename:
+  ```bash
+  SKIP=prettier-frontend-new pre-commit run --concurrency 1
+  ```
+- Ensure the npm cache is writable (`npm config get cache`, usually `~/.npm`)
+  and prettier is installed locally; in a sandbox with a read-only `/`,
+  repeated `npx` registry attempts emit `npm error rofs ... EROFS`.
+- Activate the Python environment first; otherwise hooks fail with
+  `python: command not found` or `No module named 'superset'` (environment
+  issues, not code issues).
+- Limit parallelism (`--concurrency 1` or small N) and close dev
+  servers/browsers/Docker-heavy jobs when memory is tight.
+- Clean temp artifacts from interrupted hooks (e.g.
+  `docs/static/feature-flags.json.tmp`) before committing.
+- If a full run is required, run it outside the sandbox with a writable npm
+  cache and sufficient WSL memory.
+
 ## ⚠️ CRITICAL: Ongoing Refactors (What NOT to Do)
 
 **These migrations are actively happening - avoid deprecated patterns:**
