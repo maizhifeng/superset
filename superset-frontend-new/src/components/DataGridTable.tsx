@@ -3,6 +3,7 @@ import type { DataGridProps } from "@mui/x-data-grid";
 import { useMediaQuery, useTheme } from "@mui/material";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
+import { zhCN } from "@mui/x-data-grid/locales";
 import { useUiPreferences } from "@/store/uiPreferences";
 
 const DataGrid = lazy(() =>
@@ -26,6 +27,10 @@ function DataGridTable(props: DataGridProps) {
       >
         <DataGrid
           {...props}
+          localeText={{
+            ...zhCN.components.MuiDataGrid.defaultProps.localeText,
+            ...props.localeText,
+          }}
           density={density}
           autoHeight={false}
           rowHeight={isMobile ? 52 : undefined}
@@ -38,7 +43,7 @@ function DataGridTable(props: DataGridProps) {
               borderColor: "divider",
               borderRadius: 2,
               "& .MuiDataGrid-columnHeaders": {
-                backgroundColor: "grey.50",
+                backgroundColor: "surface.variant",
                 borderBottom: "1px solid",
                 borderColor: "divider",
               },
@@ -59,7 +64,7 @@ function DataGridTable(props: DataGridProps) {
                   boxShadow: "var(--mui-palette-shadow-sm)",
                 },
                 "&:nth-of-type(even)": {
-                  backgroundColor: "var(--mui-palette-action-hover)",
+                  backgroundColor: "var(--mui-palette-bg-muted)",
                 },
                 "&:nth-of-type(even):hover": {
                   backgroundColor: "action.hover",
@@ -87,6 +92,18 @@ function DataGridTable(props: DataGridProps) {
                 outline: "2px solid var(--mui-palette-primary-main)",
                 outlineOffset: -2,
               },
+              // Row-level utilities (copy/ID actions in cells) stay out of the
+              // way until the row is hovered or focused, so the table reads as
+              // data first. Touch devices keep them permanently visible.
+              "& .MuiDataGrid-cell .MuiIconButton-root": {
+                opacity: 0,
+                transition: "opacity 120ms ease",
+              },
+              "& .MuiDataGrid-row:hover .MuiDataGrid-cell .MuiIconButton-root, & .MuiDataGrid-row:focus-within .MuiDataGrid-cell .MuiIconButton-root":
+                { opacity: 1 },
+              "@media (hover: none)": {
+                "& .MuiDataGrid-cell .MuiIconButton-root": { opacity: 1 },
+              },
               "& .MuiDataGrid-cellContent": {
                 lineHeight: 1.5,
               },
@@ -95,7 +112,7 @@ function DataGridTable(props: DataGridProps) {
                 borderColor: "divider",
                 minHeight: 52,
                 px: 2,
-                backgroundColor: "grey.50",
+                backgroundColor: "surface.variant",
               },
               "& .MuiTablePagination-root": {
                 fontSize: "0.75rem",

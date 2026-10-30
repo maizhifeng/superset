@@ -243,3 +243,60 @@ def test_execute_federated_sides_all_failed() -> None:
     )
     assert results == []
     assert set(failed) == {"aliyun", "oversea"}
+
+
+# ---------------------------------------------------------------------------
+# Federated chart-data cache configuration
+# ---------------------------------------------------------------------------
+
+
+def test_cache_ttl_defaults_to_long_historical_windows() -> None:
+    """Historical reporting defaults to 30 min fresh / 1 day stale."""
+    fresh, stale = bi_api._chart_cache_ttls({})
+    assert fresh == 30 * 60
+    assert stale == 24 * 3600
+
+
+def test_cache_ttl_reads_config_and_clamps_stale_to_fresh() -> None:
+    fresh, stale = bi_api._chart_cache_ttls(
+        {
+            "BI_FEDERATED_CACHE_TTL": 120,
+            "BI_FEDERATED_CACHE_STALE_TTL": 60,
+        }
+    )
+    assert fresh == 120
+    # A stale window shorter than the fresh window would make the copy vanish
+    # exactly when it is needed, so it is floored at the fresh TTL.
+    assert stale == 120
+
+
+def test_cache_ttl_allows_dataset_level_override() -> None:
+    fresh, stale = bi_api._chart_cache_ttls(
+        {"BI_FEDERATED_CACHE_TTL": 120, "BI_FEDERATED_CACHE_STALE_TTL": 600},
+        {"cache_ttl": 900, "cache_stale_ttl": 7200},
+    )
+    assert (fresh, stale) == (900, 7200)
+
+
+def test_cache_ttl_zero_disables_the_layer() -> None:
+    fresh, stale = bi_api._chart_cache_ttls(
+        {"BI_FEDERATED_CACHE_TTL": 0, "BI_FEDERATED_CACHE_STALE_TTL": 0}
+    )
+    assert (fresh, stale) == (0, 0)
+
+
+def test_canonical_cache_payload_sorts_keys_and_drops_force() -> None:
+    first = bi_api._canonical_chart_payload(
+        {"queries": [{"metrics": ["cpa"], "filters": []}], "force": True}
+    )
+    second = bi_api._canonical_chart_payload(
+        {"force": False, "queries": [{"filters": [], "metrics": ["cpa"]}]}
+    )
+    assert first == second
+    assert "force" not in first
+
+
+def test_canonical_cache_payload_changes_with_query() -> None:
+    first = bi_api._canonical_chart_payload({"queries": [{"time_range": "a"}]})
+    second = bi_api._canonical_chart_payload({"queries": [{"time_range": "b"}]})
+    assert first != second

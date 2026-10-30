@@ -1787,6 +1787,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             csrf.exempt("superset.project.bi.api.chart_data")
             csrf.exempt("superset.project.bi.api.filter_values")
             csrf.exempt("superset.project.bi.api.federated_datasets")
+            csrf.exempt("superset.project.bi.api.analysis_snapshot_put")
             # Briefing config management endpoints
             csrf.exempt("superset.project.briefing.api.create_config")
             csrf.exempt("superset.project.briefing.api.update_config")

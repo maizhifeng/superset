@@ -3,6 +3,7 @@ import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Dialog from "@mui/material/Dialog";
@@ -26,9 +27,10 @@ import { downloadCsv } from "@/utils/exportCsv";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
-import PageHeader from "@/components/PageHeader";
 import { useToolbarStore } from "@/store/toolbarStore";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import IdCell from "@/components/IdCell";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { ConfirmModal } from "@/superset-ui-mui/components";
@@ -138,7 +140,10 @@ export default function AdminRoles() {
     }
     try {
       await navigator.clipboard.writeText(ids.join(","));
-      notify({ severity: "success", message: `已复制 ${ids.length} 个权限 ID` });
+      notify({
+        severity: "success",
+        message: `已复制 ${ids.length} 个权限 ID`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -153,7 +158,10 @@ export default function AdminRoles() {
     }
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      notify({ severity: "success", message: `已复制 ${names.length} 个角色名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${names.length} 个角色名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -190,7 +198,11 @@ export default function AdminRoles() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新列表">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -201,7 +213,9 @@ export default function AdminRoles() {
         priority: 2.5,
         showOnMobile: false,
         render: (
-          <Tooltip title={hasUsersOnly ? "显示全部角色" : "仅显示有用户分配的角色"}>
+          <Tooltip
+            title={hasUsersOnly ? "显示全部角色" : "仅显示有用户分配的角色"}
+          >
             <Button
               size="small"
               variant={hasUsersOnly ? "contained" : "text"}
@@ -220,7 +234,9 @@ export default function AdminRoles() {
         priority: 2.4,
         showOnMobile: false,
         render: (
-          <Tooltip title={hasPermsOnly ? "显示全部角色" : "仅显示有权限分配的角色"}>
+          <Tooltip
+            title={hasPermsOnly ? "显示全部角色" : "仅显示有权限分配的角色"}
+          >
             <Button
               size="small"
               variant={hasPermsOnly ? "contained" : "text"}
@@ -238,58 +254,31 @@ export default function AdminRoles() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前角色列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={filteredRoles.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_role_names",
-        priority: 1.75,
+        priority: 1.8,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的角色名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllRoleNames()}
-              disabled={filteredRoles.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制角色名
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制角色名",
+        action: () => void handleCopyAllRoleNames(),
       },
       {
         id: "copy_perm_ids",
-        priority: 1.5,
+        priority: 1.7,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制所有角色的权限 ID（去重）">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<FormatListNumberedIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllPermissionIds()}
-              disabled={filteredRoles.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制权限 ID
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <FormatListNumberedIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制权限 ID",
+        action: () => void handleCopyAllPermissionIds(),
       },
       {
         id: "search",
@@ -307,27 +296,53 @@ export default function AdminRoles() {
       },
     ]);
     return () => unregisterTools("admin_roles");
-  }, [registerTools, unregisterTools, handleSearchChange, fetchData, loading, handleExportCsv, handleCopyAllRoleNames, handleCopyAllPermissionIds, hasUsersOnly, setHasUsersOnly, hasPermsOnly, setHasPermsOnly, filteredRoles.length]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    fetchData,
+    loading,
+    handleExportCsv,
+    handleCopyAllRoleNames,
+    handleCopyAllPermissionIds,
+    hasUsersOnly,
+    setHasUsersOnly,
+    hasPermsOnly,
+    setHasPermsOnly,
+    filteredRoles.length,
+  ]);
 
   const columns: GridColDef[] = [
     {
       field: "id",
       headerName: "ID",
-      width: 70,
-      headerAlign: "center",
-      align: "center",
+      width: 84,
+      renderCell: (params) => (
+        <IdCell id={params.value as number} entity="角色" />
+      ),
     },
     {
       field: "name",
       headerName: "角色名称",
       flex: 1,
-      minWidth: 140,
+      minWidth: 180,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
           <Typography
             variant="body2"
+            title={params.value ?? ""}
             sx={{
               fontSize: "0.8125rem",
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -338,7 +353,7 @@ export default function AdminRoles() {
           <Tooltip title="复制角色名">
             <IconButton
               size="small"
-              sx={{ p: 0.25 }}
+              sx={{ p: 0.25, flexShrink: 0 }}
               onClick={(e) => {
                 e.stopPropagation();
                 void handleCopyRoleName(params.value);
@@ -413,7 +428,9 @@ export default function AdminRoles() {
           <Tooltip title="复制权限 ID 列表">
             <IconButton
               size="small"
-              onClick={() => void handleCopyPermissionIds(params.row.permission_ids ?? [])}
+              onClick={() =>
+                void handleCopyPermissionIds(params.row.permission_ids ?? [])
+              }
             >
               <FormatListNumberedIcon sx={{ fontSize: 16 }} />
             </IconButton>
@@ -465,179 +482,202 @@ export default function AdminRoles() {
   ];
 
   return (
-    <ListPageLayout
+    <PageFrame
+      page="admin_roles"
       loading={loading}
-      error={error}
-      hasData={filteredRoles.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<SecurityIcon />}
-            title="角色管理"
-            description={searchText ? "请调整搜索条件" : "暂无角色数据"}
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  新建角色
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
+      title="角色管理"
+      subtitle={`共 ${rowCount} 项`}
     >
-      <PageHeader title="角色管理" />
-      <ResponsiveDataGrid
-        rows={filteredRoles}
-        columns={columns}
-        loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="admin_roles"
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除角色"
-        description={`确定要删除角色"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <RolePermissionsDialog
-        role={permTarget}
-        onClose={() => setPermTarget(null)}
-      />
-      <Dialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        maxWidth="xs"
-        fullWidth
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
       >
-        <DialogTitle>新建角色</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="角色名称"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            variant="outlined"
-            size="small"
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>取消</Button>
-          <Button
-            variant="contained"
-            disabled={creating || !createName.trim()}
-            onClick={() => {
-              void (async () => {
-                setCreating(true);
-                try {
-                  await api.post("/security/roles/", {
-                    name: createName.trim(),
-                  });
-                  setCreateOpen(false);
-                  setCreateName("");
-                  fetchData();
-                } catch {
-                  /* ignore */
+        <ListPageLayout
+          loading={loading}
+          error={error}
+          hasData={filteredRoles.length > 0}
+          emptyState={
+            <>
+              <EmptyState
+                icon={<SecurityIcon />}
+                title="角色管理"
+                description={searchText ? "请调整搜索条件" : "暂无角色数据"}
+                action={
+                  !searchText ? (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      新建角色
+                    </Button>
+                  ) : undefined
                 }
-                setCreating(false);
-              })();
-            }}
-          >
-            {creating ? "创建中..." : "创建"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={!!duplicateTarget}
-        onClose={() => !duplicating && setDuplicateTarget(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>复制角色</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            将复制角色"{duplicateTarget?.name}"的权限到新角色。
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            label="新角色名称"
-            value={duplicateName}
-            onChange={(e) => setDuplicateName(e.target.value)}
-            variant="outlined"
-            size="small"
+              />
+              <EmptyStateShortcutHint />
+            </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={filteredRoles}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            toolbarPageKey="admin_roles"
           />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDuplicateTarget(null)} disabled={duplicating}>
-            取消
-          </Button>
-          <Button
-            variant="contained"
-            disabled={duplicating || !duplicateName.trim()}
-            onClick={() => {
-              void (async () => {
-                if (!duplicateTarget) return;
-                setDuplicating(true);
-                try {
-                  const created = await api.post<{ id?: number }>(
-                    "/security/roles/",
-                    { name: duplicateName.trim() },
-                  );
-                  const newId =
-                    created.data.id ?? (created.data as { result?: { id?: number } }).result?.id;
-                  if (typeof newId !== "number") {
-                    throw new Error("创建角色返回缺少 id");
-                  }
-                  // 把源角色的权限复制到新角色（新角色本身无权限）。
-                  if (duplicateTarget.permissionIds.length > 0) {
-                    await api.post(`/security/roles/${newId}/permissions`, {
-                      permission_view_menu_ids: duplicateTarget.permissionIds,
-                    });
-                  }
-                  notify({
-                    severity: "success",
-                    message: `已复制角色"${duplicateTarget.name}"为"${duplicateName.trim()}"`,
-                  });
-                  setDuplicateTarget(null);
-                  setDuplicateName("");
-                  fetchData();
-                } catch {
-                  notify({
-                    severity: "error",
-                    message: "复制角色失败",
-                  });
-                }
-                setDuplicating(false);
-              })();
-            }}
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <ConfirmModal
+            open={!!deleteTarget}
+            title="删除角色"
+            description={`确定要删除角色"${deleteTarget?.name}"？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+            confirmLoading={deleteLoading}
+            danger
+            onConfirm={() => void handleDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+          <RolePermissionsDialog
+            role={permTarget}
+            onClose={() => setPermTarget(null)}
+          />
+          <Dialog
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            maxWidth="xs"
+            fullWidth
           >
-            {duplicating ? "复制中..." : "复制"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </ListPageLayout>
+            <DialogTitle>新建角色</DialogTitle>
+            <DialogContent>
+              <TextField
+                autoFocus
+                fullWidth
+                label="角色名称"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                variant="outlined"
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button
+                variant="contained"
+                disabled={creating || !createName.trim()}
+                onClick={() => {
+                  void (async () => {
+                    setCreating(true);
+                    try {
+                      await api.post("/security/roles/", {
+                        name: createName.trim(),
+                      });
+                      setCreateOpen(false);
+                      setCreateName("");
+                      fetchData();
+                    } catch {
+                      /* ignore */
+                    }
+                    setCreating(false);
+                  })();
+                }}
+              >
+                {creating ? "创建中..." : "创建"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog
+            open={!!duplicateTarget}
+            onClose={() => !duplicating && setDuplicateTarget(null)}
+            maxWidth="xs"
+            fullWidth
+          >
+            <DialogTitle>复制角色</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                将复制角色"{duplicateTarget?.name}"的权限到新角色。
+              </Typography>
+              <TextField
+                autoFocus
+                fullWidth
+                label="新角色名称"
+                value={duplicateName}
+                onChange={(e) => setDuplicateName(e.target.value)}
+                variant="outlined"
+                size="small"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button
+                onClick={() => setDuplicateTarget(null)}
+                disabled={duplicating}
+              >
+                取消
+              </Button>
+              <Button
+                variant="contained"
+                disabled={duplicating || !duplicateName.trim()}
+                onClick={() => {
+                  void (async () => {
+                    if (!duplicateTarget) return;
+                    setDuplicating(true);
+                    try {
+                      const created = await api.post<{ id?: number }>(
+                        "/security/roles/",
+                        { name: duplicateName.trim() },
+                      );
+                      const newId =
+                        created.data.id ??
+                        (created.data as { result?: { id?: number } }).result
+                          ?.id;
+                      if (typeof newId !== "number") {
+                        throw new Error("创建角色返回缺少 id");
+                      }
+                      // 把源角色的权限复制到新角色（新角色本身无权限）。
+                      if (duplicateTarget.permissionIds.length > 0) {
+                        await api.post(`/security/roles/${newId}/permissions`, {
+                          permission_view_menu_ids:
+                            duplicateTarget.permissionIds,
+                        });
+                      }
+                      notify({
+                        severity: "success",
+                        message: `已复制角色"${duplicateTarget.name}"为"${duplicateName.trim()}"`,
+                      });
+                      setDuplicateTarget(null);
+                      setDuplicateName("");
+                      fetchData();
+                    } catch {
+                      notify({
+                        severity: "error",
+                        message: "复制角色失败",
+                      });
+                    }
+                    setDuplicating(false);
+                  })();
+                }}
+              >
+                {duplicating ? "复制中..." : "复制"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </ListPageLayout>
+      </Card>
+    </PageFrame>
   );
 }

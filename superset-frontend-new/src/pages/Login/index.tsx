@@ -7,6 +7,7 @@ import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import PersonIcon from "@mui/icons-material/Person";
@@ -87,7 +88,13 @@ export default function Login() {
       }
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      setError(parseErrorMessage(err, "登录失败"));
+      const status = (err as { response?: { status?: number } })?.response
+        ?.status;
+      setError(
+        status === 401
+          ? "用户名或密码错误"
+          : parseErrorMessage(err, "登录失败，请稍后重试"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -327,42 +334,76 @@ export default function Login() {
                 },
               }}
             />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  size="small"
-                />
-              }
-              label="记住用户名"
-              sx={{ mb: 1, color: "text.secondary" }}
-            />
-            {hasRemembered && (
-              <Box sx={{ mb: 2 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 1,
+                mb: 2,
+              }}
+            >
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    size="small"
+                  />
+                }
+                label="记住用户名"
+                sx={{ color: "text.secondary", mr: 0 }}
+              />
+              {hasRemembered && (
                 <Button
                   size="small"
                   variant="text"
                   color="inherit"
                   onClick={clearRemembered}
-                  sx={{ textTransform: "none", p: 0, fontSize: "0.75rem" }}
+                  sx={{
+                    textTransform: "none",
+                    p: 0,
+                    minWidth: 0,
+                    fontSize: "0.75rem",
+                    color: "text.disabled",
+                    "&:hover": { color: "text.secondary" },
+                  }}
                 >
-                  清除记住的用户名
+                  清除用户名
                 </Button>
-              </Box>
-            )}
+              )}
+            </Box>
             <Button
               fullWidth
               type="submit"
               variant="contained"
               size="large"
               disabled={submitting}
+              startIcon={
+                submitting ? (
+                  <CircularProgress size={16} color="inherit" />
+                ) : undefined
+              }
             >
               {submitting ? "登录中..." : "登录"}
             </Button>
           </Box>
         </CardContent>
       </Card>
+      <Typography
+        variant="caption"
+        sx={{
+          position: "absolute",
+          bottom: 24,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          color: "text.disabled",
+          pointerEvents: "none",
+        }}
+      >
+        Starfly · 内部数据平台
+      </Typography>
     </Box>
   );
 }

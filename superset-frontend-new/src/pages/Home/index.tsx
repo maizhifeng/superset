@@ -39,6 +39,7 @@ import { useAlertFavorites } from "@/store/alertFavorites";
 import { useRecentDashboards } from "@/store/recentDashboards";
 import { useRecentCharts } from "@/store/recentCharts";
 import api from "@/api";
+import { formatRelativeTime } from "@/utils/datetime";
 
 interface HomeLink {
   title: string;
@@ -68,6 +69,13 @@ const links: HomeLink[] = [
     desc: "将图表组织到仪表板中",
     color: "success.main",
     count: 0,
+  },
+  {
+    title: "专题分析",
+    path: "/analysis",
+    icon: "insights",
+    desc: "成本、留存、LTV、付费与渠道效率",
+    color: "secondary.main",
   },
   {
     title: "SQL 实验室",
@@ -306,15 +314,13 @@ function RecentDashboards({
                 )}
               </IconButton>
             </Tooltip>
-            {d.changed_on_delta_humanized && (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ flexShrink: 0 }}
-              >
-                {d.changed_on_delta_humanized}
-              </Typography>
-            )}
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ flexShrink: 0 }}
+            >
+              {formatRelativeTime(d.changed_on_utc)}
+            </Typography>
           </Box>
         ))}
       </Box>
@@ -686,15 +692,15 @@ function StatStrip({ stats }: { stats: ReturnType<typeof useHomeStats> }) {
           </Box>
         </Tooltip>
       ))}
-      <Tooltip title="复制数据概览">
-        <IconButton
-          size="small"
-          onClick={() => void handleCopySummary()}
-          sx={{ color: "text.secondary" }}
-        >
-          <ContentCopyIcon sx={{ fontSize: 16 }} />
-        </IconButton>
-      </Tooltip>
+      <Button
+        size="small"
+        color="inherit"
+        startIcon={<ContentCopyIcon sx={{ fontSize: 16 }} />}
+        onClick={() => void handleCopySummary()}
+        sx={{ ml: 0.5, color: "text.secondary", fontSize: "0.75rem" }}
+      >
+        复制概览
+      </Button>
     </Box>
   );
 }

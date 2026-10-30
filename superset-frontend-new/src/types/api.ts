@@ -109,6 +109,8 @@ export interface Database {
   driver?: string;
   expose_in_sqllab?: boolean;
   allow_dml?: boolean;
+  changed_on?: string;
+  changed_on_utc?: string;
   changed_on_delta_humanized?: string;
   schema?: string | null;
 }
@@ -149,6 +151,7 @@ export interface DashboardListItem {
   id: number;
   dashboard_title: string;
   published: boolean;
+  changed_on_utc?: string;
   changed_on_delta_humanized?: string;
   owners?: DashboardOwner[];
   created_by?: {
@@ -163,6 +166,8 @@ export interface SavedQuery {
   label: string;
   sql: string;
   database: { database_name: string } | null;
+  changed_on?: string;
+  changed_on_utc?: string;
   changed_on_delta_humanized: string;
 }
 
@@ -170,7 +175,13 @@ export interface ChartRow {
   id: number;
   slice_name: string;
   viz_type: string;
-  created_by: { username: string } | null;
+  created_by: {
+    id?: number;
+    username?: string;
+    first_name?: string;
+    last_name?: string;
+  } | null;
+  changed_on_utc?: string;
   changed_on_delta_humanized: string;
   datasource_name_text?: string;
   datasource_type?: string;
@@ -184,6 +195,7 @@ export interface DatasetRow {
   schema: string | null;
   database: { database_name: string } | null;
   kind: "physical" | "virtual";
+  changed_on_utc?: string;
   changed_on_delta_humanized: string;
 }
 
@@ -224,7 +236,7 @@ export interface DatasetDetail {
   catalog: string | null;
   kind: string;
   extra: string | null;
-  database: { database_name: string; id: number };
+  database: { database_name: string; id: number; backend?: string };
   columns: DatasetColumn[];
   metrics: DatasetMetric[];
 }

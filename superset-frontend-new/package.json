@@ -20,7 +20,8 @@
     "playwright": "playwright test",
     "playwright:ui": "playwright test --ui",
     "playwright:headed": "playwright test --headed",
-    "playwright:debug": "playwright test --debug"
+    "playwright:debug": "playwright test --debug",
+    "prewarm:analysis": "node scripts/prewarm-analysis.mjs"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.10.0",

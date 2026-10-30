@@ -18,6 +18,8 @@ import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
+import { formatCrontabZh } from "@/utils/crontab";
+import { formatDateTime } from "@/utils/datetime";
 
 export interface BriefingSchedule {
   id: number;
@@ -319,11 +321,13 @@ export default function ScheduleDialog({
           >
             上次执行：
             {schedule.last_eval_dttm
-              ? new Date(schedule.last_eval_dttm).toLocaleString()
+              ? formatDateTime(schedule.last_eval_dttm)
               : "—"}
-            {schedule.crontab_humanized
-              ? ` · ${schedule.crontab_humanized}`
-              : ""}
+            {(() => {
+              const zh = formatCrontabZh(schedule.crontab);
+              const text = zh ?? schedule.crontab_humanized;
+              return text ? ` · ${text}` : "";
+            })()}
           </Typography>
         )}
         {schedule?.next_run_at && schedule.active && (
@@ -331,7 +335,7 @@ export default function ScheduleDialog({
             variant="caption"
             sx={{ color: "text.secondary", display: "block" }}
           >
-            下次执行：{new Date(schedule.next_run_at).toLocaleString()}
+            下次执行：{formatDateTime(schedule.next_run_at)}
             {"（剩 "}
             <Box
               component="span"

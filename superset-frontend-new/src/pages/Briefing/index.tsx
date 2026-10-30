@@ -6,6 +6,7 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
+import StatusChip from "@/components/StatusChip";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -19,9 +20,10 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ScheduleIcon from "@mui/icons-material/Schedule";
 import SendIcon from "@mui/icons-material/Send";
-import PageHeader from "@/components/PageHeader";
+import PageFrame from "@/components/PageFrame";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
+import { formatCrontabZh } from "@/utils/crontab";
 import ConfigForm from "./ConfigForm";
 import ScheduleDialog, {
   NextRunCountdown,
@@ -208,43 +210,54 @@ export default function BriefingList() {
       : rows.filter((r) => normalizeReportType(r.report_type) === typeFilter);
 
   return (
-    <Box sx={{ p: 3, pt: 2 }}>
-      <PageHeader
-        title="简报"
-        subtitle="管理简报（日报 / 周报）：可配置参数，点击进入简报详情"
-        actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-          >
-            新建简报
-          </Button>
-        }
-      />
-
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        value={typeFilter}
-        onChange={(_, v: "all" | ReportType | null) => {
-          if (v !== null) setTypeFilter(v);
+    <PageFrame
+      page="briefing"
+      loading={loading}
+      title="简报"
+      subtitle="管理简报（日报 / 周报）：可配置参数，点击进入简报详情"
+      actions={
+        <Button
+          variant="contained"
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={openCreate}
+        >
+          新建简报
+        </Button>
+      }
+      toolbar={
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={typeFilter}
+          onChange={(_, v: "all" | ReportType | null) => {
+            if (v !== null) setTypeFilter(v);
+          }}
+        >
+          {TYPE_TABS.map((t) => (
+            <ToggleButton
+              key={t.value}
+              value={t.value}
+              sx={{ textTransform: "none" }}
+            >
+              {t.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      }
+    >
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
         }}
-        sx={{ mb: 1 }}
       >
-        {TYPE_TABS.map((t) => (
-          <ToggleButton
-            key={t.value}
-            value={t.value}
-            sx={{ textTransform: "none" }}
-          >
-            {t.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
-
-      <Paper variant="outlined" sx={{ overflow: "hidden" }}>
-        <Box sx={{ overflowX: "auto" }}>
+        <Box sx={{ overflow: "auto", flex: 1, minHeight: 0 }}>
           <table
             style={{
               width: "100%",
@@ -368,19 +381,17 @@ export default function BriefingList() {
                                 variant="caption"
                                 sx={{ lineHeight: 1.3 }}
                               >
-                                {cfg.schedule.crontab_humanized ||
+                                {formatCrontabZh(cfg.schedule.crontab) ??
+                                  cfg.schedule.crontab_humanized ??
                                   cfg.schedule.crontab}
                               </Typography>
-                              <Chip
-                                size="small"
-                                variant="outlined"
-                                color={
-                                  cfg.schedule.active ? "success" : "default"
+                              <StatusChip
+                                tone={
+                                  cfg.schedule.active ? "success" : "neutral"
                                 }
                                 label={
                                   cfg.schedule.active ? "已启用" : "已停用"
                                 }
-                                sx={{ height: 18, fontSize: 11 }}
                               />
                             </Box>
                             <Typography
@@ -545,6 +556,6 @@ export default function BriefingList() {
           onChanged={() => void load()}
         />
       )}
-    </Box>
+    </PageFrame>
   );
 }

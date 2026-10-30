@@ -15,6 +15,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TablePagination from "@mui/material/TablePagination";
+import { tablePaginationLabels } from "@/utils/paginationLabels";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -991,6 +992,7 @@ export default function ProfitSharingConfig() {
             >
               <TablePagination
                 component="div"
+                {...tablePaginationLabels}
                 count={filteredRows.length}
                 page={page}
                 onPageChange={handleChangePage}

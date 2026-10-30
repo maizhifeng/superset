@@ -14,6 +14,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TablePagination from "@mui/material/TablePagination";
+import { tablePaginationLabels } from "@/utils/paginationLabels";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -31,6 +32,7 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import { formatDateTime } from "@/utils/datetime";
 import type { QueryResult } from "@/types/api";
 import {
   GAME_REGIONS,
@@ -47,6 +49,15 @@ interface PappRow {
 }
 
 const COLUMNS = ["papp_id", "papp_name", "updated_at", "白名单控制参数"];
+
+/** Human labels for the raw backend column keys. */
+const COLUMN_LABELS: Record<string, string> = {
+  papp_id: "游戏 ID",
+  papp_name: "游戏名称",
+  updated_at: "更新时间",
+};
+
+const columnLabel = (column: string) => COLUMN_LABELS[column] ?? column;
 
 const cardHeaderSx = {
   "& .MuiCardHeader-title": { fontSize: "0.8125rem", fontWeight: 600 },
@@ -368,7 +379,7 @@ export default function ProjectConfig() {
                             key={col}
                             sx={{
                               fontWeight: 700,
-                              bgcolor: "grey.50",
+                              bgcolor: "surface.variant",
                               fontSize: "0.75rem",
                               py: 1,
                               minWidth: col === "白名单控制参数" ? 80 : 100,
@@ -408,7 +419,7 @@ export default function ProjectConfig() {
                                   </Box>
                                 </Tooltip>
                               ) : (
-                                col
+                                columnLabel(col)
                               )}
                             </Typography>
                           </TableCell>
@@ -416,7 +427,7 @@ export default function ProjectConfig() {
                         <TableCell
                           sx={{
                             fontWeight: 700,
-                            bgcolor: "grey.50",
+                            bgcolor: "surface.variant",
                             fontSize: "0.75rem",
                             py: 1,
                             width: 60,
@@ -462,7 +473,7 @@ export default function ProjectConfig() {
                               <Typography
                                 sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
                               >
-                                {row.updated_at}
+                                {formatDateTime(row.updated_at)}
                               </Typography>
                             </TableCell>
                             <TableCell
@@ -538,13 +549,14 @@ export default function ProjectConfig() {
                   py: 0.5,
                   borderTop: "1px solid",
                   borderColor: "divider",
-                  bgcolor: "grey.50",
+                  bgcolor: "surface.variant",
                   flexShrink: 0,
                   overflow: "hidden",
                 }}
               >
                 <TablePagination
                   component="div"
+                  {...tablePaginationLabels}
                   count={filteredRows.length}
                   page={page}
                   onPageChange={handleChangePage}

@@ -11,6 +11,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TablePagination from "@mui/material/TablePagination";
+import { tablePaginationLabels } from "@/utils/paginationLabels";
 import TableRow from "@mui/material/TableRow";
 import IconButton from "@mui/material/IconButton";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -436,6 +437,7 @@ export default function ResultsTable({
       </Box>
       <TablePagination
         component="div"
+        {...tablePaginationLabels}
         count={result.data.length}
         page={page}
         onPageChange={(_, p) => onPageChange(p)}

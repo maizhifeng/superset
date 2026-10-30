@@ -19,18 +19,12 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import Link from "@mui/material/Link";
 import TableChartOutlinedIcon from "@mui/icons-material/TableChartOutlined";
-import MenuItem from "@mui/material/MenuItem";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
 import type {
   GridColDef,
   GridRowParams,
   GridSortModel,
 } from "@mui/x-data-grid";
 import Card from "@mui/material/Card";
-import CardHeader from "@mui/material/CardHeader";
-import Divider from "@mui/material/Divider";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import { ConfirmModal } from "@/superset-ui-mui/components";
@@ -43,8 +37,14 @@ import { useNotificationStore } from "@/store/notificationStore";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { downloadCsv } from "@/utils/exportCsv";
+import { formatRelativeTime } from "@/utils/datetime";
 import { useAuthStore } from "@/store/authStore";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
+import IdCell from "@/components/IdCell";
+import { formatPersonName } from "@/utils/displayName";
+import StatusChip from "@/components/StatusChip";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
@@ -68,6 +68,12 @@ function readToggleState(name: "favorites" | "recent" | "mine"): boolean {
 }
 
 const vizTypeLabels: Record<string, string> = {
+  pivot_table_v2: "透视表",
+  pivot_table: "透视表",
+  echarts_timeseries_line: "折线图",
+  echarts_timeseries_bar: "柱状图",
+  echarts_timeseries: "时间序列",
+  dist_bar: "柱状图",
   line: "折线图",
   bar: "柱状图",
   table: "表格",
@@ -123,8 +129,8 @@ export default function ChartList() {
     () => new Set(recentItems.map((x) => x.id)),
     [recentItems],
   );
-  const [favoritesOnly, setFavoritesOnly] = useState(
-    () => readToggleState("favorites"),
+  const [favoritesOnly, setFavoritesOnly] = useState(() =>
+    readToggleState("favorites"),
   );
   const [recentOnly, setRecentOnly] = useState(() => readToggleState("recent"));
   const [mineOnly, setMineOnly] = useState(() => readToggleState("mine"));
@@ -138,7 +144,11 @@ export default function ChartList() {
   useEffect(() => {
     localStorage.setItem(
       TOGGLE_KEY,
-      JSON.stringify({ favorites: favoritesOnly, recent: recentOnly, mine: mineOnly }),
+      JSON.stringify({
+        favorites: favoritesOnly,
+        recent: recentOnly,
+        mine: mineOnly,
+      }),
     );
   }, [favoritesOnly, recentOnly, mineOnly]);
 
@@ -227,19 +237,6 @@ export default function ChartList() {
     [notify],
   );
 
-  /** 复制图表 ID 到剪贴板。 */
-  const handleCopyId = useCallback(
-    async (id: unknown) => {
-      try {
-        await navigator.clipboard.writeText(String(id));
-        notify({ severity: "success", message: "已复制图表 ID" });
-      } catch {
-        notify({ severity: "error", message: "复制失败" });
-      }
-    },
-    [notify],
-  );
-
   const handleVizTypeFilter = useCallback(
     (value: string) => {
       setVizTypeFilter(value);
@@ -266,7 +263,15 @@ export default function ChartList() {
           (!recentOnly || recentIds.has(r.id)) &&
           (!mineOnly || r.created_by?.username === currentUsername),
       ),
-    [rows, favoritesOnly, recentOnly, mineOnly, currentUsername, favIds, recentIds],
+    [
+      rows,
+      favoritesOnly,
+      recentOnly,
+      mineOnly,
+      currentUsername,
+      favIds,
+      recentIds,
+    ],
   );
 
   /** 复制当前筛选后的图表名（每行一个）。 */
@@ -278,7 +283,10 @@ export default function ChartList() {
     }
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      notify({ severity: "success", message: `已复制 ${names.length} 个图表名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${names.length} 个图表名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -293,7 +301,7 @@ export default function ChartList() {
         名称: c.slice_name,
         类型: c.viz_type,
         创建人: c.created_by?.username ?? "",
-        最后修改: c.changed_on_delta_humanized ?? "",
+        最后修改: formatRelativeTime(c.changed_on_utc),
         链接: `${window.location.origin}/explore?slice_id=${c.id}`,
       })),
       `charts-${ts}.csv`,
@@ -317,7 +325,11 @@ export default function ChartList() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新列表">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -391,39 +403,21 @@ export default function ChartList() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前图表列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_names",
-        priority: 1.75,
+        priority: 1.5,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前筛选后的图表名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllChartNames()}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制图表名
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制图表名",
+        action: () => void handleCopyAllChartNames(),
       },
       {
         id: "search",
@@ -444,25 +438,19 @@ export default function ChartList() {
         priority: 4,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel id="chart-viz-type-label">图表类型</InputLabel>
-            <Select
-              labelId="chart-viz-type-label"
-              label="图表类型"
-              size="small"
-              value={vizTypeFilter}
-              onChange={(e) => handleVizTypeFilter(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              {Object.entries(vizTypeLabels).map(([key, label]) => (
-                <MenuItem key={key} value={key}>
-                  {label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="图表类型"
+            value={vizTypeFilter}
+            onChange={handleVizTypeFilter}
+            minWidth={150}
+            options={[
+              { value: "", label: "全部" },
+              ...Object.entries(vizTypeLabels).map(([value, label]) => ({
+                value,
+                label,
+              })),
+            ]}
+          />
         ),
       },
     ]);
@@ -490,29 +478,38 @@ export default function ChartList() {
     {
       field: "id",
       headerName: "ID",
-      width: 70,
+      width: 84,
       renderCell: (params) => (
-        <Tooltip title="复制图表 ID">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCopyId(params.value);
-            }}
-            sx={{ p: 0.25 }}
-          >
-            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-          </IconButton>
-        </Tooltip>
+        <IdCell id={params.value as number} entity="图表" />
       ),
     },
     {
       field: "slice_name",
       headerName: "图表名称",
       flex: 1,
+      minWidth: 200,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <Typography
+            variant="body2"
+            title={params.value ?? ""}
+            sx={{
+              fontWeight: 500,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {params.value}
           </Typography>
           <Tooltip title="复制图表名">
@@ -522,7 +519,7 @@ export default function ChartList() {
                 e.stopPropagation();
                 void handleCopyName(params.value ?? "");
               }}
-              sx={{ p: 0.25 }}
+              sx={{ p: 0.25, flexShrink: 0 }}
             >
               <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
             </IconButton>
@@ -535,20 +532,23 @@ export default function ChartList() {
       headerName: "类型",
       flex: 0.4,
       minWidth: 100,
-      renderCell: (params) => (
-        <Chip
-          label={vizTypeLabels[params.value] || params.value}
-          size="small"
-          variant="outlined"
-          sx={{ fontWeight: 500 }}
-        />
-      ),
+      renderCell: (params) => {
+        const label = vizTypeLabels[params.value] || params.value;
+        return (
+          <Box
+            title={label}
+            sx={{ maxWidth: "100%", minWidth: 0, overflow: "hidden" }}
+          >
+            <StatusChip dot={false} label={label} />
+          </Box>
+        );
+      },
     },
     {
       field: "datasource_name_text",
       headerName: "数据集",
       flex: 0.7,
-      minWidth: 120,
+      minWidth: 200,
       valueGetter: (_value, row) =>
         row.datasource_name_text || row.table?.table_name || "",
       renderCell: (params) => {
@@ -556,7 +556,16 @@ export default function ChartList() {
         const id = params.row.datasource_id;
         if (!name && !id) return null;
         return (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
             <TableChartOutlinedIcon
               sx={{ fontSize: 14, color: "primary.main", flexShrink: 0 }}
             />
@@ -564,13 +573,21 @@ export default function ChartList() {
               component="button"
               variant="body2"
               underline="hover"
+              title={name ?? ""}
               onClick={(e) => {
                 e.stopPropagation();
                 if (id) {
                   navigate(`/dataset/list?datasource_id=${id}`);
                 }
               }}
-              sx={{ fontSize: "0.8125rem", textAlign: "left" }}
+              sx={{
+                fontSize: "0.8125rem",
+                textAlign: "left",
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
               {name}
             </Link>
@@ -578,7 +595,7 @@ export default function ChartList() {
               <Tooltip title="复制数据集名">
                 <IconButton
                   size="small"
-                  sx={{ p: 0.25 }}
+                  sx={{ p: 0.25, flexShrink: 0 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     void handleCopyDatasetName(name);
@@ -599,16 +616,18 @@ export default function ChartList() {
       headerName: "创建者",
       flex: 0.4,
       minWidth: 100,
-      valueGetter: (_value, row) => row.created_by?.username ?? "",
+      valueGetter: (_value, row) => formatPersonName(row.created_by),
     },
     {
       field: "changed_on_delta_humanized",
       headerName: "最后修改",
       flex: 0.4,
+      minWidth: 110,
+      valueGetter: (_value, row) => formatRelativeTime(row.changed_on_utc),
     },
     {
       field: "actions",
-      headerName: "",
+      headerName: "操作",
       width: 196,
       sortable: false,
       renderCell: (params) => (
@@ -688,15 +707,11 @@ export default function ChartList() {
   };
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-        p: { xs: 1.5, md: 3 },
-        pt: { xs: 1.5, md: 2 },
-      }}
+    <PageFrame
+      page="chart_list"
+      loading={loading}
+      title="图表"
+      subtitle={`共 ${rowCount} 项`}
     >
       <Card
         variant="outlined"
@@ -708,20 +723,6 @@ export default function ChartList() {
           minHeight: 0,
         }}
       >
-        <CardHeader
-          title={
-            <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75 }}>
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
-                图表
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                共 {rowCount} 项
-              </Typography>
-            </Box>
-          }
-          sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
-        />
-        <Divider />
         <ListPageLayout
           loading={loading}
           error={error}
@@ -839,10 +840,8 @@ export default function ChartList() {
                     color="text.disabled"
                     sx={{ fontSize: "0.75rem" }}
                   >
-                    {row.created_by?.username ?? "无"}
-                    {row.changed_on_delta_humanized
-                      ? ` · ${row.changed_on_delta_humanized}`
-                      : ""}
+                    {formatPersonName(row.created_by) || "无"}
+                    {` · ${formatRelativeTime(row.changed_on_utc)}`}
                   </Typography>
                 </Box>
                 <IconButton
@@ -852,9 +851,7 @@ export default function ChartList() {
                     toggleFavorite(row.id);
                   }}
                   sx={{ mt: 0.25, p: 0.25 }}
-                  aria-label={
-                    favIds.includes(row.id) ? "取消收藏" : "收藏"
-                  }
+                  aria-label={favIds.includes(row.id) ? "取消收藏" : "收藏"}
                 >
                   {favIds.includes(row.id) ? (
                     <StarIcon sx={{ fontSize: 16, color: "warning.main" }} />
@@ -883,6 +880,6 @@ export default function ChartList() {
           />
         </ListPageLayout>
       </Card>
-    </Box>
+    </PageFrame>
   );
 }

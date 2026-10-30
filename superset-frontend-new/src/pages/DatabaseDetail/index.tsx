@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
+import StatusChip from "@/components/StatusChip";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Tabs from "@mui/material/Tabs";
@@ -29,6 +30,45 @@ import api from "@/api";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import type { DatabaseDetail, TableResult } from "@/types/api";
+
+const CONFIGURATION_METHOD_LABELS: Record<string, string> = {
+  sqlalchemy_form: "SQLAlchemy 表单",
+  dynamic_form: "动态表单",
+  database_connection_ui: "数据库连接向导",
+};
+
+const configMethodLabel = (method: string) =>
+  CONFIGURATION_METHOD_LABELS[method] ?? method;
+
+interface InfoRow {
+  label: string;
+  value: ReactNode;
+}
+
+/** Compact key/value table used by the overview sections. */
+function InfoTable({ rows }: { rows: InfoRow[] }) {
+  return (
+    <TableContainer
+      component={Paper}
+      sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}
+    >
+      <Table size="small">
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.label}>
+              <TableCell
+                sx={{ fontWeight: 600, color: "text.secondary", width: 220 }}
+              >
+                {row.label}
+              </TableCell>
+              <TableCell>{row.value}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
 
 export default function DatabaseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -91,7 +131,10 @@ export default function DatabaseDetailPage() {
   const copyDatabaseName = async () => {
     try {
       await navigator.clipboard.writeText(db?.database_name ?? "");
-      notify({ severity: "success", message: `已复制数据库名 ${db?.database_name}` });
+      notify({
+        severity: "success",
+        message: `已复制数据库名 ${db?.database_name}`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -185,7 +228,15 @@ export default function DatabaseDetailPage() {
   }
 
   return (
-    <Box sx={{ p: 4 }}>
+    <Box
+      sx={{
+        p: { xs: 2, md: 4 },
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+      }}
+    >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 3 }}>
         <Tooltip title="返回列表">
           <IconButton size="small" onClick={() => navigate("/database/list")}>
@@ -220,17 +271,15 @@ export default function DatabaseDetailPage() {
           </IconButton>
         </Tooltip>
         <Box sx={{ display: "flex", gap: 1 }}>
-          <Chip
+          <StatusChip
+            tone={db.expose_in_sqllab ? "success" : "neutral"}
             label={
               db.expose_in_sqllab ? "SQL 实验室已启用" : "SQL 实验室已禁用"
             }
-            color={db.expose_in_sqllab ? "success" : "default"}
-            size="small"
           />
-          <Chip
+          <StatusChip
+            tone={db.allow_dml ? "success" : "neutral"}
             label={db.allow_dml ? "DML 已允许" : "DML 已禁用"}
-            color={db.allow_dml ? "warning" : "default"}
-            size="small"
           />
           <Button
             size="small"
@@ -251,199 +300,179 @@ export default function DatabaseDetailPage() {
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
         <Tab label="概览" />
-        <Tab label={`Schema (${schemas.length})`} />
+        <Tab label={`模式 (${schemas.length})`} />
       </Tabs>
 
       {tab === 0 && (
-        <TableContainer
-          component={Paper}
-          sx={{ borderRadius: 2, boxShadow: "var(--mui-palette-shadow-sm)" }}
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2.5,
+            overflow: "auto",
+            minHeight: 0,
+            pr: 0.5,
+          }}
         >
-          <Table size="small">
-            <TableBody>
-              <TableRow>
-                <TableCell
-                  sx={{ fontWeight: 600, color: "text.secondary", width: 220 }}
-                >
-                  数据库名称
-                </TableCell>
-                <TableCell>{db.database_name}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  后端
-                </TableCell>
-                <TableCell>{db.backend}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  驱动
-                </TableCell>
-                <TableCell>{db.driver}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  UUID
-                </TableCell>
-                <TableCell
-                  sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}
-                >
-                  {db.uuid}
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  配置方式
-                </TableCell>
-                <TableCell>{db.configuration_method}</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  SQL 实验室
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.expose_in_sqllab ? "已启用" : "已禁用"}
-                    color={db.expose_in_sqllab ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  DML
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.allow_dml ? "允许" : "禁用"}
-                    color={db.allow_dml ? "warning" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  CTAS
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.allow_ctas ? "允许" : "禁用"}
-                    color={db.allow_ctas ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  CVAS
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.allow_cvas ? "允许" : "禁用"}
-                    color={db.allow_cvas ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  文件上传
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.allow_file_upload ? "允许" : "禁用"}
-                    color={db.allow_file_upload ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  异步查询
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.allow_run_async ? "允许" : "禁用"}
-                    color={db.allow_run_async ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  缓存超时
-                </TableCell>
-                <TableCell>
-                  {db.cache_timeout != null ? `${db.cache_timeout}s` : "未设置"}
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  模拟用户
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.impersonate_user ? "是" : "否"}
-                    color={db.impersonate_user ? "info" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  外部管理
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={db.is_managed_externally ? "是" : "否"}
-                    color={db.is_managed_externally ? "info" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  SSH 隧道
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={
-                      db.engine_information.disable_ssh_tunneling
-                        ? "已禁用"
-                        : "可用"
-                    }
-                    color={
-                      db.engine_information.disable_ssh_tunneling
-                        ? "default"
-                        : "success"
-                    }
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600, color: "text.secondary" }}>
-                  动态目录
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={
-                      db.engine_information.supports_dynamic_catalog
-                        ? "支持"
-                        : "不支持"
-                    }
-                    color={
-                      db.engine_information.supports_dynamic_catalog
-                        ? "success"
-                        : "default"
-                    }
-                    size="small"
-                  />
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </TableContainer>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              连接信息
+            </Typography>
+            <InfoTable
+              rows={[
+                { label: "数据库名称", value: db.database_name },
+                { label: "后端", value: db.backend },
+                { label: "驱动", value: db.driver },
+                {
+                  label: "UUID",
+                  value: (
+                    <Box
+                      component="span"
+                      sx={{ fontFamily: "monospace", fontSize: "0.8125rem" }}
+                    >
+                      {db.uuid}
+                    </Box>
+                  ),
+                },
+                {
+                  label: "配置方式",
+                  value: configMethodLabel(db.configuration_method),
+                },
+              ]}
+            />
+          </Box>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              权限与能力
+            </Typography>
+            <InfoTable
+              rows={[
+                {
+                  label: "SQL 实验室",
+                  value: (
+                    <StatusChip
+                      tone={db.expose_in_sqllab ? "success" : "neutral"}
+                      label={db.expose_in_sqllab ? "已启用" : "已禁用"}
+                    />
+                  ),
+                },
+                {
+                  label: "DML",
+                  value: (
+                    <StatusChip
+                      tone={db.allow_dml ? "success" : "neutral"}
+                      label={db.allow_dml ? "允许" : "禁用"}
+                    />
+                  ),
+                },
+                {
+                  label: "CTAS",
+                  value: (
+                    <StatusChip
+                      tone={db.allow_ctas ? "success" : "neutral"}
+                      label={db.allow_ctas ? "允许" : "禁用"}
+                    />
+                  ),
+                },
+                {
+                  label: "CVAS",
+                  value: (
+                    <StatusChip
+                      tone={db.allow_cvas ? "success" : "neutral"}
+                      label={db.allow_cvas ? "允许" : "禁用"}
+                    />
+                  ),
+                },
+                {
+                  label: "文件上传",
+                  value: (
+                    <StatusChip
+                      tone={db.allow_file_upload ? "success" : "neutral"}
+                      label={db.allow_file_upload ? "允许" : "禁用"}
+                    />
+                  ),
+                },
+                {
+                  label: "异步查询",
+                  value: (
+                    <StatusChip
+                      tone={db.allow_run_async ? "success" : "neutral"}
+                      label={db.allow_run_async ? "允许" : "禁用"}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Box>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              高级设置
+            </Typography>
+            <InfoTable
+              rows={[
+                {
+                  label: "缓存超时",
+                  value:
+                    db.cache_timeout != null
+                      ? `${db.cache_timeout}s`
+                      : "未设置",
+                },
+                {
+                  label: "模拟用户",
+                  value: (
+                    <StatusChip
+                      tone={db.impersonate_user ? "info" : "neutral"}
+                      label={db.impersonate_user ? "是" : "否"}
+                    />
+                  ),
+                },
+                {
+                  label: "外部管理",
+                  value: (
+                    <StatusChip
+                      tone={db.is_managed_externally ? "info" : "neutral"}
+                      label={db.is_managed_externally ? "是" : "否"}
+                    />
+                  ),
+                },
+                {
+                  label: "SSH 隧道",
+                  value: (
+                    <StatusChip
+                      tone={
+                        db.engine_information.disable_ssh_tunneling
+                          ? "neutral"
+                          : "success"
+                      }
+                      label={
+                        db.engine_information.disable_ssh_tunneling
+                          ? "已禁用"
+                          : "可用"
+                      }
+                    />
+                  ),
+                },
+                {
+                  label: "动态目录",
+                  value: (
+                    <StatusChip
+                      tone={
+                        db.engine_information.supports_dynamic_catalog
+                          ? "success"
+                          : "neutral"
+                      }
+                      label={
+                        db.engine_information.supports_dynamic_catalog
+                          ? "支持"
+                          : "不支持"
+                      }
+                    />
+                  ),
+                },
+              ]}
+            />
+          </Box>
+        </Box>
       )}
 
       {tab === 1 && (
@@ -471,7 +500,7 @@ export default function DatabaseDetailPage() {
                   {schemas.map((s) => {
                     const expanded = expandedSchema === s;
                     return (
-                      <Box component="tbody" key={s}>
+                      <Fragment key={s}>
                         <TableRow
                           hover
                           onClick={() => toggleSchema(s)}
@@ -507,13 +536,19 @@ export default function DatabaseDetailPage() {
                                   }}
                                 >
                                   <ContentCopyIcon
-                                    sx={{ fontSize: 13, color: "text.disabled" }}
+                                    sx={{
+                                      fontSize: 13,
+                                      color: "text.disabled",
+                                    }}
                                   />
                                 </IconButton>
                               </Tooltip>
                             </Box>
                           </TableCell>
-                          <TableCell align="right" sx={{ color: "text.secondary" }}>
+                          <TableCell
+                            align="right"
+                            sx={{ color: "text.secondary" }}
+                          >
                             {expanded && tablesLoading ? (
                               <CircularProgress size={14} />
                             ) : expanded ? (
@@ -540,106 +575,116 @@ export default function DatabaseDetailPage() {
                                 </Typography>
                               ) : (
                                 <>
-                                <Box sx={{ px: 1, py: 0.5 }}>
-                                  <Button
-                                    size="small"
-                                    variant="text"
-                                    startIcon={<ContentCopyIcon />}
-                                    onClick={() => void copyAllTableNames()}
-                                    sx={{ textTransform: "none", fontSize: "0.75rem" }}
-                                  >
-                                    复制全部表名
-                                  </Button>
-                                </Box>
-                                <Table size="small">
-                                  <TableBody>
-                                    {tables.map((t) => (
-                                      <TableRow key={t.value} hover>
-                                        <TableCell
-                                          sx={{
-                                            pl: 4,
-                                            borderBottom: "none",
-                                            fontFamily: "monospace",
-                                            fontSize: "0.75rem",
-                                          }}
-                                        >
-                                          <Box
+                                  <Box sx={{ px: 1, py: 0.5 }}>
+                                    <Button
+                                      size="small"
+                                      variant="text"
+                                      startIcon={<ContentCopyIcon />}
+                                      onClick={() => void copyAllTableNames()}
+                                      sx={{
+                                        textTransform: "none",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      复制全部表名
+                                    </Button>
+                                  </Box>
+                                  <Table size="small">
+                                    <TableBody>
+                                      {tables.map((t) => (
+                                        <TableRow key={t.value} hover>
+                                          <TableCell
                                             sx={{
-                                              display: "flex",
-                                              alignItems: "center",
-                                              gap: 1,
+                                              pl: 4,
+                                              borderBottom: "none",
+                                              fontFamily: "monospace",
+                                              fontSize: "0.75rem",
                                             }}
                                           >
-                                            <AddTableIcon
+                                            <Box
                                               sx={{
-                                                fontSize: 14,
-                                                color: "text.disabled",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 1,
                                               }}
-                                            />
-                                            {t.value}
-                                            <Chip
-                                              label={t.type || "table"}
-                                              size="small"
-                                              variant="outlined"
-                                              sx={{
-                                                height: 16,
-                                                fontSize: "0.65rem",
-                                                "& .MuiChip-label": { px: 0.5 },
-                                              }}
-                                            />
-                                          </Box>
-                                        </TableCell>
-                                        <TableCell
-                                          align="right"
-                                          sx={{ py: 0.5, borderBottom: "none" }}
-                                        >
-                                          <Tooltip title="复制表名">
-                                            <IconButton
-                                              size="small"
-                                              onClick={() =>
-                                                void copyTableName(s, t.value)
-                                              }
-                                              sx={{ mr: 0.5 }}
                                             >
-                                              <ContentCopyIcon
-                                                sx={{ fontSize: 15 }}
+                                              <AddTableIcon
+                                                sx={{
+                                                  fontSize: 14,
+                                                  color: "text.disabled",
+                                                }}
                                               />
-                                            </IconButton>
-                                          </Tooltip>
-                                          <Tooltip title="复制 SELECT 查询">
-                                            <IconButton
-                                              size="small"
-                                              onClick={() =>
-                                                void copySelectSql(s, t.value)
-                                              }
-                                              sx={{ mr: 0.5 }}
-                                            >
-                                              <CodeIcon sx={{ fontSize: 15 }} />
-                                            </IconButton>
-                                          </Tooltip>
-                                          <Button
-                                            size="small"
-                                            variant="text"
-                                            startIcon={<AddTableIcon />}
-                                            onClick={() =>
-                                              navigate(
-                                                `/dataset/create?database=${id}&schema=${encodeURIComponent(s)}&table=${encodeURIComponent(t.value)}`,
-                                              )
-                                            }
+                                              {t.value}
+                                              <Chip
+                                                label={t.type || "table"}
+                                                size="small"
+                                                variant="outlined"
+                                                sx={{
+                                                  height: 16,
+                                                  fontSize: "0.65rem",
+                                                  "& .MuiChip-label": {
+                                                    px: 0.5,
+                                                  },
+                                                }}
+                                              />
+                                            </Box>
+                                          </TableCell>
+                                          <TableCell
+                                            align="right"
+                                            sx={{
+                                              py: 0.5,
+                                              borderBottom: "none",
+                                            }}
                                           >
-                                            创建数据集
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
+                                            <Tooltip title="复制表名">
+                                              <IconButton
+                                                size="small"
+                                                onClick={() =>
+                                                  void copyTableName(s, t.value)
+                                                }
+                                                sx={{ mr: 0.5 }}
+                                              >
+                                                <ContentCopyIcon
+                                                  sx={{ fontSize: 15 }}
+                                                />
+                                              </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="复制 SELECT 查询">
+                                              <IconButton
+                                                size="small"
+                                                onClick={() =>
+                                                  void copySelectSql(s, t.value)
+                                                }
+                                                sx={{ mr: 0.5 }}
+                                              >
+                                                <CodeIcon
+                                                  sx={{ fontSize: 15 }}
+                                                />
+                                              </IconButton>
+                                            </Tooltip>
+                                            <Button
+                                              size="small"
+                                              variant="text"
+                                              startIcon={<AddTableIcon />}
+                                              onClick={() =>
+                                                navigate(
+                                                  `/dataset/create?database=${id}&schema=${encodeURIComponent(s)}&table=${encodeURIComponent(t.value)}`,
+                                                )
+                                              }
+                                            >
+                                              创建数据集
+                                            </Button>
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
                                 </>
                               )}
                             </TableCell>
                           </TableRow>
                         )}
-                      </Box>
+                      </Fragment>
                     );
                   })}
                 </TableBody>

@@ -57,6 +57,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const pageTip = usePageTip();
 
   const {
+    activeId,
     activeCategory,
     sidePanelOpen,
     sidePanelPinned,
@@ -129,7 +130,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       >
         <ActivityBar
           items={activityBarItems}
-          activeId={hoverCat ?? activeCategory}
+          activeId={activeId}
           onSelect={(id) => void handleActivitySelect(id)}
           onItemEnter={handleNavEnter}
           onItemLeave={() => clearTimeout(openTimerRef.current)}

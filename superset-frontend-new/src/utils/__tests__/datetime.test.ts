@@ -16,7 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { parseBackendDate } from "@/utils/datetime";
+import {
+  formatDateTime,
+  formatRelativeTime,
+  parseBackendDate,
+} from "@/utils/datetime";
 
 test("treats naive backend datetimes as UTC, not local time", () => {
   // Backend serializes DateTime columns without a timezone designator; the
@@ -45,4 +49,29 @@ test("handles date-only values", () => {
 
 test("invalid input yields an invalid date", () => {
   expect(Number.isNaN(parseBackendDate("not-a-date").getTime())).toBe(true);
+});
+
+test("parses the six-digit +0000 timestamps returned by list APIs", () => {
+  const parsed = parseBackendDate("2026-10-12T02:05:16.707168+0000");
+  expect(Number.isNaN(parsed.getTime())).toBe(false);
+  expect(parsed.getTime()).toBe(Date.parse("2026-10-12T02:05:16.707Z"));
+});
+
+test("formats timestamps as local YYYY-MM-DD HH:mm", () => {
+  expect(formatDateTime("2026-10-12T02:05:16Z")).toMatch(
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/,
+  );
+  expect(formatDateTime(null)).toBe("—");
+  expect(formatDateTime("not-a-date")).toBe("—");
+});
+
+test("formats relative times in Chinese", () => {
+  const now = Date.parse("2026-10-21T10:00:00Z");
+  expect(formatRelativeTime("2026-10-21T09:59:30Z", { now })).toBe("刚刚");
+  expect(formatRelativeTime("2026-10-21T09:30:00Z", { now })).toBe("30 分钟前");
+  expect(formatRelativeTime("2026-10-21T03:00:00Z", { now })).toBe("7 小时前");
+  expect(formatRelativeTime("2026-10-12T02:05:16Z", { now })).toBe("9 天前");
+  expect(formatRelativeTime("2026-07-12T02:05:16Z", { now })).toBe("3 个月前");
+  expect(formatRelativeTime(null, { now })).toBe("—");
+  expect(formatRelativeTime("2026-10-22T10:00:00Z", { now })).toBe("1 天后");
 });

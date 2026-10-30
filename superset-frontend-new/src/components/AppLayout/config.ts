@@ -10,6 +10,7 @@ export const knownSections: Record<
   { label: string; listPath: string }
 > = {
   dashboard: { label: "仪表板", listPath: "/dashboard/list" },
+  analysis: { label: "专题分析", listPath: "/analysis" },
   chart: { label: "图表", listPath: "/chart/list" },
   dataset: { label: "数据集", listPath: "/dataset/list" },
   database: { label: "数据库", listPath: "/database/list" },

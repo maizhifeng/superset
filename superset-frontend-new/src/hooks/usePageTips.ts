@@ -20,6 +20,12 @@ const PAGE_TIPS: Record<string, PageTip> = {
     title: "仪表板",
     message: "按 / 快速搜索，或点击 + 新建仪表板。随时按 G+B 跳转至此。",
   },
+  analysis: {
+    id: "analysis",
+    title: "专题分析",
+    message:
+      "从成本、留存、LTV/ROI、付费与渠道效率等预置视角开始分析，筛选条件会写入链接。",
+  },
   chart_list: {
     id: "chart_list",
     title: "图表",
@@ -41,7 +47,7 @@ const PAGE_TIPS: Record<string, PageTip> = {
     id: "dataset_list",
     title: "数据集",
     message:
-      "数据集将数据库表映射为图表数据。按 G+D 跳转至此。为每列定义维度（分类）和指标（数值）。",
+      "将数据库表映射为图表数据。按 G+D 跳转至此。为每列定义维度（分类）和指标（数值）。",
   },
   database_list: {
     id: "database_list",
@@ -95,6 +101,10 @@ function matchTip(pathname: string): PageTip | null {
 
   if (p === "/dataset/create") return PAGE_TIPS.dataset_create;
   if (p.startsWith("/dataset/edit/")) return PAGE_TIPS.dataset_edit;
+
+  // Topic pages carry their own title, tabs and scope notice, so the
+  // hall-level tip would only repeat that in the top bar.
+  if (p.startsWith("/analysis/")) return null;
 
   for (const [key, tip] of Object.entries(PAGE_TIPS)) {
     if (

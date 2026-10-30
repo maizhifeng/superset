@@ -4,6 +4,7 @@ import {
   useState,
   useRef,
   useEffect,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -27,9 +28,9 @@ import {
   MenuItem,
 } from "@mui/material";
 import CodeIcon from "@mui/icons-material/Code";
-import TableChartIcon from "@mui/icons-material/TableChart";
 import StopIcon from "@mui/icons-material/Stop";
 import ClearIcon from "@mui/icons-material/Clear";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import HistoryIcon from "@mui/icons-material/History";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
@@ -38,6 +39,8 @@ import CodeIcon2 from "@mui/icons-material/Code";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -80,6 +83,99 @@ const EDITOR_MIN = 120;
 const EDITOR_MAX = 560;
 const EDITOR_DEFAULT = 220;
 
+const MONO_FONT_STACK =
+  "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', monospace";
+
+interface QueryHintCardProps {
+  icon: ReactNode;
+  title: string;
+  hint?: string;
+  description: string;
+}
+
+/** 结果区空态中的一条快捷键提示（纯说明，不使用伪按钮）。 */
+function QueryHintCard({ icon, title, hint, description }: QueryHintCardProps) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 1,
+        p: 1.25,
+        borderRadius: 1.5,
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        textAlign: "left",
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 26,
+          height: 26,
+          borderRadius: 1,
+          bgcolor: "bg.muted",
+          color: "primary.main",
+          flexShrink: 0,
+          mt: 0.125,
+          "& svg": { fontSize: 16 },
+        }}
+      >
+        {icon}
+      </Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.75,
+            flexWrap: "wrap",
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 600, color: "text.primary" }}
+          >
+            {title}
+          </Typography>
+          {hint && (
+            <Box
+              component="kbd"
+              sx={{
+                fontFamily: MONO_FONT_STACK,
+                fontSize: "0.625rem",
+                lineHeight: 1.6,
+                px: 0.5,
+                borderRadius: "4px",
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "surface.variant",
+                color: "text.secondary",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {hint}
+            </Box>
+          )}
+        </Box>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mt: 0.25, lineHeight: 1.45 }}
+        >
+          {description}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
 export default function SqlLab() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -104,6 +200,9 @@ export default function SqlLab() {
   const initialRun = Boolean(initialState?.initialRun);
   // 编辑区高度，可通过下方拖拽句柄垂直调整。
   const [editorHeight, setEditorHeight] = useState(EDITOR_DEFAULT);
+  const [copyMenuAnchor, setCopyMenuAnchor] = useState<HTMLElement | null>(
+    null,
+  );
   // 保存为"已保存查询"的对话框状态。
   const [saveQueryOpen, setSaveQueryOpen] = useState(false);
   const [saveQueryLabel, setSaveQueryLabel] = useState("");
@@ -1125,8 +1224,12 @@ export default function SqlLab() {
                     builderHeight != null
                       ? undefined
                       : { xs: "none", md: "min(65vh, 640px)" },
-                  overflow: "auto",
-                  pr: 0.5,
+                  // md+ 时由左侧阶段列与右侧 SQL 面板各自滚动，
+                  // 因此外层不再作为整体滚动容器。
+                  display: { xs: "block", md: "flex" },
+                  flexDirection: { md: "column" },
+                  minHeight: 0,
+                  overflow: { xs: "auto", md: "hidden" },
                 }}
               >
                 <VisualQueryBuilder
@@ -1140,6 +1243,7 @@ export default function SqlLab() {
                   onDatabaseChange={handleDatabaseChange}
                   onSchemaChange={handleSchemaChange}
                   formattedSql={visual.formattedSql}
+                  backend={visualBackend}
                   onAddStage={handleAddStage}
                   onRemoveStage={handleRemoveStage}
                   onRenameStage={handleRenameStage}
@@ -1241,48 +1345,49 @@ export default function SqlLab() {
                     格式化
                   </Button>
                 </ShortcutTooltip>
-                <Tooltip title="复制当前 SQL">
-                  <span>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<ContentCopyIcon />}
-                      onClick={() => void handleCopySql()}
-                      disabled={!sql.trim()}
-                      sx={{ textTransform: "none" }}
-                    >
-                      复制 SQL
-                    </Button>
-                  </span>
-                </Tooltip>
-                <Tooltip title="复制为 Markdown 代码块">
-                  <span>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<ContentCopyIcon />}
-                      onClick={() => void handleCopySqlMarkdown()}
-                      disabled={!sql.trim()}
-                      sx={{ textTransform: "none" }}
-                    >
-                      复制 Markdown
-                    </Button>
-                  </span>
-                </Tooltip>
-                <Tooltip title="从当前 SQL 提取表名并复制">
-                  <span>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<TableChartIcon />}
-                      onClick={() => void handleCopySqlTables()}
-                      disabled={!sql.trim()}
-                      sx={{ textTransform: "none" }}
-                    >
-                      复制表名
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ContentCopyIcon />}
+                  endIcon={<ArrowDropDownIcon />}
+                  onClick={(event) => setCopyMenuAnchor(event.currentTarget)}
+                  disabled={!sql.trim()}
+                  sx={{ textTransform: "none" }}
+                >
+                  复制
+                </Button>
+                <Menu
+                  anchorEl={copyMenuAnchor}
+                  open={Boolean(copyMenuAnchor)}
+                  onClose={() => setCopyMenuAnchor(null)}
+                  anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                  transformOrigin={{ vertical: "top", horizontal: "left" }}
+                >
+                  <MenuItem
+                    onClick={() => {
+                      setCopyMenuAnchor(null);
+                      void handleCopySql();
+                    }}
+                  >
+                    复制 SQL
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setCopyMenuAnchor(null);
+                      void handleCopySqlMarkdown();
+                    }}
+                  >
+                    复制为 Markdown
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setCopyMenuAnchor(null);
+                      void handleCopySqlTables();
+                    }}
+                  >
+                    复制 SQL 中的表名
+                  </MenuItem>
+                </Menu>
                 <ShortcutTooltip
                   label="清空当前标签页 SQL"
                   shortcut="Ctrl+Shift+Backspace"
@@ -1330,57 +1435,146 @@ export default function SqlLab() {
               />
             ) : (
               <Paper
+                variant="outlined"
                 sx={{
                   flex: 1,
+                  minHeight: 0,
+                  overflow: "auto",
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 2,
-                  color: "text.secondary",
+                  borderRadius: 2,
+                  borderStyle: "dashed",
+                  borderColor: "divider",
+                  bgcolor: "surface.variant",
+                  px: { xs: 2, md: 4 },
+                  py: 2,
+                  // 以面板自身高度（而非视口高度）决定空态密度：
+                  // 可视化组装器较高时结果区会被压缩，此时逐级收起说明文字，
+                  // 避免提示卡片被裁切。
+                  containerType: "size",
                 }}
               >
-                {mode === "visual" ? (
-                  <AutoFixHighIcon sx={{ fontSize: 48, opacity: 0.3 }} />
-                ) : (
-                  <CodeIcon2 sx={{ fontSize: 48, opacity: 0.3 }} />
-                )}
-                <Typography variant="h6" sx={{ fontWeight: 500, opacity: 0.7 }}>
-                  {mode === "visual" ? "可视化查询" : "SQL 实验室"}
-                </Typography>
-                <Box sx={{ textAlign: "center", maxWidth: 360 }}>
-                  <Typography variant="body2" sx={{ mb: 2 }}>
-                    {mode === "visual"
-                      ? "从上方「数据源」选择数据库、模式与数据表，逐步配置关联、字段、筛选与汇总，然后点击运行。"
-                      : "从左面板选择数据库和模式，编写 SQL，然后点击运行。"}
-                  </Typography>
+                <Box
+                  sx={{
+                    // 用自动外边距居中：内容高于面板时仍可从顶部滚动，
+                    // 不会被 flex 居中裁掉顶部。
+                    m: "auto",
+                    width: "100%",
+                    maxWidth: 720,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 2,
+                    "@container (max-height: 190px)": { gap: 1.5 },
+                  }}
+                >
                   <Box
                     sx={{
                       display: "flex",
-                      flexDirection: "column",
-                      gap: 0.75,
-                      fontSize: "0.75rem",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: "center",
+                      gap: 1.5,
+                      textAlign: { xs: "center", sm: "left" },
                     }}
                   >
-                    <Typography
-                      variant="caption"
-                      color="text.disabled"
-                      sx={{ fontWeight: 600, mb: 0.5 }}
+                    <Box
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        bgcolor: "background.paper",
+                        border: "1px solid",
+                        borderColor: "divider",
+                        color: "primary.main",
+                        flexShrink: 0,
+                      }}
                     >
-                      快捷键
-                    </Typography>
-                    <Typography variant="caption">
-                      Ctrl+Enter / Ctrl+R — 运行查询
-                    </Typography>
-                    {mode === "sql" && (
-                      <Typography variant="caption">
-                        Ctrl+Shift+F — 格式化 SQL
+                      {mode === "visual" ? (
+                        <AutoFixHighIcon sx={{ fontSize: 22 }} />
+                      ) : (
+                        <CodeIcon2 sx={{ fontSize: 22 }} />
+                      )}
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        variant="subtitle1"
+                        sx={{
+                          fontWeight: 600,
+                          color: "text.primary",
+                          mb: 0.25,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {mode === "visual"
+                          ? "运行可视化查询以查看结果"
+                          : "运行 SQL 以查看结果"}
                       </Typography>
-                    )}
-                    <Typography variant="caption">
-                      Ctrl+T — 新建标签页
-                    </Typography>
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{ lineHeight: 1.5 }}
+                      >
+                        {mode === "visual"
+                          ? "在上方「数据源」选择数据库、模式与数据表，配置关联、字段、筛选与汇总，然后点击运行。"
+                          : "从左面板选择数据库和模式，编写 SQL，然后点击运行。"}
+                      </Typography>
+                    </Box>
                   </Box>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: { xs: "column", sm: "row" },
+                      alignItems: "stretch",
+                      gap: 1,
+                      width: "100%",
+                      "@container (max-height: 140px)": { display: "none" },
+                    }}
+                  >
+                    <QueryHintCard
+                      icon={<PlayArrowIcon />}
+                      title="运行查询"
+                      hint="Ctrl+Enter / Ctrl+R"
+                      description={
+                        mode === "visual"
+                          ? "按当前组装配置生成并执行 SQL"
+                          : "执行编辑器中的 SQL"
+                      }
+                    />
+                    <QueryHintCard
+                      icon={<FormatAlignLeftIcon />}
+                      title="格式化 SQL"
+                      hint="Ctrl+Shift+F"
+                      description={
+                        mode === "sql"
+                          ? "整理当前 SQL 的缩进与换行"
+                          : "切换到 SQL 模式后可用"
+                      }
+                    />
+                    {mode === "visual" ? (
+                      <QueryHintCard
+                        icon={<ArrowForwardIcon />}
+                        title="切换 SQL 模式"
+                        description="把生成的 SQL 带到编辑器继续手写"
+                      />
+                    ) : (
+                      <QueryHintCard
+                        icon={<SaveIcon />}
+                        title="保存为数据集"
+                        description="查询返回结果后可保存为数据集"
+                      />
+                    )}
+                  </Box>
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{
+                      "@container (max-height: 200px)": { display: "none" },
+                    }}
+                  >
+                    Ctrl+T 新建标签页 · Ctrl+S 保存查询
+                  </Typography>
                 </Box>
               </Paper>
             )}

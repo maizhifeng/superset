@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   useEffect,
+  useLayoutEffect,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -16,6 +17,7 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
+import useMediaQuery from "@mui/material/useMediaQuery";
 
 import ContentCopy from "@mui/icons-material/ContentCopy";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -595,6 +597,45 @@ function ChartCard({
   const isCompareActive =
     compareConfig?.enabled && compareConfig.chartId === chartId;
   const isMobile = containerWidth < 600;
+  // Secondary chrome (size selector, p95 filter, refresh/copy/AI/edit/delete)
+  // stays out of the way until the card is hovered or one of those controls
+  // receives keyboard focus.  This only applies to hover-capable, non-narrow
+  // viewports: touch devices and phones have no hover gesture, so the controls
+  // stay permanently visible there.  The dashboard has no separate "edit mode"
+  // (layout sizing auto-saves), so hover/focus is the only reveal gate.
+  const canHover = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const isWideViewport = useMediaQuery(theme.breakpoints.up("md"));
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [cardWidth, setCardWidth] = useState(0);
+  const [toolbarWidth, setToolbarWidth] = useState(0);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const bar = toolbarRef.current;
+    if (!card || !bar) return;
+    const measure = () => {
+      setCardWidth(card.clientWidth);
+      // scrollWidth is the toolbar's unclipped content width, so the fit test
+      // stays stable even while the toolbar is hidden or squeezed.
+      setToolbarWidth(bar.scrollWidth);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+  // Only cards that can hold the whole toolbar inside their header (plus a
+  // little breathing room) get the hover-to-reveal treatment; narrower cards
+  // keep the controls permanently visible in the flow, as before, so no action
+  // is ever clipped or pushed out of reach.  Multi-metric charts (which add a
+  // metric dropdown) fall back the same way.
+  const revealToolbarOnHover =
+    canHover && isWideViewport && cardWidth >= toolbarWidth + 16;
+  // When the revealed toolbar covers most of the title area, fade the title out
+  // instead of leaving a half-clipped glyph behind the controls.
+  const hideTitleOnHover =
+    revealToolbarOnHover && cardWidth - toolbarWidth - 12 < 96;
 
   return (
     <>
@@ -621,10 +662,23 @@ function ChartCard({
             transform: "translateY(-2px)",
             boxShadow: "var(--mui-palette-shadow-cardHover)",
           },
+          ...(revealToolbarOnHover
+            ? {
+                "&:hover .chart-card-toolbar, & .chart-card-toolbar:focus-within":
+                  {
+                    opacity: 1,
+                    pointerEvents: "auto",
+                  },
+                ...(hideTitleOnHover
+                  ? { "&:hover .chart-card-title": { opacity: 0 } }
+                  : null),
+              }
+            : null),
         }}
       >
         <Box
           sx={{
+            position: "relative",
             display: "flex",
             alignItems: "center",
             px: 1.5,
@@ -635,240 +689,282 @@ function ChartCard({
             gap: 0.5,
           }}
         >
-          {sizeSelector}
           <Typography
             variant="body2"
+            className="chart-card-title"
             sx={{
               fontWeight: 600,
               flex: 1,
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              transition: "opacity 120ms ease",
             }}
           >
             {meta?.slice_name || sliceName || `Chart #${chartId}`}
           </Typography>
-          <Tooltip
-            title={
-              pct95Threshold === 0.95
-                ? "前95%"
-                : pct95Threshold === 0.99
-                  ? "前99%"
-                  : "精简模式"
-            }
+          <Box
+            ref={toolbarRef}
+            className="chart-card-toolbar"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              ...(revealToolbarOnHover
+                ? {
+                    // Absolute so the fading toolbar never squeezes the title
+                    // (at ~1180px wide cards an in-flow toolbar leaves the
+                    // title zero pixels).  Opaque background keeps the title
+                    // text from bleeding through the controls on hover.
+                    position: "absolute",
+                    right: 1.5,
+                    top: 0,
+                    height: "100%",
+                    bgcolor: "background.paper",
+                    pl: 0.5,
+                    opacity: 0,
+                    pointerEvents: "none",
+                    transition: "opacity 120ms ease",
+                  }
+                : null),
+            }}
           >
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                setPct95Threshold((prev) =>
-                  prev === 0 ? 0.95 : prev === 0.95 ? 0.99 : 0,
-                );
-              }}
-              sx={{
-                p: 0.5,
-                ml: isMobile ? 0.5 : 0,
-                color: pct95Active ? "primary.main" : "action.active",
-              }}
+            {sizeSelector}
+            <Tooltip
+              title={
+                pct95Threshold === 0.95
+                  ? "前95%"
+                  : pct95Threshold === 0.99
+                    ? "前99%"
+                    : "精简模式"
+              }
             >
-              <LeaderboardOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
-            </IconButton>
-          </Tooltip>
-          {pct95Active && (
-            <>
-              <Typography
-                variant="caption"
-                sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
-              >
-                {formatPercentage(Math.round(pct95Threshold * 100), 0)}
-              </Typography>
-              {metricCandidates.length > 1 && (
-                <Select
-                  size="small"
-                  variant="standard"
-                  value={effectiveSortMetric}
-                  onChange={(e) => setPct95Metric(e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  renderValue={(v) => displayMetricName(v)}
-                  sx={{
-                    maxWidth: isMobile ? 110 : 160,
-                    mr: 0.5,
-                    fontSize: "0.75rem",
-                    color: "primary.main",
-                    "& .MuiSelect-select": {
-                      py: 0.25,
-                      pr: 1.5,
-                    },
-                  }}
-                >
-                  {metricCandidates.map((m) => (
-                    <MenuItem
-                      key={m}
-                      value={m}
-                      sx={{
-                        maxWidth: 260,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        display: "block",
-                        fontSize: "0.75rem",
-                      }}
-                    >
-                      {displayMetricName(m)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-            </>
-          )}
-          {(vizType === "table" || vizType === "pivot_table_v2") && (
-            <Tooltip title={isCompareActive ? "停止对比" : "对比"}>
               <IconButton
                 size="small"
+                aria-label="精简比率切换"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (onOpenCompareBigScreen) {
-                    onOpenCompareBigScreen(chartId, data);
-                  } else {
-                    onToggleCompare(chartId);
-                  }
+                  setPct95Threshold((prev) =>
+                    prev === 0 ? 0.95 : prev === 0.95 ? 0.99 : 0,
+                  );
                 }}
                 sx={{
                   p: 0.5,
                   ml: isMobile ? 0.5 : 0,
-                  color: isCompareActive ? "primary.main" : undefined,
+                  color: pct95Active ? "primary.main" : "action.active",
                 }}
               >
-                <FlipIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+                <LeaderboardOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
               </IconButton>
             </Tooltip>
-          )}
-          <Tooltip
-            title={
-              localCountdown !== undefined && localCountdown > 0
-                ? `自动刷新 ${Math.floor(localCountdown / 60)}:${String(localCountdown % 60).padStart(2, "0")} · 单击切换 · 长按刷新`
-                : intervalSeconds && intervalSeconds > 0
-                  ? `${intervalSeconds}s`
-                  : "单击开启自动刷新"
-            }
-          >
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              onMouseDown={() => {
-                refreshTimer.current = setTimeout(() => {
-                  refreshTimer.current = undefined;
-                  onRefresh(chartId);
-                }, LONG_PRESS_MS);
-              }}
-              onMouseUp={() => {
-                if (refreshTimer.current) {
-                  clearTimeout(refreshTimer.current);
-                  refreshTimer.current = undefined;
-                  onCycleInterval?.();
-                }
-              }}
-              onMouseLeave={() => {
-                if (refreshTimer.current) {
-                  clearTimeout(refreshTimer.current);
-                  refreshTimer.current = undefined;
-                }
-              }}
-              sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+            {pct95Active && (
+              <>
+                <Typography
+                  variant="caption"
+                  sx={{ color: "primary.main", fontWeight: 600, mr: 0.5 }}
+                >
+                  {formatPercentage(Math.round(pct95Threshold * 100), 0)}
+                </Typography>
+                {metricCandidates.length > 1 && (
+                  <Select
+                    size="small"
+                    variant="standard"
+                    value={effectiveSortMetric}
+                    onChange={(e) => setPct95Metric(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    renderValue={(v) => displayMetricName(v)}
+                    sx={{
+                      maxWidth: isMobile ? 110 : 160,
+                      mr: 0.5,
+                      fontSize: "0.75rem",
+                      color: "primary.main",
+                      "& .MuiSelect-select": {
+                        py: 0.25,
+                        pr: 1.5,
+                      },
+                    }}
+                  >
+                    {metricCandidates.map((m) => (
+                      <MenuItem
+                        key={m}
+                        value={m}
+                        sx={{
+                          maxWidth: 260,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          display: "block",
+                          fontSize: "0.75rem",
+                        }}
+                      >
+                        {displayMetricName(m)}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+              </>
+            )}
+            {(vizType === "table" || vizType === "pivot_table_v2") && (
+              <Tooltip title={isCompareActive ? "停止对比" : "对比"}>
+                <IconButton
+                  size="small"
+                  aria-label={isCompareActive ? "停止对比" : "对比"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onOpenCompareBigScreen) {
+                      onOpenCompareBigScreen(chartId, data);
+                    } else {
+                      onToggleCompare(chartId);
+                    }
+                  }}
+                  sx={{
+                    p: 0.5,
+                    ml: isMobile ? 0.5 : 0,
+                    color: isCompareActive ? "primary.main" : undefined,
+                  }}
+                >
+                  <FlipIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip
+              title={
+                localCountdown !== undefined && localCountdown > 0
+                  ? `自动刷新 ${Math.floor(localCountdown / 60)}:${String(localCountdown % 60).padStart(2, "0")} · 单击切换 · 长按刷新`
+                  : intervalSeconds && intervalSeconds > 0
+                    ? `${intervalSeconds}s`
+                    : "单击开启自动刷新"
+              }
             >
-              <RefreshIcon
-                sx={{
-                  fontSize: isMobile ? 22 : 18,
-                  color:
-                    localCountdown !== undefined && localCountdown > 0
-                      ? "primary.main"
-                      : "action.disabled",
-                  animation:
-                    localCountdown !== undefined && localCountdown > 0
-                      ? `${spin} 4s linear infinite`
-                      : undefined,
-                }}
-              />
-            </IconButton>
-          </Tooltip>
-          <Tooltip
-            title={
-              vizType === "table" || vizType === "pivot_table_v2"
-                ? "复制为文本"
-                : "复制为图片"
-            }
-          >
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                void copyData();
-              }}
-              sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
-            >
-              <ContentCopy sx={{ fontSize: isMobile ? 22 : 18 }} />
-            </IconButton>
-          </Tooltip>
-          <Box
-            sx={{
-              width: "1px",
-              height: 14,
-              bgcolor: "divider",
-              mx: 0.25,
-              flexShrink: 0,
-            }}
-          />
-          <Tooltip title="AI 洞察">
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onInsight?.(chartId);
-              }}
-              sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "primary.main" }}
-            >
-              <AutoAwesome sx={{ fontSize: isMobile ? 22 : 18 }} />
-            </IconButton>
-          </Tooltip>
-          {!isMobile && (
-            <Tooltip title="编辑图表">
               <IconButton
                 size="small"
+                aria-label="自动刷新"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onEdit(chartId);
                 }}
-                sx={{ p: 0.5 }}
-              >
-                <OpenInNewIcon sx={{ fontSize: 18 }} />
-              </IconButton>
-            </Tooltip>
-          )}
-          {isMobile && (
-            <Tooltip title={isActiveFullscreen ? "退出全屏" : "全屏"}>
-              <IconButton
-                size="small"
-                onClick={() => void toggleFullScreen()}
+                onMouseDown={() => {
+                  refreshTimer.current = setTimeout(() => {
+                    refreshTimer.current = undefined;
+                    onRefresh(chartId);
+                  }, LONG_PRESS_MS);
+                }}
+                onMouseUp={() => {
+                  if (refreshTimer.current) {
+                    clearTimeout(refreshTimer.current);
+                    refreshTimer.current = undefined;
+                    onCycleInterval?.();
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (refreshTimer.current) {
+                    clearTimeout(refreshTimer.current);
+                    refreshTimer.current = undefined;
+                  }
+                }}
                 sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
               >
-                <FullscreenOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
+                <RefreshIcon
+                  sx={{
+                    fontSize: isMobile ? 22 : 18,
+                    color:
+                      localCountdown !== undefined && localCountdown > 0
+                        ? "primary.main"
+                        : "action.disabled",
+                    animation:
+                      localCountdown !== undefined && localCountdown > 0
+                        ? `${spin} 4s linear infinite`
+                        : undefined,
+                  }}
+                />
               </IconButton>
             </Tooltip>
-          )}
-          <Tooltip title="从仪表板移除">
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(chartId);
-              }}
-              sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "error.main" }}
+            <Tooltip
+              title={
+                vizType === "table" || vizType === "pivot_table_v2"
+                  ? "复制为文本"
+                  : "复制为图片"
+              }
             >
-              <CloseIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
-            </IconButton>
-          </Tooltip>
+              <IconButton
+                size="small"
+                aria-label={
+                  vizType === "table" || vizType === "pivot_table_v2"
+                    ? "复制为文本"
+                    : "复制为图片"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void copyData();
+                }}
+                sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+              >
+                <ContentCopy sx={{ fontSize: isMobile ? 22 : 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Box
+              sx={{
+                width: "1px",
+                height: 14,
+                bgcolor: "divider",
+                mx: 0.25,
+                flexShrink: 0,
+              }}
+            />
+            <Tooltip title="AI 洞察">
+              <IconButton
+                size="small"
+                aria-label="AI 洞察"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInsight?.(chartId);
+                }}
+                sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "primary.main" }}
+              >
+                <AutoAwesome sx={{ fontSize: isMobile ? 22 : 18 }} />
+              </IconButton>
+            </Tooltip>
+            {!isMobile && (
+              <Tooltip title="编辑图表">
+                <IconButton
+                  size="small"
+                  aria-label="编辑图表"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(chartId);
+                  }}
+                  sx={{ p: 0.5 }}
+                >
+                  <OpenInNewIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {isMobile && (
+              <Tooltip title={isActiveFullscreen ? "退出全屏" : "全屏"}>
+                <IconButton
+                  size="small"
+                  aria-label={isActiveFullscreen ? "退出全屏" : "全屏"}
+                  onClick={() => void toggleFullScreen()}
+                  sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+                >
+                  <FullscreenOutlined sx={{ fontSize: isMobile ? 22 : 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            <Tooltip title="从仪表板移除">
+              <IconButton
+                size="small"
+                aria-label="从仪表板移除"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(chartId);
+                }}
+                sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "error.main" }}
+              >
+                <CloseIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
         <CardContent
           sx={{

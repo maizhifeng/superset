@@ -20,15 +20,54 @@
 /**
  * Presentation tokens shared by the briefing list and detail pages.
  *
- * Every color is derived from `@/theme/palette` so the briefing keeps a single
- * visual language with the rest of the app. Chart series colors follow the
- * charts skill rules: hex only, one stable color per metric across every chart
- * in the page, and no two metrics sharing a hue.
+ * CSS-facing values resolve through the MUI theme variables, so the briefing
+ * follows whichever palette is active (paper or notion) instead of pinning the
+ * paper colors.  Canvas-facing values (ECharts series and axis chrome) stay
+ * literal hexes: a canvas cannot resolve a CSS variable, so the detail page
+ * derives those from `useTheme()` at render time and the constants below remain
+ * the static paper fallback.
+ *
+ * Chart series colors follow the charts skill rules: hex only, one stable color
+ * per metric across every chart in the page, and no two metrics sharing a hue.
  */
 import type { CSSProperties } from "react";
 import { supersetPalette } from "@/theme/palette";
 
-/** Metric → ECharts series color. Defined once; every chart reuses it. */
+const paletteVar = (path: string) => `var(--mui-palette-${path})`;
+
+/**
+ * Color tokens for plain inline styles and native table cells, where an `sx`
+ * theme lookup is unavailable.  MUI emits one `--mui-palette-*` variable per
+ * palette path, so these resolve to the active theme's value.
+ */
+export const BRIEFING_CSS_COLORS = {
+  textPrimary: paletteVar("text-primary"),
+  textSecondary: paletteVar("text-secondary"),
+  textDisabled: paletteVar("text-disabled"),
+  divider: paletteVar("divider"),
+  outline: paletteVar("outline"),
+  surfaceMain: paletteVar("surface-main"),
+  surfaceVariant: paletteVar("surface-variant"),
+  bgMuted: paletteVar("bg-muted"),
+  bgSelected: paletteVar("bg-selected"),
+  actionHover: paletteVar("action-hover"),
+  borderLight: paletteVar("border-light"),
+  borderMedium: paletteVar("border-medium"),
+  primaryContainer: paletteVar("primary-container"),
+  primaryOnContainer: paletteVar("primary-onContainer"),
+  statusSuccess: paletteVar("status-success"),
+  statusWarning: paletteVar("status-warning"),
+  statusError: paletteVar("status-error"),
+  statusInfo: paletteVar("status-info"),
+} as const;
+
+/**
+ * Metric → ECharts series color, in the paper palette.
+ *
+ * Kept for the canvas contract and as the deterministic fallback; the detail
+ * page reads the active theme instead (see `useBriefingColors`) so charts turn
+ * blue/green with the notion theme.
+ */
 export const BRIEFING_CHART_COLORS = {
   /** 返点后消耗 bars. */
   spend: supersetPalette.primary.main,
@@ -64,33 +103,33 @@ export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
 };
 
 export const JOB_STATUS_COLOR: Record<JobStatus, string> = {
-  idle: supersetPalette.text.disabled,
-  running: supersetPalette.status.info,
-  done: supersetPalette.status.success,
-  error: supersetPalette.status.error,
-  cancelled: supersetPalette.status.warning,
+  idle: BRIEFING_CSS_COLORS.textDisabled,
+  running: BRIEFING_CSS_COLORS.statusInfo,
+  done: BRIEFING_CSS_COLORS.statusSuccess,
+  error: BRIEFING_CSS_COLORS.statusError,
+  cancelled: BRIEFING_CSS_COLORS.statusWarning,
 };
 
 /** Report alert / job-log level → semantic token color. */
 export const ALERT_LEVEL_COLOR: Record<string, string> = {
-  critical: supersetPalette.status.error,
-  error: supersetPalette.status.error,
-  warning: supersetPalette.status.warning,
-  info: supersetPalette.status.info,
+  critical: BRIEFING_CSS_COLORS.statusError,
+  error: BRIEFING_CSS_COLORS.statusError,
+  warning: BRIEFING_CSS_COLORS.statusWarning,
+  info: BRIEFING_CSS_COLORS.statusInfo,
 };
 
 /** Report alert background washes keyed by MUI Alert severity. */
 export const CALLOUT_BG: Record<string, string> = {
-  error: supersetPalette.status.errorBg,
-  warning: supersetPalette.status.warningBg,
-  info: supersetPalette.status.infoBg,
-  success: supersetPalette.status.successBg,
+  error: paletteVar("status-errorBg"),
+  warning: paletteVar("status-warningBg"),
+  info: paletteVar("status-infoBg"),
+  success: paletteVar("status-successBg"),
 };
 
 /**
  * Shared table styling for briefing tables. Plain `CSSProperties` factories so
  * native `<th>`/`<td>`/`<tr>` elements stay inline-styled while sourcing every
- * color from the theme palette.
+ * color from the active theme.
  *
  * Numeric columns are right-aligned so digits line up under their header, and
  * the row hover wash lives in the theme (keyed off ``BRIEFING_TABLE_CLASS``).
@@ -104,9 +143,9 @@ export const briefingTable = {
   ): CSSProperties {
     return {
       padding,
-      borderBottom: `1px solid ${supersetPalette.outline}`,
+      borderBottom: `1px solid ${BRIEFING_CSS_COLORS.outline}`,
       fontWeight: 600,
-      color: supersetPalette.text.secondary,
+      color: BRIEFING_CSS_COLORS.textSecondary,
       whiteSpace: "nowrap",
       textAlign: options?.numeric ? "right" : "left",
     };
@@ -122,8 +161,8 @@ export const briefingTable = {
   zebraRow(index: number): CSSProperties {
     return {
       backgroundColor:
-        index % 2 === 1 ? supersetPalette.bg.muted : "transparent",
-      borderBottom: `1px solid ${supersetPalette.border.light}`,
+        index % 2 === 1 ? BRIEFING_CSS_COLORS.bgMuted : "transparent",
+      borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
     };
   },
   /**
@@ -134,7 +173,7 @@ export const briefingTable = {
   groupStartRow(index: number): CSSProperties {
     return {
       ...this.zebraRow(index),
-      borderTop: `3px solid ${supersetPalette.text.primary}`,
+      borderTop: `3px solid ${BRIEFING_CSS_COLORS.textPrimary}`,
     };
   },
 } as const;

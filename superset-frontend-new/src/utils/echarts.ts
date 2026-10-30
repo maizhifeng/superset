@@ -38,7 +38,9 @@ export async function loadECharts(): Promise<void> {
     const { install: MarkLineComponent } =
       await import("echarts/lib/component/marker/installMarkLine.js");
     const { CanvasRenderer } = await import("echarts/renderers");
-    const { BarChart, LineChart, PieChart } = await import("echarts/charts");
+    const { BarChart, LineChart, PieChart, ScatterChart } = await import(
+      "echarts/charts"
+    );
 
     core.use([
       GridComponent,
@@ -50,6 +52,7 @@ export async function loadECharts(): Promise<void> {
       BarChart,
       LineChart,
       PieChart,
+      ScatterChart,
     ]);
 
     echartsModule = core;
@@ -61,6 +64,10 @@ export async function loadECharts(): Promise<void> {
 export function getECharts(): EChartsModule | null {
   return echartsModule;
 }
+
+// CJK ideographs and full-width punctuation render ~2x wider than latin
+// glyphs at the same font size.
+const CJK_CHAR = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/;
 
 export const chartTypeToECharts: Record<string, string> = {
   line: "line",
@@ -176,6 +183,21 @@ export function buildEChartsOption(
 
   const maxXLen = Math.max(...xLabels.map((l) => l.length), 0);
   const rotatedExtent = Math.ceil(maxXLen * 7 * Math.sin(Math.PI / 4));
+  // The 7px-per-character estimate above under-sizes CJK glyphs (they render
+  // at roughly the 10px axis font while latin/digit glyphs take about half),
+  // so long Chinese category labels were clipped by the bottom of the plot.
+  // Estimate the widest label by rendered width, including half the text
+  // height for the 45° rotation, and treat it as a floor so existing layouts
+  // for date/latin labels are unchanged.
+  const widestLabelPx = Math.max(
+    ...xLabels.map((label) =>
+      [...label].reduce((w, ch) => w + (CJK_CHAR.test(ch) ? 10 : 5.5), 0),
+    ),
+    0,
+  );
+  const cjkRotatedExtent = Math.ceil(
+    (widestLabelPx + 6) * Math.sin(Math.PI / 4),
+  );
 
   const allYValues = valueKeys.flatMap((k) =>
     slicedRows
@@ -247,19 +269,35 @@ export function buildEChartsOption(
         : undefined,
     grid: {
       left: Math.max(40, Math.min(yLabelWidth + 24, 120)),
-      right: 20,
+      // Extra right padding keeps the 45° rotated last category label from
+      // being cut at the card's right edge.
+      right: 28,
       top: 40,
       bottom:
         series.length > 1
-          ? Math.max(60, Math.min(rotatedExtent + 24, 160))
-          : Math.max(30, Math.min(rotatedExtent + 12, 100)),
+          ? Math.max(
+              60,
+              Math.min(Math.max(rotatedExtent, cjkRotatedExtent) + 24, 160),
+            )
+          : Math.max(
+              30,
+              Math.min(Math.max(rotatedExtent, cjkRotatedExtent) + 12, 100),
+            ),
     },
     animation: true,
     animationDuration: 300,
     xAxis: {
       type: "category" as const,
       data: xLabels,
-      axisLabel: { rotate: 45, fontSize: 10, margin: 8 },
+      axisLabel: {
+        rotate: 45,
+        fontSize: 10,
+        margin: 8,
+        // Many categories (projects, dates) crowd a dashboard card; let
+        // ECharts thin the labels out instead of stacking them on top of each
+        // other.
+        hideOverlap: true,
+      },
     },
     yAxis: {
       type: "value" as const,

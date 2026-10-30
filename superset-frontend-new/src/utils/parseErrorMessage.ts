@@ -2,10 +2,29 @@ export function parseErrorMessage(
   err: unknown,
   fallback = "An error occurred",
 ): string {
-  if (err instanceof Error) return err.message;
-
   const apiErr = err as
-    { response?: { data?: { message?: string } } } | undefined;
+    | {
+        response?: { data?: { message?: string }; status?: number };
+        message?: string;
+      }
+    | undefined;
 
-  return apiErr?.response?.data?.message ?? fallback;
+  const serverMessage = apiErr?.response?.data?.message;
+  if (typeof serverMessage === "string" && serverMessage.trim()) {
+    return serverMessage;
+  }
+
+  if (err instanceof Error) {
+    // Axios surfaces transport failures as English boilerplate; keep the
+    // caller's localized fallback instead of showing "Request failed ...".
+    if (
+      /^Request failed with status code \d+$/.test(err.message) ||
+      err.message === "Network Error"
+    ) {
+      return fallback;
+    }
+    return err.message;
+  }
+
+  return fallback;
 }

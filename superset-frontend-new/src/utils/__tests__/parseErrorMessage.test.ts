@@ -32,3 +32,15 @@ test("prefers direct Error message over fallback", () => {
     "Explicit error",
   );
 });
+
+test("prefers localized fallback for raw axios transport errors", () => {
+  expect(
+    parseErrorMessage(
+      new Error("Request failed with status code 401"),
+      "用户名或密码错误",
+    ),
+  ).toBe("用户名或密码错误");
+  expect(
+    parseErrorMessage(new Error("Network Error"), "网络异常，请稍后重试"),
+  ).toBe("网络异常，请稍后重试");
+});

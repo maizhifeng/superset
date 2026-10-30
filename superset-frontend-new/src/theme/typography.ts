@@ -1,3 +1,22 @@
+/**
+ * Monospace stack for code surfaces (SQL editors, expressions, IDs).
+ *
+ * ``JetBrains Mono`` is loaded in ``index.html`` next to the UI faces; the
+ * remaining entries keep code legible when the webfont is unavailable (offline
+ * dev, CSP-restricted deployments, CJK fallback).
+ */
+export const monoFontFamily = [
+  '"JetBrains Mono"',
+  '"SF Mono"',
+  '"Fira Code"',
+  '"Cascadia Code"',
+  "ui-monospace",
+  "Menlo",
+  "Consolas",
+  '"Liberation Mono"',
+  "monospace",
+].join(",");
+
 export default {
   fontFamily: [
     "Sora",

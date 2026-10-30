@@ -9,6 +9,7 @@ import NotificationsIcon from "@mui/icons-material/Notifications";
 import HistoryIcon from "@mui/icons-material/History";
 import SettingsIcon from "@mui/icons-material/Settings";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import QueryStatsIcon from "@mui/icons-material/QueryStats";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import PeopleIcon from "@mui/icons-material/People";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -16,6 +17,7 @@ import ArticleIcon from "@mui/icons-material/Article";
 
 export const menuIconMap: Record<string, ReactNode> = {
   dashboards: <DashboardIcon sx={{ fontSize: 20 }} />,
+  analysis: <QueryStatsIcon sx={{ fontSize: 20 }} />,
   charts: <BarChartIcon sx={{ fontSize: 20 }} />,
   datasets: <TableChartIcon sx={{ fontSize: 20 }} />,
   "saved_query/list": <SaveIcon sx={{ fontSize: 20 }} />,

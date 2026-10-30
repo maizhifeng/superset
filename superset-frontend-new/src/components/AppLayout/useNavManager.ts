@@ -1,11 +1,27 @@
 import { useState, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useNavStore } from "@/store/navStore";
 import { useMenuSettings } from "@/store/menuSettings";
 import { useUserRouteOverrides } from "@/store/userRouteOverrides";
 import { useAuthStore } from "@/store/authStore";
 import { menuIconMap, defaultIcon } from "./menuIconMap";
+import { resolveMenuId } from "@/config/menuRoutes";
 import type { NavCategory } from "@/store/navStore";
+
+/** Side-panel categories use short ids; the activity rail uses menu ids. */
+const categoryToMenuId: Record<string, string> = {
+  dashboard: "dashboards",
+  chart: "charts",
+  dataset: "datasets",
+  saved_query: "saved_query/list",
+  database: "database/list",
+  sqllab: "sqllab",
+  settings: "settings",
+  briefing: "briefing",
+  alert: "alert/list",
+  query_history: "query_history",
+  project_config: "project_config",
+};
 
 const menuIdToCategory: Record<string, NavCategory> = {
   dashboards: "dashboard",
@@ -23,6 +39,7 @@ export interface ActivityBarItem {
 
 export function useNavManager() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const items = useMenuSettings((s) => s.items);
   const enabled = useMenuSettings((s) => s.enabled);
   const userRoles = useAuthStore((s) => s.user?.roles);
@@ -51,6 +68,18 @@ export function useNavManager() {
   const selectDashboard = useNavStore((s) => s.selectDashboard);
 
   const [hoverCat, setHoverCat] = useState<string | null>(null);
+
+  /** Highlight the rail entry that owns the current route, even when the side
+   *  panel was never opened (deep links, direct navigation, refresh). */
+  const routeMenuId = useMemo(() => {
+    if (pathname.startsWith("/system/admin")) return "system_admin";
+    return resolveMenuId(pathname);
+  }, [pathname]);
+
+  const activeId =
+    hoverCat ??
+    routeMenuId ??
+    (activeCategory ? categoryToMenuId[activeCategory] : null);
   const openTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -200,6 +229,7 @@ export function useNavManager() {
   );
 
   return {
+    activeId,
     activeCategory,
     sidePanelOpen,
     sidePanelPinned,

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format as formatSql } from "sql-formatter";
-import type { SqlLanguage } from "sql-formatter";
 import type { TableMetadata } from "@/types/api";
 import { formatterDialect, supportsDateUnit } from "./dialects";
 import { classifyColumn, type ColumnCategory } from "./operators";
@@ -225,7 +224,7 @@ export function useVisualQuery({
     if (!generatedSql) return "";
     try {
       return formatSql(generatedSql, {
-        language: formatterDialect(backend) as SqlLanguage,
+        language: formatterDialect(backend),
         keywordCase: "upper",
       });
     } catch {

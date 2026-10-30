@@ -2,17 +2,11 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
-import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -38,11 +32,16 @@ import { useDatasetFavorites } from "@/store/datasetFavorites";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
+import IdCell from "@/components/IdCell";
+import StatusChip from "@/components/StatusChip";
 import { ConfirmModal } from "@/superset-ui-mui/components";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import api, { getDataset } from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { formatRelativeTime } from "@/utils/datetime";
 
 import type { DatasetRow } from "@/types/api";
 
@@ -71,19 +70,11 @@ export default function DatasetList() {
   } | null>(null);
   const notify = useNotificationStore((s) => s.notify);
 
-  /** 复制数据集 ID 到剪贴板。 */
-  const handleCopyId = async (id: number) => {
-    try {
-      await navigator.clipboard.writeText(String(id));
-      notify({ severity: "success", message: `已复制数据集 ID ${id}` });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
-  };
-
   /** 复制数据集表名（含 schema 前缀）到剪贴板。 */
   const handleCopyTableName = async (row: DatasetRow) => {
-    const name = row.schema ? `${row.schema}.${row.table_name}` : row.table_name;
+    const name = row.schema
+      ? `${row.schema}.${row.table_name}`
+      : row.table_name;
     try {
       await navigator.clipboard.writeText(name);
       notify({ severity: "success", message: `已复制表名 ${name}` });
@@ -99,7 +90,10 @@ export default function DatasetList() {
     const sql = `SELECT * FROM ${table};`;
     try {
       await navigator.clipboard.writeText(sql);
-      notify({ severity: "success", message: `已复制查询 SELECT * FROM ${table}` });
+      notify({
+        severity: "success",
+        message: `已复制查询 SELECT * FROM ${table}`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -169,12 +163,9 @@ export default function DatasetList() {
   const [favoritesOnly, setFavoritesOnly] = useState(
     () => localStorage.getItem(DS_FAV_KEY) === "1",
   );
-  const handleKindFilter = useCallback(
-    (value: string) => {
-      setKindFilter(value);
-    },
-    [],
-  );
+  const handleKindFilter = useCallback((value: string) => {
+    setKindFilter(value);
+  }, []);
 
   // 客户端按类型 + 收藏过滤（kind 列不允许作为服务端筛选列）。
   const visibleRows = useMemo(
@@ -198,7 +189,7 @@ export default function DatasetList() {
         模式: d.schema ?? "",
         数据库: d.database?.database_name ?? "",
         类型: d.kind === "physical" ? "物理表" : "虚拟表",
-        最后修改: d.changed_on_delta_humanized ?? "",
+        最后修改: formatRelativeTime(d.changed_on_utc),
       })),
       `datasets-${ts}.csv`,
     );
@@ -248,21 +239,17 @@ export default function DatasetList() {
         priority: 4,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel id="ds-kind-label">类型</InputLabel>
-            <Select
-              labelId="ds-kind-label"
-              label="类型"
-              value={kindFilter}
-              onChange={(e) => handleKindFilter(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              <MenuItem value="physical">物理表</MenuItem>
-              <MenuItem value="virtual">虚拟表</MenuItem>
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="类型"
+            value={kindFilter}
+            onChange={handleKindFilter}
+            minWidth={120}
+            options={[
+              { value: "", label: "全部" },
+              { value: "physical", label: "物理表" },
+              { value: "virtual", label: "虚拟数据集" },
+            ]}
+          />
         ),
       },
       {
@@ -270,7 +257,9 @@ export default function DatasetList() {
         priority: 3,
         showOnMobile: false,
         render: (
-          <Tooltip title={favoritesOnly ? "显示全部数据集" : "仅显示收藏的数据集"}>
+          <Tooltip
+            title={favoritesOnly ? "显示全部数据集" : "仅显示收藏的数据集"}
+          >
             <Button
               size="small"
               variant={favoritesOnly ? "contained" : "text"}
@@ -294,39 +283,21 @@ export default function DatasetList() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前数据集列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_tables",
-        priority: 1.75,
+        priority: 1.5,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的数据集表名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllTableNames()}
-              disabled={rows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制表名
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制表名",
+        action: () => void handleCopyAllTableNames(),
       },
       {
         id: "search",
@@ -344,7 +315,23 @@ export default function DatasetList() {
       },
     ]);
     return () => unregisterTools("dataset_list");
-  }, [registerTools, unregisterTools, handleSearchChange, navigate, kindFilter, handleKindFilter, favoritesOnly, setFavoritesOnly, favIds, handleExportCsv, handleCopyAllTableNames, rows.length, visibleRows.length, fetchData, loading]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    navigate,
+    kindFilter,
+    handleKindFilter,
+    favoritesOnly,
+    setFavoritesOnly,
+    favIds,
+    handleExportCsv,
+    handleCopyAllTableNames,
+    rows.length,
+    visibleRows.length,
+    fetchData,
+    loading,
+  ]);
 
   // Load federated bindings from extra
   useEffect(() => {
@@ -459,35 +446,35 @@ export default function DatasetList() {
     {
       field: "id",
       headerName: "ID",
-      width: 70,
+      width: 84,
       renderCell: (params) => (
-        <Tooltip title="复制数据集 ID">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCopyId(params.value as number);
-            }}
-            sx={{ p: 0.25, mr: 0.5 }}
-          >
-            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-          </IconButton>
-        </Tooltip>
+        <IdCell id={params.value as number} entity="数据集" />
       ),
     },
     {
       field: "table_name",
       headerName: "表名称",
       flex: 1,
-      minWidth: 120,
+      minWidth: 170,
       renderCell: (params) => {
         const row = params.row as DatasetRow;
         return (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
             <Typography
               variant="body2"
+              title={params.value ?? ""}
               sx={{
                 fontSize: "0.8125rem",
+                minWidth: 0,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -498,13 +485,15 @@ export default function DatasetList() {
             <Tooltip title="复制表名">
               <IconButton
                 size="small"
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCopyTableName(row);
                 }}
               >
-                <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
+                <ContentCopyIcon
+                  sx={{ fontSize: 13, color: "text.disabled" }}
+                />
               </IconButton>
             </Tooltip>
           </Box>
@@ -516,21 +505,50 @@ export default function DatasetList() {
       headerName: "模式",
       flex: 0.5,
       minWidth: 80,
-      renderCell: (params) => {
-        if (!params.value) return null;
-        return <Chip label={params.value} size="small" variant="outlined" />;
-      },
+      renderCell: (params) =>
+        params.value ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            noWrap
+            title={params.value}
+            sx={{ maxWidth: "100%", minWidth: 0 }}
+          >
+            {params.value}
+          </Typography>
+        ) : null,
     },
     {
       field: "database",
       headerName: "数据库",
       flex: 0.7,
-      minWidth: 120,
+      minWidth: 110,
       renderCell: (params) => {
         const name = getDbName(params.row);
         return (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <span>{name}</span>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
+            <Box
+              component="span"
+              title={name}
+              sx={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "0.8125rem",
+              }}
+            >
+              {name}
+            </Box>
             {name ? (
               <Tooltip title="复制数据库名">
                 <IconButton
@@ -539,7 +557,7 @@ export default function DatasetList() {
                     e.stopPropagation();
                     void handleCopyDbName(name);
                   }}
-                  sx={{ p: 0.25 }}
+                  sx={{ p: 0.25, flexShrink: 0 }}
                 >
                   <ContentCopyIcon
                     sx={{ fontSize: 13, color: "text.disabled" }}
@@ -555,37 +573,52 @@ export default function DatasetList() {
       field: "changed_on_delta_humanized",
       headerName: "最后修改",
       flex: 0.5,
-      minWidth: 80,
+      minWidth: 90,
+      valueGetter: (_value, row) => formatRelativeTime(row.changed_on_utc),
     },
     {
       field: "kind",
       headerName: "类型",
-      flex: 0.3,
-      minWidth: 60,
+      flex: 0.4,
+      minWidth: 96,
       renderCell: (params) => (
-        <Chip
-          label={params.value}
-          size="small"
-          color={params.value === "physical" ? "primary" : "secondary"}
-          variant="outlined"
+        <StatusChip
+          dot={false}
+          tone={params.value === "physical" ? "neutral" : "info"}
+          label={params.value === "physical" ? "物理表" : "虚拟数据集"}
         />
       ),
     },
     {
       field: "federated",
       headerName: "跨库绑定",
-      width: 100,
+      width: 160,
       sortable: false,
       renderCell: (params) => {
         const id = params.id as number;
         const info = federatedMap[id];
         if (!info) return null;
         return (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <LinkIcon color="primary" sx={{ fontSize: 14 }} />
+          <Box
+            title={info.partnerName}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
+            <LinkIcon color="primary" sx={{ fontSize: 14, flexShrink: 0 }} />
             <Typography
               variant="caption"
-              sx={{ fontSize: "0.7rem", color: "primary.main" }}
+              noWrap
+              sx={{
+                fontSize: "0.75rem",
+                color: "primary.main",
+                minWidth: 0,
+              }}
             >
               {info.partnerName}
             </Typography>
@@ -595,8 +628,8 @@ export default function DatasetList() {
     },
     {
       field: "actions",
-      headerName: "",
-      width: 248,
+      headerName: "操作",
+      width: 214,
       sortable: false,
       renderCell: (params) => {
         const row = params.row;
@@ -698,15 +731,36 @@ export default function DatasetList() {
   ];
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-        p: { xs: 1.5, md: 3 },
-        pt: { xs: 1.5, md: 2 },
-      }}
+    <PageFrame
+      page="dataset_list"
+      loading={loading}
+      title="数据集"
+      subtitle={`共 ${rowCount} 项`}
+      actions={
+        <>
+          {bindMode && (
+            <Typography
+              variant="caption"
+              color="warning.main"
+              sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+            >
+              {selectedId ? "请选择另一个数据集" : "请选择一个数据集"}
+            </Typography>
+          )}
+          <Button
+            size="small"
+            variant={bindMode ? "contained" : "outlined"}
+            color={bindMode ? "warning" : "primary"}
+            startIcon={<LinkIcon />}
+            onClick={() => {
+              setBindMode(!bindMode);
+              setSelectedId(null);
+            }}
+          >
+            {bindMode ? "退出绑定" : "绑定数据集"}
+          </Button>
+        </>
+      }
     >
       <Card
         variant="outlined"
@@ -718,45 +772,6 @@ export default function DatasetList() {
           minHeight: 0,
         }}
       >
-        <CardHeader
-          title={
-            <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75 }}>
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
-                数据集
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                共 {rowCount} 项
-              </Typography>
-            </Box>
-          }
-          action={
-            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-              {bindMode && (
-                <Typography
-                  variant="caption"
-                  color="warning.main"
-                  sx={{ fontSize: "0.75rem", fontWeight: 600 }}
-                >
-                  {selectedId ? "请选择另一个数据集" : "请选择一个数据集"}
-                </Typography>
-              )}
-              <Button
-                size="small"
-                variant={bindMode ? "contained" : "outlined"}
-                color={bindMode ? "warning" : "primary"}
-                startIcon={<LinkIcon />}
-                onClick={() => {
-                  setBindMode(!bindMode);
-                  setSelectedId(null);
-                }}
-              >
-                {bindMode ? "退出绑定" : "绑定数据集"}
-              </Button>
-            </Box>
-          }
-          sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
-        />
-        <Divider />
         <ListPageLayout
           loading={loading}
           error={error}
@@ -890,7 +905,7 @@ export default function DatasetList() {
                       color="text.disabled"
                       sx={{ fontSize: "0.75rem" }}
                     >
-                      {row.changed_on_delta_humanized ?? ""}
+                      {formatRelativeTime(row.changed_on_utc)}
                     </Typography>
                   </Box>
                 </>
@@ -979,7 +994,7 @@ export default function DatasetList() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </PageFrame>
   );
 }
 

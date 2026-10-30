@@ -26,6 +26,7 @@ import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
 import { keyframes } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import StopIcon from "@mui/icons-material/Stop";
@@ -33,6 +34,7 @@ import SendIcon from "@mui/icons-material/Send";
 import SettingsIcon from "@mui/icons-material/Settings";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
@@ -47,15 +49,13 @@ import useReducedMotion, {
   prefersReducedMotion,
 } from "@/hooks/useReducedMotion";
 import type { EChartsOption } from "echarts";
-import { supersetPalette } from "@/theme/palette";
 import { duration as durationTokens, ease as easeTokens } from "@/theme/tokens";
 import api from "@/api";
 import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
 import {
   ALERT_LEVEL_COLOR,
-  BRIEFING_CHART_CHROME,
-  BRIEFING_CHART_COLORS,
+  BRIEFING_CSS_COLORS,
   BRIEFING_TABLE_CLASS,
   CALLOUT_BG,
   JOB_STATUS_COLOR,
@@ -93,15 +93,59 @@ import {
   type ReportType,
 } from "./params";
 
-// Chart chrome derives from the shared briefing tokens; the dark terminal
-// panel below keeps two local neutrals because the palette is light-only and
-// the log view intentionally reads as a terminal surface.
-const TEXT_MUTED = BRIEFING_CHART_CHROME.axisLabel;
-const DIVIDER = BRIEFING_CHART_CHROME.gridLine;
+// CSS-facing chrome resolves through the active theme's MUI variables; canvas
+// colors cannot, so the charts read the palette through ``useBriefingColors``
+// instead of pinning the paper values.
+const TEXT_MUTED = BRIEFING_CSS_COLORS.textSecondary;
+const DIVIDER = BRIEFING_CSS_COLORS.divider;
 const TERMINAL_BG = "#0d1117";
 const TERMINAL_TEXT = "#c9d1d9";
 const TERMINAL_MUTED = "#8b949e";
 const TERMINAL_HOVER = "rgba(255,255,255,0.04)";
+
+interface BriefingChartColors {
+  spend: string;
+  newUsers: string;
+  roi1: string;
+  ltv1: string;
+  breakevenLine: string;
+  axisLabel: string;
+  gridLine: string;
+  roiGood: string;
+  roiWarning: string;
+  roiCritical: string;
+}
+
+/**
+ * The active theme's chart palette.
+ *
+ * ECharts paints to a canvas, which cannot resolve a CSS variable, so the
+ * option builders need literal colors at render time.  Paper resolves to the
+ * same hexes as ``BRIEFING_CHART_COLORS``; notion resolves to its stone/blue
+ * ramp, which keeps every metric on one stable color across the page.
+ */
+function useBriefingColors(): BriefingChartColors {
+  const theme = useTheme();
+  return useMemo(() => {
+    const { palette } = theme;
+    return {
+      spend: palette.primary.main,
+      // Teal stays distinct from ROI1's success green in both palettes.
+      newUsers: palette.chart?.[1] ?? palette.info.main,
+      roi1: palette.success.main,
+      // A violet rather than the info tone, so the two lines on the ROI plot
+      // separate by hue as well as by the dashed stroke.
+      ltv1: palette.chart?.[5] ?? palette.secondary.main,
+      breakevenLine: palette.error.main,
+      axisLabel: palette.text.secondary,
+      gridLine: palette.divider,
+      // Custom palette tokens may be absent from a minimal test theme.
+      roiGood: palette.status?.success ?? palette.success.main,
+      roiWarning: palette.status?.warning ?? palette.warning.main,
+      roiCritical: palette.status?.error ?? palette.error.main,
+    };
+  }, [theme]);
+}
 
 /** Height of one chapter-navigation item; the active pill slides by this much. */
 
@@ -116,7 +160,7 @@ const railSweep = keyframes`
   to { transform: translateX(320%); }
 `;
 const valuePulse = keyframes`
-  from { color: ${supersetPalette.primary.main}; transform: translateY(-2px); }
+  from { color: var(--mui-palette-primary-main); transform: translateY(-2px); }
   to { color: inherit; transform: translateY(0); }
 `;
 
@@ -439,7 +483,7 @@ const MAX_DRILL_SERIES = 10;
 // Log lines can carry a success level that report alerts never emit.
 const LOG_LEVEL_COLOR: Record<string, string> = {
   ...ALERT_LEVEL_COLOR,
-  success: supersetPalette.status.success,
+  success: BRIEFING_CSS_COLORS.statusSuccess,
 };
 
 function formatNumber(value: number | null | undefined, digits = 1): string {
@@ -481,8 +525,8 @@ function ReportSectionHeader({
             height: 26,
             px: 0.75,
             borderRadius: 1,
-            bgcolor: supersetPalette.primary.container,
-            color: supersetPalette.primary.onContainer,
+            bgcolor: BRIEFING_CSS_COLORS.primaryContainer,
+            color: BRIEFING_CSS_COLORS.primaryOnContainer,
             fontSize: "0.8125rem",
             fontWeight: 700,
             fontVariantNumeric: "tabular-nums",
@@ -542,8 +586,9 @@ function StatTile({
         <Typography
           key={value}
           sx={{
-            fontSize: "1.5rem",
-            fontWeight: 700,
+            fontSize: value === "—" ? "1.25rem" : "1.5rem",
+            fontWeight: value === "—" ? 500 : 700,
+            color: value === "—" ? "text.disabled" : "text.primary",
             lineHeight: 1.2,
             fontVariantNumeric: "tabular-nums",
             animation: `${valuePulse} ${durationTokens.slow}ms ${easeTokens.decelerate}`,
@@ -632,7 +677,7 @@ function metricCellsText(
     if (value === null || Number.isNaN(value)) {
       return {
         text: "—",
-        color: supersetPalette.text.disabled,
+        color: BRIEFING_CSS_COLORS.textDisabled,
         title: "没有同口径的上期数据",
       };
     }
@@ -640,8 +685,8 @@ function metricCellsText(
       text: `${value >= 0 ? "▲" : "▼"} ${Math.abs(value * 100).toFixed(1)}%`,
       color:
         value >= 0 === higherIsBetter
-          ? supersetPalette.status.success
-          : supersetPalette.status.error,
+          ? BRIEFING_CSS_COLORS.statusSuccess
+          : BRIEFING_CSS_COLORS.statusError,
     };
   };
   return [
@@ -1110,12 +1155,17 @@ function CoreStatBand({
   return (
     <Paper
       variant="outlined"
-      sx={{ overflow: "hidden", bgcolor: supersetPalette.surface.main }}
+      sx={{ overflow: "hidden", bgcolor: BRIEFING_CSS_COLORS.surfaceMain }}
     >
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gridTemplateColumns: {
+            xs: "repeat(2, 1fr)",
+            sm: "repeat(3, 1fr)",
+            md: "repeat(4, 1fr)",
+            lg: "repeat(7, 1fr)",
+          },
           "& > *:not(:first-of-type)": {
             borderLeft: `1px solid ${DIVIDER}`,
           },
@@ -1324,11 +1374,11 @@ function fluctuationContribution(
 /** The factor colour: the effect's direction under the metric's semantics. */
 function fluctuationColor(metric: FluctuationMetric, value: number): string {
   const tone = FLUCTUATION_TONE[metric.key] ?? {};
-  if (tone.neutral) return supersetPalette.text.secondary;
+  if (tone.neutral) return BRIEFING_CSS_COLORS.textSecondary;
   const higherIsBetter = tone.higherIsBetter ?? true;
   return value >= 0 === higherIsBetter
-    ? supersetPalette.status.success
-    : supersetPalette.status.error;
+    ? BRIEFING_CSS_COLORS.statusSuccess
+    : BRIEFING_CSS_COLORS.statusError;
 }
 
 /** The 新增 marker: nothing to compare against, so no percentage. */
@@ -1341,8 +1391,8 @@ function NewTag() {
         px: 0.5,
         py: 0.1,
         borderRadius: 0.5,
-        bgcolor: supersetPalette.primary.container,
-        color: supersetPalette.primary.onContainer,
+        bgcolor: BRIEFING_CSS_COLORS.primaryContainer,
+        color: BRIEFING_CSS_COLORS.primaryOnContainer,
         fontSize: "0.6875rem",
         fontWeight: 600,
         whiteSpace: "nowrap",
@@ -1387,8 +1437,8 @@ function FluctuationDimensionColumn({
               px: 0.5,
               py: 0.1,
               borderRadius: 0.5,
-              bgcolor: supersetPalette.primary.container,
-              color: supersetPalette.primary.onContainer,
+              bgcolor: BRIEFING_CSS_COLORS.primaryContainer,
+              color: BRIEFING_CSS_COLORS.primaryOnContainer,
               fontSize: "0.6875rem",
               fontWeight: 600,
               whiteSpace: "nowrap",
@@ -1454,7 +1504,7 @@ function FluctuationList({
   return (
     <Paper
       variant="outlined"
-      sx={{ overflow: "hidden", bgcolor: supersetPalette.surface.main }}
+      sx={{ overflow: "hidden", bgcolor: BRIEFING_CSS_COLORS.surfaceMain }}
     >
       <Box
         sx={{ px: 2, pt: 1.25, pb: 1, borderBottom: `1px solid ${DIVIDER}` }}
@@ -1772,9 +1822,9 @@ function ProjectComboTable({
                 sx={{
                   px: 0.75,
                   py: 0.25,
-                  border: `1px solid ${supersetPalette.outline}`,
+                  border: `1px solid ${BRIEFING_CSS_COLORS.outline}`,
                   borderRadius: 1,
-                  bgcolor: supersetPalette.surface.variant,
+                  bgcolor: BRIEFING_CSS_COLORS.surfaceVariant,
                   color: "text.secondary",
                   fontSize: "0.75rem",
                   fontWeight: 500,
@@ -2027,8 +2077,8 @@ function ProjectComboTable({
                     <Fragment key="subtotal-days">
                       {subtotalDays.map((day, dayIndex) =>
                         renderDayRow(summary, day, dayIndex, {
-                          backgroundColor: supersetPalette.action.hover,
-                          borderBottom: `1px solid ${supersetPalette.border.light}`,
+                          backgroundColor: BRIEFING_CSS_COLORS.actionHover,
+                          borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
                         }),
                       )}
                     </Fragment>
@@ -2037,9 +2087,9 @@ function ProjectComboTable({
                     <tr
                       key="subtotal"
                       style={{
-                        backgroundColor: supersetPalette.bg.selected,
-                        borderTop: `1px solid ${supersetPalette.border.medium}`,
-                        borderBottom: `1px solid ${supersetPalette.border.light}`,
+                        backgroundColor: BRIEFING_CSS_COLORS.bgSelected,
+                        borderTop: `1px solid ${BRIEFING_CSS_COLORS.borderMedium}`,
+                        borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
                       }}
                     >
                       <td
@@ -2109,10 +2159,10 @@ function StatusDot({
   invested?: boolean;
 }) {
   const color = !invested
-    ? supersetPalette.text.secondary
+    ? BRIEFING_CSS_COLORS.textSecondary
     : achieved
-      ? supersetPalette.status.success
-      : supersetPalette.status.error;
+      ? BRIEFING_CSS_COLORS.statusSuccess
+      : BRIEFING_CSS_COLORS.statusError;
   return (
     <Box
       component="span"
@@ -2154,8 +2204,8 @@ function TotalTag({ days }: { days: number }) {
         px: 0.5,
         py: 0.1,
         borderRadius: 0.5,
-        bgcolor: supersetPalette.primary.container,
-        color: supersetPalette.primary.onContainer,
+        bgcolor: BRIEFING_CSS_COLORS.primaryContainer,
+        color: BRIEFING_CSS_COLORS.primaryOnContainer,
         fontSize: "0.6875rem",
         fontWeight: 600,
         whiteSpace: "nowrap",
@@ -2179,8 +2229,8 @@ function SubtotalTag() {
         px: 0.5,
         py: 0.1,
         borderRadius: 0.5,
-        bgcolor: supersetPalette.primary.container,
-        color: supersetPalette.primary.onContainer,
+        bgcolor: BRIEFING_CSS_COLORS.primaryContainer,
+        color: BRIEFING_CSS_COLORS.primaryOnContainer,
         fontSize: "0.6875rem",
         fontWeight: 600,
         whiteSpace: "nowrap",
@@ -2210,10 +2260,10 @@ function DeltaBadge({
   }
   const up = value >= 0;
   const color = neutral
-    ? supersetPalette.text.secondary
+    ? BRIEFING_CSS_COLORS.textSecondary
     : up === higherIsBetter
-      ? supersetPalette.status.success
-      : supersetPalette.status.error;
+      ? BRIEFING_CSS_COLORS.statusSuccess
+      : BRIEFING_CSS_COLORS.statusError;
   return (
     <Typography variant="body2" sx={{ color, fontWeight: 600 }}>
       {up ? "▲" : "▼"} {Math.abs(value * 100).toFixed(1)}%
@@ -2236,6 +2286,7 @@ function TrendChart({
   // The series is newest-first; flip to chronological so the time axis reads
   // left-to-right as past → reported period.
   const ordered = useMemo(() => [...rows].reverse(), [rows]);
+  const colors = useBriefingColors();
 
   const onEvents = useMemo(
     () =>
@@ -2270,7 +2321,7 @@ function TrendChart({
     const ltv1s = ordered.map((r) => r.ltv1);
     const users = ordered.map((r) => r.new_users);
     return {
-      grid: { left: 96, right: 104, top: 48, bottom: 28 },
+      grid: { left: 152, right: 108, top: 48, bottom: 28 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -2293,7 +2344,7 @@ function TrendChart({
         data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
         type: "scroll",
         top: 8,
-        textStyle: { color: TEXT_MUTED, fontSize: 12 },
+        textStyle: { color: colors.axisLabel, fontSize: 12 },
         itemWidth: 14,
         itemHeight: 8,
       },
@@ -2301,7 +2352,7 @@ function TrendChart({
         type: "category",
         data: dates,
         axisLabel: {
-          color: TEXT_MUTED,
+          color: colors.axisLabel,
           fontSize: 12,
           // Long histories crowd the axis; let ECharts thin labels out and
           // tilt them once buckets get numerous.
@@ -2309,28 +2360,28 @@ function TrendChart({
           rotate: dates.length > 8 ? 30 : 0,
           hideOverlap: true,
         },
-        axisLine: { lineStyle: { color: DIVIDER } },
+        axisLine: { lineStyle: { color: colors.gridLine } },
       },
       yAxis: [
         {
           type: "value",
           name: "消耗",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             fontSize: 12,
             formatter: (v: number) => formatNumber(v),
           },
-          splitLine: { lineStyle: { color: DIVIDER } },
+          splitLine: { lineStyle: { color: colors.gridLine } },
         },
         {
           type: "value",
           name: "新增",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "left",
           offset: 56,
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             fontSize: 12,
             formatter: (v: number) => formatNumber(v, 0),
           },
@@ -2339,10 +2390,10 @@ function TrendChart({
         {
           type: "value",
           name: "ROI",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "right",
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             fontSize: 12,
             formatter: (v: number) => `${(v * 100).toFixed(0)}%`,
           },
@@ -2351,11 +2402,11 @@ function TrendChart({
         {
           type: "value",
           name: "LTV",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "right",
           offset: 56,
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             fontSize: 12,
             formatter: (v: number) => formatNumber(v, 1),
           },
@@ -2371,7 +2422,7 @@ function TrendChart({
           cursor: onSelect ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: BRIEFING_CHART_COLORS.spend,
+            color: colors.spend,
             borderRadius: [3, 3, 0, 0],
           },
           barMaxWidth: 26,
@@ -2384,7 +2435,7 @@ function TrendChart({
           cursor: onSelect ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: BRIEFING_CHART_COLORS.newUsers,
+            color: colors.newUsers,
             borderRadius: [3, 3, 0, 0],
           },
           barMaxWidth: 26,
@@ -2398,7 +2449,7 @@ function TrendChart({
           symbol: "circle",
           symbolSize: 6,
           emphasis: { focus: "series" },
-          itemStyle: { color: BRIEFING_CHART_COLORS.roi1 },
+          itemStyle: { color: colors.roi1 },
           lineStyle: { width: 2 },
         },
         {
@@ -2411,12 +2462,12 @@ function TrendChart({
           symbol: "circle",
           symbolSize: 6,
           emphasis: { focus: "series" },
-          itemStyle: { color: BRIEFING_CHART_COLORS.ltv1 },
+          itemStyle: { color: colors.ltv1 },
           lineStyle: { width: 2, type: "dashed" },
         },
       ],
     };
-  }, [ordered, onSelect]);
+  }, [ordered, onSelect, colors]);
 
   return (
     // The padding lives on an inner box so ``footer`` can run full-bleed to the
@@ -2564,6 +2615,8 @@ function MetricsComboChart({
     [onSelect],
   );
 
+  const colors = useBriefingColors();
+
   // Memoised on the rows: an unchanged option keeps ECharts from re-running
   // ``setOption`` (and dropping hover state) when the page re-renders.
   const option: EChartsOption = useMemo(() => {
@@ -2580,7 +2633,7 @@ function MetricsComboChart({
         : `${d >= 0 ? "▲" : "▼"} ${Math.abs(d * 100).toFixed(1)}%`;
 
     return {
-      grid: { left: 96, right: 104, top: 48, bottom: 56 },
+      grid: { left: 152, right: 108, top: 48, bottom: 56 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -2605,7 +2658,7 @@ function MetricsComboChart({
         data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
         type: "scroll",
         top: 8,
-        textStyle: { color: TEXT_MUTED, fontSize: 12 },
+        textStyle: { color: colors.axisLabel, fontSize: 12 },
         itemWidth: 14,
         itemHeight: 8,
       },
@@ -2613,32 +2666,32 @@ function MetricsComboChart({
         type: "category",
         data: categories,
         axisLabel: {
-          color: TEXT_MUTED,
+          color: colors.axisLabel,
           fontSize: 12,
           rotate: categories.length > 6 ? 30 : 0,
           interval: 0,
         },
-        axisLine: { lineStyle: { color: DIVIDER } },
+        axisLine: { lineStyle: { color: colors.gridLine } },
       },
       yAxis: [
         {
           type: "value",
           name: "消耗",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             formatter: (v: number) => formatNumber(v),
           },
-          splitLine: { lineStyle: { color: DIVIDER } },
+          splitLine: { lineStyle: { color: colors.gridLine } },
         },
         {
           type: "value",
           name: "新增",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "left",
           offset: 56,
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             formatter: (v: number) => formatNumber(v, 0),
           },
           splitLine: { show: false },
@@ -2646,10 +2699,10 @@ function MetricsComboChart({
         {
           type: "value",
           name: "ROI",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "right",
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             formatter: (v: number) => `${(v * 100).toFixed(0)}%`,
           },
           splitLine: { show: false },
@@ -2657,11 +2710,11 @@ function MetricsComboChart({
         {
           type: "value",
           name: "LTV",
-          nameTextStyle: { color: TEXT_MUTED, fontSize: 12 },
+          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "right",
           offset: 56,
           axisLabel: {
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             formatter: (v: number) => formatNumber(v, 1),
           },
           splitLine: { show: false },
@@ -2676,7 +2729,7 @@ function MetricsComboChart({
           cursor: onSelect ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: BRIEFING_CHART_COLORS.spend,
+            color: colors.spend,
             borderRadius: [3, 3, 0, 0],
           },
           barMaxWidth: 26,
@@ -2689,7 +2742,7 @@ function MetricsComboChart({
           cursor: onSelect ? "pointer" : "default",
           emphasis: { focus: "series" },
           itemStyle: {
-            color: BRIEFING_CHART_COLORS.newUsers,
+            color: colors.newUsers,
             borderRadius: [3, 3, 0, 0],
           },
           barMaxWidth: 26,
@@ -2703,7 +2756,7 @@ function MetricsComboChart({
           symbol: "circle",
           symbolSize: 6,
           emphasis: { focus: "series" },
-          itemStyle: { color: BRIEFING_CHART_COLORS.roi1 },
+          itemStyle: { color: colors.roi1 },
           lineStyle: { width: 2 },
         },
         {
@@ -2716,12 +2769,12 @@ function MetricsComboChart({
           symbol: "circle",
           symbolSize: 6,
           emphasis: { focus: "series" },
-          itemStyle: { color: BRIEFING_CHART_COLORS.ltv1 },
+          itemStyle: { color: colors.ltv1 },
           lineStyle: { width: 2, type: "dashed" },
         },
       ],
     };
-  }, [rows, onSelect]);
+  }, [rows, onSelect, colors]);
 
   return (
     <Paper sx={{ p: 2 }} variant="outlined">
@@ -2790,7 +2843,7 @@ function MediaQualitySummary({
   const fmtDelta = (d: number | null) =>
     d === null || Number.isNaN(d)
       ? ""
-      : `（环比 ${d >= 0 ? "▲" : "▼"} ${Math.abs(d * 100).toFixed(1)}%）`;
+      : `环比 ${d >= 0 ? "▲" : "▼"} ${Math.abs(d * 100).toFixed(1)}%`;
   const bestRoi1 = best.roi1 ?? 0;
   const bestPrevRoi1 = best.prev?.roi1;
   const worstRoi1 = worst.roi1 ?? 0;
@@ -2807,9 +2860,9 @@ function MediaQualitySummary({
       size="small"
       color="success"
       variant="outlined"
-      label={`最佳媒体：${best.channel}（ROI1 ${formatPercent(
+      label={`最佳媒体：${best.channel} · ROI1 ${formatPercent(
         bestRoi1,
-      )}${fmtDelta(bestDelta)}）`}
+      )} · ${fmtDelta(bestDelta)}`}
       {...drillProps(best.channel)}
     />,
   ];
@@ -2820,9 +2873,9 @@ function MediaQualitySummary({
         size="small"
         color="warning"
         variant="outlined"
-        label={`需关注：${worst.channel}（ROI1 ${formatPercent(
+        label={`需关注：${worst.channel} · ROI1 ${formatPercent(
           worstRoi1,
-        )}${fmtDelta(worstDelta)}）`}
+        )} · ${fmtDelta(worstDelta)}`}
         {...drillProps(worst.channel)}
       />,
     );
@@ -2866,15 +2919,6 @@ interface SpendTooltipParams {
   dataIndex: number;
 }
 
-/** ROI1 quality → bar colour.  Mirrors the backend's alert ladder. */
-const ROI_QUALITY_COLOR: Record<RoiQuality, string> = {
-  good: supersetPalette.status.success,
-  warning: supersetPalette.status.warning,
-  critical: supersetPalette.status.error,
-  // No ROI column mapped: a neutral bar reads as "not rated", not as failure.
-  unknown: BRIEFING_CHART_COLORS.spend,
-};
-
 const ROI_QUALITY_LABEL: Record<RoiQuality, string> = {
   good: "达标",
   warning: "中",
@@ -2917,6 +2961,18 @@ function MediaSpendChart({
   const grouped = rows.some((row) => row.kind === "header");
   const hasRoi = rows.some(
     (row) => row.kind === "bar" && row.roi1 !== null && row.roi1 !== undefined,
+  );
+
+  const colors = useBriefingColors();
+  const qualityColors = useMemo<Record<RoiQuality, string>>(
+    () => ({
+      good: colors.roiGood,
+      warning: colors.roiWarning,
+      critical: colors.roiCritical,
+      // No ROI column mapped: a neutral bar reads as "not rated".
+      unknown: colors.spend,
+    }),
+    [colors],
   );
 
   const onEvents = useMemo(
@@ -2980,7 +3036,7 @@ function MediaSpendChart({
         // where the bar labels keep the table's precision.
         splitNumber: 4,
         axisLabel: {
-          color: TEXT_MUTED,
+          color: colors.axisLabel,
           fontSize: 12,
           hideOverlap: true,
           formatter: (v: number) => {
@@ -2989,7 +3045,7 @@ function MediaSpendChart({
             return `${v}`;
           },
         },
-        splitLine: { lineStyle: { color: DIVIDER } },
+        splitLine: { lineStyle: { color: colors.gridLine } },
       },
       yAxis: {
         type: "category",
@@ -2998,7 +3054,7 @@ function MediaSpendChart({
         inverse: true,
         data: rows.map((row) => row.label),
         axisLabel: {
-          color: TEXT_MUTED,
+          color: colors.axisLabel,
           fontSize: 12,
           // The heading is the first level, so it is the heavier one and
           // carries the platform's total; its media read under it.
@@ -3009,12 +3065,12 @@ function MediaSpendChart({
               : `{m|${value}}`;
           },
           rich: {
-            h: { color: TEXT_MUTED, fontSize: 12, fontWeight: 700 },
-            t: { color: TEXT_MUTED, fontSize: 11 },
-            m: { color: TEXT_MUTED, fontSize: 12 },
+            h: { color: colors.axisLabel, fontSize: 12, fontWeight: 700 },
+            t: { color: colors.axisLabel, fontSize: 11 },
+            m: { color: colors.axisLabel, fontSize: 12 },
           },
         },
-        axisLine: { lineStyle: { color: DIVIDER } },
+        axisLine: { lineStyle: { color: colors.gridLine } },
       },
       series: [
         {
@@ -3025,7 +3081,7 @@ function MediaSpendChart({
             position: "right",
             distance: 6,
             fontSize: 12,
-            color: TEXT_MUTED,
+            color: colors.axisLabel,
             formatter: (p: { value?: unknown }) =>
               typeof p.value === "number" ? formatNumber(p.value) : "",
           },
@@ -3036,7 +3092,7 @@ function MediaSpendChart({
                   value: row.spend,
                   itemStyle: {
                     color:
-                      ROI_QUALITY_COLOR[
+                      qualityColors[
                         roiQuality(row.roi1, breakevenLine, criticalLine)
                       ],
                     borderRadius: [0, 3, 3, 0],
@@ -3050,7 +3106,7 @@ function MediaSpendChart({
                 symbol: "none",
                 silent: true,
                 label: { show: false },
-                lineStyle: { color: DIVIDER, type: "solid", width: 1 },
+                lineStyle: { color: colors.gridLine, type: "solid", width: 1 },
                 data: rows
                   .map((row, index) => ({ row, index }))
                   .filter(
@@ -3062,7 +3118,7 @@ function MediaSpendChart({
         },
       ],
     };
-  }, [rows, grouped, breakevenLine, criticalLine]);
+  }, [rows, grouped, breakevenLine, criticalLine, colors, qualityColors]);
 
   // The overview has nothing to show without a single plottable row; a drilled
   // panel still renders, so the way back never disappears with its bars.
@@ -3103,7 +3159,7 @@ function MediaSpendChart({
         )}
       </Box>
       {rows.length === 0 ? (
-        <Typography variant="body2" sx={{ color: TEXT_MUTED, py: 2 }}>
+        <Typography variant="body2" sx={{ color: colors.axisLabel, py: 2 }}>
           该媒体本期没有可展开的主游戏明细。
         </Typography>
       ) : (
@@ -3117,7 +3173,7 @@ function MediaSpendChart({
               mb: 1,
             }}
           >
-            <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+            <Typography variant="caption" sx={{ color: colors.axisLabel }}>
               {`条形=${SPEND_LABEL}${
                 grouped ? "（一级=客户端，二级=媒体）" : ""
               }${hasRoi ? "，颜色=ROI1：" : ""}`}
@@ -3134,10 +3190,13 @@ function MediaSpendChart({
                       width: 8,
                       height: 8,
                       borderRadius: "2px",
-                      bgcolor: ROI_QUALITY_COLOR[level],
+                      bgcolor: qualityColors[level],
                     }}
                   />
-                  <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: colors.axisLabel }}
+                  >
                     {`${ROI_QUALITY_LABEL[level]}（${range}）`}
                   </Typography>
                 </Box>
@@ -3368,7 +3427,10 @@ function MediaBreakdownTable({
                       // The drilled media keeps the mark in the table, so the
                       // chart and the row underneath it read as one selection.
                       ...(isActive
-                        ? { backgroundColor: supersetPalette.primary.container }
+                        ? {
+                            backgroundColor:
+                              BRIEFING_CSS_COLORS.primaryContainer,
+                          }
                         : {}),
                     }}
                   >
@@ -3418,7 +3480,7 @@ function MediaBreakdownTable({
                             ...(memberActive
                               ? {
                                   backgroundColor:
-                                    supersetPalette.primary.container,
+                                    BRIEFING_CSS_COLORS.primaryContainer,
                                 }
                               : {}),
                           }}
@@ -3490,7 +3552,7 @@ function reportChapters(trendLabel: string): { id: string; label: string }[] {
 /** Horizontal cut (px) on each chapter card's leading and trailing edges. */
 const CHAPTER_SLANT_PX = 9;
 /** Floor on a step's width, so the shorter labels still read as full blocks. */
-const CHAPTER_STEP_MIN_WIDTH = 104;
+const CHAPTER_STEP_MIN_WIDTH = 92;
 
 /**
  * Chapter jump nav, rendered inside the breadcrumb bar as a step progress bar.
@@ -3549,15 +3611,15 @@ function ChapterNav({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              height: 32,
+              height: 26,
               minWidth: CHAPTER_STEP_MIN_WIDTH,
               border: 0,
               font: "inherit",
-              fontSize: "0.9375rem",
+              fontSize: "0.8125rem",
               fontWeight: active ? 700 : 500,
               lineHeight: 1,
               letterSpacing: 0,
-              px: `${CHAPTER_SLANT_PX + 12}px`,
+              px: `${CHAPTER_SLANT_PX + 9}px`,
               clipPath: cut,
               cursor: "pointer",
               whiteSpace: "nowrap",
@@ -3730,7 +3792,11 @@ function JobStatusBar({
   return (
     <Paper
       variant="outlined"
-      sx={{ mb: 2, overflow: "hidden", bgcolor: supersetPalette.surface.main }}
+      sx={{
+        mb: 2,
+        overflow: "hidden",
+        bgcolor: BRIEFING_CSS_COLORS.surfaceMain,
+      }}
     >
       <Box
         sx={{
@@ -4578,7 +4644,7 @@ export default function DailyReportDetail() {
               <Box
                 sx={{
                   display: "flex",
-                  alignItems: "flex-start",
+                  alignItems: "center",
                   justifyContent: "flex-end",
                   gap: 1,
                   flexWrap: "wrap",
@@ -4625,17 +4691,24 @@ export default function DailyReportDetail() {
                   onChange={(v: Dayjs | null) => setReportDate(v)}
                   format="YYYY-MM-DD"
                   slotProps={{
-                    textField: {
-                      size: "small",
-                      // The picker selects the day the report covers; the
-                      // backend's "as-of" date is derived from it, so the hint
-                      // never claims to shift the date.
-                      helperText: resultIsWeekly
-                        ? "展示所选日期所在自然周（周日~周六）"
-                        : "展示所选日期的简报",
-                    },
+                    textField: { size: "small", sx: { width: 190 } },
                   }}
                 />
+                <Tooltip
+                  title={
+                    resultIsWeekly
+                      ? "展示所选日期所在自然周（周日~周六）"
+                      : "展示所选日期的简报"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    aria-label="日期口径说明"
+                    sx={{ color: "text.secondary" }}
+                  >
+                    <InfoOutlinedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                 {isRunning ? (
                   <Button
                     variant="contained"
@@ -4713,7 +4786,7 @@ export default function DailyReportDetail() {
                 // Report content stays flat: level color bar + light wash instead
                 // of elevated MUI Alert chrome.
                 const color =
-                  ALERT_LEVEL_COLOR[a.level] ?? supersetPalette.status.info;
+                  ALERT_LEVEL_COLOR[a.level] ?? BRIEFING_CSS_COLORS.statusInfo;
                 const bg =
                   a.level === "warning"
                     ? CALLOUT_BG.warning
@@ -4835,7 +4908,17 @@ export default function DailyReportDetail() {
                 />
 
                 {drillGame && channelRows.length === 0 && (
-                  <Alert severity="info" sx={{ mb: 2 }}>
+                  <Alert
+                    severity="info"
+                    sx={{
+                      mb: 2,
+                      bgcolor: "bg.muted",
+                      color: "text.secondary",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      "& .MuiAlert-icon": { color: "text.disabled" },
+                    }}
+                  >
                     主游戏「{drillGame}」暂无可用的渠道明细（可能受 Top
                     项目数限制）。
                   </Alert>
@@ -4897,7 +4980,17 @@ export default function DailyReportDetail() {
                   }
                 />
                 {!canDrillMedia && (
-                  <Alert severity="info" sx={{ mb: 2 }}>
+                  <Alert
+                    severity="info"
+                    sx={{
+                      mb: 2,
+                      bgcolor: "bg.muted",
+                      color: "text.secondary",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      "& .MuiAlert-icon": { color: "text.disabled" },
+                    }}
+                  >
                     当前结果不含「媒体 ×
                     主游戏」明细，重新运行简报后即可按主游戏展开。
                   </Alert>

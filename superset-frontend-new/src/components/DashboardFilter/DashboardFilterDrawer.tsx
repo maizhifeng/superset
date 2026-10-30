@@ -3,11 +3,8 @@ import Collapse from "@mui/material/Collapse";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
-import Popper from "@mui/material/Popper";
-import Paper from "@mui/material/Paper";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import FilterListIcon from "@mui/icons-material/FilterList";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import type { FilterConfig, FilterState } from "./types";
 import FilterPanel from "./FilterPanel";
 
@@ -36,7 +33,6 @@ export default function DashboardFilterDrawer({
 }: DashboardFilterDrawerProps) {
   const touchStartY = useRef(0);
   const touchStartX = useRef(0);
-  const barRef = useRef<HTMLDivElement>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [guideDismissed, setGuideDismissed] = useState(() => {
     try {
@@ -138,7 +134,6 @@ export default function DashboardFilterDrawer({
       }}
     >
       <Box
-        ref={barRef}
         onClick={() => {
           setShowGuide(false);
           if (open) {
@@ -208,53 +203,37 @@ export default function DashboardFilterDrawer({
             transition: "transform 250ms",
           }}
         />
+        {showGuide && (
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.75,
+              ml: 1,
+              pl: 1.25,
+              borderLeft: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontSize: "0.7rem", lineHeight: 1 }}
+            >
+              点击展开全局筛选器
+            </Typography>
+            <Button
+              size="small"
+              onClick={handleSkipGuide}
+              sx={{ minWidth: 0, py: 0, px: 0.75, fontSize: "0.7rem" }}
+            >
+              知道了
+            </Button>
+          </Box>
+        )}
       </Box>
 
-      <Popper
-        open={showGuide}
-        anchorEl={barRef.current}
-        placement="bottom"
-        sx={{ zIndex: 1300 }}
-      >
-        <Paper
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            px: 2,
-            py: 1.25,
-            bgcolor: "primary.dark",
-            color: "primary.contrastText",
-            borderRadius: 2,
-            boxShadow: 8,
-            minWidth: 260,
-            ml: 2,
-            mt: 0.5,
-          }}
-        >
-          <KeyboardArrowDownIcon sx={{ fontSize: 20, flexShrink: 0 }} />
-          <Typography variant="body2" sx={{ flex: 1, lineHeight: 1.4 }}>
-            点击此处展开全局筛选器，对仪表板数据进行筛选
-          </Typography>
-          <Button
-            size="small"
-            onClick={handleSkipGuide}
-            sx={{
-              flexShrink: 0,
-              color: "inherit",
-              borderColor: "rgba(255,255,255,0.4)",
-              fontSize: "0.7rem",
-              minWidth: 0,
-              py: 0.125,
-              px: 1,
-              "&:hover": { borderColor: "rgba(255,255,255,0.8)" },
-            }}
-            variant="outlined"
-          >
-            知道了
-          </Button>
-        </Paper>
-      </Popper>
       <Collapse in={open} timeout={250}>
         <Box
           sx={{

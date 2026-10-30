@@ -2,10 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
+import Card from "@mui/material/Card";
 import HistoryIcon from "@mui/icons-material/History";
 import LinearProgress from "@mui/material/LinearProgress";
 import IconButton from "@mui/material/IconButton";
@@ -20,11 +17,13 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
 import { useNotificationStore } from "@/store/notificationStore";
 import { downloadCsv } from "@/utils/exportCsv";
-import { parseBackendDate } from "@/utils/datetime";
+import { formatDateTime, parseBackendDate } from "@/utils/datetime";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { useToolbarStore } from "@/store/toolbarStore";
@@ -73,6 +72,17 @@ const ACTION_LABELS: Record<string, string> = {
   "ReportRestApi.get_list": "查看警报列表",
   "ReportRestApi.post": "创建警报",
   "SecurityRestApi.login": "登录",
+  "SecurityRestApi.csrf_token": "获取安全令牌",
+  "csrf token": "获取安全令牌",
+  csrf_token: "获取安全令牌",
+  execute_sql: "执行 SQL",
+  load_into_dataframe: "加载查询结果",
+  "QueryObject.post_processing": "查询结果后处理",
+  queryobject_post_processing: "查询结果后处理",
+  "Database.schemas": "查看数据表结构",
+  database_schemas: "查看数据表结构",
+  schemas: "查看数据表结构",
+  get_schemas: "查看数据表结构",
   "SecurityRestApi.refresh": "刷新令牌",
   get_list: "查看列表",
   "get.": "查看详情",
@@ -82,6 +92,15 @@ const ACTION_LABELS: Record<string, string> = {
 export function labelAction(action: string | undefined): string {
   if (!action) return "未知操作";
   if (ACTION_LABELS[action]) return ACTION_LABELS[action];
+  // Raw internal actions arrive as `csrf_token`, `Database.schemas`, etc.;
+  // normalise them for lookup while leaving unknown `XxxRestApi.*` names to the
+  // friendly fallback below.
+  if (!/Api\./.test(action)) {
+    const normalized = action.replace(/[.\s]+/g, "_").toLowerCase();
+    const mapped =
+      ACTION_LABELS[normalized] ?? ACTION_LABELS[normalized.replace(/_/g, " ")];
+    if (mapped) return mapped;
+  }
   const cleaned = action.replace(/RestApi\./g, ".").replace(/_/g, " ");
   return cleaned;
 }
@@ -306,21 +325,13 @@ export default function QueryHistoryList() {
         priority: 4,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 140 }}>
-            <InputLabel id="qh-module-label">模块</InputLabel>
-            <Select
-              labelId="qh-module-label"
-              label="模块"
-              value={moduleFilter}
-              onChange={(e) => handleModuleFilter(e.target.value)}
-            >
-              {MODULE_FILTERS.map((m) => (
-                <MenuItem key={m.value} value={m.value}>
-                  {m.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="模块"
+            value={moduleFilter}
+            onChange={handleModuleFilter}
+            minWidth={140}
+            options={MODULE_FILTERS}
+          />
         ),
       },
       {
@@ -328,22 +339,18 @@ export default function QueryHistoryList() {
         priority: 3.5,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel id="qh-time-label">时间范围</InputLabel>
-            <Select
-              labelId="qh-time-label"
-              label="时间范围"
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              <MenuItem value="7">最近 7 天</MenuItem>
-              <MenuItem value="30">最近 30 天</MenuItem>
-              <MenuItem value="90">最近 90 天</MenuItem>
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="时间范围"
+            value={timeRange}
+            onChange={setTimeRange}
+            minWidth={120}
+            options={[
+              { value: "", label: "全部" },
+              { value: "7", label: "最近 7 天" },
+              { value: "30", label: "最近 30 天" },
+              { value: "90", label: "最近 90 天" },
+            ]}
+          />
         ),
       },
       {
@@ -397,24 +404,19 @@ export default function QueryHistoryList() {
         showOnMobile: false,
         render:
           userOptions.length > 0 ? (
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel id="qh-user-label">用户</InputLabel>
-              <Select
-                labelId="qh-user-label"
-                label="用户"
-                value={userFilter}
-                onChange={(e) => setUserFilter(e.target.value)}
-              >
-                <MenuItem value="">
-                  <em>全部</em>
-                </MenuItem>
-                {userOptions.map((u) => (
-                  <MenuItem key={u as string} value={u as string}>
-                    {u as string}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <ToolbarSelect
+              label="用户"
+              value={userFilter}
+              onChange={setUserFilter}
+              minWidth={130}
+              options={[
+                { value: "", label: "全部" },
+                ...userOptions.map((user) => ({
+                  value: user as string,
+                  label: user as string,
+                })),
+              ]}
+            />
           ) : null,
       },
       {
@@ -422,54 +424,41 @@ export default function QueryHistoryList() {
         priority: 1.7,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 120 }}>
-            <InputLabel id="qh-dur-label">耗时</InputLabel>
-            <Select
-              labelId="qh-dur-label"
-              label="耗时"
-              value={minDuration}
-              onChange={(e) => setMinDuration(Number(e.target.value))}
-            >
-              <MenuItem value={0}>
-                <em>全部</em>
-              </MenuItem>
-              <MenuItem value={100}>≥ 100ms</MenuItem>
-              <MenuItem value={1000}>≥ 1s</MenuItem>
-              <MenuItem value={10000}>≥ 10s</MenuItem>
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="耗时"
+            // 0 means "all"; pass "" so the control shows its name instead of
+            // a bare 全部.
+            value={minDuration === 0 ? "" : minDuration}
+            onChange={(value) => setMinDuration(Number(value))}
+            minWidth={120}
+            options={[
+              { value: "", label: "全部" },
+              { value: 100, label: "≥ 100ms" },
+              { value: 1000, label: "≥ 1s" },
+              { value: 10000, label: "≥ 10s" },
+            ]}
+          />
         ),
       },
       {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={rows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-            <Tooltip title="复制为 Markdown 表格">
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-                onClick={() => void handleCopyMarkdown()}
-                disabled={rows.length === 0}
-                sx={{ textTransform: "none" }}
-              >
-                复制 Markdown
-              </Button>
-            </Tooltip>
-          </>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
+      },
+      {
+        id: "copy_markdown",
+        priority: 1.9,
+        showOnMobile: false,
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制 Markdown",
+        action: () => void handleCopyMarkdown(),
       },
       {
         id: "search",
@@ -512,57 +501,88 @@ export default function QueryHistoryList() {
       field: "user",
       headerName: "用户",
       flex: 0.4,
-      renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <AccountCircleIcon sx={{ fontSize: 16, color: "text.disabled" }} />
-          <span>{params.row.user?.username ?? ""}</span>
-          {params.row.user?.username ? (
-            <Tooltip title="仅显示该用户的操作">
-              <IconButton
-                size="small"
-                sx={{ p: 0.25 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setUserFilter(params.row.user.username);
-                }}
-              >
-                <FilterAltIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-              </IconButton>
-            </Tooltip>
-          ) : null}
-        </Box>
-      ),
+      minWidth: 110,
+      renderCell: (params) => {
+        const username = params.row.user?.username ?? "";
+        return (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
+            <AccountCircleIcon
+              sx={{ fontSize: 16, color: "text.disabled", flexShrink: 0 }}
+            />
+            <Box
+              component="span"
+              title={username}
+              sx={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {username}
+            </Box>
+            {params.row.user?.username ? (
+              <Tooltip title="仅显示该用户的操作">
+                <IconButton
+                  size="small"
+                  sx={{ p: 0.25, flexShrink: 0 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUserFilter(params.row.user.username);
+                  }}
+                >
+                  <FilterAltIcon
+                    sx={{ fontSize: 13, color: "text.disabled" }}
+                  />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Box>
+        );
+      },
     },
     {
       field: "action",
       headerName: "操作",
       flex: 1,
-      renderCell: (params) => (
-        <Tooltip title={params.value ?? ""} arrow>
+      minWidth: 180,
+      renderCell: (params) => {
+        const label = labelAction(params.value);
+        return (
           <Typography
             variant="body2"
+            title={label}
             sx={{
               fontSize: "0.8125rem",
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
-            {labelAction(params.value)}
+            {label}
           </Typography>
-        </Tooltip>
-      ),
+        );
+      },
     },
     {
       field: "dttm",
       headerName: "日期",
       flex: 0.5,
+      minWidth: 130,
       renderCell: (params) => {
         if (!params.row.dttm) return null;
         return (
-          <Tooltip
-            title={parseBackendDate(params.row.dttm).toLocaleString()}
-            arrow
-          >
+          <Tooltip title={formatDateTime(params.row.dttm)} arrow>
             <Box component="span">{relativeTime(params.row.dttm)}</Box>
           </Tooltip>
         );
@@ -572,8 +592,16 @@ export default function QueryHistoryList() {
       field: "duration_ms",
       headerName: "耗时",
       flex: 0.4,
+      minWidth: 140,
       renderCell: (params) => {
         const ms = params.row.duration_ms;
+        if (ms == null) {
+          return (
+            <Typography variant="body2" color="text.secondary">
+              —
+            </Typography>
+          );
+        }
         const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
         return (
           <Tooltip title={`${formatDuration(ms)} (${ms}ms)`} arrow>
@@ -647,154 +675,170 @@ export default function QueryHistoryList() {
   ];
 
   return (
-    <ListPageLayout
+    <PageFrame
+      page="query_history_list"
       loading={loading}
-      error={error}
-      hasData={rows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<HistoryIcon />}
-            title="暂无操作记录"
-            description={
-              searchText
-                ? "请调整搜索条件"
-                : "这里是系统操作历史，如在 SQL 实验室运行查询、查看或管理仪表板等操作会记录在此"
-            }
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => navigate("/sqllab")}
-                >
-                  打开 SQL 实验室
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
+      title="历史记录"
+      subtitle={`共 ${rowCount} 项`}
     >
-      <ResponsiveDataGrid
-        rows={visibleRowsWithId}
-        columns={columns}
-        loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        renderCard={(row) => {
-          const ms = row.duration_ms;
-          const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
-          return (
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <ListPageLayout
+          loading={loading}
+          error={error}
+          hasData={rows.length > 0}
+          emptyState={
             <>
-              <Typography
-                variant="body2"
-                sx={{
-                  fontWeight: 600,
-                  lineHeight: 1.3,
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {labelAction(row.action)}
-              </Typography>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  mt: 0.25,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.5,
-                    minWidth: 0,
-                    overflow: "hidden",
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.25,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <AccountCircleIcon
-                      sx={{ fontSize: 10, color: "text.disabled" }}
-                    />
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ fontSize: "0.75rem" }}
+              <EmptyState
+                icon={<HistoryIcon />}
+                title="暂无操作记录"
+                description={
+                  searchText
+                    ? "请调整搜索条件"
+                    : "这里是系统操作历史，如在 SQL 实验室运行查询、查看或管理仪表板等操作会记录在此"
+                }
+                action={
+                  !searchText ? (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => navigate("/sqllab")}
                     >
-                      {row.user?.username ?? "无"}
-                    </Typography>
-                  </Box>
+                      打开 SQL 实验室
+                    </Button>
+                  ) : undefined
+                }
+              />
+              <EmptyStateShortcutHint />
+            </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={visibleRowsWithId}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            renderCard={(row) => {
+              const ms = row.duration_ms;
+              const pct = Math.min((ms / MAX_DURATION_MS) * 100, 100);
+              return (
+                <>
                   <Typography
-                    variant="caption"
-                    color="text.disabled"
+                    variant="body2"
                     sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.3,
+                      fontFamily: "monospace",
                       fontSize: "0.75rem",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {row.dttm
-                      ? parseBackendDate(row.dttm).toLocaleString()
-                      : ""}
+                    {labelAction(row.action)}
                   </Typography>
-                </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.5,
-                    flexShrink: 0,
-                  }}
-                >
-                  <LinearProgress
-                    variant="determinate"
-                    value={pct}
+                  <Box
                     sx={{
-                      width: 40,
-                      height: 3,
-                      borderRadius: 2,
-                      bgcolor: "action.hover",
-                      "& .MuiLinearProgress-bar": {
-                        bgcolor: durationColor(ms),
-                        borderRadius: 2,
-                      },
-                    }}
-                  />
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      fontWeight: 600,
-                      fontSize: "0.75rem",
-                      color: durationColor(ms),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      mt: 0.25,
                     }}
                   >
-                    {formatDuration(ms)}
-                  </Typography>
-                </Box>
-              </Box>
-            </>
-          );
-        }}
-      />
-    </ListPageLayout>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                        minWidth: 0,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.25,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <AccountCircleIcon
+                          sx={{ fontSize: 10, color: "text.disabled" }}
+                        />
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ fontSize: "0.75rem" }}
+                        >
+                          {row.user?.username ?? "无"}
+                        </Typography>
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        color="text.disabled"
+                        sx={{
+                          fontSize: "0.75rem",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {row.dttm ? formatDateTime(row.dttm) : ""}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 0.5,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <LinearProgress
+                        variant="determinate"
+                        value={pct}
+                        sx={{
+                          width: 40,
+                          height: 3,
+                          borderRadius: 2,
+                          bgcolor: "action.hover",
+                          "& .MuiLinearProgress-bar": {
+                            bgcolor: durationColor(ms),
+                            borderRadius: 2,
+                          },
+                        }}
+                      />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: "0.75rem",
+                          color: durationColor(ms),
+                        }}
+                      >
+                        {formatDuration(ms)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </>
+              );
+            }}
+          />
+        </ListPageLayout>
+      </Card>
+    </PageFrame>
   );
 }

@@ -31,7 +31,7 @@ export default function PageHeader({
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography
-          variant="h5"
+          variant="h4"
           sx={[
             {
               fontWeight: 700,

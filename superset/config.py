@@ -1513,6 +1513,17 @@ DATA_CACHE_CONFIG: CacheConfig = {"CACHE_TYPE": "NullCache"}
 # 10 * 1024 * 1024 for a 10 MB limit.
 DATA_CACHE_MAX_VALUE_SIZE: int | None = None
 
+# Federated BI reporting (see superset/project/bi/api.py) serves historical
+# data, so computed responses stay fresh longer than the generic chart cache.
+# ``BI_FEDERATED_CACHE_TTL`` is how long a response is treated as fresh; after
+# it expires the stale response is still served (for up to
+# ``BI_FEDERATED_CACHE_STALE_TTL`` seconds) while a background worker
+# recomputes it.  Set either value to 0 to disable that layer.  Individual
+# federated datasets can override both through
+# ``extra.federated.cache_ttl`` / ``extra.federated.cache_stale_ttl``.
+BI_FEDERATED_CACHE_TTL = int(timedelta(minutes=30).total_seconds())
+BI_FEDERATED_CACHE_STALE_TTL = int(timedelta(days=1).total_seconds())
+
 # Include per-query lifecycle timing in /api/v1/chart/data JSON responses.
 # The default keeps the public response contract unchanged.
 CHART_DATA_INCLUDE_TIMING: bool = False

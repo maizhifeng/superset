@@ -1,14 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import Box from "@mui/material/Box";
+import Card from "@mui/material/Card";
 import Chip from "@mui/material/Chip";
+import IdCell from "@/components/IdCell";
+import StatusChip from "@/components/StatusChip";
 import Alert from "@mui/material/Alert";
 import IconButton from "@mui/material/IconButton";
 import Button from "@mui/material/Button";
 import Tooltip from "@mui/material/Tooltip";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -28,6 +27,8 @@ import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
 import { ConfirmModal } from "@/superset-ui-mui/components";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useAlertFavorites } from "@/store/alertFavorites";
@@ -101,15 +102,6 @@ export default function AlertReportList() {
     try {
       await navigator.clipboard.writeText(name);
       notify({ severity: "success", message: `已复制名称 ${name}` });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
-  };
-  /** 复制警报/报告的 ID。 */
-  const handleCopyId = async (id: number) => {
-    try {
-      await navigator.clipboard.writeText(String(id));
-      notify({ severity: "success", message: `已复制 ID ${id}` });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -247,41 +239,30 @@ export default function AlertReportList() {
         priority: 1.75,
         showOnMobile: false,
         render: (
-          <FormControl size="small" sx={{ minWidth: 110 }}>
-            <InputLabel id="alert-type-label">类型</InputLabel>
-            <Select
-              labelId="alert-type-label"
-              label="类型"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>全部</em>
-              </MenuItem>
-              <MenuItem value="alert">警报</MenuItem>
-              <MenuItem value="report">报告</MenuItem>
-            </Select>
-          </FormControl>
+          <ToolbarSelect
+            label="类型"
+            value={typeFilter}
+            onChange={(value) =>
+              setTypeFilter(value as "" | "alert" | "report")
+            }
+            minWidth={110}
+            options={[
+              { value: "", label: "全部" },
+              { value: "alert", label: "警报" },
+              { value: "report", label: "报告" },
+            ]}
+          />
         ),
       },
       {
         id: "copy_names",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的警报/报告名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllNames()}
-              disabled={displayRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制名称
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制名称",
+        action: () => void handleCopyAllNames(),
       },
       {
         id: "search",
@@ -299,38 +280,52 @@ export default function AlertReportList() {
       },
     ]);
     return () => unregisterTools("alert_report_list");
-  }, [registerTools, unregisterTools, handleSearchChange, favoritesOnly, setFavoritesOnly, favIds, activeOnly, setActiveOnly, typeFilter, setTypeFilter, handleCopyAllNames, displayRows.length]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    favoritesOnly,
+    setFavoritesOnly,
+    favIds,
+    activeOnly,
+    setActiveOnly,
+    typeFilter,
+    setTypeFilter,
+    handleCopyAllNames,
+    displayRows.length,
+  ]);
 
   const columns: GridColDef[] = [
     {
       field: "id",
       headerName: "ID",
-      width: 78,
+      width: 84,
       renderCell: (params) => (
-        <Tooltip title="复制 ID">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCopyId(params.value as number);
-            }}
-            sx={{ p: 0.25, mr: 0.5 }}
-          >
-            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-          </IconButton>
-        </Tooltip>
+        <IdCell id={params.value as number} entity="告警" />
       ),
     },
     {
       field: "name",
       headerName: "名称",
       flex: 1,
+      minWidth: 180,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
           <Typography
             variant="body2"
+            title={params.value ?? ""}
             sx={{
               fontSize: "0.8125rem",
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -342,7 +337,7 @@ export default function AlertReportList() {
             <Tooltip title="复制名称">
               <IconButton
                 size="small"
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCopyName(params.value);
@@ -361,6 +356,7 @@ export default function AlertReportList() {
       field: "type",
       headerName: "类型",
       flex: 0.4,
+      minWidth: 110,
       renderCell: (params) => (
         <Chip
           icon={
@@ -371,9 +367,11 @@ export default function AlertReportList() {
             )
           }
           label={
-            params.value
-              ? params.value.charAt(0).toUpperCase() + params.value.slice(1)
-              : ""
+            params.value === "alert"
+              ? "警报"
+              : params.value === "report"
+                ? "报告"
+                : (params.value ?? "")
           }
           size="small"
           color={params.value === "alert" ? "warning" : "info"}
@@ -386,11 +384,9 @@ export default function AlertReportList() {
       headerName: "状态",
       width: 100,
       renderCell: (params) => (
-        <Chip
-          label={params.value ? "活跃" : "不活跃"}
-          size="small"
-          color={params.value ? "success" : "default"}
-          variant={params.value ? "filled" : "outlined"}
+        <StatusChip
+          tone={params.value ? "success" : "neutral"}
+          label={params.value ? "活跃" : "已停用"}
         />
       ),
     },
@@ -398,15 +394,38 @@ export default function AlertReportList() {
       field: "crontab",
       headerName: "调度",
       flex: 0.4,
+      minWidth: 120,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <ScheduleIcon sx={{ fontSize: 14, color: "text.disabled" }} />
-          <span>{params.value}</span>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <ScheduleIcon
+            sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }}
+          />
+          <Box
+            component="span"
+            title={params.value ?? ""}
+            sx={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {params.value}
+          </Box>
           {params.value ? (
             <Tooltip title="复制调度">
               <IconButton
                 size="small"
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCopyCrontab(params.value);
@@ -425,10 +444,33 @@ export default function AlertReportList() {
       field: "recipients",
       headerName: "收件人",
       flex: 1,
+      minWidth: 160,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <PeopleIcon sx={{ fontSize: 14, color: "text.disabled" }} />
-          <span>{params.value}</span>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <PeopleIcon
+            sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }}
+          />
+          <Box
+            component="span"
+            title={params.value ?? ""}
+            sx={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {params.value}
+          </Box>
           {params.value ? (
             <Tooltip title="复制收件人">
               <IconButton
@@ -437,7 +479,7 @@ export default function AlertReportList() {
                   e.stopPropagation();
                   void handleCopyRecipients(params.value);
                 }}
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
               >
                 <ContentCopyIcon
                   sx={{ fontSize: 13, color: "text.disabled" }}
@@ -491,10 +533,7 @@ export default function AlertReportList() {
             </IconButton>
           </Tooltip>
           <Tooltip title="编辑">
-            <IconButton
-              size="small"
-              onClick={() => setEditTarget(params.row)}
-            >
+            <IconButton size="small" onClick={() => setEditTarget(params.row)}>
               <EditIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -534,171 +573,200 @@ export default function AlertReportList() {
   ];
 
   return (
-    <>
-      <ListPageLayout
-        loading={loading}
-        error={error}
-        hasData={rows.length > 0}
-        emptyState={
-        <>
-          <EmptyState
-            icon={<NotificationsIcon />}
-            title="未找到警报或报告"
-            description={
-              searchText
-                ? "请调整搜索条件"
-                : "创建警报或报告以在条件满足时收到通知"
-            }
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  新建警报
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
+    <PageFrame
+      page="alert_report_list"
+      loading={loading}
+      title="告警"
+      subtitle={`共 ${rowCount} 项`}
     >
-      <ResponsiveDataGrid
-        rows={displayRows}
-        columns={columns}
-        loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="alert_report_list"
-        onDelete={(row) => setDeleteTarget({ id: row.id, name: row.name })}
-        onBatchDelete={(ids) => {
-          void (async () => {
-            await Promise.all(ids.map((id) => api.delete(`/report/${id}`)));
-            fetchData();
-          })();
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
         }}
-        renderCard={(row) => (
-          <>
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 600, lineHeight: 1.3 }}
-            >
-              {row.name}
-            </Typography>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                flexWrap: "wrap",
-                columnGap: 0.25,
-                mt: 0.25,
-              }}
-            >
-              <Chip
-                icon={
-                  row.type === "alert" ? (
-                    <NotificationsIcon sx={{ fontSize: 10 }} />
-                  ) : (
-                    <VerifiedIcon sx={{ fontSize: 10 }} />
-                  )
+      >
+        <ListPageLayout
+          loading={loading}
+          error={error}
+          hasData={rows.length > 0}
+          emptyState={
+            <>
+              <EmptyState
+                icon={<NotificationsIcon />}
+                title="未找到警报或报告"
+                description={
+                  searchText
+                    ? "请调整搜索条件"
+                    : "创建警报或报告以在条件满足时收到通知"
                 }
-                label={
-                  row.type
-                    ? `${row.type.charAt(0).toUpperCase()}${row.type.slice(1)}`
-                    : ""
+                action={
+                  !searchText ? (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      新建警报
+                    </Button>
+                  ) : undefined
                 }
-                size="small"
-                color={row.type === "alert" ? "warning" : "info"}
-                variant="outlined"
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
               />
-              <Chip
-                label={row.active ? "活跃" : "不活跃"}
-                size="small"
-                color={row.active ? "success" : "default"}
-                variant={row.active ? "filled" : "outlined"}
-                sx={{
-                  height: 16,
-                  fontSize: "0.75rem",
-                  "& .MuiChip-label": { px: 0.5 },
-                }}
-              />
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-                <ScheduleIcon sx={{ fontSize: 10, color: "text.disabled" }} />
+              <EmptyStateShortcutHint />
+            </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={displayRows}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            toolbarPageKey="alert_report_list"
+            onDelete={(row) => setDeleteTarget({ id: row.id, name: row.name })}
+            onBatchDelete={(ids) => {
+              void (async () => {
+                await Promise.all(ids.map((id) => api.delete(`/report/${id}`)));
+                fetchData();
+              })();
+            }}
+            renderCard={(row) => (
+              <>
                 <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontSize: "0.75rem" }}
+                  variant="body2"
+                  sx={{ fontWeight: 600, lineHeight: 1.3 }}
                 >
-                  {row.crontab}
+                  {row.name}
                 </Typography>
-              </Box>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-                <PeopleIcon sx={{ fontSize: 10, color: "text.disabled" }} />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ fontSize: "0.75rem" }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    columnGap: 0.25,
+                    mt: 0.25,
+                  }}
                 >
-                  {row.recipients}
-                </Typography>
-              </Box>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, mt: 0.5 }}>
-              <IconButton
-                size="small"
-                onClick={() => setEditTarget(row)}
-                sx={{ p: 0.25 }}
-                aria-label="编辑"
-              >
-                <EditIcon sx={{ fontSize: 16 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => void toggleActive(row)}
-                disabled={toggleLoadingId === row.id}
-                sx={{ p: 0.25 }}
-                aria-label={row.active ? "暂停警报" : "启用警报"}
-              >
-              {toggleLoadingId === row.id ? (
-                <CircularProgress size={14} />
-              ) : row.active ? (
-                <PauseIcon sx={{ fontSize: 16 }} />
-              ) : (
-                <PlayArrowIcon sx={{ fontSize: 16 }} />
-              )}
-            </IconButton>
-            </Box>
-          </>
-        )}
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除警报/报告"
-        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      </ListPageLayout>
+                  <Chip
+                    icon={
+                      row.type === "alert" ? (
+                        <NotificationsIcon sx={{ fontSize: 10 }} />
+                      ) : (
+                        <VerifiedIcon sx={{ fontSize: 10 }} />
+                      )
+                    }
+                    label={
+                      row.type
+                        ? `${row.type.charAt(0).toUpperCase()}${row.type.slice(1)}`
+                        : ""
+                    }
+                    size="small"
+                    color={row.type === "alert" ? "warning" : "info"}
+                    variant="outlined"
+                    sx={{
+                      height: 16,
+                      fontSize: "0.75rem",
+                      "& .MuiChip-label": { px: 0.5 },
+                    }}
+                  />
+                  <Chip
+                    label={row.active ? "活跃" : "不活跃"}
+                    size="small"
+                    color={row.active ? "success" : "default"}
+                    variant={row.active ? "filled" : "outlined"}
+                    sx={{
+                      height: 16,
+                      fontSize: "0.75rem",
+                      "& .MuiChip-label": { px: 0.5 },
+                    }}
+                  />
+                  <Box
+                    sx={{ display: "flex", alignItems: "center", gap: 0.25 }}
+                  >
+                    <ScheduleIcon
+                      sx={{ fontSize: 10, color: "text.disabled" }}
+                    />
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.75rem" }}
+                    >
+                      {row.crontab}
+                    </Typography>
+                  </Box>
+                  <Box
+                    sx={{ display: "flex", alignItems: "center", gap: 0.25 }}
+                  >
+                    <PeopleIcon sx={{ fontSize: 10, color: "text.disabled" }} />
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontSize: "0.75rem" }}
+                    >
+                      {row.recipients}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.25,
+                    mt: 0.5,
+                  }}
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() => setEditTarget(row)}
+                    sx={{ p: 0.25 }}
+                    aria-label="编辑"
+                  >
+                    <EditIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => void toggleActive(row)}
+                    disabled={toggleLoadingId === row.id}
+                    sx={{ p: 0.25 }}
+                    aria-label={row.active ? "暂停警报" : "启用警报"}
+                  >
+                    {toggleLoadingId === row.id ? (
+                      <CircularProgress size={14} />
+                    ) : row.active ? (
+                      <PauseIcon sx={{ fontSize: 16 }} />
+                    ) : (
+                      <PlayArrowIcon sx={{ fontSize: 16 }} />
+                    )}
+                  </IconButton>
+                </Box>
+              </>
+            )}
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <ConfirmModal
+            open={!!deleteTarget}
+            title="删除警报/报告"
+            description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+            confirmLoading={deleteLoading}
+            danger
+            onConfirm={() => void handleDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        </ListPageLayout>
+      </Card>
       <CreateAlertDialog
         open={createOpen || !!editTarget}
         editing={editTarget}
@@ -713,6 +781,6 @@ export default function AlertReportList() {
           database_name: d.database_name,
         }))}
       />
-    </>
+    </PageFrame>
   );
 }

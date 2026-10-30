@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 import re
+import threading
+from collections.abc import Mapping
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import Any
 
@@ -74,6 +77,312 @@ def _cache_key(prefix: str, *parts: Any) -> str:
     )
     raw = "|".join([prefix, *[str(p) for p in parts], str(user_id), *roles])
     return "bi:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Federated chart-data response cache
+# ---------------------------------------------------------------------------
+# Historical BI reporting does not need second-level freshness: a computed
+# response stays fresh for ``BI_FEDERATED_CACHE_TTL`` seconds (default 30 min)
+# and remains available as a stale copy for ``BI_FEDERATED_CACHE_STALE_TTL``
+# (default 1 day).  A stale hit is returned immediately while a background
+# worker recomputes it, so repeat drill-downs do not wait on the federated
+# databases again.  Datasets can override both windows through
+# ``extra.federated.cache_ttl`` / ``extra.federated.cache_stale_ttl``.
+_BI_CHART_CACHE_DEFAULT_TTL = 1800
+_BI_CHART_CACHE_DEFAULT_STALE_TTL = 86400
+
+_chart_cache_refresh_pool = ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="bi-chart-cache"
+)
+_chart_cache_refreshing: set[str] = set()
+_chart_cache_lock = threading.Lock()
+
+
+def _coerce_ttl(value: Any, default: int) -> int:
+    """Parse a TTL config value, falling back to ``default`` when invalid."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0, parsed)
+
+
+def _chart_cache_ttls(
+    config: Mapping[str, Any],
+    federated_extra: Mapping[str, Any] | None = None,
+) -> tuple[int, int]:
+    """Resolve the ``(fresh_ttl, stale_ttl)`` pair for chart-data responses."""
+    extra = federated_extra or {}
+    fresh = _coerce_ttl(
+        extra.get("cache_ttl"),
+        _coerce_ttl(
+            config.get("BI_FEDERATED_CACHE_TTL"),
+            _BI_CHART_CACHE_DEFAULT_TTL,
+        ),
+    )
+    stale = _coerce_ttl(
+        extra.get("cache_stale_ttl"),
+        _coerce_ttl(
+            config.get("BI_FEDERATED_CACHE_STALE_TTL"),
+            _BI_CHART_CACHE_DEFAULT_STALE_TTL,
+        ),
+    )
+    return fresh, max(stale, fresh)
+
+
+def _canonical_chart_payload(json_body: Mapping[str, Any]) -> str:
+    """Stable payload string for the cache key; the refresh flag is ignored."""
+    from superset.utils import json as _json
+
+    payload = {key: value for key, value in json_body.items() if key != "force"}
+    return _json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _chart_cache_keys(
+    datasource_id: int, json_body: Mapping[str, Any]
+) -> tuple[str, str]:
+    """Return ``(fresh_key, stale_key)``; both stay scoped to user + roles."""
+    base = _cache_key(
+        "chart-data",
+        "v2",
+        datasource_id,
+        _canonical_chart_payload(json_body),
+    )
+    return f"{base}:fresh", f"{base}:stale"
+
+
+def _chart_cache_response(body: str, cache_status: str) -> Any:
+    """Build a JSON response tagged with the cache outcome for debugging."""
+    return current_app.response_class(
+        body,
+        mimetype="application/json",
+        headers={"X-BI-Cache": cache_status},
+    )
+
+
+def _chart_results_succeeded(query_results: list[dict[str, Any] | None]) -> bool:
+    from superset.common.db_query_status import QueryStatus
+
+    return all(
+        result is not None and result.get("status") == QueryStatus.SUCCESS
+        for result in query_results
+    )
+
+
+def _store_chart_cache(
+    fresh_key: str,
+    stale_key: str,
+    body: str,
+    fresh_ttl: int,
+    stale_ttl: int,
+) -> None:
+    from superset import cache_manager
+
+    data_cache = cache_manager.data_cache
+    if fresh_ttl > 0:
+        data_cache.set(fresh_key, body, timeout=fresh_ttl)
+    if stale_ttl > 0:
+        data_cache.set(stale_key, body, timeout=stale_ttl)
+
+
+class _ChartDataRequestError(Exception):
+    """Validation/resolution failure that maps to a JSON error response."""
+
+    def __init__(self, message: str, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def _load_chart_data_context(
+    json_body: dict[str, Any],
+) -> tuple[Any, Any, Any, Any, str, str]:
+    """Validate the query context and resolve the federated datasources."""
+    from marshmallow import ValidationError
+
+    from superset.charts.schemas import ChartDataQueryContextSchema
+    from superset.daos.exceptions import DatasourceNotFound
+    from superset.exceptions import QueryObjectValidationError
+
+    try:
+        query_context = ChartDataQueryContextSchema().load(json_body)
+    except DatasourceNotFound as ex:
+        raise _ChartDataRequestError("Datasource not found", 404) from ex
+    except (QueryObjectValidationError, ValidationError) as error:
+        message = error.message if hasattr(error, "message") else str(error)
+        raise _ChartDataRequestError(message, 400) from error
+
+    datasource = query_context.datasource
+    federated_config = _get_federated_config(datasource)
+    if not federated_config:
+        raise _ChartDataRequestError(
+            "Dataset is not configured for federated queries", 400
+        )
+
+    aliyun_db_name, oversea_db_name = federated_config
+    aliyun_db = _get_database(aliyun_db_name)
+    if aliyun_db is None:
+        raise _ChartDataRequestError(f"database '{aliyun_db_name}' not found", 404)
+    oversea_db = _get_database(oversea_db_name)
+    if oversea_db is None:
+        raise _ChartDataRequestError(f"database '{oversea_db_name}' not found", 404)
+
+    # Superset's ``QueryObject`` folds the deprecated ``groupby`` field into
+    # ``columns`` (see ``QueryObject._rename_deprecated_fields``) and discards the
+    # genuine ``columns`` field (the pivot column dimension).  Recover the full
+    # dimension set (row + column dimensions) from the raw request so the generated
+    # SQL groups by both row and column dimensions and the pivot renderer receives
+    # the column dimension back in the response.
+    raw_queries = json_body.get("queries") or []
+    for query_obj, raw_q in zip(query_context.queries, raw_queries, strict=False):
+        row_dims = list((raw_q or {}).get("groupby") or [])
+        col_dims = list((raw_q or {}).get("columns") or [])
+        all_dims = row_dims + col_dims
+        if all_dims:
+            query_obj.columns = all_dims
+
+    return (
+        query_context,
+        datasource,
+        aliyun_db,
+        oversea_db,
+        aliyun_db_name,
+        oversea_db_name,
+    )
+
+
+def _execute_chart_data(
+    query_context: Any,
+    datasource: Any,
+    aliyun_db: Any,
+    oversea_db: Any,
+    aliyun_db_name: str,
+    oversea_db_name: str,
+) -> list[dict[str, Any] | None]:
+    """Run every query of the context, one thread each with the user restored."""
+    from superset.common.chart_data import ChartDataResultType
+    from superset.common.query_actions import get_query_results
+
+    app = current_app._get_current_object()
+    user_raw = g.get("user", None)
+    user = (
+        user_raw._get_current_object() if isinstance(user_raw, LocalProxy) else user_raw
+    )
+
+    def _run_one(query_obj: Any) -> dict[str, Any]:
+        with app.app_context():
+            if user is not None:
+                g.user = user
+            result_type = query_obj.result_type or query_context.result_type
+            if result_type in (
+                ChartDataResultType.COLUMNS,
+                ChartDataResultType.TIMEGRAINS,
+                ChartDataResultType.QUERY,
+            ):
+                return get_query_results(result_type, query_context, query_obj, False)
+            return _run_federated_query(
+                query_obj,
+                query_context,
+                datasource,
+                aliyun_db,
+                oversea_db,
+                aliyun_db_name,
+                oversea_db_name,
+            )
+
+    query_results: list[dict[str, Any] | None] = [None] * len(query_context.queries)
+    with ThreadPoolExecutor(
+        max_workers=max(1, min(len(query_context.queries), 4))
+    ) as pool:
+        futures = {
+            pool.submit(_run_one, query_obj): idx
+            for idx, query_obj in enumerate(query_context.queries)
+        }
+        for future in as_completed(futures):
+            query_results[futures[future]] = future.result()
+    return query_results
+
+
+def _chart_data_body(query_results: list[dict[str, Any] | None]) -> str:
+    """Serialize results without Flask's key sorting (matches upstream shape)."""
+    from superset.utils import json as _json_lib
+
+    return _json_lib.dumps({"result": query_results}, sort_keys=False)
+
+
+def _compute_chart_data_body(json_body: dict[str, Any]) -> str | None:
+    """Full compute path used by the background cache refresh worker."""
+    from superset.exceptions import QueryObjectValidationError
+
+    try:
+        context = _load_chart_data_context(json_body)
+    except _ChartDataRequestError:
+        return None
+    (
+        query_context,
+        datasource,
+        aliyun_db,
+        oversea_db,
+        aliyun_db_name,
+        oversea_db_name,
+    ) = context
+    try:
+        query_results = _execute_chart_data(
+            query_context,
+            datasource,
+            aliyun_db,
+            oversea_db,
+            aliyun_db_name,
+            oversea_db_name,
+        )
+    except QueryObjectValidationError:
+        return None
+    if not _chart_results_succeeded(query_results):
+        return None
+    return _chart_data_body(query_results)
+
+
+def _schedule_chart_cache_refresh(
+    json_body: dict[str, Any],
+    fresh_key: str,
+    stale_key: str,
+    fresh_ttl: int,
+    stale_ttl: int,
+) -> None:
+    """Serve-then-refresh: recompute an expired response in the background."""
+    if json_body.get("result_type") not in (None, "full"):
+        # Non-data result types (SQL/columns) are cheap and request-specific.
+        return
+    with _chart_cache_lock:
+        if fresh_key in _chart_cache_refreshing:
+            return
+        _chart_cache_refreshing.add(fresh_key)
+
+    app = current_app._get_current_object()
+    user_raw = g.get("user", None)
+    user_id = getattr(user_raw, "id", None)
+    payload = copy.deepcopy(dict(json_body))
+
+    def _refresh() -> None:
+        try:
+            with app.app_context():
+                if user_id is not None:
+                    from superset import security_manager
+
+                    refreshed_user = security_manager.get_user_by_id(user_id)
+                    if refreshed_user is not None:
+                        g.user = refreshed_user
+                body = _compute_chart_data_body(payload)
+                if body is not None:
+                    _store_chart_cache(fresh_key, stale_key, body, fresh_ttl, stale_ttl)
+        except Exception:  # noqa: BLE001  # pylint: disable=broad-except
+            logger.warning("Federated chart cache refresh failed", exc_info=True)
+        finally:
+            with _chart_cache_lock:
+                _chart_cache_refreshing.discard(fresh_key)
+
+    _chart_cache_refresh_pool.submit(_refresh)
 
 
 def _looks_non_additive(label: str) -> bool:
@@ -1010,6 +1319,50 @@ def _fetch_filter_values(  # noqa: C901
     return result
 
 
+@bi_blueprint.route("/analysis-snapshots/<string:topic>", methods=["GET"])
+def analysis_snapshot_get(topic: str) -> Any:
+    """Return the latest persisted default-view snapshot for a topic."""
+    from superset.project.bi.snapshots import get_snapshot
+    from superset.project.briefing.api import _authenticated_user
+
+    user = _authenticated_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    g.user = user
+    return jsonify({"result": get_snapshot(topic)}), 200
+
+
+@bi_blueprint.route("/analysis-snapshots/<string:topic>", methods=["PUT"])
+def analysis_snapshot_put(topic: str) -> Any:
+    """Store or replace the default-view snapshot for a topic."""
+    from superset.project.bi.snapshots import save_snapshot
+    from superset.project.briefing.api import _authenticated_user
+
+    user = _authenticated_user()
+    if user is None:
+        return jsonify({"error": "unauthorized"}), 401
+    g.user = user
+    body = request.json
+    if not isinstance(body, dict):
+        return jsonify({"error": "Request is not JSON"}), 400
+    scope = body.get("scope")
+    data = body.get("data")
+    if not isinstance(scope, dict) or not isinstance(data, dict):
+        return jsonify({"error": "scope and data are required"}), 400
+    try:
+        result = save_snapshot(
+            topic,
+            scope,
+            data,
+            generated_at=body.get("generated_at"),
+            version=body.get("version"),
+            query_signature=body.get("query_signature"),
+        )
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"result": result}), 200
+
+
 @bi_blueprint.route("/federated-datasets", methods=["GET"])
 def federated_datasets() -> Any:
     """Return the list of dataset IDs configured for federated queries.
@@ -1452,15 +1805,12 @@ def chart_data() -> Any:  # noqa: C901
     it generates the chart's SQL
     and executes it against both configured databases, merging the results.
 
-    The response format matches the standard chart data endpoint exactly,
-    so charts render without any client-side changes.
+    Responses are cached in Redis (see the cache section above): fresh hits are
+    returned immediately, expired entries are still served while a background
+    worker recomputes them, and ``force: true`` bypasses the cache and refreshes
+    it.  ``X-BI-Cache`` reports ``hit`` / ``stale`` / ``miss``.
     """
-    from marshmallow import ValidationError
-
-    from superset.charts.schemas import ChartDataQueryContextSchema
-    from superset.common.chart_data import ChartDataResultType
-    from superset.common.query_actions import get_query_results
-    from superset.daos.exceptions import DatasourceNotFound
+    from superset import cache_manager
     from superset.exceptions import QueryObjectValidationError
 
     json_body = request.json
@@ -1468,110 +1818,49 @@ def chart_data() -> Any:  # noqa: C901
         return jsonify({"error": "Request is not JSON"}), 400
 
     try:
-        query_context = ChartDataQueryContextSchema().load(json_body)
-    except DatasourceNotFound:
-        return jsonify({"error": "Datasource not found"}), 404
-    except (QueryObjectValidationError, ValidationError) as error:
-        message = error.message if hasattr(error, "message") else str(error)
-        return jsonify({"error": message}), 400
-
-    datasource = query_context.datasource
-
-    federated_config = _get_federated_config(datasource)
-    if not federated_config:
-        return jsonify(
-            {
-                "error": "Dataset is not configured for federated queries",
-            }
-        ), 400
-
-    aliyun_db_name, oversea_db_name = federated_config
-    aliyun_db = _get_database(aliyun_db_name)
-    if aliyun_db is None:
-        return jsonify({"error": f"database '{aliyun_db_name}' not found"}), 404
-    oversea_db = _get_database(oversea_db_name)
-    if oversea_db is None:
-        return jsonify({"error": f"database '{oversea_db_name}' not found"}), 404
-
-    # Superset's ``QueryObject`` folds the deprecated ``groupby`` field into
-    # ``columns`` (see ``QueryObject._rename_deprecated_fields``) and discards the
-    # genuine ``columns`` field (the pivot column dimension).  Recover the full
-    # dimension set (row + column dimensions) from the raw request so the generated
-    # SQL groups by both row and column dimensions and the pivot renderer receives
-    # the column dimension back in the response.
-    raw_queries = json_body.get("queries") or []
-    for query_obj, raw_q in zip(query_context.queries, raw_queries, strict=False):
-        row_dims = list((raw_q or {}).get("groupby") or [])
-        col_dims = list((raw_q or {}).get("columns") or [])
-        all_dims = row_dims + col_dims
-        if all_dims:
-            query_obj.columns = all_dims
-
-    # Cache the full response (Redis) for non-forced requests.  Manual chart
-    # refreshes and dashboard auto-refresh send ``force`` to bypass the cache.
-    from superset import cache_manager
-    from superset.common.db_query_status import QueryStatus
-    from superset.utils import json as _json_lib
+        context = _load_chart_data_context(json_body)
+    except _ChartDataRequestError as error:
+        return jsonify({"error": error.message}), error.status_code
+    (
+        query_context,
+        datasource,
+        aliyun_db,
+        oversea_db,
+        aliyun_db_name,
+        oversea_db_name,
+    ) = context
 
     force = bool(json_body.get("force"))
-    cache_key: str | None = None
-    cached_body: str | None = None
-    if not force:
-        cache_key = _cache_key("chart-data", datasource.id, json_body)
-        cached_body = cache_manager.data_cache.get(cache_key)
-        if cached_body is not None:
-            return current_app.response_class(cached_body, mimetype="application/json")
-
-    # Each query runs in its own thread (the two database sides inside
-    # ``_run_federated_query`` are already parallel) with the request user
-    # restored so RLS-aware SQL generation behaves identically.
-    def _run_one(idx: int, query_obj: Any) -> dict[str, Any]:
-        with _app.app_context():
-            if _user is not None:
-                g.user = _user
-            result_type = query_obj.result_type or query_context.result_type
-
-            if result_type in (
-                ChartDataResultType.COLUMNS,
-                ChartDataResultType.TIMEGRAINS,
-                ChartDataResultType.QUERY,
-            ):
-                return get_query_results(result_type, query_context, query_obj, False)
-
-            return _run_federated_query(
-                query_obj,
-                query_context,
-                datasource,
-                aliyun_db,
-                oversea_db,
-                aliyun_db_name,
-                oversea_db_name,
-            )
-
-    _app = current_app._get_current_object()
-    _user_raw = g.get("user", None)
-    _user = (
-        _user_raw._get_current_object()
-        if isinstance(_user_raw, LocalProxy)
-        else _user_raw
+    fresh_ttl, stale_ttl = _chart_cache_ttls(
+        current_app.config, _read_federated_extra(datasource)
     )
-    query_results: list[dict[str, Any] | None] = [None] * len(query_context.queries)
+    fresh_key, stale_key = _chart_cache_keys(datasource.id, json_body)
+
+    if fresh_ttl > 0 and not force:
+        cached_body = cache_manager.data_cache.get(fresh_key)
+        if cached_body is not None:
+            return _chart_cache_response(cached_body, "hit")
+        if stale_ttl > 0:
+            stale_body = cache_manager.data_cache.get(stale_key)
+            if stale_body is not None:
+                _schedule_chart_cache_refresh(
+                    json_body, fresh_key, stale_key, fresh_ttl, stale_ttl
+                )
+                return _chart_cache_response(stale_body, "stale")
+
     try:
-        with ThreadPoolExecutor(max_workers=min(len(query_context.queries), 4)) as pool:
-            futures = {
-                pool.submit(_run_one, idx, query_obj): idx
-                for idx, query_obj in enumerate(query_context.queries)
-            }
-            for future in as_completed(futures):
-                query_results[futures[future]] = future.result()
+        query_results = _execute_chart_data(
+            query_context,
+            datasource,
+            aliyun_db,
+            oversea_db,
+            aliyun_db_name,
+            oversea_db_name,
+        )
     except QueryObjectValidationError as ex:
         return jsonify({"error": ex.message}), 400
 
-    # Use json.dumps directly to avoid Flask's JSON_SORT_KEYS=True
-    result: dict[str, Any] = {"result": query_results}
-    body = _json_lib.dumps(result, sort_keys=False)
-    if cache_key is not None and all(
-        r is not None and r.get("status") == QueryStatus.SUCCESS for r in query_results
-    ):
-        cache_manager.data_cache.set(cache_key, body, timeout=_cache_timeout())
-    return current_app.response_class(body, mimetype="application/json")
+    body = _chart_data_body(query_results)
+    if fresh_ttl > 0 and _chart_results_succeeded(query_results):
+        _store_chart_cache(fresh_key, stale_key, body, fresh_ttl, stale_ttl)
+    return _chart_cache_response(body, "miss")

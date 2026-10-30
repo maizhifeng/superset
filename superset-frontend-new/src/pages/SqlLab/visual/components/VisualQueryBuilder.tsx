@@ -47,6 +47,8 @@ interface VisualQueryBuilderProps {
   onDatabaseChange: (id: number) => void;
   onSchemaChange: (schema: string) => void;
   formattedSql: string;
+  /** Superset engine name of the current database, shown on the SQL panel. */
+  backend?: string;
   onAddStage: () => void;
   onRemoveStage: (stageId: string) => void;
   onRenameStage: (stageId: string, name: string) => void;
@@ -102,6 +104,7 @@ export default function VisualQueryBuilder({
   onDatabaseChange,
   onSchemaChange,
   formattedSql,
+  backend,
   onAddStage,
   onRemoveStage,
   onRenameStage,
@@ -121,8 +124,14 @@ export default function VisualQueryBuilder({
       sx={{
         display: "flex",
         flexDirection: { xs: "column", md: "row" },
-        alignItems: "flex-start",
+        alignItems: { xs: "flex-start", md: "stretch" },
         gap: 1,
+        width: "100%",
+        // md+ 时撑满父容器（分割线拖拽后的固定高度 / 自适应高度），
+        // 让左右两列各自滚动而不是整块页面滚动。
+        flexGrow: { md: 1 },
+        minHeight: 0,
+        overflow: { xs: "visible", md: "hidden" },
       }}
     >
       {/* 左侧：阶段（CTE）容器堆叠 */}
@@ -130,10 +139,13 @@ export default function VisualQueryBuilder({
         sx={{
           flex: { xs: "none", md: 1 },
           minWidth: 0,
+          minHeight: 0,
           width: "100%",
           display: "flex",
           flexDirection: "column",
           gap: 1,
+          overflow: { xs: "visible", md: "auto" },
+          pr: { xs: 0, md: 0.5 },
         }}
       >
         {stages.map((stage, index) => {
@@ -337,19 +349,24 @@ export default function VisualQueryBuilder({
         </Box>
       </Box>
 
-      {/* 右侧：生成的 SQL */}
+      {/* 右侧：生成的 SQL。md+ 撑满阶段列的高度，内部自行滚动。 */}
       <Box
         sx={{
           flex: { xs: "none", md: 1 },
           minWidth: 0,
+          minHeight: 0,
           width: { xs: "100%", md: "auto" },
-          alignSelf: "flex-start",
+          display: "flex",
+          flexDirection: "column",
+          alignSelf: { xs: "auto", md: "stretch" },
+          height: { xs: "auto", md: "100%" },
           position: "sticky",
           top: 0,
         }}
       >
         <SqlPreview
           sql={formattedSql}
+          dialect={backend}
           emptyHint="选择数据源后将自动生成 SQL。"
         />
       </Box>

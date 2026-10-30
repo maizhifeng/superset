@@ -14,6 +14,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TablePagination from "@mui/material/TablePagination";
+import { tablePaginationLabels } from "@/utils/paginationLabels";
 import IconButton from "@mui/material/IconButton";
 import SaveIcon from "@mui/icons-material/Save";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -30,6 +31,7 @@ import Switch from "@mui/material/Switch";
 import Checkbox from "@mui/material/Checkbox";
 import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import { formatDateTime } from "@/utils/datetime";
 import type { QueryResult } from "@/types/api";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -62,6 +64,9 @@ const COLUMNS = [
 
 const COLUMN_LABELS: Record<string, string> = {
   channel_key: "渠道标识",
+  channel_name: "渠道名称",
+  updated_at: "更新时间",
+  ios虚拟支付分成: "iOS 虚拟支付分成",
 };
 
 const cardHeaderSx = {
@@ -247,8 +252,15 @@ export default function ChannelConfig() {
   const [filterName, setFilterName] = useState<string | null>(null);
   // 默认仅展示白名单渠道，可手动关闭以查看全部
   const [whitelistOnly, setWhitelistOnly] = useState(true);
+  // 编辑中的行始终保留：取消白名单勾选后若立即被「仅白名单」过滤掉，
+  // 保存按钮会随行一起消失，修改无法提交。
   const filteredRows = rows
-    .filter((r) => !whitelistOnly || r.白名单控制参数 === "Y")
+    .filter(
+      (r) =>
+        !whitelistOnly ||
+        r.白名单控制参数 === "Y" ||
+        editingIds.has(r.channel_key),
+    )
     .filter((r) => !filterName || r.channel_name === filterName);
   const visibleRows = filteredRows.slice(
     page * rowsPerPage,
@@ -439,7 +451,7 @@ export default function ChannelConfig() {
                             key={col}
                             sx={{
                               fontWeight: 700,
-                              bgcolor: "grey.50",
+                              bgcolor: "surface.variant",
                               fontSize: "0.75rem",
                               py: 1,
                               minWidth: col === "白名单控制参数" ? 80 : 100,
@@ -487,7 +499,7 @@ export default function ChannelConfig() {
                         <TableCell
                           sx={{
                             fontWeight: 700,
-                            bgcolor: "grey.50",
+                            bgcolor: "surface.variant",
                             fontSize: "0.75rem",
                             py: 1,
                             width: 60,
@@ -533,7 +545,7 @@ export default function ChannelConfig() {
                               <Typography
                                 sx={{ fontSize: "0.75rem", px: 1, py: 0.5 }}
                               >
-                                {row.updated_at}
+                                {formatDateTime(row.updated_at)}
                               </Typography>
                             </TableCell>
                             <TableCell
@@ -702,13 +714,14 @@ export default function ChannelConfig() {
                   py: 0.5,
                   borderTop: "1px solid",
                   borderColor: "divider",
-                  bgcolor: "grey.50",
+                  bgcolor: "surface.variant",
                   flexShrink: 0,
                   overflow: "hidden",
                 }}
               >
                 <TablePagination
                   component="div"
+                  {...tablePaginationLabels}
                   count={filteredRows.length}
                   page={page}
                   onPageChange={handleChangePage}

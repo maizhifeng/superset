@@ -3,24 +3,19 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import TipsAndUpdatesIcon from "@mui/icons-material/TipsAndUpdates";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import LinkIcon from "@mui/icons-material/Link";
-import { keyframes } from "@mui/system";
-import { useToolbar } from "@/store/toolbarStore";
+import { useToolbar, useToolbarStore } from "@/store/toolbarStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import AppBreadcrumbs from "@/components/AppLayout/AppBreadcrumbs";
 import { knownSections, type CrumbItem } from "./config";
 import type { PageTip } from "@/hooks/usePageTips";
-
-const scrollAnimation = keyframes`
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-`;
 
 function useSection(pathname: string) {
   return useMemo(() => {
@@ -46,6 +41,9 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const tools = useToolbar();
+  // Pages that render a PageFrame show their tools in the content area; keep
+  // this bar for navigation + global actions only on those routes.
+  const inlinePage = useToolbarStore((s) => s.inlinePage);
   const custom = useBreadcrumbStore((s) => s.custom);
   const section = useSection(pathname);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -77,14 +75,17 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
   };
 
   const crumbItems: CrumbItem[] = useMemo(() => {
-    const items: CrumbItem[] = [
-      { label: "首页", path: "/", isId: false },
-    ];
+    const items: CrumbItem[] = [{ label: "首页", path: "/", isId: false }];
     if (section) {
       items.push({ label: section.label, path: section.listPath, isId: false });
     }
     if (custom) {
-      items.push({ label: custom.label, path: pathname, isId: true });
+      items.push({
+        label: custom.label,
+        path: pathname,
+        isId: true,
+        options: custom.options,
+      });
     }
     return items;
   }, [section, custom, pathname]);
@@ -120,6 +121,7 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
           customLabel={custom?.label}
           customStatus={custom?.status}
           onCrumbClick={(crumb) => navigate(crumb.path)}
+          onOptionSelect={(option) => navigate(option.path)}
         />
         {custom?.actions && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -132,12 +134,10 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
         <Box
           sx={{
             flex: 1,
-            overflow: "hidden",
-            position: "relative",
-            height: "100%",
-            display: "flex",
+            display: { xs: "none", lg: "flex" },
             alignItems: "center",
             minWidth: 0,
+            overflow: "hidden",
             mx: 0.5,
           }}
         >
@@ -150,30 +150,15 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
               mr: 0.5,
             }}
           />
-          <Box
-            sx={{
-              flex: 1,
-              overflow: "hidden",
-              position: "relative",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            <Box
-              sx={{
-                display: "flex",
-                whiteSpace: "nowrap",
-                animation: `${scrollAnimation} ${Math.max(tipText.length * 0.08, 10)}s linear infinite`,
-                fontSize: "0.75rem",
-                color: "text.secondary",
-                gap: 4,
-              }}
+          <Tooltip title={tipText}>
+            <Typography
+              variant="caption"
+              noWrap
+              sx={{ color: "text.secondary", minWidth: 0 }}
             >
-              <Box component="span">{tipText}</Box>
-              <Box component="span">{tipText}</Box>
-            </Box>
-          </Box>
+              {tipText}
+            </Typography>
+          </Tooltip>
         </Box>
       )}
 
@@ -209,30 +194,31 @@ export default function TopBar({ tip }: { tip: PageTip | null }) {
               )}
             </IconButton>
           </Tooltip>
-          {tools.map((tool) => {
-            if (tool.render != null) {
-              return <Box key={tool.id}>{tool.render}</Box>;
-            }
-            if (tool.fabIcon) {
-              return (
-                <Tooltip key={tool.id} title={tool.fabLabel ?? ""}>
-                  <IconButton
-                    size="small"
-                    aria-label={tool.fabLabel}
-                    onClick={tool.action}
-                    sx={{
-                      bgcolor: "primary.container",
-                      color: "primary.onContainer",
-                      "&:hover": { bgcolor: "primary.light" },
-                    }}
-                  >
-                    {tool.fabIcon}
-                  </IconButton>
-                </Tooltip>
-              );
-            }
-            return null;
-          })}
+          {inlinePage === null &&
+            tools.map((tool) => {
+              if (tool.render != null) {
+                return <Box key={tool.id}>{tool.render}</Box>;
+              }
+              if (tool.fabIcon) {
+                return (
+                  <Tooltip key={tool.id} title={tool.fabLabel ?? ""}>
+                    <IconButton
+                      size="small"
+                      aria-label={tool.fabLabel}
+                      onClick={tool.action}
+                      sx={{
+                        bgcolor: "primary.container",
+                        color: "primary.onContainer",
+                        "&:hover": { bgcolor: "primary.light" },
+                      }}
+                    >
+                      {tool.fabIcon}
+                    </IconButton>
+                  </Tooltip>
+                );
+              }
+              return null;
+            })}
         </Box>
       )}
     </Box>

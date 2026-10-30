@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -35,7 +36,6 @@ import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import MailIcon from "@mui/icons-material/Mail";
 import DownloadIcon from "@mui/icons-material/Download";
 import { downloadCsv } from "@/utils/exportCsv";
 import PauseIcon from "@mui/icons-material/Pause";
@@ -43,10 +43,12 @@ import CircularProgress from "@mui/material/CircularProgress";
 import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
-import PageHeader from "@/components/PageHeader";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import IdCell from "@/components/IdCell";
+import StatusChip from "@/components/StatusChip";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { ConfirmModal } from "@/superset-ui-mui/components";
@@ -62,22 +64,8 @@ import { usePaginatedList } from "@/hooks/usePaginatedList";
  *  仅在该页面保持可见时生效；间隔不必过密，30 秒足以保持标签新鲜。 */
 const LAST_LOGIN_REFRESH_MS = 30_000;
 
-/** 把时间格式化为"刚刚 / N 分钟前 / N 小时前 / N 天前 / 日期"。 */
-function relativeTime(value: string, now: number): string {
-  // 后端返回的 last_login 是不带时区标记的 UTC 时间，需按 UTC 解析，
-  // 否则"刚刚的登录"会被误读成 8 小时前的旧时间（详见 parseBackendDate）。
-  const d = parseBackendDate(value);
-  if (isNaN(d.getTime())) return "-";
-  const diffSec = Math.floor((now - d.getTime()) / 1000);
-  if (diffSec < 60) return "刚刚";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小时前`;
-  if (diffSec < 86400 * 30) return `${Math.floor(diffSec / 86400)} 天前`;
-  return d.toLocaleDateString();
-}
-
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
-import { parseBackendDate } from "@/utils/datetime";
+import { formatDateTime, formatRelativeTime } from "@/utils/datetime";
 import { useUserRouteOverrides } from "@/store/userRouteOverrides";
 import { useAuthStore } from "@/store/authStore";
 import { routePoints } from "@/config/menuRoutes";
@@ -173,15 +161,6 @@ export default function AdminUsers() {
     try {
       await navigator.clipboard.writeText(email);
       notify({ severity: "success", message: "已复制邮箱" });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
-  };
-  /** 复制用户 ID 到剪贴板。 */
-  const handleCopyUserId = async (id: unknown) => {
-    try {
-      await navigator.clipboard.writeText(String(id));
-      notify({ severity: "success", message: "已复制用户 ID" });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -335,58 +314,31 @@ export default function AdminUsers() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前用户列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={filteredRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_usernames",
-        priority: 1.75,
+        priority: 1.8,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的用户名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllUsernames()}
-              disabled={filteredRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制用户名
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制用户名",
+        action: () => void handleCopyAllUsernames(),
       },
       {
         id: "copy_emails",
-        priority: 1.6,
+        priority: 1.7,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的用户邮箱列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<MailIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllEmails()}
-              disabled={filteredRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制邮箱
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制邮箱",
+        action: () => void handleCopyAllEmails(),
       },
       {
         id: "search",
@@ -422,22 +374,9 @@ export default function AdminUsers() {
     {
       field: "id",
       headerName: "ID",
-      width: 66,
-      headerAlign: "center",
-      align: "center",
+      width: 84,
       renderCell: (params) => (
-        <Tooltip title="复制用户 ID">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCopyUserId(params.value);
-            }}
-            sx={{ p: 0.25 }}
-          >
-            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-          </IconButton>
-        </Tooltip>
+        <IdCell id={params.value as number} entity="用户" />
       ),
     },
     {
@@ -446,8 +385,27 @@ export default function AdminUsers() {
       flex: 1,
       minWidth: 120,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Typography noWrap variant="body2" sx={{ fontSize: "0.8125rem" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <Typography
+            noWrap
+            variant="body2"
+            title={params.value ?? ""}
+            sx={{
+              fontSize: "0.8125rem",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             {params.value}
           </Typography>
           <Tooltip title="复制用户名">
@@ -457,7 +415,7 @@ export default function AdminUsers() {
                 e.stopPropagation();
                 void handleCopyUsername(params.value);
               }}
-              sx={{ p: 0.25 }}
+              sx={{ p: 0.25, flexShrink: 0 }}
             >
               <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
             </IconButton>
@@ -469,10 +427,29 @@ export default function AdminUsers() {
       field: "email",
       headerName: "邮箱",
       flex: 1.5,
-      minWidth: 150,
+      minWidth: 160,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Typography noWrap variant="body2" sx={{ fontSize: "0.8125rem" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <Typography
+            noWrap
+            variant="body2"
+            title={params.value ?? ""}
+            sx={{
+              fontSize: "0.8125rem",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
             {params.value}
           </Typography>
           {params.value ? (
@@ -483,7 +460,7 @@ export default function AdminUsers() {
                   e.stopPropagation();
                   void handleCopyEmail(params.value);
                 }}
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
               >
                 <ContentCopyIcon
                   sx={{ fontSize: 13, color: "text.disabled" }}
@@ -503,11 +480,9 @@ export default function AdminUsers() {
       renderCell: (params) => {
         const isActive = params.value ?? params.row.is_active;
         return (
-          <Chip
-            label={isActive ? "活跃" : "禁用"}
-            color={isActive ? "success" : "default"}
-            size="small"
-            variant={isActive ? "filled" : "outlined"}
+          <StatusChip
+            tone={isActive ? "success" : "neutral"}
+            label={isActive ? "活跃" : "已停用"}
           />
         );
       },
@@ -564,15 +539,13 @@ export default function AdminUsers() {
       align: "center",
       renderCell: (params) => (
         <Tooltip
-          title={
-            params.value
-              ? parseBackendDate(params.value).toLocaleString()
-              : "从未登录"
-          }
+          title={params.value ? formatDateTime(params.value) : "从未登录"}
           disableHoverListener={!params.value}
         >
           <Typography variant="body2" color="text.secondary" noWrap>
-            {params.value ? relativeTime(params.value, nowTick) : "-"}
+            {params.value
+              ? formatRelativeTime(params.value, { now: nowTick })
+              : "—"}
           </Typography>
         </Tooltip>
       ),
@@ -597,6 +570,14 @@ export default function AdminUsers() {
                 onClick={(e) => {
                   e.stopPropagation();
                   void toggleActive(params.row);
+                }}
+                sx={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  color: "text.secondary",
                 }}
               >
                 {toggleLoadingId === params.row.id ? (
@@ -625,8 +606,7 @@ export default function AdminUsers() {
           </Button>
           <Button
             size="small"
-            variant="contained"
-            color="warning"
+            variant="outlined"
             startIcon={<SwapHorizIcon sx={{ fontSize: 14 }} />}
             sx={{ whiteSpace: "nowrap", minWidth: 0, fontSize: "0.75rem" }}
             onClick={(e) => {
@@ -667,511 +647,548 @@ export default function AdminUsers() {
   ];
 
   return (
-    <ListPageLayout
+    <PageFrame
+      page="admin_users"
       loading={loading}
-      error={error}
-      hasData={filteredRows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<PeopleIcon />}
-            title="用户管理"
-            description={searchText ? "请调整搜索条件" : "暂无用户数据"}
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  新建用户
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
+      title="用户管理"
+      subtitle={`共 ${rowCount} 项`}
     >
-      <PageHeader title="用户管理" />
-      <ResponsiveDataGrid
-        rows={filteredRows}
-        columns={columns}
-        loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="admin_users"
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除用户"
-        description={`确定要删除用户"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <Dialog
-        open={!!editTarget}
-        onClose={() => setEditTarget(null)}
-        maxWidth="sm"
-        fullWidth
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
+        }}
       >
-        <DialogTitle>编辑用户角色 — {editTarget?.username}</DialogTitle>
-        <DialogContent>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>角色</InputLabel>
-            <Select
-              multiple
-              value={editRoles}
-              onChange={(e) => setEditRoles(e.target.value as number[])}
-              input={<OutlinedInput label="角色" />}
-              renderValue={(selected) => (
-                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                  {selected.map((id) => {
+        <ListPageLayout
+          loading={loading}
+          error={error}
+          hasData={filteredRows.length > 0}
+          emptyState={
+            <>
+              <EmptyState
+                icon={<PeopleIcon />}
+                title="用户管理"
+                description={searchText ? "请调整搜索条件" : "暂无用户数据"}
+                action={
+                  !searchText ? (
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => setCreateOpen(true)}
+                    >
+                      新建用户
+                    </Button>
+                  ) : undefined
+                }
+              />
+              <EmptyStateShortcutHint />
+            </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={filteredRows}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            toolbarPageKey="admin_users"
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <ConfirmModal
+            open={!!deleteTarget}
+            title="删除用户"
+            description={`确定要删除用户"${deleteTarget?.name}"？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+            confirmLoading={deleteLoading}
+            danger
+            onConfirm={() => void handleDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+          <Dialog
+            open={!!editTarget}
+            onClose={() => setEditTarget(null)}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle>编辑用户角色 — {editTarget?.username}</DialogTitle>
+            <DialogContent>
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel>角色</InputLabel>
+                <Select
+                  multiple
+                  value={editRoles}
+                  onChange={(e) => setEditRoles(e.target.value as number[])}
+                  input={<OutlinedInput label="角色" />}
+                  renderValue={(selected) => (
+                    <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                      {selected.map((id) => {
+                        const role = roles.find((r) => r.id === id);
+                        return role ? (
+                          <Chip key={id} label={role.name} size="small" />
+                        ) : null;
+                      })}
+                    </Box>
+                  )}
+                >
+                  {roles.map((role) => (
+                    <MenuItem key={role.id} value={role.id}>
+                      <Checkbox checked={editRoles.includes(role.id)} />
+                      <ListItemText primary={role.name} />
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {editRoles.length > 0 && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1.5,
+                    maxHeight: 320,
+                    overflow: "auto",
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    pt: 1.5,
+                  }}
+                >
+                  <Typography variant="subtitle2">所选角色权限细则</Typography>
+                  {editRoles.map((id) => {
                     const role = roles.find((r) => r.id === id);
                     return role ? (
-                      <Chip key={id} label={role.name} size="small" />
+                      <RolePermissionsContent key={id} role={role} compact />
                     ) : null;
                   })}
                 </Box>
               )}
-            >
-              {roles.map((role) => (
-                <MenuItem key={role.id} value={role.id}>
-                  <Checkbox checked={editRoles.includes(role.id)} />
-                  <ListItemText primary={role.name} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          {editRoles.length > 0 && (
-            <Box
-              sx={{
-                mt: 2,
-                display: "flex",
-                flexDirection: "column",
-                gap: 1.5,
-                maxHeight: 320,
-                overflow: "auto",
-                borderTop: "1px solid",
-                borderColor: "divider",
-                pt: 1.5,
-              }}
-            >
-              <Typography variant="subtitle2">所选角色权限细则</Typography>
-              {editRoles.map((id) => {
-                const role = roles.find((r) => r.id === id);
-                return role ? (
-                  <RolePermissionsContent key={id} role={role} compact />
-                ) : null;
-              })}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditTarget(null)}>取消</Button>
-          <Button
-            variant="contained"
-            disabled={saving}
-            onClick={() => {
-              void (async () => {
-                if (!editTarget) return;
-                setSaving(true);
-                try {
-                  await api.put(`/security/users/${editTarget.id}`, {
-                    roles: editRoles.map((id) => id),
-                  });
-                  setEditTarget(null);
-                  fetchData();
-                } catch {
-                  /* ignore */
-                }
-                setSaving(false);
-              })();
-            }}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditTarget(null)}>取消</Button>
+              <Button
+                variant="contained"
+                disabled={saving}
+                onClick={() => {
+                  void (async () => {
+                    if (!editTarget) return;
+                    setSaving(true);
+                    try {
+                      await api.put(`/security/users/${editTarget.id}`, {
+                        roles: editRoles.map((id) => id),
+                      });
+                      setEditTarget(null);
+                      fetchData();
+                    } catch {
+                      /* ignore */
+                    }
+                    setSaving(false);
+                  })();
+                }}
+              >
+                {saving ? "保存中..." : "保存"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog
+            open={!!switchTarget}
+            onClose={() => setSwitchTarget(null)}
+            maxWidth="xs"
+            fullWidth
           >
-            {saving ? "保存中..." : "保存"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      <Dialog
-        open={!!switchTarget}
-        onClose={() => setSwitchTarget(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <SwapHorizIcon color="warning" />
-            切换到用户 — {switchTarget?.username}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary">
-            确定要以 <strong>{switchTarget?.username}</strong> 的身份登录？
-            当前管理员会话将被保存，可通过用户菜单"切换回管理员"恢复。
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSwitchTarget(null)}>取消</Button>
-          <Button
-            variant="contained"
-            color="warning"
-            disabled={switching}
-            onClick={() => {
-              void (async () => {
-                if (!switchTarget) return;
-                setSwitching(true);
-                try {
-                  await switchToUser(switchTarget.username);
-                  setSwitchTarget(null);
-                  navigate("/");
-                } catch {
-                  setSwitching(false);
-                }
-              })();
-            }}
+            <DialogTitle>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <SwapHorizIcon color="warning" />
+                切换到用户 — {switchTarget?.username}
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary">
+                确定要以 <strong>{switchTarget?.username}</strong> 的身份登录？
+                当前管理员会话将被保存，可通过用户菜单"切换回管理员"恢复。
+              </Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setSwitchTarget(null)}>取消</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                disabled={switching}
+                onClick={() => {
+                  void (async () => {
+                    if (!switchTarget) return;
+                    setSwitching(true);
+                    try {
+                      await switchToUser(switchTarget.username);
+                      setSwitchTarget(null);
+                      navigate("/");
+                    } catch {
+                      setSwitching(false);
+                    }
+                  })();
+                }}
+              >
+                {switching ? "切换中..." : "切换"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog
+            open={!!routeTarget}
+            onClose={() => setRouteTarget(null)}
+            maxWidth="sm"
+            fullWidth
           >
-            {switching ? "切换中..." : "切换"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+            <DialogTitle>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <LockIcon />
+                路由权限 — {routeTarget?.username}
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                「默认」跟随角色权限（无角色要求的页面默认可访问）；「允许 /
+                拒绝」为该用户
+                单独放行或拦截对应页面及其详情页。全局菜单开关关闭的路由，此处放行无效。
+              </Typography>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                {routePoints.map((point) => {
+                  const userOverrides = routeTarget
+                    ? (routeOverrides[routeTarget.username] ?? {})
+                    : {};
+                  const value = userOverrides[point.path];
+                  const state =
+                    value === true
+                      ? "allow"
+                      : value === false
+                        ? "deny"
+                        : "default";
 
-      <Dialog
-        open={!!routeTarget}
-        onClose={() => setRouteTarget(null)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <LockIcon />
-            路由权限 — {routeTarget?.username}
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            「默认」跟随角色权限（无角色要求的页面默认可访问）；「允许 /
-            拒绝」为该用户
-            单独放行或拦截对应页面及其详情页。全局菜单开关关闭的路由，此处放行无效。
-          </Typography>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {routePoints.map((point) => {
-              const userOverrides = routeTarget
-                ? (routeOverrides[routeTarget.username] ?? {})
-                : {};
-              const value = userOverrides[point.path];
-              const state =
-                value === true ? "allow" : value === false ? "deny" : "default";
-
-              return (
-                <Box
-                  key={point.path}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 1,
-                    py: 0.75,
-                    px: 1.5,
-                    borderRadius: 1,
-                    bgcolor:
-                      state === "default" ? "transparent" : "action.selected",
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {point.label}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
+                  return (
+                    <Box
+                      key={point.path}
                       sx={{
-                        display: "block",
-                        fontFamily:
-                          "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 1,
+                        py: 0.75,
+                        px: 1.5,
+                        borderRadius: 1,
+                        bgcolor:
+                          state === "default"
+                            ? "transparent"
+                            : "action.selected",
                       }}
                     >
-                      {point.path}
-                    </Typography>
-                  </Box>
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={state}
-                    onChange={(_, next) => {
-                      if (!routeTarget || !next) return;
-                      if (next === "allow") {
-                        setOverride(routeTarget.username, point.path, true);
-                      } else if (next === "deny") {
-                        setOverride(routeTarget.username, point.path, false);
-                      } else {
-                        clearOverride(routeTarget.username, point.path);
-                      }
-                    }}
-                  >
-                    <ToggleButton
-                      value="default"
-                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
-                    >
-                      默认
-                    </ToggleButton>
-                    <ToggleButton
-                      value="allow"
-                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
-                    >
-                      允许
-                    </ToggleButton>
-                    <ToggleButton
-                      value="deny"
-                      sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
-                    >
-                      拒绝
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Box>
-              );
-            })}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRouteTarget(null)}>关闭</Button>
-        </DialogActions>
-      </Dialog>
-      <RolePermissionsDialog
-        role={permRole}
-        onClose={() => setPermRole(null)}
-      />
-      <Dialog
-        open={createOpen}
-        onClose={() => {
-          if (!creating) setCreateOpen(false);
-        }}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <PersonAddIcon color="primary" />
-            新建用户
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box
-            sx={{ display: "flex", flexDirection: "column", gap: 1.5, mt: 1 }}
-          >
-            <TextField
-              autoFocus
-              fullWidth
-              required
-              label="用户名"
-              value={createForm.username}
-              onChange={(e) =>
-                setCreateForm((f) => ({ ...f, username: e.target.value }))
-              }
-              variant="outlined"
-              size="small"
-            />
-            <Box sx={{ display: "flex", gap: 1.5 }}>
-              <TextField
-                fullWidth
-                required
-                label="姓"
-                value={createForm.lastName}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, lastName: e.target.value }))
-                }
-                variant="outlined"
-                size="small"
-              />
-              <TextField
-                fullWidth
-                required
-                label="名"
-                value={createForm.firstName}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, firstName: e.target.value }))
-                }
-                variant="outlined"
-                size="small"
-              />
-            </Box>
-            <TextField
-              fullWidth
-              required
-              label="邮箱"
-              type="email"
-              value={createForm.email}
-              onChange={(e) =>
-                setCreateForm((f) => ({ ...f, email: e.target.value }))
-              }
-              variant="outlined"
-              size="small"
-            />
-            <TextField
-              fullWidth
-              required
-              label="密码"
-              type={showCreatePassword ? "text" : "password"}
-              value={createForm.password}
-              onChange={(e) =>
-                setCreateForm((f) => ({ ...f, password: e.target.value }))
-              }
-              variant="outlined"
-              size="small"
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Tooltip title="生成随机密码">
-                        <IconButton
-                          size="small"
-                          onClick={generatePassword}
-                          tabIndex={-1}
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {point.label}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "block",
+                            fontFamily:
+                              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                          }}
                         >
-                          <CasinoIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
+                          {point.path}
+                        </Typography>
+                      </Box>
+                      <ToggleButtonGroup
                         size="small"
-                        aria-label={
-                          showCreatePassword ? "隐藏密码" : "显示密码"
-                        }
-                        onClick={() => setShowCreatePassword((v) => !v)}
-                        tabIndex={-1}
+                        exclusive
+                        value={state}
+                        onChange={(_, next) => {
+                          if (!routeTarget || !next) return;
+                          if (next === "allow") {
+                            setOverride(routeTarget.username, point.path, true);
+                          } else if (next === "deny") {
+                            setOverride(
+                              routeTarget.username,
+                              point.path,
+                              false,
+                            );
+                          } else {
+                            clearOverride(routeTarget.username, point.path);
+                          }
+                        }}
                       >
-                        {showCreatePassword ? (
-                          <VisibilityOffIcon sx={{ fontSize: 18 }} />
-                        ) : (
-                          <VisibilityIcon sx={{ fontSize: 18 }} />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            <FormControl fullWidth>
-              <InputLabel>角色</InputLabel>
-              <Select
-                multiple
-                value={createForm.roleIds}
-                onChange={(e) =>
-                  setCreateForm((f) => ({
-                    ...f,
-                    roleIds: e.target.value as number[],
-                  }))
-                }
-                input={<OutlinedInput label="角色" />}
-                renderValue={(selected) => (
-                  <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                    {selected.map((id) => {
-                      const role = roles.find((r) => r.id === id);
-                      return role ? (
-                        <Chip key={id} label={role.name} size="small" />
-                      ) : null;
-                    })}
-                  </Box>
-                )}
-              >
-                {roles.map((role) => (
-                  <MenuItem key={role.id} value={role.id}>
-                    <Checkbox checked={createForm.roleIds.includes(role.id)} />
-                    <ListItemText primary={role.name} />
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Switch
-                size="small"
-                checked={createForm.active}
-                onChange={(e) =>
-                  setCreateForm((f) => ({ ...f, active: e.target.checked }))
-                }
-              />
-              <Typography variant="body2" color="text.secondary">
-                启用该用户（允许登录）
-              </Typography>
-            </Box>
-            {createError && (
-              <Alert severity="error" sx={{ borderRadius: 2 }}>
-                {createError}
-              </Alert>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button disabled={creating} onClick={() => setCreateOpen(false)}>
-            取消
-          </Button>
-          <Button
-            variant="contained"
-            disabled={
-              creating ||
-              !createForm.username.trim() ||
-              !createForm.email.trim() ||
-              !createForm.firstName.trim() ||
-              !createForm.lastName.trim() ||
-              !createForm.password ||
-              createForm.roleIds.length === 0
-            }
-            onClick={() => {
-              void (async () => {
-                setCreating(true);
-                setCreateError(null);
-                try {
-                  await api.post("/security/users/", {
-                    username: createForm.username.trim(),
-                    email: createForm.email.trim(),
-                    first_name: createForm.firstName.trim(),
-                    last_name: createForm.lastName.trim(),
-                    password: createForm.password,
-                    active: createForm.active,
-                    roles: createForm.roleIds,
-                  });
-                  setCreateOpen(false);
-                  setCreateForm({
-                    username: "",
-                    email: "",
-                    firstName: "",
-                    lastName: "",
-                    password: "",
-                    active: true,
-                    roleIds: [],
-                  });
-                  notify({
-                    severity: "success",
-                    message: `用户 ${createForm.username.trim()} 创建成功`,
-                  });
-                  fetchData();
-                } catch (err: unknown) {
-                  setCreateError(parseErrorMessage(err, "创建用户失败"));
-                }
-                setCreating(false);
-              })();
+                        <ToggleButton
+                          value="default"
+                          sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                        >
+                          默认
+                        </ToggleButton>
+                        <ToggleButton
+                          value="allow"
+                          sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                        >
+                          允许
+                        </ToggleButton>
+                        <ToggleButton
+                          value="deny"
+                          sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
+                        >
+                          拒绝
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setRouteTarget(null)}>关闭</Button>
+            </DialogActions>
+          </Dialog>
+          <RolePermissionsDialog
+            role={permRole}
+            onClose={() => setPermRole(null)}
+          />
+          <Dialog
+            open={createOpen}
+            onClose={() => {
+              if (!creating) setCreateOpen(false);
             }}
+            maxWidth="sm"
+            fullWidth
           >
-            {creating ? "创建中..." : "创建"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </ListPageLayout>
+            <DialogTitle>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <PersonAddIcon color="primary" />
+                新建用户
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1.5,
+                  mt: 1,
+                }}
+              >
+                <TextField
+                  autoFocus
+                  fullWidth
+                  required
+                  label="用户名"
+                  value={createForm.username}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, username: e.target.value }))
+                  }
+                  variant="outlined"
+                  size="small"
+                />
+                <Box sx={{ display: "flex", gap: 1.5 }}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="姓"
+                    value={createForm.lastName}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({ ...f, lastName: e.target.value }))
+                    }
+                    variant="outlined"
+                    size="small"
+                  />
+                  <TextField
+                    fullWidth
+                    required
+                    label="名"
+                    value={createForm.firstName}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({
+                        ...f,
+                        firstName: e.target.value,
+                      }))
+                    }
+                    variant="outlined"
+                    size="small"
+                  />
+                </Box>
+                <TextField
+                  fullWidth
+                  required
+                  label="邮箱"
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, email: e.target.value }))
+                  }
+                  variant="outlined"
+                  size="small"
+                />
+                <TextField
+                  fullWidth
+                  required
+                  label="密码"
+                  type={showCreatePassword ? "text" : "password"}
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({ ...f, password: e.target.value }))
+                  }
+                  variant="outlined"
+                  size="small"
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Tooltip title="生成随机密码">
+                            <IconButton
+                              size="small"
+                              onClick={generatePassword}
+                              tabIndex={-1}
+                            >
+                              <CasinoIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            size="small"
+                            aria-label={
+                              showCreatePassword ? "隐藏密码" : "显示密码"
+                            }
+                            onClick={() => setShowCreatePassword((v) => !v)}
+                            tabIndex={-1}
+                          >
+                            {showCreatePassword ? (
+                              <VisibilityOffIcon sx={{ fontSize: 18 }} />
+                            ) : (
+                              <VisibilityIcon sx={{ fontSize: 18 }} />
+                            )}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
+                <FormControl fullWidth>
+                  <InputLabel>角色</InputLabel>
+                  <Select
+                    multiple
+                    value={createForm.roleIds}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({
+                        ...f,
+                        roleIds: e.target.value as number[],
+                      }))
+                    }
+                    input={<OutlinedInput label="角色" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+                        {selected.map((id) => {
+                          const role = roles.find((r) => r.id === id);
+                          return role ? (
+                            <Chip key={id} label={role.name} size="small" />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {roles.map((role) => (
+                      <MenuItem key={role.id} value={role.id}>
+                        <Checkbox
+                          checked={createForm.roleIds.includes(role.id)}
+                        />
+                        <ListItemText primary={role.name} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Switch
+                    size="small"
+                    checked={createForm.active}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({ ...f, active: e.target.checked }))
+                    }
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    启用该用户（允许登录）
+                  </Typography>
+                </Box>
+                {createError && (
+                  <Alert severity="error" sx={{ borderRadius: 2 }}>
+                    {createError}
+                  </Alert>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={creating} onClick={() => setCreateOpen(false)}>
+                取消
+              </Button>
+              <Button
+                variant="contained"
+                disabled={
+                  creating ||
+                  !createForm.username.trim() ||
+                  !createForm.email.trim() ||
+                  !createForm.firstName.trim() ||
+                  !createForm.lastName.trim() ||
+                  !createForm.password ||
+                  createForm.roleIds.length === 0
+                }
+                onClick={() => {
+                  void (async () => {
+                    setCreating(true);
+                    setCreateError(null);
+                    try {
+                      await api.post("/security/users/", {
+                        username: createForm.username.trim(),
+                        email: createForm.email.trim(),
+                        first_name: createForm.firstName.trim(),
+                        last_name: createForm.lastName.trim(),
+                        password: createForm.password,
+                        active: createForm.active,
+                        roles: createForm.roleIds,
+                      });
+                      setCreateOpen(false);
+                      setCreateForm({
+                        username: "",
+                        email: "",
+                        firstName: "",
+                        lastName: "",
+                        password: "",
+                        active: true,
+                        roleIds: [],
+                      });
+                      notify({
+                        severity: "success",
+                        message: `用户 ${createForm.username.trim()} 创建成功`,
+                      });
+                      fetchData();
+                    } catch (err: unknown) {
+                      setCreateError(parseErrorMessage(err, "创建用户失败"));
+                    }
+                    setCreating(false);
+                  })();
+                }}
+              >
+                {creating ? "创建中..." : "创建"}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </ListPageLayout>
+      </Card>
+    </PageFrame>
   );
 }

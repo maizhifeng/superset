@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
+import Button from "@mui/material/Button";
 import InputAdornment from "@mui/material/InputAdornment";
 import SearchIcon from "@mui/icons-material/Search";
 import FormControl from "@mui/material/FormControl";
@@ -15,6 +16,7 @@ import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import StorageIcon from "@mui/icons-material/Storage";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -46,6 +48,83 @@ interface SchemaBrowserProps {
   ) => void;
   /** 手动刷新表与列元数据。 */
   onRefresh: () => void;
+}
+
+interface BrowserEmptyStateProps {
+  icon: ReactNode;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}
+
+/** 浏览器内的轻量空态：图标 + 说明 + 可选的真实操作按钮（绝不使用伪按钮）。 */
+function BrowserEmptyState({
+  icon,
+  message,
+  actionLabel,
+  onAction,
+}: BrowserEmptyStateProps) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 1,
+        px: 1.5,
+        py: 2,
+        textAlign: "center",
+        borderRadius: 1.5,
+        border: "1px dashed",
+        borderColor: "divider",
+        bgcolor: "bg.muted",
+      }}
+    >
+      <Box
+        sx={{
+          width: 34,
+          height: 34,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          bgcolor: "background.paper",
+          border: "1px solid",
+          borderColor: "divider",
+          color: "text.disabled",
+        }}
+      >
+        {icon}
+      </Box>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ lineHeight: 1.5 }}
+      >
+        {message}
+      </Typography>
+      {actionLabel && onAction && (
+        <Button
+          size="small"
+          variant="text"
+          startIcon={<RefreshIcon sx={{ fontSize: 14 }} />}
+          onClick={onAction}
+          aria-label={actionLabel}
+          sx={{
+            textTransform: "none",
+            fontSize: "0.75rem",
+            minHeight: 0,
+            py: 0.25,
+          }}
+        >
+          {actionLabel}
+        </Button>
+      )}
+    </Box>
+  );
 }
 
 export default function SchemaBrowser({
@@ -155,7 +234,11 @@ export default function SchemaBrowser({
           justifyContent: "space-between",
         }}
       >
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ fontWeight: 600 }}
+        >
           数据库
         </Typography>
         {databaseId !== "" && (
@@ -181,10 +264,25 @@ export default function SchemaBrowser({
           ))}
         </Select>
       </FormControl>
-      {databaseId !== "" && (
+      {databaseId === "" ? (
+        <BrowserEmptyState
+          icon={<StorageIcon sx={{ fontSize: 18 }} />}
+          message={
+            databases.length === 0
+              ? "暂无可用数据库，请刷新重试"
+              : "选择数据库后可浏览模式与数据表"
+          }
+          actionLabel="刷新列表"
+          onAction={onRefresh}
+        />
+      ) : (
         <>
           <Box sx={{ display: "flex", alignItems: "center" }}>
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontWeight: 600 }}
+            >
               模式
             </Typography>
             {schema && (
@@ -211,9 +309,38 @@ export default function SchemaBrowser({
               ))}
             </Select>
           </FormControl>
+          {schemasLoading && (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                px: 0.5,
+                py: 0.5,
+                color: "text.secondary",
+              }}
+            >
+              <CircularProgress size={12} />
+              <Typography variant="caption">正在加载模式…</Typography>
+            </Box>
+          )}
+          {!schemasLoading && schemas.length === 0 && (
+            <BrowserEmptyState
+              icon={<StorageIcon sx={{ fontSize: 18 }} />}
+              message="该数据库下未发现可用模式"
+              actionLabel="刷新"
+              onAction={onRefresh}
+            />
+          )}
+          {!schemasLoading && schemas.length > 0 && !schema && (
+            <BrowserEmptyState
+              icon={<TableChartIcon sx={{ fontSize: 18 }} />}
+              message="选择模式后可浏览该模式下的数据表"
+            />
+          )}
         </>
       )}
-      {schema && (
+      {databaseId !== "" && !schemasLoading && schemas.length > 0 && schema && (
         <>
           <Divider />
           <Box sx={{ display: "flex", alignItems: "center" }}>
@@ -244,7 +371,9 @@ export default function SchemaBrowser({
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 14, color: "text.secondary" }} />
+                    <SearchIcon
+                      sx={{ fontSize: 14, color: "text.secondary" }}
+                    />
                   </InputAdornment>
                 ),
               },
@@ -274,13 +403,12 @@ export default function SchemaBrowser({
             }}
           />
           {filteredTables.length === 0 ? (
-            <Typography
-              variant="caption"
-              color="text.disabled"
-              sx={{ px: 0.5 }}
-            >
-              {tableSearch ? "没有匹配的表" : "暂无表"}
-            </Typography>
+            <BrowserEmptyState
+              icon={<TableChartIcon sx={{ fontSize: 18 }} />}
+              message={tableSearch ? "没有匹配的表" : "该模式下暂无数据表"}
+              actionLabel={tableSearch ? undefined : "刷新"}
+              onAction={tableSearch ? undefined : onRefresh}
+            />
           ) : (
             <SimpleTreeView
               sx={{ flex: 1, overflow: "auto" }}
@@ -291,7 +419,9 @@ export default function SchemaBrowser({
               {filteredTables.map((t) => {
                 const rawCols = columnCache[schema]?.[t.value] ?? [];
                 const q = columnSearch.trim().toLowerCase();
-                const cols = q ? rawCols.filter((c) => c.toLowerCase().includes(q)) : rawCols;
+                const cols = q
+                  ? rawCols.filter((c) => c.toLowerCase().includes(q))
+                  : rawCols;
                 const isLoading = loadingTable === t.value;
                 return (
                   <TreeItem
@@ -316,10 +446,7 @@ export default function SchemaBrowser({
                         />
                         <Typography variant="body2">{t.value}</Typography>
                         {cols.length > 0 && (
-                          <Typography
-                            variant="caption"
-                            color="text.disabled"
-                          >
+                          <Typography variant="caption" color="text.disabled">
                             {cols.length} 列
                           </Typography>
                         )}

@@ -32,6 +32,13 @@ export const routePoints: RoutePoint[] = [
     patterns: ["/dashboard/list", "/dashboard/:id"],
   },
   {
+    id: "analysis",
+    menuId: "analysis",
+    path: "/analysis",
+    label: "专题分析",
+    patterns: ["/analysis", "/analysis/:topicId"],
+  },
+  {
     id: "charts",
     menuId: "charts",
     path: "/chart/list",

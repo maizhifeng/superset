@@ -1,10 +1,16 @@
 import type { VisualDateUnit } from "./types";
+import { normalizeBackend } from "@/utils/sqlFormat";
 
 /**
  * Per-engine SQL dialect helpers for the visual builder. Superset exposes the
  * engine name as `Database.backend`; unknown engines fall back to ANSI double
  * quotes and no date truncation.
+ *
+ * The sql-formatter dialect table itself lives in ``@/utils/sqlFormat`` so every
+ * SQL surface shares one engine mapping; it is re-exported here for the visual
+ * builder's imports.
  */
+export { formatterDialect } from "@/utils/sqlFormat";
 
 export interface QuoteStyle {
   open: string;
@@ -31,13 +37,6 @@ const BACKTICK_BACKENDS = new Set([
 ]);
 
 const BRACKET_BACKENDS = new Set(["mssql", "transactsql", "sqlserver"]);
-
-function normalizeBackend(backend: string | undefined | null): string {
-  const value = (backend ?? "").trim().toLowerCase();
-  if (!value) return "";
-  // Backends may carry version suffixes such as "postgresql+psycopg2".
-  return value.split(/[+/:_]/)[0];
-}
 
 export function quoteIdent(backend: string | undefined, id: string): string {
   const normalized = normalizeBackend(backend);
@@ -160,35 +159,6 @@ export function booleanLiteral(
   const normalized = normalizeBackend(backend);
   if (BRACKET_BACKENDS.has(normalized)) return value ? "1" : "0";
   return value ? "TRUE" : "FALSE";
-}
-
-/** sql-formatter language for the backend (falls back to generic SQL). */
-export function formatterDialect(backend: string | undefined): string {
-  const normalized = normalizeBackend(backend);
-  const map: Record<string, string> = {
-    postgresql: "postgresql",
-    postgres: "postgresql",
-    redshift: "redshift",
-    duckdb: "duckdb",
-    snowflake: "snowflake",
-    trino: "trino",
-    presto: "trino",
-    mysql: "mysql",
-    mariadb: "mariadb",
-    tidb: "tidb",
-    singlestore: "singlestoredb",
-    clickhouse: "clickhouse",
-    bigquery: "bigquery",
-    hive: "hive",
-    spark: "spark",
-    databricks: "spark",
-    mssql: "transactsql",
-    transactsql: "transactsql",
-    sqlserver: "transactsql",
-    oracle: "plsql",
-    sqlite: "sqlite",
-  };
-  return map[normalized] ?? "sql";
 }
 
 export const DATE_UNIT_LABELS: Record<VisualDateUnit, string> = {

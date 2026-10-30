@@ -37,6 +37,8 @@ const QueryHistoryList = lazy(() => import("@/pages/QueryHistoryList"));
 const SystemAdmin = lazy(() => import("@/pages/SystemAdmin"));
 const BriefingList = lazy(() => import("@/pages/Briefing"));
 const BriefingDetail = lazy(() => import("@/pages/Briefing/detail"));
+const AnalysisHome = lazy(() => import("@/pages/Analysis"));
+const AnalysisTopic = lazy(() => import("@/pages/Analysis/TopicPage"));
 
 interface RouteConfig {
   path: string;
@@ -74,6 +76,12 @@ const routes: RouteConfig[] = [
   {
     path: "/briefing/:id",
     Component: BriefingDetail,
+    layout: "default",
+  },
+  { path: "/analysis", Component: AnalysisHome, layout: "default" },
+  {
+    path: "/analysis/:topicId",
+    Component: AnalysisTopic,
     layout: "default",
   },
 ];

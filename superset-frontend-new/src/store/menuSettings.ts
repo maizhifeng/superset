@@ -18,6 +18,12 @@ const defaultItems: NavItem[] = [
     label: "仪表板",
     builtIn: true,
   },
+  {
+    id: "analysis",
+    path: "/analysis",
+    label: "专题分析",
+    builtIn: true,
+  },
   { id: "charts", path: "/chart/list", label: "图表", builtIn: true },
   { id: "sqllab", path: "/sqllab", label: "SQL 实验室", builtIn: true },
   { id: "datasets", path: "/dataset/list", label: "数据集", builtIn: true },
@@ -86,6 +92,7 @@ const FIXED_ITEM_IDS = new Set<string>(["system_admin"]);
 
 const defaultEnabled: Record<string, boolean> = {
   dashboards: true,
+  analysis: true,
   charts: true,
   sqllab: false,
   datasets: true,

@@ -17,3 +17,10 @@ test("shows a fallback for unknown actions", () => {
 test("cleans package prefixes for unknown REST actions", () => {
   expect(labelAction("FooRestApi.get_list")).toBe("Foo.get list");
 });
+
+test("localises raw internal action names", () => {
+  expect(labelAction("csrf_token")).toBe("获取安全令牌");
+  expect(labelAction("Database.schemas")).toBe("查看数据表结构");
+  expect(labelAction("execute_sql")).toBe("执行 SQL");
+  expect(labelAction("load_into_dataframe")).toBe("加载查询结果");
+});

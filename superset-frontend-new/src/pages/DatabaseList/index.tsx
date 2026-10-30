@@ -1,16 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
-import CardHeader from "@mui/material/CardHeader";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import TextField from "@mui/material/TextField";
@@ -29,6 +23,8 @@ import AddIcon from "@mui/icons-material/Add";
 import DownloadIcon from "@mui/icons-material/Download";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { downloadCsv } from "@/utils/exportCsv";
+import { formatRelativeTime } from "@/utils/datetime";
+import StatusChip from "@/components/StatusChip";
 import { useNotificationStore } from "@/store/notificationStore";
 import Typography from "@mui/material/Typography";
 import type { GridColDef, GridRowParams } from "@mui/x-data-grid";
@@ -39,6 +35,8 @@ import { useDatabaseFavorites } from "@/store/databaseFavorites";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { ConfirmModal } from "@/superset-ui-mui/components";
@@ -88,7 +86,9 @@ export default function DatabaseList() {
   /** 复制数据库详情页链接。 */
   const handleCopyLink = async (id: number) => {
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}/database/${id}`);
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/database/${id}`,
+      );
       notify({ severity: "success", message: "已复制数据库链接" });
     } catch {
       notify({ severity: "error", message: "复制失败" });
@@ -146,9 +146,8 @@ export default function DatabaseList() {
   const [backendFilter, setBackendFilter] = useState(
     () => localStorage.getItem(BACKEND_FILTER_KEY) ?? "",
   );
-  const visibleRows = (backendFilter
-    ? rows.filter((r) => r.backend === backendFilter)
-    : rows
+  const visibleRows = (
+    backendFilter ? rows.filter((r) => r.backend === backendFilter) : rows
   )
     .filter((r) => !favoritesOnly || favIds.includes(r.id))
     .filter((r) => !sqllabOnly || r.expose_in_sqllab)
@@ -166,7 +165,10 @@ export default function DatabaseList() {
     }
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      notify({ severity: "success", message: `已复制 ${names.length} 个数据库名` });
+      notify({
+        severity: "success",
+        message: `已复制 ${names.length} 个数据库名`,
+      });
     } catch {
       notify({ severity: "error", message: "复制失败" });
     }
@@ -174,7 +176,9 @@ export default function DatabaseList() {
 
   /** 复制当前筛选后的后端名（去重，逗号分隔）。 */
   const handleCopyAllBackends = useCallback(async () => {
-    const bks = Array.from(new Set(visibleRows.map((r) => r.backend).filter(Boolean)));
+    const bks = Array.from(
+      new Set(visibleRows.map((r) => r.backend).filter(Boolean)),
+    );
     if (bks.length === 0) {
       notify({ severity: "warning", message: "暂无后端数据" });
       return;
@@ -197,7 +201,7 @@ export default function DatabaseList() {
         后端: d.backend ?? "",
         "SQL 实验室": d.expose_in_sqllab ? "已启用" : "已禁用",
         DML: d.allow_dml ? "是" : "否",
-        最后修改: d.changed_on_delta_humanized ?? "",
+        最后修改: formatRelativeTime(d.changed_on_utc ?? d.changed_on),
       })),
       `databases-${ts}.csv`,
     );
@@ -230,7 +234,11 @@ export default function DatabaseList() {
         showOnMobile: false,
         render: (
           <Tooltip title="刷新列表">
-            <IconButton size="small" onClick={() => fetchData()} disabled={loading}>
+            <IconButton
+              size="small"
+              onClick={() => fetchData()}
+              disabled={loading}
+            >
               <RefreshIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
@@ -242,24 +250,19 @@ export default function DatabaseList() {
         showOnMobile: false,
         render:
           backendOptions.length > 0 ? (
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel id="db-backend-label">后端</InputLabel>
-              <Select
-                labelId="db-backend-label"
-                label="后端"
-                value={backendFilter}
-                onChange={(e) => setBackendFilter(e.target.value)}
-              >
-                <MenuItem value="">
-                  <em>全部</em>
-                </MenuItem>
-                {backendOptions.map((b) => (
-                  <MenuItem key={b as string} value={b as string}>
-                    {b as string}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <ToolbarSelect
+              label="后端"
+              value={backendFilter}
+              onChange={setBackendFilter}
+              minWidth={130}
+              options={[
+                { value: "", label: "全部" },
+                ...backendOptions.map((backend) => ({
+                  value: backend as string,
+                  label: backend as string,
+                })),
+              ]}
+            />
           ) : null,
       },
       {
@@ -267,7 +270,9 @@ export default function DatabaseList() {
         priority: 3,
         showOnMobile: false,
         render: (
-          <Tooltip title={favoritesOnly ? "显示全部数据库" : "仅显示收藏的数据库"}>
+          <Tooltip
+            title={favoritesOnly ? "显示全部数据库" : "仅显示收藏的数据库"}
+          >
             <Button
               size="small"
               variant={favoritesOnly ? "contained" : "text"}
@@ -292,7 +297,11 @@ export default function DatabaseList() {
         priority: 2.75,
         showOnMobile: false,
         render: (
-          <Tooltip title={sqllabOnly ? "显示全部数据库" : "仅显示 SQL 实验室可用的数据库"}>
+          <Tooltip
+            title={
+              sqllabOnly ? "显示全部数据库" : "仅显示 SQL 实验室可用的数据库"
+            }
+          >
             <Button
               size="small"
               variant={sqllabOnly ? "contained" : "text"}
@@ -311,7 +320,9 @@ export default function DatabaseList() {
         priority: 2.65,
         showOnMobile: false,
         render: (
-          <Tooltip title={dmlOnly ? "显示全部数据库" : "仅显示允许 DML 的数据库"}>
+          <Tooltip
+            title={dmlOnly ? "显示全部数据库" : "仅显示允许 DML 的数据库"}
+          >
             <Button
               size="small"
               variant={dmlOnly ? "contained" : "text"}
@@ -329,58 +340,31 @@ export default function DatabaseList() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前数据库列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_names",
-        priority: 1.75,
+        priority: 1.8,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前筛选后的数据库名列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllNames()}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制名称
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制数据库名",
+        action: () => void handleCopyAllNames(),
       },
       {
         id: "copy_backends",
         priority: 1.7,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制所有后端引擎名（去重）">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllBackends()}
-              disabled={visibleRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制后端
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制后端",
+        action: () => void handleCopyAllBackends(),
       },
       {
         id: "search",
@@ -398,7 +382,25 @@ export default function DatabaseList() {
       },
     ]);
     return () => unregisterTools("database_list");
-  }, [registerTools, unregisterTools, handleSearchChange, backendOptions, backendFilter, favoritesOnly, setFavoritesOnly, sqllabOnly, setSqllabOnly, dmlOnly, setDmlOnly, handleExportCsv, handleCopyAllNames, handleCopyAllBackends, visibleRows.length, fetchData, loading]);
+  }, [
+    registerTools,
+    unregisterTools,
+    handleSearchChange,
+    backendOptions,
+    backendFilter,
+    favoritesOnly,
+    setFavoritesOnly,
+    sqllabOnly,
+    setSqllabOnly,
+    dmlOnly,
+    setDmlOnly,
+    handleExportCsv,
+    handleCopyAllNames,
+    handleCopyAllBackends,
+    visibleRows.length,
+    fetchData,
+    loading,
+  ]);
 
   const columns: GridColDef[] = [
     { field: "id", headerName: "ID", width: 70 },
@@ -406,12 +408,24 @@ export default function DatabaseList() {
       field: "database_name",
       headerName: "数据库",
       flex: 1,
+      minWidth: 200,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
           <Typography
             variant="body2"
+            title={params.value ?? ""}
             sx={{
               fontSize: "0.8125rem",
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -422,7 +436,7 @@ export default function DatabaseList() {
           <Tooltip title="复制数据库名">
             <IconButton
               size="small"
-              sx={{ p: 0.25 }}
+              sx={{ p: 0.25, flexShrink: 0 }}
               onClick={(e) => {
                 e.stopPropagation();
                 void handleCopyName(params.value);
@@ -438,14 +452,43 @@ export default function DatabaseList() {
       field: "backend",
       headerName: "后端",
       flex: 0.4,
+      minWidth: 100,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-          <Chip label={params.value} size="small" variant="outlined" />
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.25,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            title={params.value ?? ""}
+            sx={{
+              fontFamily: "monospace",
+              fontSize: "0.75rem",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {params.value}
+          </Typography>
           {params.value ? (
             <Tooltip title="复制引擎">
               <IconButton
                 size="small"
-                sx={{ p: 0.25 }}
+                sx={{
+                  p: 0.25,
+                  opacity: 0.6,
+                  flexShrink: 0,
+                  "&:hover": { opacity: 1 },
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   void handleCopyBackend(params.value);
@@ -465,11 +508,9 @@ export default function DatabaseList() {
       headerName: "SQL 实验室",
       width: 100,
       renderCell: (params) => (
-        <Chip
+        <StatusChip
+          tone={params.value ? "success" : "neutral"}
           label={params.value ? "已启用" : "已禁用"}
-          color={params.value ? "success" : "default"}
-          size="small"
-          variant={params.value ? "filled" : "outlined"}
         />
       ),
     },
@@ -478,11 +519,9 @@ export default function DatabaseList() {
       headerName: "DML",
       width: 100,
       renderCell: (params) => (
-        <Chip
-          label={params.value ? "是" : "否"}
-          color={params.value ? "success" : "default"}
-          size="small"
-          variant={params.value ? "filled" : "outlined"}
+        <StatusChip
+          tone={params.value ? "success" : "neutral"}
+          label={params.value ? "允许" : "禁用"}
         />
       ),
     },
@@ -490,6 +529,9 @@ export default function DatabaseList() {
       field: "changed_on_delta_humanized",
       headerName: "最后修改",
       flex: 0.4,
+      minWidth: 110,
+      valueGetter: (_value, row) =>
+        formatRelativeTime(row.changed_on_utc ?? row.changed_on),
     },
     {
       field: "actions",
@@ -498,7 +540,9 @@ export default function DatabaseList() {
       sortable: false,
       renderCell: (params) => (
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
-          <Tooltip title={favIds.includes(params.id as number) ? "取消收藏" : "收藏"}>
+          <Tooltip
+            title={favIds.includes(params.id as number) ? "取消收藏" : "收藏"}
+          >
             <IconButton
               size="small"
               onClick={() => toggleFavorite(params.id as number)}
@@ -564,15 +608,11 @@ export default function DatabaseList() {
   ];
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        flex: 1,
-        minHeight: 0,
-        p: { xs: 1.5, md: 3 },
-        pt: { xs: 1.5, md: 2 },
-      }}
+    <PageFrame
+      page="database_list"
+      loading={loading}
+      title="数据库"
+      subtitle={`共 ${rowCount} 项`}
     >
       <Card
         variant="outlined"
@@ -584,20 +624,6 @@ export default function DatabaseList() {
           minHeight: 0,
         }}
       >
-        <CardHeader
-          title={
-            <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75 }}>
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 700 }}>
-                数据库
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                共 {rowCount} 项
-              </Typography>
-            </Box>
-          }
-          sx={{ "& .MuiCardHeader-content": { overflow: "hidden" } }}
-        />
-        <Divider />
         <ListPageLayout
           loading={loading}
           error={error}
@@ -706,7 +732,7 @@ export default function DatabaseList() {
                     color="text.disabled"
                     sx={{ fontSize: "0.75rem" }}
                   >
-                    {row.changed_on_delta_humanized ?? ""}
+                    {formatRelativeTime(row.changed_on_utc ?? row.changed_on)}
                   </Typography>
                 </Box>
               </>
@@ -758,11 +784,19 @@ export default function DatabaseList() {
                 size="small"
                 placeholder="postgresql://user:pass@host:port/dbname"
               />
-              <Box sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 1 }}>
+              <Box
+                sx={{ mt: 1.5, display: "flex", alignItems: "center", gap: 1 }}
+              >
                 <Button
                   size="small"
                   variant="outlined"
-                  startIcon={testing ? <CircularProgress size={14} /> : <CheckCircleIcon />}
+                  startIcon={
+                    testing ? (
+                      <CircularProgress size={14} />
+                    ) : (
+                      <CheckCircleIcon />
+                    )
+                  }
                   disabled={!createUri.trim() || testing}
                   onClick={() => void runTestConnection()}
                   sx={{ textTransform: "none" }}
@@ -809,6 +843,6 @@ export default function DatabaseList() {
           </Dialog>
         </ListPageLayout>
       </Card>
-    </Box>
+    </PageFrame>
   );
 }

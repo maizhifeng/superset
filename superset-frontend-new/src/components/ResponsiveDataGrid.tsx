@@ -305,7 +305,7 @@ export default function ResponsiveDataGrid<R = any>({
           showOnMobile: true,
           primary: true,
           fabIcon: <DeleteIcon />,
-          fabLabel: `Delete ${selectedCount}`,
+          fabLabel: `删除 ${selectedCount} 项`,
           fabColor: "error",
           action: () => {
             onBatchDelete(Array.from(selectedIdsRef.current));
@@ -416,7 +416,10 @@ export default function ResponsiveDataGrid<R = any>({
                 if (e.key === "Enter") {
                   const n = Number(jumpPage);
                   if (n >= 1 && n <= totalPages) {
-                    gridProps.onPaginationModelChange?.({ page: n - 1, pageSize }, {} as never);
+                    gridProps.onPaginationModelChange?.(
+                      { page: n - 1, pageSize },
+                      {} as never,
+                    );
                     setJumpPage("");
                   }
                 }

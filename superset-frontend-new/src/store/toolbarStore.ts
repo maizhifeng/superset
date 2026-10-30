@@ -20,16 +20,26 @@ export interface ToolEntry {
     | "info"
     | "success"
     | "warning";
+  /**
+   * ``inline`` (default) renders in the toolbar row; ``menu`` collects the
+   * entry into the page's "更多" overflow menu. Utilities such as copy-all and
+   * export live in the menu so they do not crowd the primary filters.
+   */
+  variant?: "inline" | "menu";
 }
 
 interface ToolbarState {
   registry: Record<string, ToolEntry[]>;
+  /** Page currently rendering its tools inline (inside the content area). */
+  inlinePage: string | null;
   registerTools: (page: string, entries: Omit<ToolEntry, "page">[]) => void;
   unregisterTools: (page: string) => void;
+  setInlinePage: (page: string | null) => void;
 }
 
 export const useToolbarStore = create<ToolbarState>()((set) => ({
   registry: {},
+  inlinePage: null,
   registerTools: (page, entries) =>
     set((state) => {
       const existing = state.registry[page] || [];
@@ -45,6 +55,7 @@ export const useToolbarStore = create<ToolbarState>()((set) => ({
       delete next[page];
       return { registry: next };
     }),
+  setInlinePage: (page) => set({ inlinePage: page }),
 }));
 
 export function useToolbar() {

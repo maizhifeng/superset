@@ -44,6 +44,21 @@ export const supersetPalette = {
     main: "#7a9eb3",
     contrastText: "#ffffff",
   },
+  // MUI's default grey ramp is cool (#fafafa…). The paper theme needs warm
+  // neutrals so ``grey.50`` table headers and ``grey.200`` backdrops do not read
+  // as blue-grey patches next to the cream surfaces.
+  grey: {
+    50: "#f8f4ed",
+    100: "#f2ece2",
+    200: "#e8dfd2",
+    300: "#d8ccba",
+    400: "#b7ab99",
+    500: "#968a7a",
+    600: "#766c5e",
+    700: "#575045",
+    800: "#3b352d",
+    900: "#241f1a",
+  },
   background: {
     default: "#faf7f2",
     paper: "#ffffff",

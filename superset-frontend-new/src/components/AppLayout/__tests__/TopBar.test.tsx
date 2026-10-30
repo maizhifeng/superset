@@ -1,5 +1,5 @@
 import { test, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { fireEvent, render, screen, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import TopBar from "@/components/AppLayout/TopBar";
 import FabStack from "@/components/AppLayout/FabStack";
@@ -20,13 +20,14 @@ function setupMatchMedia() {
       addListener: (fn: () => void) => listeners.add(fn),
       removeListener: (fn: () => void) => listeners.delete(fn),
       addEventListener: (_: string, fn: () => void) => listeners.add(fn),
-      removeEventListener: (_: string, fn: () => void) =>
-        listeners.delete(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
       dispatchEvent: () => true,
     };
     return mql;
   };
-  window.matchMedia = vi.fn(makeMediaQueryList) as unknown as typeof window.matchMedia;
+  window.matchMedia = vi.fn(
+    makeMediaQueryList,
+  ) as unknown as typeof window.matchMedia;
   return {
     setMobile: (value: boolean) => {
       mobile = value;
@@ -36,7 +37,7 @@ function setupMatchMedia() {
 }
 
 beforeEach(() => {
-  useToolbarStore.setState({ registry: {} });
+  useToolbarStore.setState({ registry: {}, inlinePage: null });
   useBreadcrumbStore.setState({ custom: null });
 });
 
@@ -73,9 +74,7 @@ test("renders breadcrumbs, tip marquee and tools from registry", () => {
 
   render(
     <MemoryRouter initialEntries={["/dashboard/1"]}>
-      <TopBar
-        tip={{ id: "dashboard", title: "仪表板", message: "测试提示" }}
-      />
+      <TopBar tip={{ id: "dashboard", title: "仪表板", message: "测试提示" }} />
     </MemoryRouter>,
   );
 
@@ -113,18 +112,14 @@ test("hides tools and tip on mobile", () => {
 
   render(
     <MemoryRouter initialEntries={["/chart/list"]}>
-      <TopBar
-        tip={{ id: "chart_list", title: "图表", message: "测试提示" }}
-      />
+      <TopBar tip={{ id: "chart_list", title: "图表", message: "测试提示" }} />
     </MemoryRouter>,
   );
 
   act(() => {
     mm.setMobile(true);
   });
-  expect(
-    screen.queryByPlaceholderText("搜索图表..."),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByPlaceholderText("搜索图表...")).not.toBeInTheDocument();
   expect(screen.queryByText(/测试提示/)).not.toBeInTheDocument();
   expect(screen.getByText("图表")).toBeInTheDocument();
 });
@@ -178,4 +173,62 @@ test("FabStack renders fabRender content on mobile", () => {
   });
   render(<FabStack />);
   expect(screen.getByText("筛选面板")).toBeInTheDocument();
+});
+
+test("hides page tools while a PageFrame renders them inline", () => {
+  setupMatchMedia();
+  useToolbarStore.setState({
+    registry: {
+      page: [
+        {
+          id: "search",
+          priority: 0,
+          showOnMobile: false,
+          render: <input placeholder="搜索图表..." />,
+        },
+      ],
+    },
+    inlinePage: "chart_list",
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/chart/list"]}>
+      <TopBar tip={null} />
+    </MemoryRouter>,
+  );
+
+  expect(screen.queryByPlaceholderText("搜索图表...")).not.toBeInTheDocument();
+  // Global actions stay available while page tools render inline.
+  expect(screen.getByLabelText("复制当前链接")).toBeInTheDocument();
+  expect(screen.getByLabelText("全屏")).toBeInTheDocument();
+});
+
+test("opens the breadcrumb topic dropdown on hover", async () => {
+  setupMatchMedia();
+  useBreadcrumbStore.setState({
+    custom: {
+      label: "成本分析",
+      options: [
+        { label: "成本分析", path: "/analysis/cost", selected: true },
+        { label: "留存分析", path: "/analysis/retention" },
+      ],
+    },
+  });
+
+  render(
+    <MemoryRouter initialEntries={["/analysis/cost"]}>
+      <TopBar tip={null} />
+    </MemoryRouter>,
+  );
+
+  const crumb = screen.getByRole("button", { name: /成本分析/ });
+  fireEvent.mouseEnter(crumb);
+  expect(
+    await screen.findByRole("menuitem", { name: "留存分析" }),
+  ).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("menuitem", { name: "留存分析" }));
+  expect(
+    screen.queryByRole("menuitem", { name: "留存分析" }),
+  ).not.toBeInTheDocument();
 });

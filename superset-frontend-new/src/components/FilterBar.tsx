@@ -62,8 +62,7 @@ export default function FilterBar({
         minWidth: 300,
         ...sx,
         ...(compact && {
-          "& .MuiInputBase-root": { height: 32, fontSize: "0.8125rem" },
-          "& .MuiOutlinedInput-input": { py: 0.25 },
+          fontSize: "0.8125rem",
         }),
       }}
       slotProps={{

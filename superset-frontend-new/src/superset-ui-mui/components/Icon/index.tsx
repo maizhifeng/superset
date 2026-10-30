@@ -30,6 +30,7 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import MenuIcon from "@mui/icons-material/Menu";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
+import QueryStatsIcon from "@mui/icons-material/QueryStats";
 
 const iconMap: Record<string, React.ComponentType<{ sx?: SxProps<Theme> }>> = {
   plus: AddIcon,
@@ -63,6 +64,7 @@ const iconMap: Record<string, React.ComponentType<{ sx?: SxProps<Theme> }>> = {
   menu: MenuIcon,
   notifications: NotificationsIcon,
   fullscreen: FullscreenIcon,
+  insights: QueryStatsIcon,
 };
 
 interface IconProps {

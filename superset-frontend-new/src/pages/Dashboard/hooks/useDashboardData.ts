@@ -137,7 +137,12 @@ export function useDashboardData() {
       const pivotTotalRowsMap: Record<number, ChartDataRow[]> = {};
       const pivotSubtotalRowsMap: Record<number, ChartDataRow[][]> = {};
       const hasMoreMap: Record<number, boolean> = {};
-      const CONCURRENCY = 3;
+      // Charts used to be fetched three at a time.  On a dashboard where one
+      // card is a pivot table the pivot request dominates its batch, so the
+      // remaining cards only started after it finished, roughly doubling the
+      // first paint.  Six keeps a normal dashboard's cards in one wave while
+      // still bounding load on dashboards with many charts.
+      const CONCURRENCY = 6;
       for (let i = 0; i < chartIds.length; i += CONCURRENCY) {
         const batch = chartIds.slice(i, i + CONCURRENCY);
 

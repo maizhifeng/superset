@@ -4,12 +4,9 @@ import { format as formatSql } from "sql-formatter";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Card from "@mui/material/Card";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -30,6 +27,8 @@ import type { GridColDef } from "@mui/x-data-grid";
 import ResponsiveDataGrid from "@/components/ResponsiveDataGrid";
 import FilterBar from "@/components/FilterBar";
 import ListPageLayout from "@/components/ListPageLayout";
+import PageFrame from "@/components/PageFrame";
+import ToolbarSelect from "@/components/ToolbarSelect";
 import { ConfirmModal } from "@/superset-ui-mui/components";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useSavedQueryFavorites } from "@/store/savedQueryFavorites";
@@ -39,6 +38,8 @@ import { useNotificationStore } from "@/store/notificationStore";
 import EmptyState from "@/superset-ui-mui/components/EmptyState";
 import EmptyStateShortcutHint from "@/components/EmptyStateShortcutHint";
 import { downloadCsv } from "@/utils/exportCsv";
+import IdCell from "@/components/IdCell";
+import { formatRelativeTime } from "@/utils/datetime";
 import api from "@/api";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 import type { SavedQuery } from "@/types/api";
@@ -86,19 +87,6 @@ export default function SavedQueryList() {
           severity: "error",
           message: "复制失败，请手动选择复制",
         });
-      }
-    },
-    [notify],
-  );
-
-  /** 复制查询 ID 到剪贴板。 */
-  const handleCopyId = useCallback(
-    async (id: unknown) => {
-      try {
-        await navigator.clipboard.writeText(String(id));
-        notify({ severity: "success", message: "已复制查询 ID" });
-      } catch {
-        notify({ severity: "error", message: "复制失败" });
       }
     },
     [notify],
@@ -180,7 +168,11 @@ export default function SavedQueryList() {
     .filter((r) => !favoritesOnly || favIds.includes(r.id))
     .filter((r) => !dbFilter || r.database?.database_name === dbFilter);
   const databaseOptions = Array.from(
-    new Set(rows.map((r) => r.database?.database_name).filter(Boolean)),
+    new Set(
+      rows
+        .map((r) => r.database?.database_name)
+        .filter((name): name is string => Boolean(name)),
+    ),
   );
 
   /** 复制当前加载的查询标签（每行一个）。 */
@@ -211,7 +203,7 @@ export default function SavedQueryList() {
         ID: r.id,
         标签: r.label ?? "",
         数据库: r.database?.database_name ?? "",
-        最后修改: r.changed_on_delta_humanized ?? "",
+        最后修改: formatRelativeTime(r.changed_on_utc ?? r.changed_on),
       })),
       `saved-queries-${ts}.csv`,
     );
@@ -292,39 +284,21 @@ export default function SavedQueryList() {
         id: "export",
         priority: 2,
         showOnMobile: false,
-        render: (
-          <Tooltip title="导出当前查询列表为 CSV">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={handleExportCsv}
-              disabled={displayRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              导出 CSV
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <DownloadIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "导出 CSV",
+        action: handleExportCsv,
       },
       {
         id: "copy_labels",
         priority: 1.6,
         showOnMobile: false,
-        render: (
-          <Tooltip title="复制当前加载的查询标签列表">
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyAllLabels()}
-              disabled={displayRows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              复制标签
-            </Button>
-          </Tooltip>
-        ),
+        render: null,
+        variant: "menu",
+        fabIcon: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+        fabLabel: "复制标签",
+        action: () => void handleCopyAllLabels(),
       },
       {
         id: "fav_filter",
@@ -357,24 +331,19 @@ export default function SavedQueryList() {
         showOnMobile: false,
         render:
           databaseOptions.length > 0 ? (
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel id="sq-db-label">数据库</InputLabel>
-              <Select
-                labelId="sq-db-label"
-                label="数据库"
-                value={dbFilter}
-                onChange={(e) => setDbFilter(e.target.value)}
-              >
-                <MenuItem value="">
-                  <em>全部</em>
-                </MenuItem>
-                {databaseOptions.map((d) => (
-                  <MenuItem key={d} value={d}>
-                    {d}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <ToolbarSelect
+              label="数据库"
+              value={dbFilter}
+              onChange={setDbFilter}
+              minWidth={130}
+              options={[
+                { value: "", label: "全部" },
+                ...databaseOptions.map((database) => ({
+                  value: database,
+                  label: database,
+                })),
+              ]}
+            />
           ) : null,
       },
       {
@@ -416,32 +385,33 @@ export default function SavedQueryList() {
     {
       field: "id",
       headerName: "ID",
-      width: 70,
+      width: 84,
       renderCell: (params) => (
-        <Tooltip title="复制查询 ID">
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              void handleCopyId(params.value);
-            }}
-            sx={{ p: 0.25 }}
-          >
-            <ContentCopyIcon sx={{ fontSize: 13, color: "text.disabled" }} />
-          </IconButton>
-        </Tooltip>
+        <IdCell id={params.value as number} entity="查询" />
       ),
     },
     {
       field: "label",
       headerName: "标签",
       flex: 1,
+      minWidth: 200,
       renderCell: (params) => (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
           <Typography
             variant="body2"
+            title={params.value ?? ""}
             sx={{
               fontWeight: 500,
+              minWidth: 0,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
@@ -453,7 +423,7 @@ export default function SavedQueryList() {
             <Tooltip title="复制标签">
               <IconButton
                 size="small"
-                sx={{ p: 0.25 }}
+                sx={{ p: 0.25, flexShrink: 0 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   void (async () => {
@@ -482,54 +452,62 @@ export default function SavedQueryList() {
       field: "sql",
       headerName: "SQL 预览",
       flex: 2,
+      minWidth: 220,
       renderCell: (params) => {
         const sql = params.value ?? "";
         const truncated = sql.length > 100 ? `${sql.slice(0, 100)}...` : sql;
         return (
-          <Tooltip
-            title={
-              <Box
-                component="pre"
-                sx={{
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  maxWidth: 500,
-                  whiteSpace: "pre-wrap",
-                  m: 0,
-                }}
-              >
-                {sql}
-              </Box>
-            }
-            placement="left"
-            arrow
+          <Box
+            title={sql}
+            sx={{ minWidth: 0, width: "100%", overflow: "hidden" }}
           >
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0.5,
-                overflow: "hidden",
-              }}
+            <Tooltip
+              title={
+                <Box
+                  component="pre"
+                  sx={{
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                    maxWidth: 500,
+                    whiteSpace: "pre-wrap",
+                    m: 0,
+                  }}
+                >
+                  {sql}
+                </Box>
+              }
+              placement="left"
+              arrow
             >
-              <CodeIcon
-                sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }}
-              />
-              <Typography
-                variant="body2"
+              <Box
                 sx={{
-                  fontFamily: "monospace",
-                  fontSize: "0.75rem",
-                  color: "text.secondary",
-                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  minWidth: 0,
                   overflow: "hidden",
-                  textOverflow: "ellipsis",
                 }}
               >
-                {truncated}
-              </Typography>
-            </Box>
-          </Tooltip>
+                <CodeIcon
+                  sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: "monospace",
+                    fontSize: "0.75rem",
+                    color: "text.secondary",
+                    minWidth: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {truncated}
+                </Typography>
+              </Box>
+            </Tooltip>
+          </Box>
         );
       },
     },
@@ -537,16 +515,29 @@ export default function SavedQueryList() {
       field: "database",
       headerName: "数据库",
       flex: 0.4,
+      minWidth: 140,
       renderCell: (params) => {
         const dbName = params.row.database?.database_name ?? "";
         return (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.25 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.25,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+            }}
+          >
             <Typography
               variant="body2"
+              title={dbName}
               sx={{
                 fontSize: "0.8125rem",
+                minWidth: 0,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
               }}
             >
               {dbName}
@@ -555,7 +546,7 @@ export default function SavedQueryList() {
               <Tooltip title="复制数据库名">
                 <IconButton
                   size="small"
-                  sx={{ p: 0.25 }}
+                  sx={{ p: 0.25, flexShrink: 0 }}
                   onClick={(e) => {
                     e.stopPropagation();
                     void handleCopyDbName(dbName);
@@ -575,10 +566,13 @@ export default function SavedQueryList() {
       field: "changed_on_delta_humanized",
       headerName: "最后修改",
       flex: 0.4,
+      minWidth: 110,
+      valueGetter: (_value, row) =>
+        formatRelativeTime(row.changed_on_utc ?? row.changed_on),
     },
     {
       field: "actions",
-      headerName: "",
+      headerName: "操作",
       width: 210,
       sortable: false,
       renderCell: (params) => {
@@ -681,223 +675,230 @@ export default function SavedQueryList() {
   ];
 
   return (
-    <ListPageLayout
+    <PageFrame
+      page="saved_query_list"
       loading={loading}
-      error={error}
-      hasData={rows.length > 0}
-      emptyState={
-        <>
-          <EmptyState
-            icon={<SaveIcon />}
-            title="未找到保存的查询"
-            description={
-              searchText
-                ? "请调整搜索条件"
-                : "在SQL实验室中保存查询以在此处查看"
-            }
-            action={
-              !searchText ? (
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => navigate("/sqllab")}
-                >
-                  打开 SQL 实验室
-                </Button>
-              ) : undefined
-            }
-          />
-          <EmptyStateShortcutHint />
-        </>
-      }
+      title="已保存查询"
+      subtitle={`共 ${rowCount} 项`}
     >
-      <ResponsiveDataGrid
-        rows={displayRows}
-        columns={columns}
-        loading={loading}
-        autoHeight
-        paginationModel={paginationModel}
-        rowCount={rowCount}
-        paginationMode="server"
-        onPaginationModelChange={setPaginationModel}
-        pageSizeOptions={[25, 50, 100]}
-        toolbarPageKey="saved_query_list"
-        onDelete={(row) => setDeleteTarget({ id: row.id, name: row.label })}
-        onBatchDelete={(ids) => {
-          void (async () => {
-            await Promise.all(
-              ids.map((id) => api.delete(`/saved_query/${id}`)),
-            );
-            fetchData();
-          })();
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0,
         }}
-        renderCard={(row) => (
-          <>
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 600, lineHeight: 1.3 }}
-            >
-              {row.label}
-            </Typography>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                columnGap: 0.25,
-                mt: 0.25,
-                overflow: "hidden",
-              }}
-            >
-              <CodeIcon
-                sx={{ fontSize: 10, color: "text.disabled", flexShrink: 0 }}
-              />
-              <Typography
-                variant="caption"
-                sx={{
-                  fontFamily: "monospace",
-                  color: "text.secondary",
-                  fontSize: "0.75rem",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {(row.sql?.length ?? 0) > 60
-                  ? `${row.sql.slice(0, 60)}...`
-                  : row.sql}
-              </Typography>
-              <Typography
-                variant="caption"
-                color="text.disabled"
-                sx={{ fontSize: "0.75rem", flexShrink: 0 }}
-              >
-                {row.database?.database_name ?? ""}
-                {row.changed_on_delta_humanized
-                  ? ` · ${row.changed_on_delta_humanized}`
-                  : ""}
-              </Typography>
-            </Box>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 0.25,
-                mt: 0.5,
-              }}
-            >
-              <IconButton
-                size="small"
-                onClick={() => openInSqlLab(row.sql ?? "")}
-                disabled={!row.sql}
-                aria-label="在 SQL 实验室中打开"
-              >
-                <OpenInNewIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => void handleCopySql(row.sql ?? "", row.label)}
-                disabled={!row.sql}
-                aria-label="复制 SQL"
-              >
-                <ContentCopyIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-              <IconButton
-                size="small"
-                onClick={() => openEdit(row)}
-                aria-label="编辑"
-              >
-                <EditIcon sx={{ fontSize: 14 }} />
-              </IconButton>
-            </Box>
-          </>
-        )}
-      />
-      {deleteError && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-          {deleteError}
-        </Alert>
-      )}
-      <ConfirmModal
-        open={!!deleteTarget}
-        title="删除保存的查询"
-        description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        confirmLoading={deleteLoading}
-        danger
-        onConfirm={() => void handleDelete()}
-        onCancel={() => setDeleteTarget(null)}
-      />
-      <Dialog
-        open={!!editTarget}
-        onClose={() => !savingEdit && setEditTarget(null)}
-        maxWidth="sm"
-        fullWidth
       >
-        <DialogTitle>编辑保存的查询</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
-            <TextField
-              label="标签"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              variant="outlined"
-              size="small"
-              fullWidth
-              autoFocus
-            />
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                SQL
-              </Typography>
-              <Box sx={{ flex: 1 }} />
-              <Tooltip title="格式化 SQL">
-                <Button
-                  size="small"
-                  variant="text"
-                  startIcon={<CodeIcon sx={{ fontSize: 15 }} />}
-                  onClick={formatEditSql}
-                  sx={{ textTransform: "none", minHeight: 0 }}
+        <ListPageLayout
+          loading={loading}
+          error={error}
+          hasData={rows.length > 0}
+          emptyState={
+            <>
+              <EmptyState
+                icon={<SaveIcon />}
+                title="未找到保存的查询"
+                description={
+                  searchText
+                    ? "请调整搜索条件"
+                    : "在SQL实验室中保存查询以在此处查看"
+                }
+              />
+              <EmptyStateShortcutHint />
+            </>
+          }
+        >
+          <ResponsiveDataGrid
+            rows={displayRows}
+            columns={columns}
+            loading={loading}
+            autoHeight
+            paginationModel={paginationModel}
+            rowCount={rowCount}
+            paginationMode="server"
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[25, 50, 100]}
+            toolbarPageKey="saved_query_list"
+            onDelete={(row) => setDeleteTarget({ id: row.id, name: row.label })}
+            onBatchDelete={(ids) => {
+              void (async () => {
+                await Promise.all(
+                  ids.map((id) => api.delete(`/saved_query/${id}`)),
+                );
+                fetchData();
+              })();
+            }}
+            renderCard={(row) => (
+              <>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600, lineHeight: 1.3 }}
                 >
-                  格式化
-                </Button>
-              </Tooltip>
-            </Box>
-            <TextField
-              label="SQL 内容"
-              value={editSql}
-              onChange={(e) => setEditSql(e.target.value)}
-              variant="outlined"
-              multiline
-              minRows={6}
-              size="small"
-              fullWidth
-              sx={{ fontFamily: "monospace" }}
-            />
-            {editError && (
-              <Alert
-                severity="error"
-                onClose={() => setEditError(null)}
-                sx={{ borderRadius: 1.5 }}
-              >
-                {editError}
-              </Alert>
+                  {row.label}
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    columnGap: 0.25,
+                    mt: 0.25,
+                    overflow: "hidden",
+                  }}
+                >
+                  <CodeIcon
+                    sx={{ fontSize: 10, color: "text.disabled", flexShrink: 0 }}
+                  />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontFamily: "monospace",
+                      color: "text.secondary",
+                      fontSize: "0.75rem",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {(row.sql?.length ?? 0) > 60
+                      ? `${row.sql.slice(0, 60)}...`
+                      : row.sql}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{ fontSize: "0.75rem", flexShrink: 0 }}
+                  >
+                    {row.database?.database_name ?? ""}
+                    {` · ${formatRelativeTime(row.changed_on_utc ?? row.changed_on)}`}
+                  </Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.25,
+                    mt: 0.5,
+                  }}
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() => openInSqlLab(row.sql ?? "")}
+                    disabled={!row.sql}
+                    aria-label="在 SQL 实验室中打开"
+                  >
+                    <OpenInNewIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => void handleCopySql(row.sql ?? "", row.label)}
+                    disabled={!row.sql}
+                    aria-label="复制 SQL"
+                  >
+                    <ContentCopyIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    onClick={() => openEdit(row)}
+                    aria-label="编辑"
+                  >
+                    <EditIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Box>
+              </>
             )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditTarget(null)} disabled={savingEdit}>
-            取消
-          </Button>
-          <Button
-            variant="contained"
-            disabled={savingEdit || !editName.trim()}
-            onClick={() => void handleSaveEdit()}
+          />
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <ConfirmModal
+            open={!!deleteTarget}
+            title="删除保存的查询"
+            description={`确定要删除"${deleteTarget?.name}"？此操作不可撤销。`}
+            confirmText="删除"
+            cancelText="取消"
+            confirmLoading={deleteLoading}
+            danger
+            onConfirm={() => void handleDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+          <Dialog
+            open={!!editTarget}
+            onClose={() => !savingEdit && setEditTarget(null)}
+            maxWidth="sm"
+            fullWidth
           >
-            保存
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </ListPageLayout>
+            <DialogTitle>编辑保存的查询</DialogTitle>
+            <DialogContent>
+              <Box
+                sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}
+              >
+                <TextField
+                  label="标签"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  variant="outlined"
+                  size="small"
+                  fullWidth
+                  autoFocus
+                />
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    SQL
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Tooltip title="格式化 SQL">
+                    <Button
+                      size="small"
+                      variant="text"
+                      startIcon={<CodeIcon sx={{ fontSize: 15 }} />}
+                      onClick={formatEditSql}
+                      sx={{ textTransform: "none", minHeight: 0 }}
+                    >
+                      格式化
+                    </Button>
+                  </Tooltip>
+                </Box>
+                <TextField
+                  label="SQL 内容"
+                  value={editSql}
+                  onChange={(e) => setEditSql(e.target.value)}
+                  variant="outlined"
+                  multiline
+                  minRows={6}
+                  size="small"
+                  fullWidth
+                  sx={{ fontFamily: "monospace" }}
+                />
+                {editError && (
+                  <Alert
+                    severity="error"
+                    onClose={() => setEditError(null)}
+                    sx={{ borderRadius: 1.5 }}
+                  >
+                    {editError}
+                  </Alert>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setEditTarget(null)} disabled={savingEdit}>
+                取消
+              </Button>
+              <Button
+                variant="contained"
+                disabled={savingEdit || !editName.trim()}
+                onClick={() => void handleSaveEdit()}
+              >
+                保存
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </ListPageLayout>
+      </Card>
+    </PageFrame>
   );
 }
