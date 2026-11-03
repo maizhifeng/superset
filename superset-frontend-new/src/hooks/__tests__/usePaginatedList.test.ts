@@ -54,7 +54,7 @@ test("handles API error", async () => {
   expect(result.current.rows).toEqual([]);
 });
 
-test("uses custom error message fallback", async () => {
+test("maps network errors to an explicit message instead of a vague fallback", async () => {
   vi.mocked(api.get).mockRejectedValueOnce(new Error("Network error"));
 
   const { result } = renderHook(() =>
@@ -67,7 +67,7 @@ test("uses custom error message fallback", async () => {
 
   await waitFor(() => expect(result.current.loading).toBe(false));
 
-  expect(result.current.error).toBe("Network error");
+  expect(result.current.error).toBe("网络异常，请检查网络连接后重试");
 });
 
 test("search text change resets page to 0", async () => {

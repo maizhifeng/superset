@@ -64,29 +64,22 @@ const executedQuery = {
   progress: 100,
 };
 
-test("shows the executed-SQL controls by default", () => {
+test("does not render redundant SQL/copy/export actions", () => {
+  // 「SQL」面板与上方编辑器内容重复；「复制 SQL」与编辑器复制按钮重复；
+  // Markdown/JSON 使用频率低 —— 均移除，避免窄视口工具栏被挤压。
   renderTable({ query: executedQuery });
-  expect(screen.getByRole("button", { name: "SQL" })).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: /复制执行的 SQL/ }),
-  ).toBeInTheDocument();
-});
-
-test("hides the executed-SQL controls when showSqlToggle is false", () => {
-  render(
-    <ResultsTable
-      result={{ ...baseResult, query: executedQuery }}
-      page={0}
-      rowsPerPage={25}
-      paginatedData={baseResult.data}
-      onPageChange={() => {}}
-      onRowsPerPageChange={() => {}}
-      showSqlToggle={false}
-    />,
-  );
   expect(screen.queryByRole("button", { name: "SQL" })).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: /复制执行的 SQL/ }),
+    screen.queryByRole("button", { name: /复制 SQL/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /Markdown/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /JSON/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /INSERT/ }),
   ).not.toBeInTheDocument();
 });
 

@@ -171,6 +171,27 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
 
         celery_app.Task = AppContextTask
 
+        # Finalize the Celery app as part of app initialization, before the
+        # process starts serving requests.
+        #
+        # While the app is not finalized, ``@celery_app.task`` returns a lazy
+        # ``celery.local.PromiseProxy`` that is only turned into a task class on
+        # first use. That resolution is not thread-safe: in
+        # ``celery.app.base.App._task_from_fun`` the task is published in
+        # ``self._tasks`` *before* ``Task.bind()`` installs its class-level
+        # ``request_stack``. Two threads resolving the same proxy at once — e.g.
+        # the first concurrent requests to a cold web worker — can therefore
+        # pick up the registered-but-unbound task and crash in
+        # ``Task.push_request`` with ``AttributeError: 'NoneType' object has no
+        # attribute 'push'`` (seen with concurrent SQL Lab execute requests).
+        #
+        # Finalizing here, after ``celery_app.Task`` has been swapped for
+        # ``AppContextTask`` and before any request can run, binds every task
+        # already registered and makes any later ``@celery_app.task`` call
+        # create a real, bound task class instead of a proxy. Request handling
+        # therefore never resolves a lazy task proxy.
+        celery_app.finalize()
+
     def init_views(self) -> None:
         #
         # We're doing local imports, as several of them import

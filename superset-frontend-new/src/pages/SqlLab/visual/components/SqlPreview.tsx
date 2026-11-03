@@ -6,6 +6,7 @@ import Chip from "@mui/material/Chip";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CodeIcon from "@mui/icons-material/Code";
 import { useNotificationStore } from "@/store/notificationStore";
+import { monoFontFamily } from "@/theme/typography";
 
 interface SqlPreviewProps {
   sql: string;
@@ -127,8 +128,7 @@ export default function SqlPreview({
             m: 0,
             px: 2,
             py: 1.5,
-            fontFamily:
-              "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', monospace",
+            fontFamily: monoFontFamily,
             fontSize: "0.75rem",
             lineHeight: 1.6,
             whiteSpace: "pre-wrap",

@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type SetStateAction,
+} from "react";
 import api, { QUERY_TIMEOUT_MS } from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
-import { format as formatSql } from "sql-formatter";
+import { formatSqlText } from "@/utils/sqlFormat";
+import { useNotificationStore } from "@/store/notificationStore";
 import rison from "rison";
 import type { Database, QueryResult, TableMetadata } from "@/types/api";
 import type { Completion } from "@codemirror/autocomplete";
@@ -35,6 +43,21 @@ function storeRecent(queries: string[]) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(queries));
 }
 
+/**
+ * 查询执行失败的提示：权限不足 / 限流给出可操作的明确说明，
+ * 其余错误交给共享的错误解析（同样不会只显示 "Forbidden" 之类模糊文本）。
+ */
+function formatQueryError(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status;
+  if (status === 403) {
+    return "当前账号没有执行 SQL 的权限：需要 Admin 角色或 sql_lab 角色，请联系管理员开通";
+  }
+  if (status === 429) {
+    return "查询请求过于频繁（HTTP 429），请稍等片刻后重试";
+  }
+  return parseErrorMessage(err, "执行查询时发生错误");
+}
+
 export interface QueryTab {
   id: number;
   name: string;
@@ -58,6 +81,7 @@ export function useSqlLab({
   initialDatabaseId,
   initialSchema,
 }: UseSqlLabOptions = {}) {
+  const notify = useNotificationStore((state) => state.notify);
   const [databases, setDatabases] = useState<Database[]>([]);
   // 记住上次使用的数据库，便于再次进入 SQL 实验室时延续上下文。
   const [databaseId, setDatabaseId] = useState<number | "">(() => {
@@ -65,6 +89,11 @@ export function useSqlLab({
     const saved = Number(localStorage.getItem(LAST_DB_KEY));
     return Number.isFinite(saved) && saved > 0 ? saved : "";
   });
+  // 当前数据库引擎：格式化 SQL 时用于选择 sql-formatter 方言，使 SQL 实验室
+  // 与数据集编辑页（SqlQueryEditor / formatSqlText）产出一致的格式。
+  const selectedDatabaseBackend = databases.find(
+    (database) => database.id === databaseId,
+  )?.backend;
   const [schemas, setSchemas] = useState<string[]>([]);
   // 记住上次选中的模式，便于再次进入时延续上下文。
   const [schema, setSchema] = useState(
@@ -81,7 +110,16 @@ export function useSqlLab({
   );
   // 手动刷新 schema 浏览器时递增，触发表与列重新加载。
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
-  const [sql, setSql] = useState(initialSql ?? "");
+  const [sql, setSqlState] = useState(initialSql ?? "");
+  // 编辑器内容的最新值：setSql 包装会同步维护它，使标签切换/执行等边界
+  // 能直接拿到最新内容，而不必用 [sql] effect 在每次按键后再写一遍 tabs
+  // （那会导致按键产生第二次整页 state 更新/渲染）。
+  const sqlRef = useRef(initialSql ?? "");
+  const setSql = useCallback((next: SetStateAction<string>) => {
+    const value = typeof next === "function" ? next(sqlRef.current) : next;
+    sqlRef.current = value;
+    setSqlState(value);
+  }, []);
   const [recentQueries, setRecentQueries] = useState<string[]>(() =>
     readRecent(),
   );
@@ -123,18 +161,30 @@ export function useSqlLab({
   const [activeTabId, setActiveTabId] = useState(1);
   const nextTabIdRef = useRef(2);
 
-  // 将当前编辑 SQL 写回活动标签，避免切换时丢失。
-  useEffect(() => {
-    setTabs((prev) =>
-      prev.map((t) => (t.id === activeTabId ? { ...t, sql } : t)),
-    );
-  }, [sql, activeTabId]);
+  /**
+   * 把编辑器里最新的 SQL 提交进指定标签页。
+   * 标签页的 sql 字段只在「切换/关闭/新建标签、切模式、执行」等边界写入，
+   * 不再用 effect 监听 sql 同步：每次按键都写一次 tabs 会让每次输入产生
+   * 第二次整页渲染（SqlLab 页面大，这是编辑区卡顿的直接来源之一）。
+   */
+  const commitSqlToTab = useCallback((tabId: number) => {
+    // 注意：必须在 setTabs 之外捕获，updater 可能在本处理函数后续 setSql 之后才执行。
+    const latestSql = sqlRef.current;
+    setTabs((prev) => {
+      const target = prev.find((t) => t.id === tabId);
+      if (!target || target.sql === latestSql) return prev;
+      return prev.map((t) => (t.id === tabId ? { ...t, sql: latestSql } : t));
+    });
+  }, []);
 
-  /** 更新活动标签页的任意字段（模式、可视模型等）。 */
+  /** 更新活动标签页的任意字段（模式、可视模型等），顺带落盘最新 SQL。 */
   const updateActiveTab = useCallback(
     (patch: Partial<QueryTab>) => {
+      const latestSql = sqlRef.current;
       setTabs((prev) =>
-        prev.map((t) => (t.id === activeTabId ? { ...t, ...patch } : t)),
+        prev.map((t) =>
+          t.id === activeTabId ? { ...t, sql: latestSql, ...patch } : t,
+        ),
       );
     },
     [activeTabId],
@@ -146,6 +196,8 @@ export function useSqlLab({
    */
   const newQueryTab = useCallback(
     (mode?: VisualMode) => {
+      // 先落盘当前标签的编辑内容，切换后仍可切回恢复。
+      commitSqlToTab(activeTabId);
       const id = nextTabIdRef.current++;
       setTabs((prev) => {
         const active = prev.find((t) => t.id === activeTabId);
@@ -173,11 +225,12 @@ export function useSqlLab({
       setError(null);
       setPage(0);
     },
-    [activeTabId, databaseId, schema],
+    [activeTabId, commitSqlToTab, databaseId, schema, setSql],
   );
 
   /** 关闭全部标签页，回到单一空白标签（沿用当前模式）。 */
   const closeAllTabs = useCallback(() => {
+    // 关闭全部会丢弃所有编辑内容，无需落盘；保留原有行为。
     const id = nextTabIdRef.current++;
     setTabs((prev) => {
       const active = prev.find((t) => t.id === activeTabId);
@@ -200,24 +253,31 @@ export function useSqlLab({
     setResult(null);
     setError(null);
     setPage(0);
-  }, [activeTabId, databaseId, schema]);
+  }, [activeTabId, databaseId, schema, setSql]);
 
   const activateQueryTab = useCallback(
     (id: number) => {
+      // 切走前先把当前编辑内容落盘，保证切回时能恢复。
+      commitSqlToTab(activeTabId);
       setActiveTabId(id);
-      const target = tabs.find((t) => t.id === id);
-      setSql(target?.sql ?? "");
+      if (id !== activeTabId) {
+        const target = tabs.find((t) => t.id === id);
+        setSql(target?.sql ?? "");
+      }
       setResult(null);
       setError(null);
       setPage(0);
     },
-    [tabs],
+    [activeTabId, commitSqlToTab, setSql, tabs],
   );
 
   const closeQueryTab = useCallback(
     (id: number) => {
+      // 关闭其它标签时也要落盘当前编辑内容，否则后续切回会丢失。
+      commitSqlToTab(activeTabId);
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
+        if (idx === -1) return prev;
         const next = prev.filter((t) => t.id !== id);
         if (next.length === 0) {
           const nid = nextTabIdRef.current++;
@@ -244,7 +304,7 @@ export function useSqlLab({
         return next;
       });
     },
-    [activeTabId, databaseId, schema],
+    [activeTabId, commitSqlToTab, databaseId, schema, setSql],
   );
 
   const quoteId = (id: string) => (/[^a-zA-Z_0-9]/.test(id) ? `"${id}"` : id);
@@ -291,10 +351,34 @@ export function useSqlLab({
     [],
   );
 
+  // 编辑器列补全的数据源 = columnCache 中已按需加载的列 ∪ tableMetas 中
+  // 已缓存的表列（同库同模式）。两者都来自用户实际展开过 / 可视化里用过的表，
+  // 不为补全发起任何批量请求（全量预取见下方表列表 effect 的说明）。
   const allCompletions = useMemo<Completion[]>(() => {
     const items: Completion[] = [];
-    const tables = schema && columnCache[schema] ? columnCache[schema] : {};
-    for (const [table, cols] of Object.entries(tables)) {
+    const columnsByTable = new Map<string, Set<string>>();
+    const addTable = (table: string, columns: Iterable<string>) => {
+      const existing = columnsByTable.get(table) ?? new Set<string>();
+      for (const col of columns) existing.add(col);
+      columnsByTable.set(table, existing);
+    };
+
+    const cached = schema && columnCache[schema] ? columnCache[schema] : {};
+    for (const [table, cols] of Object.entries(cached)) {
+      addTable(table, cols);
+    }
+    if (databaseId !== "" && schema) {
+      const prefix = tableMetaKey(databaseId, schema, "");
+      for (const [key, meta] of Object.entries(tableMetas)) {
+        if (!key.startsWith(prefix)) continue;
+        addTable(
+          key.slice(prefix.length),
+          meta.columns.map((c) => c.name),
+        );
+      }
+    }
+
+    for (const [table, cols] of columnsByTable) {
       items.push({
         label: table,
         type: "table",
@@ -312,7 +396,7 @@ export function useSqlLab({
       }
     }
     return items;
-  }, [columnCache, schema]);
+  }, [columnCache, databaseId, schema, tableMetas]);
 
   useEffect(() => {
     api
@@ -383,6 +467,12 @@ export function useSqlLab({
       });
   }, [databaseId]);
 
+  // 只加载当前模式的表清单；列元数据一律按需加载（展开表 / 可视化组装器）。
+  // 这里曾经在表清单返回后对全部表串行预取列元数据（CONCURRENCY=4，每表一次
+  // GET /database/{id}/table/{table}/{schema}/）来填充编辑器补全。对
+  // inland_sdk_log 这种 1035 张表的模式意味着 1035 个请求（实测约 13 分钟），
+  // 且每完成一张表就 setTableMetas 触发一次整页重渲染——不可接受，故删除。
+  // 补全改由 columnCache ∪ tableMetas 的已加载数据提供（见 allCompletions）。
   useEffect(() => {
     if (databaseId === "" || !schema) {
       setColumnCache({});
@@ -390,7 +480,21 @@ export function useSqlLab({
       setTableList([]);
       return;
     }
+    // 模式/库变化或手动刷新后，允许之前失败的表重新重试：失败时
+    // fetchTableColumns 会写入 columnCache[schema][table] = []，而 [] 在早退
+    // 判断里是 truthy（会被当成"已加载"），所以这里把这些空条目删掉。
+    // 只清理空列缓存，已成功加载的列保持不动；真正 0 列的表下次展开时会
+    // 重新拉一次 metadata（代价可忽略，行为与旧版整份重建 columnCache 一致）。
     setFailedTables(new Set());
+    setColumnCache((prev) => {
+      const cached = prev[schema];
+      if (!cached) return prev;
+      const loaded = Object.entries(cached).filter(
+        ([, columns]) => columns.length > 0,
+      );
+      if (loaded.length === Object.keys(cached).length) return prev;
+      return { ...prev, [schema]: Object.fromEntries(loaded) };
+    });
     let cancelled = false;
     const qs = rison.encode({ schema_name: schema });
     api
@@ -398,36 +502,7 @@ export function useSqlLab({
         `/database/${databaseId}/tables/?q=${qs}`,
       )
       .then((res) => {
-        const tables = res.data.result;
-        setTableList(tables);
-        const CONCURRENCY = 4;
-        void (async () => {
-          const map: Record<string, string[]> = {};
-          const failed: string[] = [];
-          for (let i = 0; i < tables.length; i += CONCURRENCY) {
-            if (cancelled) return;
-            const batch = tables.slice(i, i + CONCURRENCY);
-            await Promise.allSettled(
-              batch.map(async (t) => {
-                const meta = await fetchTableMetadata(
-                  databaseId,
-                  schema,
-                  t.value,
-                );
-                if (meta) {
-                  map[t.value] = meta.columns.map((c) => c.name);
-                } else {
-                  map[t.value] = [];
-                  failed.push(t.value);
-                }
-              }),
-            );
-          }
-          if (!cancelled) {
-            setColumnCache((prev) => ({ ...prev, [schema]: map }));
-            if (failed.length > 0) setFailedTables(new Set(failed));
-          }
-        })();
+        if (!cancelled) setTableList(res.data.result);
       })
       .catch(() => {
         if (!cancelled) setTableList([]);
@@ -435,9 +510,13 @@ export function useSqlLab({
     return () => {
       cancelled = true;
     };
-  }, [databaseId, schema, tableRefreshKey, fetchTableMetadata]);
+  }, [databaseId, schema, tableRefreshKey]);
 
-  /** 手动刷新 schema 浏览器（重新拉取表与列元数据）。 */
+  /**
+   * 手动刷新 schema 浏览器（重新拉取表清单；失败表可重试）。
+   * 空列缓存的清理在下方表清单 effect 中统一处理：failedTables 被重置，
+   * 且 columnCache 中长度为 0 的条目会被移除（见该 effect 注释）。
+   */
   const refreshSchemaBrowser = useCallback(() => {
     setTableRefreshKey((k) => k + 1);
   }, []);
@@ -513,32 +592,20 @@ export function useSqlLab({
     setPage(0);
   }, [result]);
 
-  const handleRun = useCallback(async () => {
-    if (databaseId === "" || !sql.trim()) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await api.post<QueryResult>(
-        "/sqllab/execute/",
-        {
-          database_id: databaseId,
-          sql,
-        },
-        { timeout: QUERY_TIMEOUT_MS },
-      );
-      setResult(res.data);
-    } catch (err: unknown) {
-      setError(parseErrorMessage(err, "执行查询时发生错误"));
-    } finally {
-      setLoading(false);
-    }
-  }, [databaseId, sql]);
+  // 最新一次执行优先：每次执行自增 runId，响应返回时若已不是最新一次
+  //（已被后发起的执行取代）则整份丢弃，避免旧响应覆盖新状态。
+  // loading 也只由最新一次执行收尾，防止旧请求提前关闭新请求的加载态。
+  const runIdRef = useRef(0);
 
-  /** 运行一段指定的 SQL（用于"运行选中的语句/当前语句"）。 */
-  const handleRunSql = useCallback(
-    async (runSql: string) => {
+  /**
+   * 执行 SQL 的统一实现。
+   * @param runSql 实际执行的 SQL
+   * @param recordRecent 是否写入"最近查询"（handleRun 不写，handleRunSql 写）
+   */
+  const runQuery = useCallback(
+    async (runSql: string, recordRecent: boolean) => {
       if (databaseId === "" || !runSql.trim()) return;
+      const runId = ++runIdRef.current;
       setLoading(true);
       setError(null);
       setResult(null);
@@ -551,31 +618,64 @@ export function useSqlLab({
           },
           { timeout: QUERY_TIMEOUT_MS },
         );
+        // 已有更新的执行发起，过期响应不写 result / error / loading。
+        if (runId !== runIdRef.current) return;
         setResult(res.data);
-        setRecentQueries((prev) => {
-          const next = [runSql, ...prev.filter((q) => q !== runSql)].slice(
-            0,
-            MAX_RECENT,
-          );
-          storeRecent(next);
-          return next;
-        });
+        // 成功与失败互斥：清掉可能残留的旧错误，避免 Alert 与结果表格同屏。
+        setError(null);
+        if (recordRecent) {
+          setRecentQueries((prev) => {
+            const next = [runSql, ...prev.filter((q) => q !== runSql)].slice(
+              0,
+              MAX_RECENT,
+            );
+            storeRecent(next);
+            return next;
+          });
+        }
       } catch (err: unknown) {
-        setError(parseErrorMessage(err, "执行查询时发生错误"));
+        if (runId !== runIdRef.current) return;
+        setError(formatQueryError(err));
+        // 成功与失败互斥：失败时清掉可能残留的旧结果。
+        setResult(null);
       } finally {
-        setLoading(false);
+        if (runId === runIdRef.current) setLoading(false);
       }
     },
     [databaseId],
   );
 
+  const handleRun = useCallback(() => {
+    // 执行也是"落盘点"：保证标签页保存的是实际编辑的最新 SQL。
+    commitSqlToTab(activeTabId);
+    return runQuery(sql, false);
+  }, [activeTabId, commitSqlToTab, runQuery, sql]);
+
+  /** 运行一段指定的 SQL（用于"运行选中的语句/当前语句"）。 */
+  const handleRunSql = useCallback(
+    (runSql: string) => {
+      commitSqlToTab(activeTabId);
+      return runQuery(runSql, true);
+    },
+    [activeTabId, commitSqlToTab, runQuery],
+  );
+
+  /**
+   * 格式化编辑器中的 SQL。
+   *
+   * 与数据集编辑页（SqlQueryEditor 的「格式化」按钮）共用同一套规则：
+   * 按当前数据库引擎选择 sql-formatter 方言、关键字大写、2 空格缩进，
+   * 保证两个 SQL 编辑入口产出一致的美观格式；解析失败时保留原文并提示。
+   */
   const handleFormatSql = useCallback(() => {
+    const currentSql = sqlRef.current;
+    if (!currentSql.trim()) return;
     try {
-      setSql((prev) => formatSql(prev, { language: "sql" }));
+      setSql(formatSqlText(currentSql, selectedDatabaseBackend));
     } catch {
-      setSql((prev) => prev.trim());
+      notify({ severity: "error", message: "SQL 解析失败，暂时无法格式化" });
     }
-  }, []);
+  }, [notify, selectedDatabaseBackend, setSql]);
 
   const handleOpenSaveDialog = () => {
     setDatasetName(datasetNameFromSql(result?.query?.sql));
@@ -637,13 +737,21 @@ export function useSqlLab({
     );
   };
 
-  const paginatedData =
-    result?.data?.slice(page * rowsPerPage, (page + 1) * rowsPerPage) ?? [];
+  // 分页切片用 useMemo 缓存：结果表按引用 memo 化，每次 render 都新建数组
+  // 会使结果区无效重渲染（大结果集尤其明显）。
+  const paginatedData = useMemo(
+    () =>
+      result?.data?.slice(page * rowsPerPage, (page + 1) * rowsPerPage) ?? [],
+    [result, page, rowsPerPage],
+  );
 
   /** 把某条历史查询重新加载到编辑器（不自动执行）。 */
-  const loadRecentQuery = useCallback((q: string) => {
-    setSql(q);
-  }, []);
+  const loadRecentQuery = useCallback(
+    (q: string) => {
+      setSql(q);
+    },
+    [setSql],
+  );
 
   /** 清空最近查询历史。 */
   const clearRecentQueries = useCallback(() => {

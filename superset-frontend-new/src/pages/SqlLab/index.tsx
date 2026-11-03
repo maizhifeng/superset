@@ -5,6 +5,7 @@ import {
   useRef,
   useEffect,
   type ReactNode,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -27,7 +28,6 @@ import {
   Menu,
   MenuItem,
 } from "@mui/material";
-import CodeIcon from "@mui/icons-material/Code";
 import StopIcon from "@mui/icons-material/Stop";
 import ClearIcon from "@mui/icons-material/Clear";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
@@ -52,6 +52,7 @@ import type { ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import SqlEditor from "@/SqlLab/components/SqlEditor";
 import ShortcutTooltip from "@/components/ShortcutTooltip";
 import { useNotificationStore } from "@/store/notificationStore";
+import { monoFontFamily } from "@/theme/typography";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import SchemaBrowser from "./SchemaBrowser";
 import ResultsTable from "./ResultsTable";
@@ -83,8 +84,26 @@ const EDITOR_MIN = 120;
 const EDITOR_MAX = 560;
 const EDITOR_DEFAULT = 220;
 
-const MONO_FONT_STACK =
-  "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', monospace";
+/**
+ * SQL 编辑器操作栏按钮样式：与数据集编辑页（SqlQueryEditor）的工具栏一致，
+ * 使用紧凑的无边框文字按钮 + 分隔线，替换此前的描边按钮堆叠。
+ */
+const editorToolbarButtonSx = {
+  textTransform: "none",
+  color: "text.secondary",
+  "&:hover": { bgcolor: "action.hover" },
+};
+const editorToolbarPrimaryButtonSx = {
+  ...editorToolbarButtonSx,
+  color: "primary.main",
+  "&:hover": { bgcolor: "action.hover", color: "primary.dark" },
+};
+const editorToolbarDividerSx = {
+  width: "1px",
+  height: 14,
+  bgcolor: "divider",
+  mx: 0.75,
+};
 
 interface QueryHintCardProps {
   icon: ReactNode;
@@ -147,7 +166,7 @@ function QueryHintCard({ icon, title, hint, description }: QueryHintCardProps) {
             <Box
               component="kbd"
               sx={{
-                fontFamily: MONO_FONT_STACK,
+                fontFamily: monoFontFamily,
                 fontSize: "0.625rem",
                 lineHeight: 1.6,
                 px: 0.5,
@@ -198,8 +217,22 @@ export default function SqlLab() {
       ? initialState.initialSchema
       : undefined;
   const initialRun = Boolean(initialState?.initialRun);
-  // 编辑区高度，可通过下方拖拽句柄垂直调整。
+  // 编辑区高度，可通过下方拖拽句柄垂直调整（上下堆叠布局时使用）。
   const [editorHeight, setEditorHeight] = useState(EDITOR_DEFAULT);
+  // SQL 模式下「编辑区 | 结果区」左右布局的编辑区宽度（px）。
+  const [editorWidth, setEditorWidth] = useState(520);
+  // 内容区实际宽度：足够宽时才启用左右布局，窄屏仍上下堆叠。
+  const [contentWidth, setContentWidth] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      setContentWidth(entries[0]?.contentRect.width ?? 0);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [copyMenuAnchor, setCopyMenuAnchor] = useState<HTMLElement | null>(
     null,
   );
@@ -242,6 +275,31 @@ export default function SqlLab() {
 
   /** 双击分割线恢复自适应高度（重新跟随最下方的 block）。 */
   const handleSplitterReset = () => setBuilderHeight(null);
+
+  // SQL 模式左右布局的宽度拖拽：编辑区宽度限制在 [360, 内容区宽度 - 360]，
+  // 保证结果区始终有可用的最小宽度。
+  const handleEditorSplitterPointerDown = (
+    e: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = effectiveEditorWidth;
+    const maxWidth = Math.max(360, contentWidth - 360);
+    const onMove = (ev: PointerEvent) => {
+      setEditorWidth(
+        Math.max(360, Math.min(maxWidth, startWidth + (ev.clientX - startX))),
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const handleEditorSplitterReset = () =>
+    setEditorWidth(Math.round(Math.max(360, contentWidth * 0.42)));
   const {
     databases,
     databaseId,
@@ -306,6 +364,13 @@ export default function SqlLab() {
   const notify = useNotificationStore((s) => s.notify);
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const mode = activeTab?.mode ?? "visual";
+  // 左编辑区 + 右结果区：格式化后的 SQL 多为纵向排列，编辑区不需要整行宽度；
+  // 仅 SQL 模式且内容区 ≥ 960px 时启用，窄屏退化为原来的上下堆叠。
+  const sideBySide = mode === "sql" && contentWidth >= 960;
+  const effectiveEditorWidth = Math.max(
+    360,
+    Math.min(editorWidth, Math.max(360, contentWidth - 360)),
+  );
   const visualModel = useMemo<VisualQueryModel>(
     () => activeTab?.model ?? emptyModel(Number(databaseId) || 0, schema),
     [activeTab, databaseId, schema],
@@ -662,12 +727,18 @@ export default function SqlLab() {
           height: "100%",
           border: "1px solid var(--mui-palette-divider)",
           borderRadius: "8px",
-          fontFamily:
-            "'SF Mono', 'Fira Code', 'Consolas', 'Monaco', 'Menlo', monospace",
+          // 与数据集编辑页 SqlQueryEditor 共用同一字体栈：首选 index.html 加载的
+          // JetBrains Mono，Windows 上依次回退到 Cascadia Code / Consolas，
+          // 避免两处 SQL 编辑器的字形不一致。
+          fontFamily: monoFontFamily,
           fontSize: "0.8125rem",
         },
         "&.cm-focused": { outline: "none" },
-        ".cm-scroller": { overflow: "auto" },
+        ".cm-scroller": {
+          overflow: "auto",
+          fontFamily: monoFontFamily,
+          lineHeight: 1.7,
+        },
         ".cm-gutters": { borderRight: "1px solid var(--mui-palette-divider)" },
         ".cm-gutter": { minWidth: 0 },
       }),
@@ -679,20 +750,14 @@ export default function SqlLab() {
           tableCompletionSource,
         ],
       }),
+      // 仅保留补全接受键：运行/停止等执行快捷键由 SqlEditor 通过全局
+      // Mousetrap（allowInInput）统一注册，编辑器内再绑一次会导致同一按键
+      //（Ctrl+Enter）触发两次查询请求。
       Prec.high(
-        keymap.of([
-          { key: "Tab", run: (view) => acceptCompletion(view) },
-          {
-            key: "Ctrl-Enter",
-            run: () => {
-              void handleRun();
-              return true;
-            },
-          },
-        ]),
+        keymap.of([{ key: "Tab", run: (view) => acceptCompletion(view) }]),
       ),
     ],
-    [tableCompletionSource, handleRun],
+    [tableCompletionSource],
   );
 
   // "打开并运行"：导航携带 initialRun 时，SQL/可视模型就绪后自动执行一次。
@@ -861,6 +926,40 @@ export default function SqlLab() {
     }
     void handleRunSql(statement.trim());
   };
+
+  // ---- 数据库浏览器（SchemaBrowser）回调：全部 useCallback 稳定引用 ----
+  // SchemaBrowser 已 memo 化且内部渲染 1035 个表节点；若这些回调每次渲染都
+  // 新建，打字时父组件重渲染会让整棵树重建。这里保证引用稳定，使"仅 sql
+  // 变化"的重渲染被完全跳过。
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarOpen((prev) => !prev);
+  }, [setSidebarOpen]);
+
+  const handleRefreshSchemaBrowser = useCallback(() => {
+    refreshSchemaBrowser();
+    refreshDatabases();
+  }, [refreshSchemaBrowser, refreshDatabases]);
+
+  const handleTableExpand = useCallback(
+    (tableName: string) => {
+      void fetchTableColumns(tableName);
+    },
+    [fetchTableColumns],
+  );
+
+  const handleTableContextMenu = useCallback(
+    (e: ReactMouseEvent, table: string) => {
+      setCtxMenu({ mouseX: e.clientX, mouseY: e.clientY, table });
+    },
+    [setCtxMenu],
+  );
+
+  const handleColumnContextMenu = useCallback(
+    (e: ReactMouseEvent, table: string, column: string) => {
+      setCtxMenu({ mouseX: e.clientX, mouseY: e.clientY, table, column });
+    },
+    [setCtxMenu],
+  );
 
   return (
     <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -1176,23 +1275,11 @@ export default function SqlLab() {
               sidebarOpen={sidebarOpen}
               onDatabaseChange={handleDatabaseChange}
               onSchemaChange={handleSchemaChange}
-              onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
-              onRefresh={() => {
-                refreshSchemaBrowser();
-                refreshDatabases();
-              }}
-              onTableExpand={(t) => void fetchTableColumns(t)}
-              onTableContextMenu={(e, table) =>
-                setCtxMenu({ mouseX: e.clientX, mouseY: e.clientY, table })
-              }
-              onColumnContextMenu={(e, table, column) =>
-                setCtxMenu({
-                  mouseX: e.clientX,
-                  mouseY: e.clientY,
-                  table,
-                  column,
-                })
-              }
+              onToggleSidebar={handleToggleSidebar}
+              onRefresh={handleRefreshSchemaBrowser}
+              onTableExpand={handleTableExpand}
+              onTableContextMenu={handleTableContextMenu}
+              onColumnContextMenu={handleColumnContextMenu}
             />
             <Divider
               orientation="vertical"
@@ -1202,12 +1289,15 @@ export default function SqlLab() {
           </>
         )}
         <Box
+          ref={contentRef}
+          data-testid="sqllab-content"
+          data-layout={sideBySide ? "side-by-side" : "stacked"}
           sx={{
             flex: 1,
             minWidth: 0,
             display: "flex",
-            flexDirection: "column",
-            gap: 2,
+            flexDirection: sideBySide ? "row" : "column",
+            gap: sideBySide ? 1 : 2,
             minHeight: 0,
           }}
         >
@@ -1285,6 +1375,7 @@ export default function SqlLab() {
           ) : (
             <Paper
               variant="outlined"
+              data-testid="sqllab-editor-pane"
               sx={{
                 p: 2,
                 flexShrink: 0,
@@ -1293,13 +1384,18 @@ export default function SqlLab() {
                 minHeight: 0,
                 borderRadius: 2,
                 bgcolor: "background.paper",
+                ...(sideBySide
+                  ? { width: effectiveEditorWidth, height: "100%" }
+                  : {}),
               }}
             >
               <Box
                 sx={{
                   borderRadius: 1,
                   overflow: "hidden",
-                  height: editorHeight,
+                  height: sideBySide ? undefined : editorHeight,
+                  flex: sideBySide ? 1 : undefined,
+                  minHeight: sideBySide ? 0 : undefined,
                   display: "flex",
                   "& > *": { flex: 1, width: "100%" },
                 }}
@@ -1309,7 +1405,7 @@ export default function SqlLab() {
                   value={sql}
                   onChange={(value) => setSql(value)}
                   extensions={cmExtensions}
-                  height={`${editorHeight}px`}
+                  height={sideBySide ? "100%" : `${editorHeight}px`}
                   basicSetup={{
                     lineNumbers: true,
                     foldGutter: true,
@@ -1318,41 +1414,45 @@ export default function SqlLab() {
                   }}
                 />
               </Box>
-              <ResizeHandle
-                baseHeight={editorHeight}
-                minHeight={EDITOR_MIN}
-                maxHeight={EDITOR_MAX}
-                onResize={setEditorHeight}
-                title="拖拽调整编辑区高度"
-              />
+              {!sideBySide && (
+                <ResizeHandle
+                  baseHeight={editorHeight}
+                  minHeight={EDITOR_MIN}
+                  maxHeight={EDITOR_MAX}
+                  onResize={setEditorHeight}
+                  title="拖拽调整编辑区高度"
+                />
+              )}
               <Box
                 sx={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 1.5,
+                  gap: 0.5,
                   flexWrap: "wrap",
                   mt: 1.5,
                 }}
               >
                 <ShortcutTooltip label="格式化 SQL" shortcut="Ctrl+Shift+F">
                   <Button
-                    variant="outlined"
                     size="small"
-                    startIcon={<CodeIcon />}
+                    disableRipple
+                    startIcon={<AutoFixHighIcon />}
                     onClick={handleFormatSql}
                     disabled={!sql.trim()}
+                    sx={editorToolbarPrimaryButtonSx}
                   >
                     格式化
                   </Button>
                 </ShortcutTooltip>
+                <Box sx={editorToolbarDividerSx} />
                 <Button
-                  variant="outlined"
                   size="small"
+                  disableRipple
                   startIcon={<ContentCopyIcon />}
                   endIcon={<ArrowDropDownIcon />}
                   onClick={(event) => setCopyMenuAnchor(event.currentTarget)}
                   disabled={!sql.trim()}
-                  sx={{ textTransform: "none" }}
+                  sx={editorToolbarButtonSx}
                 >
                   复制
                 </Button>
@@ -1388,18 +1488,18 @@ export default function SqlLab() {
                     复制 SQL 中的表名
                   </MenuItem>
                 </Menu>
+                <Box sx={editorToolbarDividerSx} />
                 <ShortcutTooltip
                   label="清空当前标签页 SQL"
                   shortcut="Ctrl+Shift+Backspace"
                 >
                   <Button
-                    variant="outlined"
                     size="small"
-                    color="inherit"
+                    disableRipple
                     startIcon={<ClearIcon />}
                     onClick={() => setSql("")}
                     disabled={!sql.trim()}
-                    sx={{ textTransform: "none" }}
+                    sx={editorToolbarButtonSx}
                   >
                     清空
                   </Button>
@@ -1407,7 +1507,44 @@ export default function SqlLab() {
               </Box>
             </Paper>
           )}
+          {sideBySide && (
+            <Box
+              role="separator"
+              aria-orientation="vertical"
+              data-testid="sqllab-editor-splitter"
+              title="拖拽调整编辑区宽度，双击恢复默认"
+              onPointerDown={handleEditorSplitterPointerDown}
+              onDoubleClick={handleEditorSplitterReset}
+              sx={{
+                flexShrink: 0,
+                width: 12,
+                mx: 0.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "col-resize",
+                userSelect: "none",
+                "&:hover .editor-splitter-bar": {
+                  bgcolor: "primary.main",
+                  width: "3px",
+                },
+              }}
+            >
+              <Box
+                className="editor-splitter-bar"
+                sx={{
+                  width: 2,
+                  height: "60%",
+                  minHeight: 40,
+                  bgcolor: "divider",
+                  borderRadius: 1,
+                  transition: "background-color .12s ease, width .12s ease",
+                }}
+              />
+            </Box>
+          )}
           <Box
+            data-testid="sqllab-results-pane"
             sx={{
               flex: 1,
               minWidth: 0,
@@ -1431,7 +1568,6 @@ export default function SqlLab() {
                 paginatedData={paginatedData}
                 onPageChange={setPage}
                 onRowsPerPageChange={setRowsPerPage}
-                showSqlToggle={mode === "sql"}
               />
             ) : (
               <Paper

@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
 import Tooltip from "@mui/material/Tooltip";
-import Collapse from "@mui/material/Collapse";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -16,19 +15,22 @@ import TableRow from "@mui/material/TableRow";
 import IconButton from "@mui/material/IconButton";
 import DownloadIcon from "@mui/icons-material/Download";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import TableChartIcon from "@mui/icons-material/TableChart";
-import CodeIcon from "@mui/icons-material/Code";
 import SearchIcon from "@mui/icons-material/Search";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
 import type { QueryResult } from "@/types/api";
 import { downloadCsv } from "@/utils/exportCsv";
 import { useNotificationStore } from "@/store/notificationStore";
+
+/** 结果区操作按钮：窄视口下换行而不是被 flex 压扁（导致文字竖排变形）。 */
+const resultActionSx = {
+  textTransform: "none",
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+};
 
 function tsvCell(v: unknown): string {
   if (v == null) return "";
@@ -42,25 +44,18 @@ interface ResultsTableProps {
   paginatedData: Record<string, unknown>[];
   onPageChange: (page: number) => void;
   onRowsPerPageChange: (rowsPerPage: number) => void;
-  /**
-   * 是否显示「SQL / 复制 SQL」这一组按钮。可视化模式下右侧已常显生成的
-   * SQL 面板，此组按钮与之重复，因此传入 false 隐藏。
-   */
-  showSqlToggle?: boolean;
 }
 
-export default function ResultsTable({
+function ResultsTable({
   result,
   page,
   rowsPerPage,
   paginatedData,
   onPageChange,
   onRowsPerPageChange,
-  showSqlToggle = true,
 }: ResultsTableProps) {
   const columns = result.columns.map((c) => c.name);
   const notify = useNotificationStore((s) => s.notify);
-  const [showSql, setShowSql] = useState(false);
   const [jumpRow, setJumpRow] = useState("");
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -74,18 +69,6 @@ export default function ResultsTable({
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
     else void rootRef.current?.requestFullscreen?.();
-  };
-  const executedSql = result.query?.sql || "";
-
-  /** 复制当前查询执行的原始 SQL。 */
-  const handleCopyExecutedSql = async () => {
-    if (!executedSql) return;
-    try {
-      await navigator.clipboard.writeText(executedSql);
-      notify({ severity: "success", message: "已复制执行的 SQL" });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
   };
 
   /** 复制结果列名（每行一个）。 */
@@ -115,29 +98,6 @@ export default function ResultsTable({
     }
   };
 
-  // 复制为 Markdown 表格，便于粘贴到文档 / 聊天 / 周报中分享。
-  const handleCopyMarkdown = async () => {
-    const rows = result.data;
-    if (rows.length === 0) return;
-    const esc = (v: unknown): string =>
-      String(v ?? "")
-        .replace(/\r?\n/g, " ")
-        .replace(/\|/g, "\\|");
-    const header = `| ${columns.join(" | ")} |`;
-    const divider = `| ${columns.map(() => "---").join(" | ")} |`;
-    const lines = rows.map(
-      (r) => `| ${columns.map((c) => esc(r[c])).join(" | ")} |`,
-    );
-    try {
-      await navigator.clipboard.writeText(
-        [header, divider, ...lines].join("\n"),
-      );
-      notify({ severity: "success", message: "已复制查询结果（Markdown）" });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
-  };
-
   const handleExport = () => {
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadCsv(
@@ -145,45 +105,6 @@ export default function ResultsTable({
       result.data,
       `query-${result.query_id ?? "result"}-${ts}.csv`,
     );
-  };
-
-  /** 导出结果为 JSON 文件。 */
-  const handleExportJson = () => {
-    if (result.data.length === 0) return;
-    const blob = new Blob([JSON.stringify(result.data, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `query-${result.query_id ?? "result"}-${Date.now()}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  /** 复制为 SQL INSERT（取 FROM 表名 + 结果列与行）。 */
-  const handleCopyInsert = async () => {
-    const rows = result.data;
-    if (rows.length === 0 || columns.length === 0) return;
-    const fromMatch = (executedSql || "").match(
-      /\b(?:from|join)\s+[`"[]?(?:[\w$-]+\.)?[`"[]?([\w$-]+)/i,
-    );
-    const table = fromMatch?.[1] ?? "result";
-    const esc = (v: unknown): string => {
-      if (v == null) return "NULL";
-      if (typeof v === "number") return String(v);
-      return `'${String(v).replace(/'/g, "''")}'`;
-    };
-    const valueClause = rows
-      .map((r) => `(${columns.map((c) => esc(r[c])).join(", ")})`)
-      .join(",\n  ");
-    const sqlText = `INSERT INTO ${table} (${columns.join(", ")})\nVALUES\n  ${valueClause};`;
-    try {
-      await navigator.clipboard.writeText(sqlText);
-      notify({ severity: "success", message: "已复制 INSERT 语句" });
-    } catch {
-      notify({ severity: "error", message: "复制失败" });
-    }
   };
 
   return (
@@ -203,10 +124,29 @@ export default function ResultsTable({
         },
       }}
     >
+      {/* 汇总信息 + 操作按钮：窄视口下整体换行，按钮不收缩变形。 */}
       <Box
-        sx={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          columnGap: 2,
+          rowGap: 1,
+          flexWrap: "wrap",
+          flexShrink: 0,
+        }}
       >
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: "1 1 220px",
+          }}
+        >
           共 {result.query?.rows ?? result.data.length} 行
           {result.query?.rows != null && result.query.rows > result.data.length
             ? `（已显示前 ${result.data.length} 行）`
@@ -217,137 +157,55 @@ export default function ResultsTable({
             : ""}
           {result.query?.state ? ` · ${result.query.state}` : ""}
         </Typography>
-        <Box sx={{ flex: 1 }} />
-        {showSqlToggle && executedSql && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            flexShrink: 0,
+          }}
+        >
           <Button
             size="small"
-            variant="text"
-            startIcon={<CodeIcon />}
-            endIcon={
-              showSql ? (
-                <KeyboardArrowUpIcon sx={{ fontSize: 16 }} />
-              ) : (
-                <KeyboardArrowDownIcon sx={{ fontSize: 16 }} />
-              )
-            }
-            onClick={() => setShowSql((v) => !v)}
-            sx={{ textTransform: "none", mr: 1, minWidth: 0 }}
+            variant="outlined"
+            startIcon={<ContentCopyIcon />}
+            onClick={() => void handleCopyTsv()}
+            disabled={result.data.length === 0}
+            sx={resultActionSx}
           >
-            SQL
+            复制为 TSV
           </Button>
-        )}
-        {showSqlToggle && executedSql && (
-          <Tooltip title="复制执行的 SQL">
-            <Button
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={handleExport}
+            disabled={result.data.length === 0}
+            sx={resultActionSx}
+          >
+            导出为 CSV
+          </Button>
+          <Tooltip title="复制列名">
+            <IconButton
               size="small"
-              variant="text"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 15 }} />}
-              onClick={() => void handleCopyExecutedSql()}
-              sx={{ textTransform: "none", mr: 1, minWidth: 0 }}
+              onClick={() => void handleCopyColumnNames()}
             >
-              复制 SQL
-            </Button>
+              <ViewColumnIcon sx={{ fontSize: 16 }} />
+            </IconButton>
           </Tooltip>
-        )}
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<TableChartIcon />}
-          onClick={() => void handleCopyMarkdown()}
-          disabled={result.data.length === 0}
-          sx={{ textTransform: "none", mr: 1 }}
-        >
-          复制为 Markdown
-        </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<ContentCopyIcon />}
-          onClick={() => void handleCopyTsv()}
-          disabled={result.data.length === 0}
-          sx={{ textTransform: "none", mr: 1 }}
-        >
-          复制为 TSV
-        </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={handleExport}
-          disabled={result.data.length === 0}
-          sx={{ textTransform: "none" }}
-        >
-          导出为 CSV
-        </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={handleExportJson}
-          disabled={result.data.length === 0}
-          sx={{ textTransform: "none" }}
-        >
-          导出 JSON
-        </Button>
-        <Tooltip title="复制列名">
-          <IconButton size="small" onClick={() => void handleCopyColumnNames()}>
-            <ViewColumnIcon sx={{ fontSize: 16 }} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={isFullscreen ? "退出全屏" : "全屏查看结果"}>
-          <IconButton size="small" onClick={toggleFullscreen}>
-            {isFullscreen ? (
-              <FullscreenExitIcon sx={{ fontSize: 16 }} />
-            ) : (
-              <FullscreenIcon sx={{ fontSize: 16 }} />
-            )}
-          </IconButton>
-        </Tooltip>
+          <Tooltip title={isFullscreen ? "退出全屏" : "全屏查看结果"}>
+            <IconButton size="small" onClick={toggleFullscreen}>
+              {isFullscreen ? (
+                <FullscreenExitIcon sx={{ fontSize: 16 }} />
+              ) : (
+                <FullscreenIcon sx={{ fontSize: 16 }} />
+              )}
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
-      <Collapse in={showSqlToggle && showSql} unmountOnExit>
-        <Paper
-          variant="outlined"
-          sx={{ mt: 1, p: 1.25, borderRadius: 1.5, overflow: "auto" }}
-        >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              mb: 0.5,
-            }}
-          >
-            <Typography variant="caption" color="text.secondary">
-              已执行 SQL
-            </Typography>
-            <Button
-              size="small"
-              variant="text"
-              startIcon={<ContentCopyIcon sx={{ fontSize: 14 }} />}
-              onClick={() => void handleCopyInsert()}
-              disabled={result.data.length === 0}
-              sx={{ textTransform: "none", minHeight: 0 }}
-            >
-              复制 INSERT
-            </Button>
-          </Box>
-          <Box
-            component="pre"
-            sx={{
-              m: 0,
-              fontFamily:
-                "ui-monospace, SFMono-Regular, Menlo, Monaco, monospace",
-              fontSize: "0.75rem",
-              lineHeight: 1.5,
-              color: "text.primary",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-            }}
-          >
-            {executedSql}
-          </Box>
-        </Paper>
-      </Collapse>
       <TableContainer component={Paper} sx={{ flex: 1, minHeight: 0, mt: 1 }}>
         <Table size="small" stickyHeader>
           <TableHead>
@@ -452,3 +310,10 @@ export default function ResultsTable({
     </Box>
   );
 }
+
+/**
+ * 结果表 memo 化：SQL 编辑器打字只改 sql state，结果数据与分页 props 均未变
+ * （paginatedData 已由 useSqlLab 用 useMemo 保持引用稳定），因此父页面每次
+ * 按键重渲染时应直接跳过整个结果区（大结果集时尤其明显）。
+ */
+export default memo(ResultsTable);

@@ -115,7 +115,9 @@ test("keeps the data-scope panel collapsed until toggled", () => {
 
 test("shows recently viewed topics only when the store has entries", () => {
   const { unmount } = renderHome();
-  expect(screen.queryByTestId("analysis-recent-topics")).not.toBeInTheDocument();
+  expect(
+    screen.queryByTestId("analysis-recent-topics"),
+  ).not.toBeInTheDocument();
   unmount();
 
   useRecentAnalysisTopics.getState().record("retention");
@@ -141,7 +143,9 @@ test("opens a recently viewed topic and can clear the row", () => {
 
   renderHome();
   fireEvent.click(screen.getByRole("button", { name: "清空最近查看" }));
-  expect(screen.queryByTestId("analysis-recent-topics")).not.toBeInTheDocument();
+  expect(
+    screen.queryByTestId("analysis-recent-topics"),
+  ).not.toBeInTheDocument();
 });
 
 test("keeps the hall usable when the overview request fails and retries", async () => {
@@ -149,7 +153,7 @@ test("keeps the hall usable when the overview request fails and retries", async 
   renderHome();
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "近 30 天总览加载失败",
+    "网络异常，请检查网络连接后重试",
   );
   // The topic grid stays available while only the overview is in error.
   expect(screen.getByText("成本分析")).toBeInTheDocument();
