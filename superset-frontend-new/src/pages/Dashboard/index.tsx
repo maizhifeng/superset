@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { useDrawerStore } from "@/store/drawerState";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import TableSkeleton from "@/components/TableSkeleton";
@@ -50,13 +49,11 @@ export default function Dashboard() {
     cycleInterval,
     handleChartSaved,
     handleCloseDrawer,
-    handleOpenInsight,
     handleAddChartSelect,
     handleDeleteChart,
   } = useDashboardState();
 
   const handleEditChart = useCallback((chartId: number) => {
-    useDrawerStore.getState().closeAiDrawer();
     const [sp, setSp] = [
       new URLSearchParams(window.location.search),
       (p: URLSearchParams) => window.history.replaceState({}, "", `?${p}`),
@@ -142,7 +139,6 @@ export default function Dashboard() {
           onRefresh={handleRefreshChart}
           onEdit={handleEditChart}
           onDelete={handleDeleteChartClick}
-          onInsight={handleOpenInsight}
           onAddChart={handleAddChartOpen}
           onToggleCompare={compare.handleToggleCompare}
           onOpenCompareBigScreen={compare.openPeriodModal}

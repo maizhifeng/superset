@@ -139,7 +139,16 @@ def list_configs() -> Any:
     for cfg in list_configs():
         meta = get_latest_result_meta(cfg["id"])
         if meta:
-            cfg = {**cfg, **meta}
+            # ``get_latest_result_meta`` returns the raw result fields; the API
+            # contract (and the MUI report list) expect them under the
+            # ``last_*`` names.
+            cfg = {
+                **cfg,
+                "last_job_id": meta.get("job_id"),
+                "last_report_type": meta.get("report_type"),
+                "last_report_date": meta.get("report_date"),
+                "last_finished_at": meta.get("finished_at"),
+            }
         normalized = _normalize_config_read(cfg)
         config_key = normalized.get("id")
         schedule = schedules.get(config_key) if isinstance(config_key, int) else None
@@ -521,7 +530,7 @@ def dataset_columns(ds_id: int) -> Any:
     ds = db.session.query(SqlaTable).filter(SqlaTable.id == ds_id).one_or_none()
     if ds is None:
         return jsonify({"error": "not found"}), 404
-    database = db.session.query(Database).get(ds.database_id)
+    database = db.session.get(Database, ds.database_id)
     columns = sorted({c.column_name for c in ds.columns})
     schema = ds.schema or ""
     suggested = suggest_field_map(columns)

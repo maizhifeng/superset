@@ -5,12 +5,10 @@ import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
 import SearchIcon from "@mui/icons-material/Search";
 import { useAuthStore } from "@/store/authStore";
-import { useDrawerStore } from "@/store/drawerState";
 import { useNavStore } from "@/store/navStore";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import { usePageTip } from "@/hooks/usePageTips";
 import GlobalSnackbar from "@/components/GlobalSnackbar";
-import AiDrawer from "@/components/AiDrawer";
 import TourGuide from "@/components/TourGuide";
 import UserMenu from "@/components/AppLayout/UserMenu";
 import TopBar from "@/components/AppLayout/TopBar";
@@ -19,7 +17,6 @@ import ActivityBar from "@/components/ActivityBar/ActivityBar";
 import SidePanel from "@/components/SidePanel/SidePanel";
 import DetailOverlay from "@/components/DetailOverlay/DetailOverlay";
 import SearchOverlay from "@/components/AppLayout/SearchOverlay";
-import AiMenu from "@/components/AppLayout/AiMenu";
 import { useNavManager } from "@/components/AppLayout/useNavManager";
 
 const categoryLabels: Record<string, string> = {
@@ -38,13 +35,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const switchBackToAdmin = useAuthStore((s) => s.switchBackToAdmin);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-
-  const aiDrawerOpen = useDrawerStore((s) => s.aiDrawerOpen);
-  const aiDrawerMode = useDrawerStore((s) => s.aiDrawerMode);
-  const insightChartId = useDrawerStore((s) => s.insightChartId);
-  const insightChartMeta = useDrawerStore((s) => s.insightChartMeta);
-  const insightFilters = useDrawerStore((s) => s.insightFilters);
-  const closeAiDrawer = useDrawerStore((s) => s.closeAiDrawer);
 
   const activeOverlay = useNavStore((s) => s.activeOverlay);
   const closeOverlay = useNavStore((s) => s.closeOverlay);
@@ -145,7 +135,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </IconButton>
             </Tooltip>
           }
-          aiButton={<AiMenu />}
           searchDialog={
             <SearchOverlay
               open={searchOpen}
@@ -226,14 +215,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           >
             {children}
           </Box>
-          <AiDrawer
-            variant={aiDrawerMode}
-            open={aiDrawerOpen}
-            chartId={insightChartId}
-            chartMeta={insightChartMeta}
-            filters={insightFilters}
-            onClose={closeAiDrawer}
-          />
         </Box>
         <FabStack />
       </Box>

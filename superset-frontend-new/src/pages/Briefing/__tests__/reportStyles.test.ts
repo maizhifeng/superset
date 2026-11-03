@@ -18,7 +18,13 @@
  */
 import { describe, expect, test } from "vitest";
 import { supersetPalette } from "@/theme/palette";
-import { BRIEFING_CHART_CHROME, BRIEFING_CHART_COLORS } from "../reportStyles";
+import {
+  BRIEFING_CHART_CHROME,
+  BRIEFING_CHART_COLORS,
+  BRIEFING_CSS_COLORS,
+  briefingTable,
+  frozenCellBackground,
+} from "../reportStyles";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 
@@ -58,4 +64,54 @@ describe("BRIEFING_CHART_COLORS", () => {
     );
     expect(BRIEFING_CHART_CHROME.gridLine).toBe(supersetPalette.divider);
   });
+});
+
+test("frozen cells keep an opaque paper fill under the row wash", () => {
+  // A pinned cell overlays the cells scrolling underneath it, so its fill must
+  // be fully opaque; the translucent row wash is layered on top of the paper.
+  expect(frozenCellBackground()).toBe(BRIEFING_CSS_COLORS.backgroundPaper);
+  expect(frozenCellBackground(BRIEFING_CSS_COLORS.bgMuted)).toBe(
+    `linear-gradient(${BRIEFING_CSS_COLORS.bgMuted}, ${BRIEFING_CSS_COLORS.bgMuted}), ${BRIEFING_CSS_COLORS.backgroundPaper}`,
+  );
+});
+
+test("dimension headers freeze to the top and to their measured offset", () => {
+  const head = briefingTable.frozenHeadCell({
+    left: 160,
+    numeric: true,
+    boundary: true,
+  });
+
+  expect(head.position).toBe("sticky");
+  expect(head.top).toBe(0);
+  expect(head.left).toBe(160);
+  // Corner cells paint above the scrolling header cells.
+  expect(head.zIndex).toBe(4);
+  expect(String(head.boxShadow)).toContain("inset 0 -1px 0");
+  expect(String(head.boxShadow)).toContain("inset -1px 0 0");
+});
+
+test("metric headers freeze to the top only", () => {
+  const head = briefingTable.frozenHeadCell({ numeric: false });
+
+  expect(head.position).toBe("sticky");
+  expect(head.top).toBe(0);
+  expect(head.left).toBeUndefined();
+  expect(head.zIndex).toBe(3);
+});
+
+test("dimension body cells freeze left with the row wash", () => {
+  const body = briefingTable.frozenBodyCell({
+    left: 0,
+    overlay: BRIEFING_CSS_COLORS.bgSelected,
+    boundary: true,
+  });
+
+  expect(body.position).toBe("sticky");
+  expect(body.left).toBe(0);
+  expect(body.zIndex).toBe(2);
+  expect(body.background).toBe(
+    frozenCellBackground(BRIEFING_CSS_COLORS.bgSelected),
+  );
+  expect(String(body.boxShadow)).toContain("inset -1px 0 0");
 });

@@ -95,7 +95,12 @@ export default function AnalysisBreakdownTable({
   // A drill can switch the dimension in place (e.g. 渠道商 → 日期); reset the
   // grid sort to the natural order for the new dimension.
   useEffect(() => {
-    setSortModel([{ field: isTimeDimension ? "__dimension" : orderByKey, sort: isTimeDimension ? "asc" : "desc" }]);
+    setSortModel([
+      {
+        field: isTimeDimension ? "__dimension" : orderByKey,
+        sort: isTimeDimension ? "asc" : "desc",
+      },
+    ]);
   }, [isTimeDimension, orderByKey]);
 
   const hoverTimerRef = useRef<number | null>(null);
@@ -146,35 +151,35 @@ export default function AnalysisBreakdownTable({
 
   const tableRows = useMemo<TableRow[]>(() => {
     const mapped = displayRows.map((row, index) => {
-        const dimensionValue = String(row[dimension] ?? "–");
-        const result: TableRow = {
-          __id: `${dimension}-${index}`,
-          __dimension: isTimeDimension
-            ? formatFullDay(dimensionValue)
-            : dimensionValue,
-        };
-        for (const key of topic.breakdown.metrics) {
-          const metricDef = topicMetric(topic, key);
-          result[metricDef.key] = row[metricDef.key] ?? null;
-        }
-        const anomaly = anomalies?.get(dimensionValue);
-        if (anomaly) {
-          // Signed value so the column can be sorted numerically; the rest are
-          // display/branching hints read by the cell renderer.
-          result.__anomalyDelta =
-            anomaly.direction === "up" ? anomaly.deltaValue : -anomaly.deltaValue;
-          result.__anomalyDeltaText = anomaly.deltaText;
-          result.__anomalyDirection = anomaly.direction;
-          result.__anomalySignificant = anomaly.significant ? 1 : 0;
-          result.__anomalySeverity = anomaly.severity;
-          result.__anomalyText = anomaly.text;
-          result.__anomalyValue = anomaly.value;
-          result.__anomalyBaseline = anomaly.baselineMean;
-          result.__anomalySamples = anomaly.baselineSamples;
-        } else {
-          result.__anomalyDelta = null;
-        }
-        return result;
+      const dimensionValue = String(row[dimension] ?? "–");
+      const result: TableRow = {
+        __id: `${dimension}-${index}`,
+        __dimension: isTimeDimension
+          ? formatFullDay(dimensionValue)
+          : dimensionValue,
+      };
+      for (const key of topic.breakdown.metrics) {
+        const metricDef = topicMetric(topic, key);
+        result[metricDef.key] = row[metricDef.key] ?? null;
+      }
+      const anomaly = anomalies?.get(dimensionValue);
+      if (anomaly) {
+        // Signed value so the column can be sorted numerically; the rest are
+        // display/branching hints read by the cell renderer.
+        result.__anomalyDelta =
+          anomaly.direction === "up" ? anomaly.deltaValue : -anomaly.deltaValue;
+        result.__anomalyDeltaText = anomaly.deltaText;
+        result.__anomalyDirection = anomaly.direction;
+        result.__anomalySignificant = anomaly.significant ? 1 : 0;
+        result.__anomalySeverity = anomaly.severity;
+        result.__anomalyText = anomaly.text;
+        result.__anomalyValue = anomaly.value;
+        result.__anomalyBaseline = anomaly.baselineMean;
+        result.__anomalySamples = anomaly.baselineSamples;
+      } else {
+        result.__anomalyDelta = null;
+      }
+      return result;
     });
     // The grid is uncontrolled, so the query's metric order would otherwise
     // decide the display order; date rows must read chronologically.
@@ -399,8 +404,7 @@ export default function AnalysisBreakdownTable({
                     flexShrink: 0,
                     opacity: 0,
                     transform: "translateX(-2px)",
-                    transition:
-                      "opacity 120ms ease, transform 120ms ease",
+                    transition: "opacity 120ms ease, transform 120ms ease",
                     ".MuiDataGrid-row:hover &, .MuiDataGrid-row:focus-within &":
                       { opacity: 1, transform: "translateX(0)" },
                     "@media (hover: none)": { opacity: 1 },
@@ -602,6 +606,9 @@ export default function AnalysisBreakdownTable({
           <DataGridTable
             rows={tableRows}
             columns={columns}
+            // The analysis breakdown is a dense ranking table; always use the
+            // compact grid density instead of the user's global preference.
+            density="compact"
             loading={loading}
             getRowId={(row) => row.__id}
             disableRowSelectionOnClick

@@ -33,6 +33,7 @@ from superset.project.briefing.config import (
     DailyReportContext,
     normalize_report_type,
 )
+from superset.utils.core import GenericDataType
 
 logger = logging.getLogger(__name__)
 
@@ -272,11 +273,18 @@ def _build_date_predicates(
         start_date = start_date.date()
     if isinstance(end_date, datetime):
         end_date = end_date.date()
-    date_sqla = cols_map[date_col].get_sqla_col(template_processor=tp)
+    col = cols_map[date_col]
+    date_sqla = col.get_sqla_col(template_processor=tp)
     start_str = start_date.strftime("%Y-%m-%d")
     end_str = end_date.strftime("%Y-%m-%d")
-    col_type = getattr(cols_map[date_col], "type", None)
-    if col_type is not None and isinstance(col_type, sa.Integer):
+    # ``TableColumn.type`` holds the database type name (e.g. ``"BIGINT"``),
+    # never a SQLAlchemy type, so the semantic type is what identifies a
+    # numeric date column such as ``report_date = 20260816``.  Comparing a
+    # ``'YYYY-MM-DD'`` string against such a column fails with "invalid input
+    # syntax for integer".
+    if getattr(col, "type_generic", None) == GenericDataType.NUMERIC and not getattr(
+        col, "is_dttm", False
+    ):
         return [
             date_sqla >= int(start_date.strftime("%Y%m%d")),
             date_sqla <= int(end_date.strftime("%Y%m%d")),
@@ -312,8 +320,14 @@ def _query_sql(
             select_cols.append(
                 cols_map[name].get_sqla_col(template_processor=tp).label(name)
             )
+    if not select_cols:
+        raise RuntimeError(
+            "数据集没有可用于查询的列，无法生成简报。请检查字段映射配置。"
+        )
 
-    qry = sa.select(select_cols).select_from(tbl)
+    # SQLAlchemy 2.0 removed the legacy list form; the selected columns must be
+    # passed as individual positional entities.
+    qry = sa.select(*select_cols).select_from(tbl)
     preds = _build_date_predicates(cols_map, tp, date_col, start_date, end_date)
     for col, val in static_filters.items():
         if col in cols_map:

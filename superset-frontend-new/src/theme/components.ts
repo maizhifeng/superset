@@ -57,6 +57,30 @@ export default {
       "table.briefing-table tbody tr:hover": {
         backgroundColor: theme.palette.action.hover,
       },
+      // 「合计 N 天」 rows open each channel block and stick right below the
+      // sticky column header with plain CSS.  Several block headers share the
+      // same slot while their blocks are above the viewport; the last one in
+      // document order paints on top, so the reader always sees the header of
+      // the block currently on screen — the next block naturally replaces it.
+      // The column header is always stuck when the offset is non-zero, so a
+      // transform (repaint only) is safe and does not relayout the table.
+      "table.briefing-table thead th": {
+        transform: "translateY(var(--briefing-table-head-offset, 0px))",
+      },
+      // Block headers are not always stuck, so they follow the viewport with a
+      // sticky offset (only applies once they reach the pin line) rather than
+      // a transform, which would shift rows that are still in normal flow.
+      "table.briefing-table tbody tr.briefing-block-header td": {
+        position: "sticky",
+        top: "calc(var(--briefing-table-head-height, 32px) + var(--briefing-table-head-offset, 0px))",
+        zIndex: "1 !important",
+        boxShadow:
+          "inset 0 2px 0 var(--mui-palette-border-medium), inset 0 -1px 0 var(--mui-palette-border-light) !important",
+      },
+      "table.briefing-table tbody tr.briefing-block-header td.briefing-sticky-cell":
+        {
+          zIndex: "3 !important",
+        },
       // Honour the OS "reduce motion" preference app-wide: keyframe loops,
       // slide/fade entrances and smooth scrolling all collapse to instant.
       "@media (prefers-reduced-motion: reduce)": {

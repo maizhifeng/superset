@@ -148,6 +148,28 @@ export default function AnalysisFilterBar({
         minWidth: 0,
         flex: 1,
         pt: { xs: 1.25, md: 0 },
+        // Keep both themes on the same 36px toolbar row: normalize the inner
+        // text boxes and remove Autocomplete's extra vertical padding so the
+        // date value and the "全部" placeholders share one baseline.
+        "& .MuiOutlinedInput-root": { height: 36 },
+        "& .MuiOutlinedInput-input": {
+          height: "auto !important",
+          paddingTop: "6px !important",
+          paddingBottom: "6px !important",
+          boxSizing: "border-box",
+        },
+        "& .MuiSelect-select": {
+          height: "auto",
+          paddingTop: "6px",
+          paddingBottom: "6px",
+          boxSizing: "border-box",
+        },
+        "& .MuiAutocomplete-root .MuiOutlinedInput-root.MuiAutocomplete-inputRoot":
+          {
+            paddingTop: "0 !important",
+            paddingBottom: "0 !important",
+            alignItems: "center",
+          },
       }}
     >
       <TextField
@@ -248,13 +270,6 @@ export default function AnalysisFilterBar({
             sx={{
               minWidth: definition.key === "games" ? 190 : 150,
               maxWidth: 260,
-              // Nudge the placeholder up so it sits on the same baseline as a
-              // filled date Select in the same toolbar row.  MUI's own
-              // Autocomplete input rule wins without ``!important``.
-              "& .MuiAutocomplete-input": {
-                paddingTop: "1.5px !important",
-                paddingBottom: "3.5px !important",
-              },
             }}
           />
         );

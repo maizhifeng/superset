@@ -48,13 +48,16 @@ export const BRIEFING_CSS_COLORS = {
   outline: paletteVar("outline"),
   surfaceMain: paletteVar("surface-main"),
   surfaceVariant: paletteVar("surface-variant"),
+  backgroundPaper: paletteVar("background-paper"),
   bgMuted: paletteVar("bg-muted"),
   bgSelected: paletteVar("bg-selected"),
   actionHover: paletteVar("action-hover"),
   borderLight: paletteVar("border-light"),
   borderMedium: paletteVar("border-medium"),
+  primaryMain: paletteVar("primary-main"),
   primaryContainer: paletteVar("primary-container"),
   primaryOnContainer: paletteVar("primary-onContainer"),
+  primaryContrastText: paletteVar("primary-contrastText"),
   statusSuccess: paletteVar("status-success"),
   statusWarning: paletteVar("status-warning"),
   statusError: paletteVar("status-error"),
@@ -136,6 +139,34 @@ export const CALLOUT_BG: Record<string, string> = {
  */
 export const BRIEFING_TABLE_CLASS = "briefing-table";
 
+/**
+ * Applied to the cells pinned with ``position: sticky`` (the frozen dimension
+ * columns and their headers), so themes and tests can target the frozen block
+ * without reading inline styles.
+ */
+export const BRIEFING_STICKY_CELL_CLASS = "briefing-sticky-cell";
+
+/**
+ * Applied to the 「合计 N 天」 row that opens a channel block.  It sticks below
+ * the table header through plain CSS, so the block summary is always visible
+ * while its day rows scroll under it (the next block's header replaces it).
+ */
+export const BRIEFING_BLOCK_HEADER_CLASS = "briefing-block-header";
+
+/**
+ * Opaque paper-backed fill for a frozen cell.
+ *
+ * A pinned cell has to paint its own background because it overlays the cells
+ * that scroll underneath it, while rows tint the paper with translucent washes.
+ * Layering the row wash over the paper surface keeps zebra / subtotal rows
+ * intact once their leading cells are pinned.
+ */
+export function frozenCellBackground(overlay?: string): string {
+  return overlay
+    ? `linear-gradient(${overlay}, ${overlay}), ${BRIEFING_CSS_COLORS.backgroundPaper}`
+    : BRIEFING_CSS_COLORS.backgroundPaper;
+}
+
 export const briefingTable = {
   headCell(
     padding = "5px 8px",
@@ -174,6 +205,107 @@ export const briefingTable = {
     return {
       ...this.zebraRow(index),
       borderTop: `3px solid ${BRIEFING_CSS_COLORS.textPrimary}`,
+    };
+  },
+  /**
+   * Header cell frozen to the top of the table viewport.  Dimension headers
+   * pass ``left`` to also pin to their measured column offset.
+   *
+   * With ``border-collapse: collapse`` the grid draws the borders, so a sticky
+   * header's own border scrolls away with the table; the separators are drawn
+   * with inset shadows instead so they stay attached while scrolling.
+   */
+  frozenHeadCell(options?: {
+    left?: number;
+    numeric?: boolean;
+    /** Marks the right edge of the frozen dimension block. */
+    boundary?: boolean;
+  }): CSSProperties {
+    const pinnedLeft = options?.left !== undefined;
+    const shadows = [`inset 0 -1px 0 ${BRIEFING_CSS_COLORS.outline}`];
+    if (options?.boundary) {
+      shadows.push(`inset -1px 0 0 ${BRIEFING_CSS_COLORS.outline}`);
+    }
+    return {
+      ...this.headCell(undefined, { numeric: options?.numeric }),
+      position: "sticky",
+      top: 0,
+      ...(pinnedLeft ? { left: options?.left } : {}),
+      zIndex: pinnedLeft ? 4 : 3,
+      background: frozenCellBackground(),
+      borderBottom: "none",
+      boxShadow: shadows.join(", "),
+    };
+  },
+  /**
+   * 小计 row cell.  The row is opaque because it may float over the rows above
+   * it (transformed to the viewport's bottom edge, see ``floatingSubtotal.ts``),
+   * and its separators are inset shadows so they travel with the floating cell.
+   */
+  subtotalCell(options?: {
+    numeric?: boolean;
+    padding?: string;
+  }): CSSProperties {
+    return {
+      ...this.bodyCell({
+        numeric: options?.numeric,
+        padding: options?.padding,
+      }),
+      // Longhand layers instead of the ``background`` shorthand: the floating
+      // copy of this row must stay fully opaque in every engine.
+      backgroundColor: BRIEFING_CSS_COLORS.backgroundPaper,
+      backgroundImage: `linear-gradient(${BRIEFING_CSS_COLORS.bgSelected}, ${BRIEFING_CSS_COLORS.bgSelected})`,
+      backgroundClip: "border-box",
+      boxShadow: `inset 0 2px 0 ${BRIEFING_CSS_COLORS.borderMedium}, inset 0 -1px 0 ${BRIEFING_CSS_COLORS.borderLight}`,
+    };
+  },
+  /**
+   * A 「合计 N 天」 row cell.  Those rows can be pinned below the header, so the
+   * cell paints its own opaque background instead of relying on the row's
+   * translucent zebra fill; ``overlay`` keeps the zebra wash of the natural row.
+   */
+  summaryCell(options?: {
+    numeric?: boolean;
+    padding?: string;
+    overlay?: string;
+  }): CSSProperties {
+    return {
+      ...this.bodyCell({
+        numeric: options?.numeric,
+        padding: options?.padding,
+      }),
+      backgroundColor: BRIEFING_CSS_COLORS.backgroundPaper,
+      ...(options?.overlay
+        ? {
+            backgroundImage: `linear-gradient(${options.overlay}, ${options.overlay})`,
+          }
+        : {}),
+      backgroundClip: "border-box",
+      boxShadow: `inset 0 -1px 0 ${BRIEFING_CSS_COLORS.borderLight}`,
+    };
+  },
+  /**
+   * Body cell frozen to the left edge while the metric columns scroll
+   * horizontally.  ``overlay`` reproduces the row's zebra / subtotal wash on
+   * top of the opaque paper fill.
+   */
+  frozenBodyCell(options: {
+    left: number;
+    overlay?: string;
+    numeric?: boolean;
+    padding?: string;
+    /** Marks the right edge of the frozen dimension block. */
+    boundary?: boolean;
+  }): CSSProperties {
+    return {
+      ...this.bodyCell({ numeric: options.numeric, padding: options.padding }),
+      position: "sticky",
+      left: options.left,
+      zIndex: 2,
+      background: frozenCellBackground(options.overlay),
+      ...(options.boundary
+        ? { boxShadow: `inset -1px 0 0 ${BRIEFING_CSS_COLORS.outline}` }
+        : {}),
     };
   },
 } as const;

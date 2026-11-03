@@ -15,7 +15,6 @@ import SearchIcon from "@mui/icons-material/Search";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import TableChartIcon from "@mui/icons-material/TableChart";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
 import SettingsIcon from "@mui/icons-material/Settings";
 import CodeIcon from "@mui/icons-material/Code";
 import ExtensionIcon from "@mui/icons-material/Extension";
@@ -26,7 +25,6 @@ import api from "@/api";
 import { useRecentDashboards } from "@/store/recentDashboards";
 import { useRecentCharts } from "@/store/recentCharts";
 import rison from "rison";
-import { useDrawerStore } from "@/store/drawerState";
 
 interface SearchOverlayProps {
   open: boolean;
@@ -36,7 +34,13 @@ interface SearchOverlayProps {
 }
 
 interface Hit {
-  kind: "dashboard" | "chart" | "dataset" | "database" | "saved_query" | "command";
+  kind:
+    | "dashboard"
+    | "chart"
+    | "dataset"
+    | "database"
+    | "saved_query"
+    | "command";
   id: number;
   title: string;
   meta?: string;
@@ -52,16 +56,76 @@ interface CommandEntry {
 }
 
 const COMMANDS: CommandEntry[] = [
-  { id: 1, title: "新建图表", meta: "开始构建图表", path: "/explore", icon: <BarChartIcon sx={{ fontSize: 18, color: "primary.main" }} /> },
-  { id: 2, title: "SQL 实验室", meta: "编写并运行 SQL", path: "/sqllab", icon: <CodeIcon sx={{ fontSize: 18, color: "secondary.main" }} /> },
-  { id: 3, title: "查询历史", meta: "查看过往查询", path: "/query_history", icon: <HistoryIcon sx={{ fontSize: 18, color: "error.main" }} /> },
-  { id: 4, title: "设置", meta: "导航、表格密度等", path: "/settings", icon: <SettingsIcon sx={{ fontSize: 18, color: "text.secondary" }} /> },
-  { id: 5, title: "系统管理", meta: "用户与角色管理", path: "/system", icon: <ExtensionIcon sx={{ fontSize: 18, color: "warning.main" }} /> },
-  { id: 6, title: "仪表板", meta: "浏览全部仪表板", path: "/dashboard/list", icon: <DashboardIcon sx={{ fontSize: 18, color: "success.main" }} /> },
-  { id: 7, title: "图表", meta: "浏览全部图表", path: "/chart/list", icon: <BarChartIcon sx={{ fontSize: 18, color: "primary.main" }} /> },
-  { id: 8, title: "数据集", meta: "浏览全部数据集", path: "/dataset/list", icon: <TableChartIcon sx={{ fontSize: 18, color: "info.main" }} /> },
-  { id: 9, title: "数据库", meta: "浏览全部数据库", path: "/database/list", icon: <StorageIcon sx={{ fontSize: 18, color: "warning.main" }} /> },
-  { id: 10, title: "保存的查询", meta: "浏览保存的 SQL 查询", path: "/saved_query/list", icon: <BookmarkIcon sx={{ fontSize: 18, color: "secondary.main" }} /> },
+  {
+    id: 1,
+    title: "新建图表",
+    meta: "开始构建图表",
+    path: "/explore",
+    icon: <BarChartIcon sx={{ fontSize: 18, color: "primary.main" }} />,
+  },
+  {
+    id: 2,
+    title: "SQL 实验室",
+    meta: "编写并运行 SQL",
+    path: "/sqllab",
+    icon: <CodeIcon sx={{ fontSize: 18, color: "secondary.main" }} />,
+  },
+  {
+    id: 3,
+    title: "查询历史",
+    meta: "查看过往查询",
+    path: "/query_history",
+    icon: <HistoryIcon sx={{ fontSize: 18, color: "error.main" }} />,
+  },
+  {
+    id: 4,
+    title: "设置",
+    meta: "导航、表格密度等",
+    path: "/settings",
+    icon: <SettingsIcon sx={{ fontSize: 18, color: "text.secondary" }} />,
+  },
+  {
+    id: 5,
+    title: "系统管理",
+    meta: "用户与角色管理",
+    path: "/system",
+    icon: <ExtensionIcon sx={{ fontSize: 18, color: "warning.main" }} />,
+  },
+  {
+    id: 6,
+    title: "仪表板",
+    meta: "浏览全部仪表板",
+    path: "/dashboard/list",
+    icon: <DashboardIcon sx={{ fontSize: 18, color: "success.main" }} />,
+  },
+  {
+    id: 7,
+    title: "图表",
+    meta: "浏览全部图表",
+    path: "/chart/list",
+    icon: <BarChartIcon sx={{ fontSize: 18, color: "primary.main" }} />,
+  },
+  {
+    id: 8,
+    title: "数据集",
+    meta: "浏览全部数据集",
+    path: "/dataset/list",
+    icon: <TableChartIcon sx={{ fontSize: 18, color: "info.main" }} />,
+  },
+  {
+    id: 9,
+    title: "数据库",
+    meta: "浏览全部数据库",
+    path: "/database/list",
+    icon: <StorageIcon sx={{ fontSize: 18, color: "warning.main" }} />,
+  },
+  {
+    id: 10,
+    title: "保存的查询",
+    meta: "浏览保存的 SQL 查询",
+    path: "/saved_query/list",
+    icon: <BookmarkIcon sx={{ fontSize: 18, color: "secondary.main" }} />,
+  },
 ];
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -92,11 +156,17 @@ const LABELS: Record<Hit["kind"], string> = {
   command: "命令",
 };
 
-const KEY_ORDER: Hit["kind"][] = ["command", "dashboard", "chart", "dataset", "database", "saved_query"];
+const KEY_ORDER: Hit["kind"][] = [
+  "command",
+  "dashboard",
+  "chart",
+  "dataset",
+  "database",
+  "saved_query",
+];
 
 /**
  * 全局搜索命令面板：按名称实时搜索仪表板、图表、数据集，点击结果直接跳转。
- * 无确切匹配时支持将提问转发给 AI 助手。
  */
 export default function SearchOverlay({
   open,
@@ -105,7 +175,6 @@ export default function SearchOverlay({
   onQueryChange,
 }: SearchOverlayProps) {
   const navigate = useNavigate();
-  const openAiDrawer = useDrawerStore((s) => s.openAiDrawer);
   const recentDbs = useRecentDashboards((s) => s.items);
   const recentCharts = useRecentCharts((s) => s.items);
   const [hits, setHits] = useState<Hit[]>([]);
@@ -163,16 +232,17 @@ export default function SearchOverlay({
       const it = recentDbs[i];
       tasks.push(
         api
-          .get<{ result: { dashboard_title?: string } }>(`/dashboard/${it.id}`, {
-            signal: controller.signal,
-          })
-          .then(
-            (res): Hit | null => ({
-              kind: "dashboard",
-              id: it.id,
-              title: res.data.result?.dashboard_title ?? `仪表板 ${it.id}`,
-            }),
+          .get<{ result: { dashboard_title?: string } }>(
+            `/dashboard/${it.id}`,
+            {
+              signal: controller.signal,
+            },
           )
+          .then((res): Hit | null => ({
+            kind: "dashboard",
+            id: it.id,
+            title: res.data.result?.dashboard_title ?? `仪表板 ${it.id}`,
+          }))
           .catch(() => null),
       );
     }
@@ -183,13 +253,11 @@ export default function SearchOverlay({
           .get<{ result: { slice_name?: string } }>(`/chart/${it.id}`, {
             signal: controller.signal,
           })
-          .then(
-            (res): Hit | null => ({
-              kind: "chart",
-              id: it.id,
-              title: res.data.result?.slice_name ?? `图表 ${it.id}`,
-            }),
-          )
+          .then((res): Hit | null => ({
+            kind: "chart",
+            id: it.id,
+            title: res.data.result?.slice_name ?? `图表 ${it.id}`,
+          }))
           .catch(() => null),
       );
     }
@@ -266,19 +334,26 @@ export default function SearchOverlay({
       .then((res) =>
         res.data.result.map((r) => {
           const title = String(
-            r.dashboard_title ?? r.slice_name ?? r.table_name ?? r.database_name ?? r.label ?? "",
+            r.dashboard_title ??
+              r.slice_name ??
+              r.table_name ??
+              r.database_name ??
+              r.label ??
+              "",
           );
           const meta = String(
             kind === "dashboard"
-              ? r.changed_on_delta_humanized ?? ""
+              ? (r.changed_on_delta_humanized ?? "")
               : kind === "chart"
-                ? r.viz_type ?? ""
+                ? (r.viz_type ?? "")
                 : kind === "dataset"
-                  ? (r.database as { database_name?: string } | undefined)?.database_name ?? ""
+                  ? ((r.database as { database_name?: string } | undefined)
+                      ?.database_name ?? "")
                   : kind === "database"
-                    ? (r.backend as string | undefined) ?? ""
+                    ? ((r.backend as string | undefined) ?? "")
                     : kind === "saved_query"
-                      ? (r.database as { database_name?: string } | undefined)?.database_name ?? ""
+                      ? ((r.database as { database_name?: string } | undefined)
+                          ?.database_name ?? "")
                       : "",
           );
           return { kind, id: Number(r.id), title, meta };
@@ -348,7 +423,6 @@ export default function SearchOverlay({
         return;
       }
     }
-    if (e.key === "Enter" && !hasAny) askAi();
   };
 
   const goTo = (h: Hit) => {
@@ -383,11 +457,6 @@ export default function SearchOverlay({
         break;
       }
     }
-  };
-
-  const askAi = () => {
-    onClose();
-    openAiDrawer("assistant", { initialQuestion: trimmed });
   };
 
   return (
@@ -425,7 +494,9 @@ export default function SearchOverlay({
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: 20, color: "text.secondary" }} />
+                    <SearchIcon
+                      sx={{ fontSize: 20, color: "text.secondary" }}
+                    />
                   </InputAdornment>
                 ),
                 endAdornment: loading ? (
@@ -434,8 +505,9 @@ export default function SearchOverlay({
               },
             }}
           />
-          {trimmed && !loading && (
-            hasAny ? (
+          {trimmed &&
+            !loading &&
+            (hasAny ? (
               <List dense sx={{ maxHeight: 360, overflow: "auto", pt: 1 }}>
                 {KEY_ORDER.flatMap((kind) => {
                   const items = groupedHits[kind];
@@ -502,33 +574,12 @@ export default function SearchOverlay({
                 })}
               </List>
             ) : (
-              <Box
-                onClick={askAi}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  mt: 1,
-                  px: 1,
-                  py: 1,
-                  borderRadius: 1.5,
-                  cursor: "pointer",
-                  bgcolor: "action.hover",
-                  "&:hover": { bgcolor: "action.selected" },
-                }}
-              >
-                <SmartToyIcon sx={{ fontSize: 18, color: "primary.main" }} />
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                    询问 AI 助手："{trimmed}"
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    点此或按 Enter 打开 AI 助手进行分析
-                  </Typography>
-                </Box>
+              <Box sx={{ px: 1, py: 2, textAlign: "center" }}>
+                <Typography variant="body2" color="text.secondary">
+                  没有匹配结果
+                </Typography>
               </Box>
-            )
-          )}
+            ))}
           {!trimmed && recentHits.length > 0 && (
             <Box sx={{ mt: 1 }}>
               <Typography
@@ -579,7 +630,11 @@ export default function SearchOverlay({
               </Typography>
               <List dense>
                 {recentSqlQueries.map((q, i) => {
-                  const oneLine = q.split("\n").filter(Boolean).join(" ").slice(0, 80);
+                  const oneLine = q
+                    .split("\n")
+                    .filter(Boolean)
+                    .join(" ")
+                    .slice(0, 80);
                   return (
                     <ListItemButton
                       key={`${q}-${i}`}
@@ -591,7 +646,9 @@ export default function SearchOverlay({
                       sx={{ borderRadius: 1.5 }}
                     >
                       <ListItemIcon sx={{ minWidth: 30 }}>
-                        <CodeIcon sx={{ fontSize: 18, color: "secondary.main" }} />
+                        <CodeIcon
+                          sx={{ fontSize: 18, color: "secondary.main" }}
+                        />
                       </ListItemIcon>
                       <ListItemText
                         primary={

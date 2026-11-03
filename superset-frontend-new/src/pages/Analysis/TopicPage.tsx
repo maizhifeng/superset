@@ -281,13 +281,15 @@ function TopicPageContent({
   const drillOrder = new Map(
     drillPath(topic).map((dimension, index) => [dimension, index]),
   );
-  const deepestDrill = [...dimensionDrills].sort((left, right) => {
-    const leftOrder =
-      drillOrder.get(dimensionForFilterKey(left.key) ?? "") ?? -1;
-    const rightOrder =
-      drillOrder.get(dimensionForFilterKey(right.key) ?? "") ?? -1;
-    return leftOrder - rightOrder;
-  }).at(-1);
+  const deepestDrill = [...dimensionDrills]
+    .sort((left, right) => {
+      const leftOrder =
+        drillOrder.get(dimensionForFilterKey(left.key) ?? "") ?? -1;
+      const rightOrder =
+        drillOrder.get(dimensionForFilterKey(right.key) ?? "") ?? -1;
+      return leftOrder - rightOrder;
+    })
+    .at(-1);
 
   /** Changing a global filter or date range exits the drill hierarchy. */
   const handleFilterChange = (next: AnalysisFilters) => {
@@ -588,8 +590,8 @@ function TopicPageContent({
   /** Drill date sits inside the observation window → some metrics immature. */
   const drillDateImmature = Boolean(
     topic.maturityDays &&
-      filters.focusDate &&
-      filters.focusDate > matureBounds.end,
+    filters.focusDate &&
+    filters.focusDate > matureBounds.end,
   );
   const kpiWindowLabel = periodLabel(matureBounds);
   const kpiComparisonLabel = periodLabel(kpiComparisonBounds);
@@ -813,43 +815,54 @@ function TopicPageContent({
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
               核心指标
             </Typography>
-            <Tooltip title="核心指标的统计窗口及其等长对比窗口；留存/LTV 专题有观察期，统计窗口会整体前移。趋势图的“趋势对比期”与所选日期等长，逐日对齐到上期同一天。">
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: { xs: 1, md: 2 },
-                  flexWrap: "wrap",
-                  rowGap: 0.5,
-                }}
-              >
-              <Typography variant="caption" color="text.secondary">
-                统计窗口{" "}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: { xs: 1, md: 2 },
+                flexWrap: "wrap",
+                rowGap: 0.5,
+              }}
+            >
+              <Tooltip title="核心指标的统计窗口及其等长对比窗口；留存/LTV 专题有观察期，统计窗口会整体前移。趋势图的“趋势对比期”与所选日期等长，逐日对齐到上期同一天。">
                 <Box
-                  component="span"
                   sx={{
-                    color: "text.primary",
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: { xs: 1, md: 2 },
+                    flexWrap: "wrap",
+                    rowGap: 0.5,
                   }}
                 >
-                  {kpiWindowLabel}
+                  <Typography variant="caption" color="text.secondary">
+                    统计窗口{" "}
+                    <Box
+                      component="span"
+                      sx={{
+                        color: "text.primary",
+                        fontWeight: 600,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {kpiWindowLabel}
+                    </Box>
+                    （{kpiWindowDays} 天）
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    对比窗口{" "}
+                    <Box
+                      component="span"
+                      sx={{
+                        color: "text.primary",
+                        fontWeight: 600,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {kpiComparisonLabel}
+                    </Box>
+                  </Typography>
                 </Box>
-                （{kpiWindowDays} 天）
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                对比窗口{" "}
-                <Box
-                  component="span"
-                  sx={{
-                    color: "text.primary",
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums",
-                  }}
-                >
-                  {kpiComparisonLabel}
-                </Box>
-              </Typography>
+              </Tooltip>
               {snapshotActive && snapshotGeneratedAt && (
                 <Tooltip
                   title={`默认视图快照生成于 ${dayjs(snapshotGeneratedAt).format("YYYY-MM-DD HH:mm")}；点击刷新可获取最新数据`}
@@ -871,8 +884,7 @@ function TopicPageContent({
                   />
                 </Tooltip>
               )}
-              </Box>
-            </Tooltip>
+            </Box>
           </Box>
 
           <AnalysisKpiCards
@@ -912,8 +924,7 @@ function TopicPageContent({
                     title={
                       <Box component="span">
                         <Box component="span" sx={{ display: "block" }}>
-                          {topic.trend.note ??
-                            "按自然日聚合，随筛选条件变化"}
+                          {topic.trend.note ?? "按自然日聚合，随筛选条件变化"}
                         </Box>
                         <Box
                           component="span"
@@ -1154,8 +1165,7 @@ function TopicPageContent({
                 <Typography variant="caption" color="text.disabled">
                   {filters.focusWeek
                     ? "已进入该周下钻，按渠道商拆解"
-                    : weeklyView &&
-                        filters.dimension === ANALYSIS_TIME_COLUMN
+                    : weeklyView && filters.dimension === ANALYSIS_TIME_COLUMN
                       ? "已按周展示当前筛选趋势"
                       : filters.dimension === ANALYSIS_TIME_COLUMN
                         ? "已切换为按日期查看分天情况"
@@ -1192,9 +1202,7 @@ function TopicPageContent({
                 dimension={filters.dimension}
                 focusDate={filters.focusDate}
                 focusWeek={filters.focusWeek}
-                nextDimensionLabel={
-                  dateDrillMode ? nextDimensionLabel : null
-                }
+                nextDimensionLabel={dateDrillMode ? nextDimensionLabel : null}
                 drillHint={
                   dateDrillMode
                     ? `查看该${currentDimensionLabel}的分天情况`
@@ -1220,8 +1228,7 @@ function TopicPageContent({
                 showComparison={comparePrevious}
                 comparisonOffsetDays={comparisonOffsetDays}
                 onDateClick={
-                  filters.dimension === ANALYSIS_TIME_COLUMN &&
-                  !timeDrillTarget
+                  filters.dimension === ANALYSIS_TIME_COLUMN && !timeDrillTarget
                     ? undefined
                     : handleDateClick
                 }
@@ -1431,7 +1438,5 @@ export default function TopicPage() {
   }
   hasRenderedContent.current = true;
 
-  return (
-    <TopicPageContent key={topic.id} topic={topic} snapshot={snapshot} />
-  );
+  return <TopicPageContent key={topic.id} topic={topic} snapshot={snapshot} />;
 }

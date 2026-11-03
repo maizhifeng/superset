@@ -9,6 +9,7 @@ import {
   Fragment,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Box from "@mui/material/Box";
@@ -55,7 +56,9 @@ import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
 import {
   ALERT_LEVEL_COLOR,
+  BRIEFING_BLOCK_HEADER_CLASS,
   BRIEFING_CSS_COLORS,
+  BRIEFING_STICKY_CELL_CLASS,
   BRIEFING_TABLE_CLASS,
   CALLOUT_BG,
   JOB_STATUS_COLOR,
@@ -64,6 +67,8 @@ import {
   type JobStatus,
 } from "./reportStyles";
 import FeishuDialog from "./FeishuDialog";
+import WasdHint from "./WasdHint";
+import { useWasdTableScroll } from "./useTableScroll";
 import {
   outcomeMessage,
   type FeishuOutcome,
@@ -711,6 +716,28 @@ function metricCellsText(
 
 /** Row stagger: each disclosed day slides in after the one above it. */
 const ROW_STAGGER_MS = 45;
+
+/** CSS custom property carrying the sticky table header's height. */
+const TABLE_HEAD_HEIGHT_VAR = "--briefing-table-head-height";
+
+/** CSS custom property shifting the sticky header down to the page viewport. */
+const TABLE_HEAD_OFFSET_VAR = "--briefing-table-head-offset";
+
+/** Nearest ancestor that actually scrolls vertically (the report page). */
+function scrollableParent(element: HTMLElement | null): HTMLElement | null {
+  let node = element?.parentElement ?? null;
+  while (node) {
+    const style = getComputedStyle(node);
+    if (
+      (style.overflowY === "auto" || style.overflowY === "scroll") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
 
 /** Column stagger for the reel, so a summary row turns over left to right. */
 const REEL_MS = 380;
@@ -1646,6 +1673,133 @@ function FluctuationList({
   );
 }
 
+/**
+ * Pointer / keyboard scroll assist for the detail table.
+ *
+ * Deliberately kept out of ``ProjectComboTable``: hover, focus and pressed-key
+ * state change whenever the pointer crosses the table edge (including when the
+ * page scroll moves the table out from under a resting pointer), and
+ * re-rendering the huge table for those events caused a visible stutter.
+ * Only this small component re-renders on them.
+ */
+function TableScrollAssist({
+  viewportRef,
+  paperRef,
+  scrollable,
+}: {
+  viewportRef: RefObject<HTMLDivElement | null>;
+  paperRef: RefObject<HTMLDivElement | null>;
+  scrollable: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  // Held WASD keys keep control after the page scrolls the table away from the
+  // pointer, so the edge handoff can finish instead of stopping midway.
+  const [engaged, setEngaged] = useState(false);
+  // Held keys are mirrored into state so the SVG hint can highlight them
+  // without relying on CSS animation (Windows with reduced motion collapses
+  // those keyframes to nothing).
+  const [pressed, setPressed] = useState<string[]>([]);
+  const enabled = (hovered || focused || engaged) && scrollable;
+
+  useWasdTableScroll(viewportRef, enabled, setEngaged, setPressed);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return undefined;
+    const onEnter = () => setHovered(true);
+    const onLeave = () => setHovered(false);
+    const onFocus = () => setFocused(true);
+    const onBlur = () => setFocused(false);
+    viewport.addEventListener("mouseenter", onEnter);
+    viewport.addEventListener("mouseleave", onLeave);
+    viewport.addEventListener("focus", onFocus);
+    viewport.addEventListener("blur", onBlur);
+    return () => {
+      viewport.removeEventListener("mouseenter", onEnter);
+      viewport.removeEventListener("mouseleave", onLeave);
+      viewport.removeEventListener("focus", onFocus);
+      viewport.removeEventListener("blur", onBlur);
+    };
+  }, [viewportRef]);
+
+  // The hint is pinned to the bottom-right of the table's *visible* area,
+  // clamped to both the table viewport and the browser viewport.
+  const hintRef = useRef<HTMLDivElement | null>(null);
+
+  const updateHintPosition = useCallback(() => {
+    const viewport = viewportRef.current;
+    const paper = paperRef.current;
+    const hint = hintRef.current;
+    if (!viewport || !paper || !hint) return;
+    const hintHeight = hint.offsetHeight || 96;
+    const tableRect = viewport.getBoundingClientRect();
+    const headHeight =
+      viewport.querySelector("thead th")?.getBoundingClientRect().height ?? 32;
+    const topBound = Math.max(tableRect.top + headHeight + 8, 8);
+    const bottomBound = Math.min(
+      tableRect.bottom - hintHeight - 14,
+      window.innerHeight - hintHeight - 8,
+    );
+    const nextFits = bottomBound >= topBound;
+    // Visibility and offset are written straight to the DOM instead of React
+    // state; a state flip here would re-render the table mid-scroll.
+    hint.style.visibility = nextFits ? "" : "hidden";
+    if (!nextFits) return;
+    const hintRect = hint.getBoundingClientRect();
+    const nextTop = Math.round(hint.offsetTop + (bottomBound - hintRect.top));
+    hint.style.top = `${nextTop}px`;
+    hint.style.bottom = "auto";
+  }, [paperRef, viewportRef]);
+
+  useLayoutEffect(() => {
+    updateHintPosition();
+  });
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const hint = hintRef.current;
+    const pageScroll = scrollableParent(hint);
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateHintPosition();
+      });
+    };
+    pageScroll?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(schedule);
+    if (hint) observer?.observe(hint);
+    return () => {
+      pageScroll?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      observer?.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [enabled, updateHintPosition]);
+
+  return (
+    <Fade in={enabled} timeout={durationTokens.standard}>
+      <Box
+        ref={hintRef}
+        sx={{
+          position: "absolute",
+          right: 28,
+          zIndex: 6,
+          pointerEvents: "none",
+        }}
+      >
+        <WasdHint pressed={pressed} />
+      </Box>
+    </Fade>
+  );
+}
+
 function ProjectComboTable({
   projects,
   breakevenLine,
@@ -1703,7 +1857,6 @@ function ProjectComboTable({
   // Leading text columns; a daily row spans them with its date cell.
   const leadCount = 2 + (hasRegion ? 1 : 0);
   const columnCount = leadCount + columns.length + 1;
-  const numCell = briefingTable.bodyCell({ numeric: true });
   const smallNumCell = {
     ...briefingTable.bodyCell({ numeric: true }),
     fontSize: "12px",
@@ -1717,6 +1870,156 @@ function ProjectComboTable({
     { label: "状态", numeric: true },
   ];
 
+  // Frozen dimension columns + sticky header: the metric columns are wide, so
+  // the leading dimension cells stay pinned while the metrics scroll
+  // horizontally, and the header stays pinned while the body scrolls
+  // vertically.  The leading columns are content-sized rather than fixed, so
+  // their sticky offsets are measured from the rendered header cells.
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const headCellRefs = useRef<(HTMLTableCellElement | null)[]>([]);
+  const [leadOffsets, setLeadOffsets] = useState<number[]>(() =>
+    Array.from({ length: leadCount }, () => 0),
+  );
+  const [tableScrollable, setTableScrollable] = useState(false);
+  // The hint layer (and the WASD/wheel controls that belong to it) lives in a
+  // small child component; see ``TableScrollAssist``.
+  const paperRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the sticky column header inside the page viewport while the table's
+  // top edge is scrolled above it: shift the header's sticky offset by the
+  // overlap, so it pins to the page viewport and is only pushed away (with the
+  // table) once the whole table has passed.
+  const lastHeadOffset = useRef<number | null>(null);
+
+  // Only the two row kinds that shift are touched: writing the offset on the
+  // scroll container would invalidate the style of the whole (very large)
+  // subtree on every page-scroll frame.
+  const headFollowRows = useRef<HTMLTableRowElement[]>([]);
+  const pageScrollRef = useRef<HTMLElement | null>(null);
+  const tableHeadHeightRef = useRef(29.5);
+
+  const refreshHeadFollowRows = useCallback(() => {
+    const viewport = tableScrollRef.current;
+    headFollowRows.current = viewport
+      ? [
+          ...viewport.querySelectorAll<HTMLTableRowElement>(
+            "thead tr, tbody tr.briefing-block-header",
+          ),
+        ]
+      : [];
+    pageScrollRef.current = scrollableParent(paperRef.current);
+    const headCell = viewport?.querySelector("thead th");
+    if (headCell) {
+      tableHeadHeightRef.current = headCell.getBoundingClientRect().height;
+    }
+  }, []);
+
+  const updateHeadOffset = useCallback((force = false) => {
+    const viewport = tableScrollRef.current;
+    if (!viewport) return;
+    const pageScroll = pageScrollRef.current;
+    const pageTop = pageScroll
+      ? pageScroll.getBoundingClientRect().top + pageScroll.clientTop
+      : 0;
+    const tableTop = viewport.getBoundingClientRect().top;
+    const headHeight = tableHeadHeightRef.current;
+    // Follow the page viewport, but never push the header past the table's
+    // bottom edge: that is what makes it ride out with the table at the end.
+    const offset = Math.max(
+      0,
+      Math.min(
+        Math.round(pageTop - tableTop),
+        Math.round(viewport.clientHeight - headHeight),
+      ),
+    );
+    if (!force && lastHeadOffset.current === offset) return;
+    lastHeadOffset.current = offset;
+    const value = `${offset}px`;
+    for (const row of headFollowRows.current) {
+      row.style.setProperty(TABLE_HEAD_OFFSET_VAR, value);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    refreshHeadFollowRows();
+    updateHeadOffset(true);
+  });
+
+  useEffect(() => {
+    const pageScroll = pageScrollRef.current;
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateHeadOffset();
+      });
+    };
+    pageScroll?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(schedule);
+    if (pageScroll) observer?.observe(pageScroll);
+    return () => {
+      pageScroll?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      observer?.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [updateHeadOffset]);
+
+  useLayoutEffect(() => {
+    const scroll = tableScrollRef.current;
+    if (!scroll) return undefined;
+    const measure = () => {
+      const cells = headCellRefs.current
+        .slice(0, leadCount)
+        .filter((cell): cell is HTMLTableCellElement => cell !== null);
+      if (cells.length === leadCount) {
+        const offsets: number[] = [];
+        let left = 0;
+        for (const cell of cells) {
+          offsets.push(left);
+          left += cell.getBoundingClientRect().width;
+        }
+        setLeadOffsets((previous) =>
+          previous.length === offsets.length &&
+          previous.every((value, i) => Math.abs(value - offsets[i]) < 0.5)
+            ? previous
+            : offsets,
+        );
+      }
+      const headCell = headCellRefs.current[0];
+      if (headCell) {
+        scroll.style.setProperty(
+          TABLE_HEAD_HEIGHT_VAR,
+          `${headCell.getBoundingClientRect().height}px`,
+        );
+      }
+      setTableScrollable(
+        scroll.scrollWidth > scroll.clientWidth + 1 ||
+          scroll.scrollHeight > scroll.clientHeight + 1,
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    // Column widths follow their content: re-measure when the viewport, the
+    // scroll container or a dimension header itself resizes (font load,
+    // 分渠道/分地区 toggles).
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    // Content size changes (分天 expansion, extra metric columns) decide
+    // whether the table is scrollable at all.
+    const content = scroll.firstElementChild;
+    if (content) observer.observe(content);
+    headCellRefs.current.slice(0, leadCount).forEach((cell) => {
+      if (cell) observer.observe(cell);
+    });
+    return () => observer.disconnect();
+  }, [leadCount]);
+
   /**
    * One disclosed day line.  The channel combos and the group-end 小计 share
    * the layout, so a game's 小计 breaks down by day exactly like the channels
@@ -1727,6 +2030,7 @@ function ProjectComboTable({
     day: { row: DailyTrendRow; values: MetricValues },
     dayIndex: number,
     zebra: CSSProperties,
+    overlay?: string,
   ) => (
     <tr
       key={day.row.date}
@@ -1738,9 +2042,10 @@ function ProjectComboTable({
     >
       <td
         colSpan={leadCount}
+        className={BRIEFING_STICKY_CELL_CLASS}
         title={`${comboLabel(combo)} ｜ ${expandLabel}对比`}
         style={{
-          ...briefingTable.bodyCell(),
+          ...briefingTable.frozenBodyCell({ left: 0, overlay, boundary: true }),
           paddingLeft: 24,
         }}
       >
@@ -1781,7 +2086,11 @@ function ProjectComboTable({
   );
 
   return (
-    <Paper sx={{ p: 2 }} variant="outlined">
+    <Paper
+      ref={paperRef}
+      sx={{ p: 2, position: "relative" }}
+      variant="outlined"
+    >
       <Box
         sx={{
           display: "flex",
@@ -1896,7 +2205,25 @@ function ProjectComboTable({
           </Button>
         </Box>
       </Box>
-      <Box sx={{ overflowX: "auto" }}>
+      {/*
+       * Bounded scroll viewport: the header and the leading dimension columns
+       * stay frozen while the metric columns scroll right and the rows scroll
+       * down.  Hover / focus on this viewport drives the WASD guide below.
+       */}
+      <Box
+        ref={tableScrollRef}
+        tabIndex={0}
+        role="region"
+        aria-label="主游戏 × 渠道商明细表，悬停或聚焦后可用 WASD 键滚动"
+        sx={{
+          overflow: "auto",
+          // Wheel/trackpad scrolling (and its scroll chaining at the edges) is
+          // the browser's native behaviour; only the keyboard is driven by
+          // ``useWasdTableScroll``.  The taller viewport leaves room for more
+          // stacked 合计 rows above the data.
+          maxHeight: "85vh",
+        }}
+      >
         <table
           className={BRIEFING_TABLE_CLASS}
           style={{
@@ -1908,16 +2235,25 @@ function ProjectComboTable({
         >
           <thead>
             <tr>
-              {head.map((c) => (
-                <th
-                  key={c.label}
-                  style={briefingTable.headCell(undefined, {
-                    numeric: c.numeric,
-                  })}
-                >
-                  {c.label}
-                </th>
-              ))}
+              {head.map((c, index) => {
+                const frozen = index < leadCount;
+                return (
+                  <th
+                    key={c.label}
+                    ref={(cell) => {
+                      headCellRefs.current[index] = cell;
+                    }}
+                    className={frozen ? BRIEFING_STICKY_CELL_CLASS : undefined}
+                    style={briefingTable.frozenHeadCell({
+                      left: frozen ? (leadOffsets[index] ?? 0) : undefined,
+                      numeric: c.numeric,
+                      boundary: index === leadCount - 1,
+                    })}
+                  >
+                    {c.label}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -1970,6 +2306,17 @@ function ProjectComboTable({
                     const parentValues = totals
                       ? totalsMetricValues(totals, ltvDays)
                       : projectMetricValues(p);
+                    // The frozen leading cells must paint the same row wash the
+                    // row itself carries (zebra), so their opaque fill matches
+                    // the cells scrolling underneath them.
+                    const rowOverlay =
+                      idx % 2 === 1 ? BRIEFING_CSS_COLORS.bgMuted : undefined;
+                    // The summary row can be pinned below the header, so all of
+                    // its cells need their own opaque fill.
+                    const summaryCellStyle = briefingTable.summaryCell({
+                      numeric: true,
+                      overlay: rowOverlay,
+                    });
                     return (
                       <Fragment key={`${p.project}-${p.channel}-${p.region}`}>
                         {/*
@@ -1982,32 +2329,25 @@ function ProjectComboTable({
                          * so its figures still roll over from the day's value
                          * instead of being swapped in.
                          */}
-                        <Fragment key="days">
-                          {days.map((day, dayIndex) =>
-                            renderDayRow(
-                              p,
-                              day,
-                              dayIndex,
-                              opensWithDivider &&
-                                memberIndex === 0 &&
-                                dayIndex === 0
-                                ? briefingTable.groupStartRow(idx)
-                                : briefingTable.zebraRow(idx),
-                            ),
-                          )}
-                        </Fragment>
+                        {/*
+                         * 分区头：每个渠道块的「合计 N 天」行现在位于块首，
+                         * 用纯 CSS sticky 固定在表头下方；块结束后由下一块的
+                         * 头自然顶替（标准分区标题行为，无需 JS 计算槽位）。
+                         */}
                         <tr
                           key="total"
+                          className={
+                            showDaily ? BRIEFING_BLOCK_HEADER_CLASS : undefined
+                          }
                           style={
-                            opensWithDivider &&
-                            memberIndex === 0 &&
-                            days.length === 0
+                            opensWithDivider && memberIndex === 0
                               ? briefingTable.groupStartRow(idx)
                               : briefingTable.zebraRow(idx)
                           }
                         >
-                          <td style={briefingTable.bodyCell()}>
+                          {[
                             <Box
+                              key="project"
                               sx={{
                                 display: "flex",
                                 alignItems: "center",
@@ -2018,16 +2358,22 @@ function ProjectComboTable({
                               {totals && (
                                 <TotalTag days={p.daily?.length ?? 0} />
                               )}
-                            </Box>
-                          </td>
-                          <td style={briefingTable.bodyCell()}>
-                            {p.channel || "-"}
-                          </td>
-                          {hasRegion && (
-                            <td style={briefingTable.bodyCell()}>
-                              {p.region || "-"}
+                            </Box>,
+                            p.channel || "-",
+                            ...(hasRegion ? [p.region || "-"] : []),
+                          ].map((value, leadIndex) => (
+                            <td
+                              key={`lead-${leadIndex}`}
+                              className={BRIEFING_STICKY_CELL_CLASS}
+                              style={briefingTable.frozenBodyCell({
+                                left: leadOffsets[leadIndex] ?? 0,
+                                overlay: rowOverlay,
+                                boundary: leadIndex === leadCount - 1,
+                              })}
+                            >
+                              {value}
                             </td>
-                          )}
+                          ))}
                           {/*
                            * The reel lives in both states on purpose: the cell
                            * keeps its identity, so when the row turns into a
@@ -2038,7 +2384,7 @@ function ProjectComboTable({
                             (cell, i) => (
                               <td
                                 key={cell.key}
-                                style={{ ...numCell, fontWeight: 600 }}
+                                style={{ ...summaryCellStyle, fontWeight: 600 }}
                                 title={cell.title}
                               >
                                 <WheelValue
@@ -2049,13 +2395,24 @@ function ProjectComboTable({
                               </td>
                             ),
                           )}
-                          <td style={numCell}>
+                          <td style={summaryCellStyle}>
                             <StatusDot
                               achieved={achieved}
                               invested={parentValues.spend > 0}
                             />
                           </td>
                         </tr>
+                        <Fragment key="days">
+                          {days.map((day, dayIndex) =>
+                            renderDayRow(
+                              p,
+                              day,
+                              dayIndex,
+                              briefingTable.zebraRow(idx),
+                              rowOverlay,
+                            ),
+                          )}
+                        </Fragment>
                         {showDaily && days.length === 0 && (
                           <tr key="empty">
                             <td
@@ -2076,26 +2433,33 @@ function ProjectComboTable({
                   {showSubtotal && subtotalValues && summary && (
                     <Fragment key="subtotal-days">
                       {subtotalDays.map((day, dayIndex) =>
-                        renderDayRow(summary, day, dayIndex, {
-                          backgroundColor: BRIEFING_CSS_COLORS.actionHover,
-                          borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
-                        }),
+                        renderDayRow(
+                          summary,
+                          day,
+                          dayIndex,
+                          {
+                            backgroundColor: BRIEFING_CSS_COLORS.actionHover,
+                            borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
+                          },
+                          BRIEFING_CSS_COLORS.actionHover,
+                        ),
                       )}
                     </Fragment>
                   )}
                   {showSubtotal && subtotalValues && (
-                    <tr
-                      key="subtotal"
-                      style={{
-                        backgroundColor: BRIEFING_CSS_COLORS.bgSelected,
-                        borderTop: `1px solid ${BRIEFING_CSS_COLORS.borderMedium}`,
-                        borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
-                      }}
-                    >
+                    <tr key="subtotal">
                       <td
                         colSpan={leadCount}
+                        className={BRIEFING_STICKY_CELL_CLASS}
                         title={`${game} ｜ 全部渠道汇总`}
-                        style={briefingTable.bodyCell()}
+                        style={{
+                          ...briefingTable.frozenBodyCell({
+                            left: 0,
+                            overlay: BRIEFING_CSS_COLORS.bgSelected,
+                            boundary: true,
+                          }),
+                          boxShadow: `inset -1px 0 0 ${BRIEFING_CSS_COLORS.outline}, inset 0 2px 0 ${BRIEFING_CSS_COLORS.borderMedium}, inset 0 -1px 0 ${BRIEFING_CSS_COLORS.borderLight}`,
+                        }}
                       >
                         <Box
                           sx={{
@@ -2112,13 +2476,16 @@ function ProjectComboTable({
                       {metricCellsText(subtotalValues, ltvDays).map((cell) => (
                         <td
                           key={cell.key}
-                          style={{ ...numCell, fontWeight: 700 }}
+                          style={{
+                            ...briefingTable.subtotalCell({ numeric: true }),
+                            fontWeight: 700,
+                          }}
                           title={cell.title}
                         >
                           <WheelValue text={cell.text} color={cell.color} />
                         </td>
                       ))}
-                      <td style={numCell}>
+                      <td style={briefingTable.subtotalCell({ numeric: true })}>
                         <StatusDot
                           achieved={(subtotalValues.roi1 ?? 0) >= breakevenLine}
                           invested={subtotalValues.spend > 0}
@@ -2132,6 +2499,11 @@ function ProjectComboTable({
           </tbody>
         </table>
       </Box>
+      <TableScrollAssist
+        viewportRef={tableScrollRef}
+        paperRef={paperRef}
+        scrollable={tableScrollable}
+      />
     </Paper>
   );
 }
@@ -3565,15 +3937,40 @@ const CHAPTER_STEP_MIN_WIDTH = 92;
  * solid, the rest neutral.  That makes "where am I" legible from the shape of
  * the bar alone, without reading the labels.
  */
+/** Scroll-spy for the chapter nav: the active id lives with the nav so the
+ * page (and its tables) does not re-render while scrolling. */
+function useActiveChapter(chapters: { id: string; label: string }[]): string {
+  const [activeId, setActiveId] = useState(chapters[0]?.id ?? "");
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        visible.sort(
+          (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+        );
+        const next = visible[0].target.id;
+        setActiveId((previous) => (previous === next ? previous : next));
+      },
+      { rootMargin: "-15% 0px -75% 0px", threshold: 0 },
+    );
+    chapters.forEach((c) => {
+      const el = document.getElementById(c.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [chapters]);
+  return activeId;
+}
+
 function ChapterNav({
   chapters,
-  activeId,
   onJump,
 }: {
   chapters: { id: string; label: string }[];
-  activeId: string;
   onJump: (id: string) => void;
 }) {
+  const activeId = useActiveChapter(chapters);
   const activeIndex = Math.max(
     0,
     chapters.findIndex((c) => c.id === activeId),
@@ -3907,7 +4304,6 @@ export default function DailyReportDetail() {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState<number>(Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [activeSection, setActiveSection] = useState("sec-core");
   const [showComboDaily, setShowComboDaily] = useState(false);
   // 不分客户端: roll a game's channels into a single row.
   // 分渠道 is the report's default view; 分地区 refines it and is off by
@@ -4098,9 +4494,8 @@ export default function DailyReportDetail() {
 
   useEffect(() => () => stopPolling(), []);
 
-  // Scroll-spy: highlight the chapter currently in view so the side jump
-  // indicator reflects scroll position.  Observes the report sections against
-  // the viewport (the page itself is the scroll container).
+  // Chapter list for the nav; the nav observes the sections itself (see
+  // ChapterNav) so scrolling does not re-render the report body.
   const chapters = useMemo(
     () =>
       reportChapters(
@@ -4110,25 +4505,6 @@ export default function DailyReportDetail() {
       ),
     [result?.report_type, reportType],
   );
-  useEffect(() => {
-    if (!result || result.empty) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length === 0) return;
-        visible.sort(
-          (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-        );
-        setActiveSection(visible[0].target.id);
-      },
-      { rootMargin: "-15% 0px -75% 0px", threshold: 0 },
-    );
-    chapters.forEach((c) => {
-      const el = document.getElementById(c.id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [result, chapters]);
 
   // Chapters jump within the report's own scroll container; the browser walks
   // up to the nearest scrollable ancestor for us.
@@ -4152,18 +4528,13 @@ export default function DailyReportDetail() {
     setCustomBreadcrumb({
       label: reportName,
       actions: hasChapters ? (
-        <ChapterNav
-          chapters={chapters}
-          activeId={activeSection}
-          onJump={jumpToChapter}
-        />
+        <ChapterNav chapters={chapters} onJump={jumpToChapter} />
       ) : undefined,
     });
   }, [
     config,
     reportName,
     chapters,
-    activeSection,
     hasChapters,
     jumpToChapter,
     setCustomBreadcrumb,

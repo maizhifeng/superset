@@ -39,7 +39,6 @@ const baseProps = {
   onRefresh: vi.fn(),
   onEdit: vi.fn(),
   onDelete: vi.fn(),
-  onInsight: vi.fn(),
   onAddChart: vi.fn(),
   onToggleCompare: vi.fn(),
   onOpenCompareBigScreen: vi.fn(),
@@ -87,7 +86,9 @@ test("shows saving indicator when saving is true", () => {
       {...baseProps}
       saving={true}
       layoutItems={layoutItems}
-      chartData={chartDataFor({ 1: { id: 1, slice_name: "T", viz_type: "table" } })}
+      chartData={chartDataFor({
+        1: { id: 1, slice_name: "T", viz_type: "table" },
+      })}
     />,
   );
   expect(screen.getByText("保存中...")).toBeInTheDocument();
@@ -101,25 +102,11 @@ test("renders single column on mobile", () => {
       {...baseProps}
       containerWidth={500}
       layoutItems={layoutItems}
-      chartData={chartDataFor({ 1: { id: 1, slice_name: "T", viz_type: "table" } })}
+      chartData={chartDataFor({
+        1: { id: 1, slice_name: "T", viz_type: "table" },
+      })}
     />,
   );
 
   expect(screen.getByTestId("chart-card-1")).toBeInTheDocument();
-});
-
-test("passes onInsight callback to ChartCard", () => {
-  const onInsight = vi.fn();
-  const layoutItems = [{ i: "CHART-10", chartId: 10, w: 6, h: 14 }];
-
-  renderWithProviders(
-    <DashboardGrid
-      {...baseProps}
-      layoutItems={layoutItems}
-      chartData={chartDataFor({ 10: { id: 10, slice_name: "X", viz_type: "table" } })}
-      onInsight={onInsight}
-    />,
-  );
-
-  expect(screen.getByTestId("chart-card-10")).toBeInTheDocument();
 });

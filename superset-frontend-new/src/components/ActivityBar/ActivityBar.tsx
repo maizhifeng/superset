@@ -16,7 +16,6 @@ interface ActivityBarProps {
   onItemLeave?: () => void;
   searchButton?: React.ReactNode;
   searchDialog?: React.ReactNode;
-  aiButton?: React.ReactNode;
   userMenu?: React.ReactNode;
 }
 
@@ -28,7 +27,6 @@ export default function ActivityBar({
   onItemLeave,
   searchButton,
   searchDialog,
-  aiButton,
   userMenu,
 }: ActivityBarProps) {
   return (
@@ -101,7 +99,6 @@ export default function ActivityBar({
       {userMenu && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
           {searchButton}
-          {aiButton}
         </Box>
       )}
       {userMenu && <Box sx={{ mt: "auto", pt: 0.5 }}>{userMenu}</Box>}

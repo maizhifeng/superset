@@ -41,8 +41,5 @@ else
   echo "node_modules already matches package-lock.json; skipping npm ci"
 fi
 
-# The Pi agent service runs as its own compose service (`pi-agent`); the
-# Vite dev server proxies /agent/ws to it via PI_AGENT_WS_TARGET.
-
 echo "Start Vite dev server"
 npm run dev-server

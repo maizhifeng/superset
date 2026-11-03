@@ -119,10 +119,6 @@ export default defineConfig({
           "X-Forwarded-Proto": "http",
         },
       },
-      "/agent/ws": {
-        target: process.env.PI_AGENT_WS_TARGET || "ws://localhost:3001",
-        ws: true,
-      },
     },
   },
   test: {

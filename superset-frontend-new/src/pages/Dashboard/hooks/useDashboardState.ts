@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import type {
-  DashboardData,
-  ChartData,
-  DashboardFilterValue,
-  DashboardPosition,
-} from "@/types/api";
+import type { DashboardData, ChartData, DashboardPosition } from "@/types/api";
 import api, { getDataset, getMetricFormatMap } from "@/api";
 import {
   refreshFilterValues,
@@ -13,7 +8,6 @@ import {
 } from "@/components/DashboardFilter";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { type LayoutNode, flattenLayout } from "@/utils/dashboard/layout";
-import { useDrawerStore } from "@/store/drawerState";
 import { PRESET_INTERVALS } from "@/pages/Dashboard/constants";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useRecentDashboards } from "@/store/recentDashboards";
@@ -655,29 +649,6 @@ export function useDashboardState() {
     lightPendingCharts();
   }, [clearAll, queueFilterRefresh, lightPendingCharts]);
 
-  const handleOpenInsight = useCallback(
-    (chartId: number) => {
-      const openAiDrawer = useDrawerStore.getState().openAiDrawer;
-      const activeFilters: Record<string, DashboardFilterValue> = {};
-      for (const f of filters) {
-        const state = filterState[f.id];
-        if (state?.value != null)
-          activeFilters[f.id] = {
-            value: state.value,
-            column: f.column,
-            filterType: f.filterType,
-          };
-      }
-      openAiDrawer("insight", {
-        chartId,
-        chartMeta: chartMeta[chartId],
-        filters: activeFilters,
-        dashboardId: id,
-      });
-    },
-    [filters, filterState, chartMeta, id],
-  );
-
   const handleAddChartSelect = useCallback(
     async (chart: { id: number; slice_name: string; viz_type: string }) => {
       setAddChartDialogOpen(false);
@@ -874,7 +845,6 @@ export function useDashboardState() {
     cycleInterval,
     handleChartSaved,
     handleCloseDrawer,
-    handleOpenInsight,
     handleAddChartSelect,
     handleDeleteChart,
     openNav,

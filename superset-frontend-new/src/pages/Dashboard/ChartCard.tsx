@@ -26,7 +26,6 @@ import FlipIcon from "@mui/icons-material/Flip";
 import CloseIcon from "@mui/icons-material/Close";
 import FullscreenOutlined from "@mui/icons-material/FullscreenOutlined";
 import LeaderboardOutlined from "@mui/icons-material/LeaderboardOutlined";
-import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import { keyframes } from "@emotion/react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { buildEChartsOption, getECharts } from "@/utils/echarts";
@@ -81,7 +80,6 @@ interface ChartCardProps {
   onRefresh: (chartId: number) => void;
   onEdit: (chartId: number) => void;
   onDelete: (chartId: number) => void;
-  onInsight?: (chartId: number) => void;
   compareConfig?: CompareConfig | null;
   mirrorData?: ChartDataPayload;
   onToggleCompare: (chartId: number) => void;
@@ -129,7 +127,6 @@ function ChartCard({
   onRefresh,
   onEdit,
   onDelete,
-  onInsight,
   compareConfig,
   mirrorData,
   onToggleCompare,
@@ -911,19 +908,6 @@ function ChartCard({
                 flexShrink: 0,
               }}
             />
-            <Tooltip title="AI 洞察">
-              <IconButton
-                size="small"
-                aria-label="AI 洞察"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onInsight?.(chartId);
-                }}
-                sx={{ p: 0.5, ml: isMobile ? 0.5 : 0, color: "primary.main" }}
-              >
-                <AutoAwesome sx={{ fontSize: isMobile ? 22 : 18 }} />
-              </IconButton>
-            </Tooltip>
             {!isMobile && (
               <Tooltip title="编辑图表">
                 <IconButton

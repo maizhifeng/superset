@@ -20,8 +20,10 @@ vi.mock("@/api", () => ({
 // The breakdown table renders its own DataGrid; the component tests only care
 // about the surrounding chrome, so keep the grid a plain element.
 vi.mock("@/components/DataGridTable", () => ({
-  default: (props: { rows?: unknown[] }) => (
-    <div data-testid="datagrid">{Array.isArray(props.rows) ? props.rows.length : 0}</div>
+  default: (props: { rows?: unknown[]; density?: string }) => (
+    <div data-testid="datagrid" data-density={props.density ?? "default"}>
+      {Array.isArray(props.rows) ? props.rows.length : 0}
+    </div>
   ),
 }));
 
@@ -275,9 +277,7 @@ test("marks overseas paid retention as unavailable instead of 0%", () => {
     />,
   );
 
-  expect(
-    screen.getByText(/海外平台付费留存明细暂未接入/),
-  ).toBeInTheDocument();
+  expect(screen.getByText(/海外平台付费留存明细暂未接入/)).toBeInTheDocument();
   expect(screen.getAllByText("–").length).toBeGreaterThan(0);
 });
 
@@ -304,9 +304,7 @@ test("marks only the oversea row when the platform dimension is shown", () => {
     />,
   );
 
-  expect(
-    screen.getByText(/海外平台付费留存明细暂未接入/),
-  ).toBeInTheDocument();
+  expect(screen.getByText(/海外平台付费留存明细暂未接入/)).toBeInTheDocument();
   // Domestic rows keep their real values.
   expect(screen.getAllByText("50.0%").length).toBeGreaterThan(0);
 });
@@ -342,4 +340,21 @@ test("breakdown table notes unavailable overseas paid-retention columns", () => 
   expect(
     screen.getByText(/海外数据源暂未提供付费留存明细/),
   ).toBeInTheDocument();
+});
+
+test("uses compact density for the breakdown grid", () => {
+  render(
+    <AnalysisBreakdownTable
+      topic={cost}
+      dimension="主游戏"
+      onDimensionChange={() => {}}
+      loading={false}
+      rows={[{ 主游戏: "游戏 A", 新增进入: 10 }]}
+    />,
+  );
+
+  expect(screen.getByTestId("datagrid")).toHaveAttribute(
+    "data-density",
+    "compact",
+  );
 });

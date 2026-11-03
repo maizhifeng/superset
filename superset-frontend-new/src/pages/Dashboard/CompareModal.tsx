@@ -1465,10 +1465,9 @@ export default function CompareModal({
       <DialogTitle
         sx={{
           display: "flex",
-          alignItems: "center",
-          flexWrap: "wrap",
-          columnGap: 1.5,
-          rowGap: 0.5,
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 1,
           bgcolor: "grey.50",
           borderBottom: "1px solid",
           borderColor: "divider",
@@ -1476,148 +1475,167 @@ export default function CompareModal({
           py: 1.5,
         }}
       >
-        <FlipIcon sx={{ fontSize: 22, color: "primary.main" }} />
-        <Typography
-          variant="body1"
-          sx={{ fontWeight: 600, flex: 1, fontSize: "1.1rem" }}
-        >
-          周期对比
-        </Typography>
-        <Box
-          sx={{
-            position: "relative",
-            display: "flex",
-            gap: 0.5,
-            alignItems: "center",
-          }}
-        >
-          <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
-            基准
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <FlipIcon
+            sx={{ fontSize: 22, color: "primary.main", flexShrink: 0 }}
+          />
+          <Typography
+            variant="body1"
+            sx={{
+              fontWeight: 600,
+              flex: 1,
+              whiteSpace: "nowrap",
+              fontSize: "1.1rem",
+            }}
+          >
+            周期对比
           </Typography>
-          {ANCHORS.map((a) => {
-            const active = selectedAnchors.includes(a.key);
-            return (
-              <Chip
-                key={a.key}
-                label={a.label}
-                size="small"
-                variant={active ? "filled" : "outlined"}
-                color={active ? "secondary" : "default"}
-                onClick={() => toggleAnchor(a.key)}
-                title="可多选，多选时按轮次分表对比（外对比）"
-                sx={{ cursor: "pointer", minWidth: 28 }}
-              />
-            );
-          })}
-          {selectedAnchors.length > 1 && (
-            <Box
-              sx={{
-                position: "absolute",
-                top: -8,
-                right: -8,
-                px: 0.75,
-                py: 0.15,
-                borderRadius: "3px",
-                bgcolor: "error.main",
-                color: "common.white",
-                fontSize: "0.65rem",
-                fontWeight: 700,
-                whiteSpace: "nowrap",
-                zIndex: 10,
-                pointerEvents: "none",
-                boxShadow: "var(--mui-palette-shadow-sm)",
-              }}
-            >
-              <Box
-                sx={{
-                  display: "inline-block",
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  bgcolor: "common.white",
-                  mr: 0.5,
-                  verticalAlign: "middle",
-                }}
-              />
-              外对比
-            </Box>
-          )}
+          <IconButton size="small" onClick={onClose} aria-label="关闭">
+            <CloseIcon />
+          </IconButton>
         </Box>
         <Box
           sx={{
             display: "flex",
-            gap: 1,
             alignItems: "center",
             flexWrap: "wrap",
+            columnGap: 1.5,
+            rowGap: 0.5,
           }}
         >
-          {PERIOD_DAYS.map((days) => (
-            <Chip
-              key={days}
-              label={`${selectedAnchors.length > 1 ? "各轮次后" : `${ANCHOR_LABELS[selectedAnchors[0]]}后`} ${days} 天`}
-              size="small"
-              variant={periodDays === days ? "filled" : "outlined"}
-              color={periodDays === days ? "primary" : "default"}
-              onClick={() => setPeriodDays(days)}
-              sx={{ cursor: "pointer" }}
-            />
-          ))}
+          <Box
+            sx={{
+              position: "relative",
+              display: "flex",
+              gap: 0.5,
+              alignItems: "center",
+            }}
+          >
+            <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
+              基准
+            </Typography>
+            {ANCHORS.map((a) => {
+              const active = selectedAnchors.includes(a.key);
+              return (
+                <Chip
+                  key={a.key}
+                  label={a.label}
+                  size="small"
+                  variant={active ? "filled" : "outlined"}
+                  color={active ? "secondary" : "default"}
+                  onClick={() => toggleAnchor(a.key)}
+                  title="可多选，多选时按轮次分表对比（外对比）"
+                  sx={{ cursor: "pointer", minWidth: 28 }}
+                />
+              );
+            })}
+            {selectedAnchors.length > 1 && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: -8,
+                  right: -8,
+                  px: 0.75,
+                  py: 0.15,
+                  borderRadius: "3px",
+                  bgcolor: "error.main",
+                  color: "common.white",
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  zIndex: 10,
+                  pointerEvents: "none",
+                  boxShadow: "var(--mui-palette-shadow-sm)",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "inline-block",
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    bgcolor: "common.white",
+                    mr: 0.5,
+                    verticalAlign: "middle",
+                  }}
+                />
+                外对比
+              </Box>
+            )}
+          </Box>
+          <Box
+            sx={{
+              display: "flex",
+              gap: 1,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            {PERIOD_DAYS.map((days) => (
+              <Chip
+                key={days}
+                label={`${selectedAnchors.length > 1 ? "各轮次后" : `${ANCHOR_LABELS[selectedAnchors[0]]}后`} ${days} 天`}
+                size="small"
+                variant={periodDays === days ? "filled" : "outlined"}
+                color={periodDays === days ? "primary" : "default"}
+                onClick={() => setPeriodDays(days)}
+                sx={{ cursor: "pointer" }}
+              />
+            ))}
+          </Box>
+          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+            {["P1D", "P1W", "P1M"].map((g) => (
+              <Chip
+                key={g}
+                label={g === "P1D" ? "日" : g === "P1W" ? "周" : "月"}
+                size="small"
+                variant={timeGrain === g ? "filled" : "outlined"}
+                color={timeGrain === g ? "secondary" : "default"}
+                onClick={() => setTimeGrain(g)}
+                sx={{ cursor: "pointer", minWidth: 28 }}
+              />
+            ))}
+          </Box>
+          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
+            {(["raw", "first", "prev"] as const).map((m) => (
+              <Chip
+                key={m}
+                label={
+                  m === "raw" ? "原值" : m === "first" ? "首日倍率" : "昨日倍率"
+                }
+                size="small"
+                variant={ltvMode === m ? "filled" : "outlined"}
+                color={ltvMode === m ? "secondary" : "default"}
+                onClick={() => setLtvMode(m)}
+                sx={{ cursor: "pointer", minWidth: 28 }}
+              />
+            ))}
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => void handleQuery()}
+            disabled={selectedGames.length === 0 || loading || !chartFormData}
+            title=""
+            sx={{ ml: 1 }}
+          >
+            {loading ? "..." : "查询"}
+          </Button>
+          <IconButton
+            size="small"
+            onClick={() => scrollByStep(-1)}
+            title="向左滚动"
+          >
+            <ChevronLeft />
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={() => scrollByStep(1)}
+            title="向右滚动"
+          >
+            <ChevronRight />
+          </IconButton>
         </Box>
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-          {["P1D", "P1W", "P1M"].map((g) => (
-            <Chip
-              key={g}
-              label={g === "P1D" ? "日" : g === "P1W" ? "周" : "月"}
-              size="small"
-              variant={timeGrain === g ? "filled" : "outlined"}
-              color={timeGrain === g ? "secondary" : "default"}
-              onClick={() => setTimeGrain(g)}
-              sx={{ cursor: "pointer", minWidth: 28 }}
-            />
-          ))}
-        </Box>
-        <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-          {(["raw", "first", "prev"] as const).map((m) => (
-            <Chip
-              key={m}
-              label={
-                m === "raw" ? "原值" : m === "first" ? "首日倍率" : "昨日倍率"
-              }
-              size="small"
-              variant={ltvMode === m ? "filled" : "outlined"}
-              color={ltvMode === m ? "secondary" : "default"}
-              onClick={() => setLtvMode(m)}
-              sx={{ cursor: "pointer", minWidth: 28 }}
-            />
-          ))}
-        </Box>
-        <Button
-          variant="contained"
-          size="small"
-          onClick={() => void handleQuery()}
-          disabled={selectedGames.length === 0 || loading || !chartFormData}
-          title=""
-          sx={{ ml: 1 }}
-        >
-          {loading ? "..." : "查询"}
-        </Button>
-        <IconButton
-          size="small"
-          onClick={() => scrollByStep(-1)}
-          title="向左滚动"
-        >
-          <ChevronLeft />
-        </IconButton>
-        <IconButton
-          size="small"
-          onClick={() => scrollByStep(1)}
-          title="向右滚动"
-        >
-          <ChevronRight />
-        </IconButton>
-        <IconButton size="small" onClick={onClose}>
-          <CloseIcon />
-        </IconButton>
       </DialogTitle>
       <DialogContent
         sx={{
