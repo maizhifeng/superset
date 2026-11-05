@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { test, expect, vi } from "vitest";
 import VisualQueryBuilder from "@/pages/SqlLab/visual/components/VisualQueryBuilder";
 import type { BuilderContext } from "@/pages/SqlLab/visual/components/builderContext";
@@ -57,11 +57,11 @@ function makeCtx(model: VisualQueryModel, index = 0): BuilderContext {
     stageName: stage.name,
     stageIndex: index + 1,
     stageCount: stages.length,
-    isLastStage: index === stages.length - 1,
     upstreamStages: stages
       .slice(0, index)
       .map((s, i) => ({ id: s.id, name: s.name, index: i + 1 })),
     onSelectUpstream: vi.fn(),
+    onSelectTableSource: vi.fn(),
     sourceStageId:
       stage.source.kind === "stage" ? stage.source.stageId : undefined,
   };
@@ -142,8 +142,62 @@ test("downstream stages render as CTE containers and use the upstream source", (
   expect(screen.getByText(/阶段 2 · 最终输出/)).toBeInTheDocument();
   // 下游阶段的数据源显示上游选择（数据源步骤默认展开）。
   expect(screen.getAllByText("数据来源（上游阶段）").length).toBeGreaterThan(0);
-  // 排序与限制仅最后阶段可用。
-  expect(screen.getByText("仅最后一个阶段生成排序与限制")).toBeInTheDocument();
+  // 排序与限制仅最终输出阶段可用。
+  expect(screen.getByText("仅最终输出阶段生成排序与限制")).toBeInTheDocument();
+});
+
+test("independent stages: only the final output stage and its dependencies are marked", () => {
+  const stage1 = makeStage({
+    columns: [{ source: { kind: "column", column: "id" } }],
+  });
+  const stage2: VisualStage = {
+    ...emptyStage("stage_2", {
+      kind: "table",
+      schema: "public",
+      table: "customers",
+    }),
+    columns: [{ source: { kind: "column", column: "id" } }],
+  };
+  renderBuilder(makeModel([stage1, stage2]));
+  // 后配置的独立阶段成为最终输出，前一个阶段未参与生成。
+  expect(screen.getByText(/阶段 1 · 未参与输出/)).toBeInTheDocument();
+  expect(screen.getByText(/阶段 2 · 最终输出/)).toBeInTheDocument();
+});
+
+test("a stage joined by a downstream stage is protected from deletion", () => {
+  const stage1 = makeStage();
+  const stage2: VisualStage = {
+    ...emptyStage("stage_2", {
+      kind: "table",
+      schema: "public",
+      table: "customers",
+    }),
+  };
+  const stage3: VisualStage = {
+    ...emptyStage("stage_3", { kind: "stage", stageId: stage1.id }),
+    joins: [
+      {
+        id: "j1",
+        type: "left",
+        table: "",
+        schema: "",
+        stageId: stage2.id,
+        keys: [],
+      },
+    ],
+  };
+  const { ctxs } = renderBuilder(makeModel([stage1, stage2, stage3]));
+  // 阶段 1 是数据来源，阶段 2 是关联目标，两者都不能删除。
+  const deleteButtons = screen.getAllByRole("button", { name: "删除阶段" });
+  expect(deleteButtons[0]).toBeDisabled();
+  expect(deleteButtons[1]).toBeDisabled();
+  expect(deleteButtons[2]).toBeEnabled();
+  // 选列时上游阶段作为“表”出现在关联目标中。
+  fireEvent.click(screen.getAllByText("关联表")[2]);
+  fireEvent.click(screen.getByRole("button", { name: "添加关联表" }));
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getAllByText("关联目标").length).toBeGreaterThan(0);
+  expect(ctxs).toHaveLength(3);
 });
 
 test("shows the generated SQL panel next to the steps", () => {
@@ -162,4 +216,40 @@ test("steps are disabled without a source", () => {
   renderBuilder(emptyStageModel);
   // 数据源之外的步骤摘要显示“请先选择数据源”。
   expect(screen.getAllByText("请先选择数据源").length).toBeGreaterThan(1);
+});
+
+test("editing custom metric SQL keeps the display name untouched", () => {
+  const model = makeModel([
+    makeStage({ metrics: [{ id: "m1", kind: "custom", label: "指标" }] }),
+  ]);
+  const { ctxs } = renderBuilder(model);
+  fireEvent.click(screen.getByText("汇总"));
+  fireEvent.change(screen.getByPlaceholderText(/自定义聚合 SQL/), {
+    target: { value: "min(to_date(device_enter_date::text, 'YYYYMMDD'))" },
+  });
+  const onChange = ctxs[0].onChange as ReturnType<typeof vi.fn>;
+  const next = onChange.mock.calls.at(-1)?.[0] as {
+    metrics: { customSql?: string; label: string }[];
+  };
+  expect(next.metrics[0].customSql).toContain("min(to_date");
+  expect(next.metrics[0].label).toBe("指标");
+});
+
+test("editing expression SQL keeps the expression name untouched", () => {
+  const model = makeModel([
+    makeStage({
+      expressions: [{ id: "e1", name: "客单价", sql: "" }],
+    }),
+  ]);
+  const { ctxs } = renderBuilder(model);
+  fireEvent.click(screen.getByText("字段"));
+  fireEvent.change(screen.getByLabelText("SQL 表达式"), {
+    target: { value: "amount / NULLIF(qty, 0)" },
+  });
+  const onChange = ctxs[0].onChange as ReturnType<typeof vi.fn>;
+  const next = onChange.mock.calls.at(-1)?.[0] as {
+    expressions: { name: string; sql: string }[];
+  };
+  expect(next.expressions[0].sql).toContain("amount / NULLIF");
+  expect(next.expressions[0].name).toBe("客单价");
 });

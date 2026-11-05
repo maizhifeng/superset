@@ -12,6 +12,7 @@ import type { BuilderContext } from "./components/builderContext";
 
 export function dataSourceSummary(ctx: BuilderContext): string {
   if (!ctx.model.table) return "未选择数据表";
+  if (ctx.sourceStageId) return `上游阶段 · ${ctx.model.table}`;
   return `${ctx.model.schema ? `${ctx.model.schema}.` : ""}${ctx.model.table}`;
 }
 
@@ -19,12 +20,14 @@ export function joinSummary(ctx: BuilderContext): string {
   if (ctx.model.joins.length === 0) return "未添加关联表";
   return ctx.model.joins
     .map((j) => {
+      const typeLabel = JOIN_TYPE_LABELS[j.type] ?? j.type;
+      if (j.stageId) return `${typeLabel} 上游阶段 ${j.table}`;
       const schema = j.schema ?? ctx.model.schema;
       const scope =
         schema && schema !== ctx.model.schema
           ? `${schema}.${j.table}`
           : j.table;
-      return `${JOIN_TYPE_LABELS[j.type] ?? j.type} ${scope}`;
+      return `${typeLabel} ${scope}`;
     })
     .join("；");
 }

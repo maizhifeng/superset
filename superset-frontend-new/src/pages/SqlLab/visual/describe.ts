@@ -82,8 +82,11 @@ export function describeMetric(
 export function describeJoin(model: VisualStageView, join: VisualJoin): string {
   const typeLabel = JOIN_TYPE_LABELS[join.type] ?? join.type;
   const schema = join.schema ?? model.schema;
-  const tableLabel =
-    schema && schema !== model.schema ? `${schema}.${join.table}` : join.table;
+  const tableLabel = join.stageId
+    ? `上游阶段 ${join.table}`
+    : schema && schema !== model.schema
+      ? `${schema}.${join.table}`
+      : join.table;
   const keys = join.keys
     .map(
       (key) =>

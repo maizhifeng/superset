@@ -615,6 +615,10 @@ export function useSqlLab({
           {
             database_id: databaseId,
             sql: runSql,
+            // 携带当前模式：PostgreSQL 系引擎会据此设置 search_path
+            //（Hive/Spark 等设置 USE/SET SCHEMA），使未加模式前缀的表名
+            // 解析到所选模式，也让 RLS 能对未限定表名生效。
+            ...(schema ? { schema } : {}),
           },
           { timeout: QUERY_TIMEOUT_MS },
         );
@@ -642,7 +646,7 @@ export function useSqlLab({
         if (runId === runIdRef.current) setLoading(false);
       }
     },
-    [databaseId],
+    [databaseId, schema],
   );
 
   const handleRun = useCallback(() => {

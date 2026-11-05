@@ -13,7 +13,13 @@ import type {
   VisualOutputColumn,
   VisualDateUnit,
 } from "./types";
-import { DEFAULT_LIMIT, sameRef, uniqueStageName } from "./types";
+import {
+  emptyStage,
+  normalizeStageJoins,
+  sameRef,
+  stageReferencedBy,
+  uniqueStageName,
+} from "./types";
 
 let idCounter = 0;
 
@@ -361,26 +367,18 @@ export function setLimit(
 /* 阶段（CTE）管理：外层容器编辑，内层仍然是上面这些扁平编辑函数。      */
 /* ------------------------------------------------------------------ */
 
-/** 是否被后续阶段引用（引用中的阶段不允许删除）。 */
+/** 是否被后续阶段引用（数据来源或关联目标），引用中的阶段不允许删除。 */
 export function isStageReferenced(
   model: VisualQueryModel,
   stageId: string,
 ): boolean {
-  return model.stages.some(
-    (s) => s.source.kind === "stage" && s.source.stageId === stageId,
-  );
+  return stageReferencedBy(model, stageId).length > 0;
 }
 
-/** 在末尾追加一个以上一阶段为来源的新阶段。 */
-export function addStage(model: VisualQueryModel): VisualQueryModel {
-  const last = model.stages[model.stages.length - 1];
-  const name = uniqueStageName(model);
-  const stage: VisualStage = {
-    id: `${name}_${Math.random().toString(36).slice(2, 8)}`,
-    name,
-    source: last
-      ? { kind: "stage", stageId: last.id }
-      : { kind: "table", schema: model.schema, table: "" },
+/** 清空阶段的处理配置（保留 id、名称与来源）。用于切换数据来源。 */
+function resetStageContent(stage: VisualStage): VisualStage {
+  return {
+    ...stage,
     joins: [],
     columns: [],
     expressions: [],
@@ -389,12 +387,24 @@ export function addStage(model: VisualQueryModel): VisualQueryModel {
     metrics: [],
     having: [],
     sorts: [],
-    limit: DEFAULT_LIMIT,
   };
+}
+
+/**
+ * 在末尾追加一个独立的新阶段：默认从物理表开始，可在「数据源」里改为
+ * 上游阶段。阶段之间不再强制串成单链，下游阶段可以同时引用多个上游阶段。
+ */
+export function addStage(model: VisualQueryModel): VisualQueryModel {
+  const name = uniqueStageName(model);
+  const stage = emptyStage(name, {
+    kind: "table",
+    schema: model.schema,
+    table: "",
+  });
   return { ...model, stages: [...model.stages, stage] };
 }
 
-/** 删除阶段；若被后续阶段引用则原样返回。 */
+/** 删除阶段；若被其它阶段引用（数据来源或关联）则原样返回。 */
 export function removeStage(
   model: VisualQueryModel,
   stageId: string,
@@ -429,22 +439,48 @@ export function renameStage(
   };
 }
 
-/** 修改阶段的来源（仅允许指向它之前的阶段）。 */
+/**
+ * 修改阶段的数据来源为更早的上游阶段（仅允许指向它之前的阶段）。
+ * reset 为 true 时同时清空本阶段已有的关联/字段/筛选/汇总（切换来源类型）。
+ */
 export function setStageSource(
   model: VisualQueryModel,
   stageId: string,
   sourceStageId: string,
+  reset = false,
 ): VisualQueryModel {
   const index = model.stages.findIndex((s) => s.id === stageId);
   const sourceIndex = model.stages.findIndex((s) => s.id === sourceStageId);
   if (index <= 0 || sourceIndex < 0 || sourceIndex >= index) return model;
   return {
     ...model,
-    stages: model.stages.map((s) =>
-      s.id === stageId
-        ? { ...s, source: { kind: "stage", stageId: sourceStageId } }
-        : s,
-    ),
+    stages: model.stages.map((s) => {
+      if (s.id !== stageId) return s;
+      const base = reset ? resetStageContent(s) : s;
+      return { ...base, source: { kind: "stage", stageId: sourceStageId } };
+    }),
+  };
+}
+
+/**
+ * 把阶段的数据来源切换为物理表。会清空本阶段已有的关联/字段/筛选/汇总，
+ * 因为旧的引用都是针对原先来源配置的。
+ */
+export function setStageTableSource(
+  model: VisualQueryModel,
+  stageId: string,
+  schema: string,
+  table: string,
+): VisualQueryModel {
+  return {
+    ...model,
+    stages: model.stages.map((s) => {
+      if (s.id !== stageId) return s;
+      return {
+        ...resetStageContent(s),
+        source: { kind: "table", schema, table },
+      };
+    }),
   };
 }
 
@@ -464,7 +500,7 @@ export function applyStageView(
           s.source.kind === "table"
             ? { kind: "table", schema: view.schema, table: view.table }
             : s.source,
-        joins: view.joins,
+        joins: normalizeStageJoins(view.joins),
         columns: view.columns,
         expressions: view.expressions,
         filters: view.filters,

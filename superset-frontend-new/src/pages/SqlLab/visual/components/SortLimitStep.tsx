@@ -43,9 +43,9 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
   const serialize = (ref: VisualSortRef) => JSON.stringify(ref);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
           排序
         </Typography>
         {model.sorts.length === 0 ? (
@@ -53,7 +53,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
             未设置排序。
           </Typography>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
             {model.sorts.map((sort, index) => {
               const currentValue = serialize(sort.ref);
               const known = options.some(
@@ -62,7 +62,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
               return (
                 <Box
                   key={index}
-                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
                 >
                   <FormControl size="small" sx={{ flex: 1 }}>
                     <Select
@@ -92,7 +92,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
                       ))}
                     </Select>
                   </FormControl>
-                  <FormControl size="small" sx={{ width: 110 }}>
+                  <FormControl size="small" sx={{ width: 96 }}>
                     <Select
                       value={sort.desc ? "desc" : "asc"}
                       onChange={(e) =>
@@ -124,7 +124,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
           startIcon={<AddIcon />}
           onClick={() => ctx.onChange(addSort(model))}
           disabled={options.length === 0}
-          sx={{ mt: 1 }}
+          sx={{ mt: 0.5 }}
         >
           添加排序
         </Button>
@@ -139,7 +139,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 1.5,
+          gap: 1,
           flexWrap: "wrap",
         }}
       >
@@ -155,7 +155,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
             }
           }}
           slotProps={{ htmlInput: { min: 1, max: 100000, step: 100 } }}
-          sx={{ width: 120, "& input": { fontSize: "0.8125rem" } }}
+          sx={{ width: 100, "& input": { fontSize: "0.75rem" } }}
         />
         {LIMIT_PRESETS.map((preset) => (
           <Button
@@ -163,7 +163,7 @@ export default function SortLimitStep({ ctx }: SortLimitStepProps) {
             size="small"
             variant={model.limit === preset ? "contained" : "outlined"}
             onClick={() => ctx.onChange(setLimit(model, preset))}
-            sx={{ minWidth: 0, px: 1, fontSize: "0.75rem" }}
+            sx={{ minWidth: 0, px: 0.75, fontSize: "0.6875rem" }}
           >
             {preset}
           </Button>

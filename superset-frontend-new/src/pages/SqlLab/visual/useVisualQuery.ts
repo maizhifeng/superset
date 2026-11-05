@@ -3,11 +3,7 @@ import { format as formatSql } from "sql-formatter";
 import type { TableMetadata } from "@/types/api";
 import { formatterDialect, supportsDateUnit } from "./dialects";
 import { classifyColumn, type ColumnCategory } from "./operators";
-import {
-  buildSql,
-  defaultMetricLabel,
-  validateModelForRun,
-} from "./sqlBuilder";
+import { buildSql, defaultMetricLabel, validateModelForRun } from "./sqlBuilder";
 import {
   isAggregated,
   stageView,
@@ -91,6 +87,7 @@ export function useVisualQuery({
   );
 
   // 所有物理表 (模式, 表)：各阶段的表来源 + 关联表（关联可跨模式，同库）。
+  // 关联目标为上游阶段时是 CTE，不涉及表结构元数据，跳过。
   const neededScopes = useMemo(() => {
     const scopes: { schema: string; table: string }[] = [];
     for (const view of stageViews) {
@@ -98,6 +95,7 @@ export function useVisualQuery({
         scopes.push({ schema: view.schema, table: view.table });
       }
       for (const join of view.joins) {
+        if (join.stageId) continue;
         scopes.push({ schema: join.schema ?? model.schema, table: join.table });
       }
     }
@@ -199,20 +197,19 @@ export function useVisualQuery({
   const refCategory = useCallback(
     (view: VisualStageView, ref: VisualRef): ColumnCategory => {
       if (ref.kind === "expression") return "other";
-      const schema = ref.joinId
-        ? (view.joins.find((j) => j.id === ref.joinId)?.schema ?? model.schema)
-        : view.schema;
-      if (!schema) return "other";
-      const table = ref.joinId
-        ? (view.joins.find((j) => j.id === ref.joinId)?.table ?? "")
-        : view.table;
+      const join = ref.joinId
+        ? view.joins.find((j) => j.id === ref.joinId)
+        : undefined;
+      // CTE（阶段来源 / 上游阶段关联）的模式为空串，列清单取自阶段输出列。
+      const schema = join ? join.schema : view.schema;
+      const table = join ? join.table : view.table;
       if (!table) return "other";
       const column = columnsForTable(table, schema).find(
         (c) => c.name === ref.column,
       );
       return column?.category ?? "other";
     },
-    [columnsForTable, model.schema],
+    [columnsForTable],
   );
 
   const generatedSql = useMemo(

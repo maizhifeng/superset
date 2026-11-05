@@ -158,3 +158,45 @@ test("isModelSqlUnmodified tolerates dialect quoting differences", () => {
   const ansiSql = 'SELECT "orders"."id" FROM "public"."orders" LIMIT 1000';
   expect(isModelSqlUnmodified(embedded, ansiSql)).toBe(true);
 });
+
+test("validateModel normalizes table joins and stage joins", () => {
+  const model = validateModel({
+    v: 1,
+    table: "orders",
+    schema: "public",
+    stages: [
+      {
+        name: "stage_1",
+        source: { kind: "table", schema: "public", table: "orders" },
+        joins: [
+          {
+            id: "j_table",
+            type: "left",
+            table: "customers",
+            schema: "public",
+            keys: [],
+          },
+          {
+            id: "j_stage",
+            type: "left",
+            table: "stale_name",
+            stageId: "stage_1_0",
+            keys: [
+              {
+                left: { kind: "column", column: "id" },
+                right: { kind: "column", joinId: "j_stage", column: "id" },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  expect(model).not.toBeNull();
+  const joins = model!.stages[0].joins;
+  expect(joins[0]).toMatchObject({ table: "customers", schema: "public" });
+  // 阶段关联只保留 stageId，冗余表名被清掉，避免上游阶段改名后出现脏数据。
+  expect(joins[1]).toMatchObject({ stageId: "stage_1_0", table: "" });
+  // 旧的 join 类型/缺少 keys 时回退到安全默认值。
+  expect(joins[1].type).toBe("left");
+});

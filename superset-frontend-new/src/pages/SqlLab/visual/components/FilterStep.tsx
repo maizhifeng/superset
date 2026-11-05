@@ -20,7 +20,7 @@ interface FilterStepProps {
 
 export default function FilterStep({ ctx }: FilterStepProps) {
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
       {ctx.model.filters.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           未设置筛选条件。筛选在聚合前生效（WHERE）。
@@ -32,9 +32,9 @@ export default function FilterStep({ ctx }: FilterStepProps) {
           return (
             <Box
               key={filter.id}
-              sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
             >
-              <FormControl size="small" sx={{ width: 86, flexShrink: 0 }}>
+              <FormControl size="small" sx={{ width: 74, flexShrink: 0 }}>
                 <Select
                   value={index === 0 ? "and" : filter.connector}
                   disabled={index === 0}
@@ -71,7 +71,7 @@ export default function FilterStep({ ctx }: FilterStepProps) {
                   }}
                 />
               </Box>
-              <FormControl size="small" sx={{ width: 130, flexShrink: 0 }}>
+              <FormControl size="small" sx={{ width: 118, flexShrink: 0 }}>
                 <Select
                   value={filter.op}
                   onChange={(e) =>

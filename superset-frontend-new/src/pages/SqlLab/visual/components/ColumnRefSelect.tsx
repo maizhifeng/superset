@@ -84,7 +84,7 @@ export default function ColumnRefSelect({
                     key={`loading-${option.joinId ?? "base"}`}
                     disabled
                     value=""
-                    sx={{ fontSize: "0.8125rem" }}
+                    sx={{ fontSize: "0.75rem" }}
                   >
                     {meta || isStageSource ? (
                       isStageSource ? (
@@ -109,7 +109,7 @@ export default function ColumnRefSelect({
                       joinId: option.joinId,
                       column: column.name,
                     })}
-                    sx={{ fontSize: "0.8125rem" }}
+                    sx={{ fontSize: "0.75rem" }}
                   >
                     {column.name}
                     <Box
@@ -132,7 +132,7 @@ export default function ColumnRefSelect({
               kind: "expression",
               expressionId: expression.id,
             })}
-            sx={{ fontSize: "0.8125rem" }}
+            sx={{ fontSize: "0.75rem" }}
           >
             ƒ {expression.name || "未命名表达式"}
           </MenuItem>

@@ -47,9 +47,9 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
   const { model } = ctx;
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
           分组维度
         </Typography>
         {model.groupBy.length === 0 ? (
@@ -57,13 +57,13 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
             未设置分组。仅添加指标时输出单行汇总。
           </Typography>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
             {model.groupBy.map((group, index) => {
               const category = ctx.refCategory(group.ref);
               return (
                 <Box
                   key={index}
-                  sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                  sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
                 >
                   <Box sx={{ flex: 1 }}>
                     <ColumnRefSelect
@@ -132,7 +132,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
       </Box>
 
       <Box>
-        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
           指标
         </Typography>
         {model.metrics.length === 0 ? (
@@ -140,13 +140,13 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
             未添加指标。添加后查询将按分组维度聚合。
           </Typography>
         ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
             {model.metrics.map((metric) => (
               <Box
                 key={metric.id}
-                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
               >
-                <FormControl size="small" sx={{ width: 160, flexShrink: 0 }}>
+                <FormControl size="small" sx={{ width: 136, flexShrink: 0 }}>
                   <Select
                     value={metric.kind}
                     onChange={(e) => {
@@ -171,7 +171,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
                 {metric.kind === "custom" ? (
                   <TextField
                     size="small"
-                    placeholder="自定义聚合 SQL，如 SUM(a * b)"
+                    placeholder="自定义聚合 SQL，如 min(to_date(d::text, 'YYYYMMDD'))（别名请填右侧「显示名」）"
                     value={metric.customSql ?? ""}
                     onChange={(e) =>
                       ctx.onChange(
@@ -180,7 +180,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
                         }),
                       )
                     }
-                    sx={{ flex: 1, "& input": { fontSize: "0.8125rem" } }}
+                    sx={{ flex: 1, "& input": { fontSize: "0.75rem" } }}
                   />
                 ) : (
                   <Box sx={{ flex: 1 }}>
@@ -209,9 +209,9 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
                     )
                   }
                   sx={{
-                    width: 150,
+                    width: 130,
                     flexShrink: 0,
-                    "& input": { fontSize: "0.8125rem" },
+                    "& input": { fontSize: "0.75rem" },
                   }}
                 />
                 <IconButton
@@ -237,7 +237,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
 
       {model.metrics.length > 0 && (
         <Box>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
             HAVING（聚合后过滤）
           </Typography>
           {model.having.length === 0 && (
@@ -245,13 +245,13 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
               可对指标结果设置过滤，如「计数 &gt; 10」。
             </Typography>
           )}
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
             {model.having.map((having, index) => (
               <Box
                 key={having.id}
-                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
               >
-                <FormControl size="small" sx={{ width: 86, flexShrink: 0 }}>
+                <FormControl size="small" sx={{ width: 74, flexShrink: 0 }}>
                   <Select
                     value={index === 0 ? "and" : having.connector}
                     disabled={index === 0}
@@ -267,7 +267,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
                     <MenuItem value="or">或</MenuItem>
                   </Select>
                 </FormControl>
-                <FormControl size="small" sx={{ width: 180, flexShrink: 0 }}>
+                <FormControl size="small" sx={{ width: 158, flexShrink: 0 }}>
                   <Select
                     value={having.metricId}
                     displayEmpty
@@ -286,7 +286,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl size="small" sx={{ width: 130, flexShrink: 0 }}>
+                <FormControl size="small" sx={{ width: 118, flexShrink: 0 }}>
                   <Select
                     value={having.op}
                     onChange={(e) =>
@@ -329,12 +329,12 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
             size="small"
             startIcon={<AddIcon />}
             onClick={() => ctx.onChange(addHaving(model))}
-            sx={{ mt: 1 }}
+            sx={{ mt: 0.5 }}
           >
             添加 HAVING 条件
           </Button>
           {model.having.length > 0 && (
-            <Alert severity="info" sx={{ mt: 1, borderRadius: 1.5 }}>
+            <Alert severity="info" sx={{ mt: 0.5, borderRadius: 1 }}>
               {model.having.map((h) => describeFilter(model, h)).join("； ")}
             </Alert>
           )}
@@ -342,7 +342,7 @@ export default function SummaryStep({ ctx }: SummaryStepProps) {
       )}
 
       {!ctx.dateUnitSupported && (
-        <Alert severity="warning" sx={{ borderRadius: 1.5 }}>
+        <Alert severity="warning" sx={{ borderRadius: 1 }}>
           当前数据库引擎暂不支持日期粒度截断，日期分组将按原始值进行。
         </Alert>
       )}

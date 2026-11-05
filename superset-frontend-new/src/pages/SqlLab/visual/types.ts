@@ -3,9 +3,11 @@
  * compact JSON comment in the generated SQL so saved queries can be reopened
  * in visual mode (see modelIO.ts).
  *
- * A model is a pipeline of stages; every stage renders as a CTE (except the
- * last one, which becomes the final SELECT). Each stage keeps the same inner
- * structure the builder always had (source, joins, columns, filters, ...).
+ * A model is a list of stages. A stage's data source is either a physical table
+ * or the output of an earlier stage (rendered as a CTE); stages are independent
+ * from each other and a later stage may reference several earlier stages at
+ * once through joins. Only the final output stage produces the outer SELECT,
+ * and only stages reachable from it are rendered as CTEs.
  */
 
 export type VisualMode = "visual" | "sql";
@@ -40,9 +42,12 @@ export interface VisualJoinKey {
 export interface VisualJoin {
   id: string;
   type: VisualJoinType;
+  /** 物理表名；关联目标为上游阶段时为空串（见 stageId）。 */
   table: string;
   /** 关联表所在模式；未设置时与查询默认模式一致（允许同库跨模式关联）。 */
   schema?: string;
+  /** 关联目标为上游阶段（CTE）时的阶段 id；引用期间该阶段不允许删除。 */
+  stageId?: string;
   keys: VisualJoinKey[];
 }
 
@@ -237,6 +242,99 @@ export function isLastStage(model: VisualQueryModel, stageId: string): boolean {
   );
 }
 
+/** 关联目标是否为上游阶段（CTE）。 */
+export function isStageJoin(join: VisualJoin): boolean {
+  return typeof join.stageId === "string" && join.stageId !== "";
+}
+
+/** 关联目标名称：物理表名，或上游阶段的 CTE 名称。 */
+export function joinTargetName(
+  model: VisualQueryModel,
+  join: VisualJoin,
+): string {
+  if (!isStageJoin(join)) return join.table;
+  return stageById(model, join.stageId as string)?.name ?? "";
+}
+
+/** 阶段直接依赖的上游阶段 id（数据来源 + 关联的上游阶段）。 */
+export function stageDependencyIds(stage: VisualStage): string[] {
+  const ids = new Set<string>();
+  if (stage.source.kind === "stage") ids.add(stage.source.stageId);
+  for (const join of stage.joins) {
+    if (isStageJoin(join)) ids.add(join.stageId as string);
+  }
+  return Array.from(ids);
+}
+
+/** 引用了指定阶段的后续阶段（数据来源或关联），用于删除保护与提示。 */
+export function stageReferencedBy(
+  model: VisualQueryModel,
+  stageId: string,
+): VisualStage[] {
+  return model.stages.filter((stage) =>
+    stageDependencyIds(stage).includes(stageId),
+  );
+}
+
+/**
+ * 最终输出阶段：列表中最后一个有数据来源的阶段。阶段之间不再强绑成链，
+ * 因此可能同时存在多个独立的阶段分支，只有最终输出阶段会生成外层 SELECT。
+ */
+export function finalStageIndex(model: VisualQueryModel): number {
+  const stages = model.stages ?? [];
+  for (let i = stages.length - 1; i >= 0; i -= 1) {
+    const source = stages[i].source;
+    if (source.kind === "table") {
+      if (source.table) return i;
+    } else if (stageById(model, source.stageId)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** 最终输出阶段引用到的阶段集合（含自身）：只有这些阶段会参与生成的 SQL。 */
+export function reachableStageIds(model: VisualQueryModel): Set<string> {
+  const stages = model.stages ?? [];
+  const finalIndex = finalStageIndex(model);
+  const reachable = new Set<string>();
+  if (finalIndex < 0) return reachable;
+  const stack: VisualStage[] = [stages[finalIndex]];
+  while (stack.length > 0) {
+    const stage = stack.pop() as VisualStage;
+    if (reachable.has(stage.id)) continue;
+    reachable.add(stage.id);
+    for (const dependencyId of stageDependencyIds(stage)) {
+      const dependency = stageById(model, dependencyId);
+      if (dependency && !reachable.has(dependency.id)) {
+        stack.push(dependency);
+      }
+    }
+  }
+  return reachable;
+}
+
+/**
+ * 阶段关联目标在扁平视图中的表名/模式：上游阶段渲染为 CTE 名称（模式为空），
+ * 物理表沿用自身的表名与模式，供内层步骤组件当作“表”来选取字段。
+ */
+function viewJoins(model: VisualQueryModel, joins: VisualJoin[]): VisualJoin[] {
+  return joins.map((join) => {
+    if (!isStageJoin(join)) return join;
+    return { ...join, table: joinTargetName(model, join), schema: "" };
+  });
+}
+
+/**
+ * 写回模型时清掉从上游阶段名解析出的冗余表名：阶段关联只持久化 stageId，
+ * 重命名上游阶段后无需同步修改引用方。
+ */
+export function normalizeStageJoins(joins: VisualJoin[]): VisualJoin[] {
+  return joins.map((join) =>
+    isStageJoin(join) ? { ...join, table: "", schema: "" } : join,
+  );
+}
+
 /** 把某个阶段展开为旧扁平视图，供内层步骤组件与 SQL 生成器复用。 */
 export function stageView(
   model: VisualQueryModel,
@@ -253,7 +351,7 @@ export function stageView(
     databaseId: model.databaseId,
     schema: sourceIsTable ? source.schema : "",
     table: sourceIsTable ? source.table : (upstream?.name ?? ""),
-    joins: stage.joins,
+    joins: viewJoins(model, stage.joins),
     columns: stage.columns,
     expressions: stage.expressions,
     filters: stage.filters,
@@ -276,7 +374,7 @@ export function stageFromView(
       stage.source.kind === "table"
         ? { kind: "table", schema: view.schema, table: view.table }
         : stage.source,
-    joins: view.joins,
+    joins: normalizeStageJoins(view.joins),
     columns: view.columns,
     expressions: view.expressions,
     filters: view.filters,

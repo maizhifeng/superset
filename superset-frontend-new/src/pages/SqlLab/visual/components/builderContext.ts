@@ -36,10 +36,12 @@ export interface BuilderContext {
   /** 1-based 展示序号。 */
   stageIndex: number;
   stageCount: number;
-  isLastStage: boolean;
   /** 可选的上游阶段（仅它之前的阶段）。 */
   upstreamStages: { id: string; name: string; index: number }[];
-  onSelectUpstream: (stageId: string) => void;
+  /** 切换数据来源为上游阶段；reset 为 true 时清空本阶段已配置的步骤。 */
+  onSelectUpstream: (stageId: string, reset?: boolean) => void;
+  /** 切换数据来源为物理表（会清空本阶段已配置的步骤）。 */
+  onSelectTableSource: (schema: string, table: string) => void;
   /** 阶段来源为上游阶段时，当前引用的上游 id。 */
   sourceStageId?: string;
 }
@@ -49,6 +51,8 @@ export interface TableOption {
   table: string;
   /** 表所在模式；缺省为查询默认模式。 */
   schema?: string;
+  /** 非空时表示该选项来自上游阶段（CTE）。 */
+  stageId?: string;
   label: string;
 }
 
@@ -59,10 +63,24 @@ export function defaultTableOptions(ctx: BuilderContext): TableOption[] {
     options.push({
       table: ctx.model.table,
       schema: ctx.model.schema,
-      label: `${ctx.model.table}（主表）`,
+      label: ctx.sourceStageId
+        ? `上游阶段 ${ctx.model.table}（主表）`
+        : `${ctx.model.table}（主表）`,
+      stageId: ctx.sourceStageId,
     });
   }
   for (const join of ctx.model.joins) {
+    if (join.stageId) {
+      // 关联目标为上游阶段（CTE）：模式为空串，列清单来自该阶段的输出。
+      options.push({
+        joinId: join.id,
+        table: join.table,
+        schema: "",
+        label: `上游阶段 ${join.table}（关联）`,
+        stageId: join.stageId,
+      });
+      continue;
+    }
     const schema = join.schema ?? ctx.contextSchema;
     const scope =
       schema && schema !== ctx.contextSchema

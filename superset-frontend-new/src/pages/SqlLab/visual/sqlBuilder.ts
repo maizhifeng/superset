@@ -1,7 +1,8 @@
 import {
   dateTrunc,
+  formatIdent,
   qualifyTable,
-  quoteIdent,
+  supportsDefaultSchema,
   booleanLiteral,
 } from "./dialects";
 // 多阶段生成器：中间阶段 → CTE，最后阶段 → 最终 SELECT。
@@ -22,7 +23,14 @@ import type {
   VisualStageView,
   VisualRef,
 } from "./types";
-import { refKey, stageView, tableScope } from "./types";
+import {
+  finalStageIndex,
+  isStageJoin,
+  reachableStageIds,
+  refKey,
+  stageView,
+  tableScope,
+} from "./types";
 import type { TableMetadata } from "@/types/api";
 
 interface TableEntry {
@@ -72,7 +80,7 @@ function columnExpr(
   column: string,
   backend?: string,
 ): string {
-  return `${quoteIdent(backend, entry.alias)}.${quoteIdent(backend, column)}`;
+  return `${formatIdent(backend, entry.alias)}.${formatIdent(backend, column)}`;
 }
 
 export function refExpr(
@@ -82,8 +90,14 @@ export function refExpr(
 ): string | null {
   if (ref.kind === "expression") {
     const expression = model.expressions.find((e) => e.id === ref.expressionId);
-    const sql = expression?.sql.trim();
-    return sql ? `(${sql})` : null;
+    // 返回表达式原文：作为指标函数参数 / SELECT 输出列时无需再包一层括号，
+    // 需要分组的地方（如筛选左操作数）由调用方加括号。
+    return expression?.sql.trim() || null;
+  }
+  if (!ref.joinId && model.joins.length === 0) {
+    // 单表查询不存在歧义，列引用省略表前缀（`device_id` 而非
+    // `sy_user_login_log.device_id`）；有 JOIN 时保留前缀用于消歧。
+    return formatIdent(backend, ref.column);
   }
   const tables = buildTables(model);
   const entry = tables.byKey.get(ref.joinId ?? "base");
@@ -101,7 +115,11 @@ function categoryForRef(
   const scope = tableScope(model, ref.joinId);
   const schema = scope.schema || (ref.joinId ? (defaultSchema ?? "") : "");
   if (!scope.table || !schema) return "other";
-  const meta = tableMetas?.[`${schema}:${scope.table}`];
+  // 共享元数据缓存使用 `数据库 id:模式:表` 作为键；测试/旧调用也兼容
+  // `模式:表` 的简化键。
+  const meta =
+    tableMetas?.[`${model.databaseId}:${schema}:${scope.table}`] ??
+    tableMetas?.[`${schema}:${scope.table}`];
   const column = meta?.columns.find((c) => c.name === ref.column);
   if (!column) return "other";
   return classifyColumn(column.type, column.longType);
@@ -129,14 +147,26 @@ export function defaultMetricLabel(metric: VisualMetric): string {
     : (prefix[metric.kind] ?? metric.kind);
 }
 
+/**
+ * 自定义指标 / 表达式只填聚合或行级 SQL，输出名请用「显示名」/「名称」。
+ * 这里只识别结尾的 `AS 别名` 并给出明确提示，不做剥离或重写——把别名写进
+ * SQL 会与生成器追加的别名冲突。
+ */
+const TRAILING_ALIAS_PATTERN =
+  /\s+as\s+("(?:[^"]|"")*"|`(?:[^`]|``)*`|\[(?:\]\]|[^\]])*\]|[A-Za-z_][A-Za-z0-9_$]*)\s*;?\s*$/i;
+
+function hasInlineAlias(sql: string): boolean {
+  return TRAILING_ALIAS_PATTERN.test(sql.trim());
+}
+
 function metricSql(
   model: VisualStageView,
   metric: VisualMetric,
   backend?: string,
 ): string | null {
   if (metric.kind === "custom") {
-    const sql = metric.customSql?.trim();
-    return sql ? `(${sql})` : null;
+    // 自定义指标本身就是完整表达式，直接输出，避免生成 `(min(...))` 这类多余括号。
+    return metric.customSql?.trim() || null;
   }
   if (metric.kind === "count") return "COUNT(*)";
   if (!metric.ref) return null;
@@ -165,8 +195,11 @@ function filterConditionSql(
   backend?: string,
   defaultSchema?: string,
 ): string | null {
-  const expr = refExpr(model, cond.ref, backend);
-  if (!expr) return null;
+  const rawExpr = refExpr(model, cond.ref, backend);
+  if (!rawExpr) return null;
+  // 表达式作为筛选左操作数时加括号，避免 `a + b > c` 之类被后续 AND/OR 误组合；
+  // 普通列引用保持原样。
+  const expr = cond.ref.kind === "expression" ? `(${rawExpr})` : rawExpr;
   const category = categoryForRef(model, cond.ref, tableMetas, defaultSchema);
   const values = cond.values ?? [];
   const literal = (idx: number): string | null => {
@@ -388,7 +421,12 @@ function buildStageSelect(
       const sql = truncated ?? expr;
       const label = uniquify(dimLabel(model, dim.ref), usedLabels);
       labelByDimKey.set(refKey(dim.ref), label);
-      selectItems.push(`${sql} AS ${quoteIdent(backend, label)}`);
+      // 输出列名与分组列同名时省略别名（`device_id AS device_id` → `device_id`）。
+      const redundantAlias =
+        dim.ref.kind === "column" && !dim.dateUnit && label === dim.ref.column;
+      selectItems.push(
+        redundantAlias ? sql : `${sql} AS ${formatIdent(backend, label)}`,
+      );
       groupByItems.push(sql);
     }
     for (const metric of model.metrics) {
@@ -399,7 +437,7 @@ function buildStageSelect(
         usedLabels,
       );
       labelByMetricId.set(metric.id, label);
-      selectItems.push(`${expr} AS ${quoteIdent(backend, label)}`);
+      selectItems.push(`${expr} AS ${formatIdent(backend, label)}`);
     }
   } else {
     if (model.columns.length === 0) {
@@ -414,9 +452,12 @@ function buildStageSelect(
           ? model.expressions.find((e) => e.id === source.expressionId)?.name
           : undefined;
       const alias = column.alias?.trim() || defaultAlias;
-      if (alias) {
+      // 显式别名与列名完全相同时省略别名。
+      const redundantAlias =
+        source.kind === "column" && alias === source.column;
+      if (alias && !redundantAlias) {
         const label = uniquify(alias, usedLabels);
-        selectItems.push(`${expr} AS ${quoteIdent(backend, label)}`);
+        selectItems.push(`${expr} AS ${formatIdent(backend, label)}`);
       } else {
         selectItems.push(expr);
       }
@@ -428,22 +469,37 @@ function buildStageSelect(
   lines.push("SELECT");
   lines.push(selectItems.map((item) => `  ${item}`).join(",\n"));
 
-  const from = qualifyTable(backend, model.schema, model.table);
+  // 选择了默认模式且引擎会把该模式设为会话默认时，省略模式前缀
+  // （SQL 实验室 execute 请求会携带 schema，后端据此设置 search_path 等）。
+  const omitDefaultSchema = supportsDefaultSchema(backend);
+  const from = qualifyTable(
+    backend,
+    model.schema,
+    model.table,
+    omitDefaultSchema && Boolean(model.schema) && model.schema === defaultSchema,
+  );
   lines.push(
     tables.base.alias === model.table
       ? `FROM ${from}`
-      : `FROM ${from} AS ${quoteIdent(backend, tables.base.alias)}`,
+      : `FROM ${from} AS ${formatIdent(backend, tables.base.alias)}`,
   );
 
   for (const join of model.joins) {
     const entry = tables.byKey.get(join.id);
     if (!entry) continue;
     const joinType = (join.type ?? "left").toUpperCase();
-    const target = qualifyTable(backend, entry.schema, join.table);
+    const target = qualifyTable(
+      backend,
+      entry.schema,
+      join.table,
+      omitDefaultSchema &&
+        Boolean(entry.schema) &&
+        entry.schema === defaultSchema,
+    );
     const targetRef = `${
       entry.alias === join.table
         ? target
-        : `${target} AS ${quoteIdent(backend, entry.alias)}`
+        : `${target} AS ${formatIdent(backend, entry.alias)}`
     }`;
     const keys: string[] = [];
     for (const key of join.keys) {
@@ -486,10 +542,10 @@ function buildStageSelect(
       if (aggregated) {
         if (sort.ref.kind === "metric") {
           const label = labelByMetricId.get(sort.ref.metricId);
-          if (label) orderExpr = quoteIdent(backend, label);
+          if (label) orderExpr = formatIdent(backend, label);
         } else {
           const label = labelByDimKey.get(refKey(sort.ref));
-          if (label) orderExpr = quoteIdent(backend, label);
+          if (label) orderExpr = formatIdent(backend, label);
         }
       } else {
         if (sort.ref.kind !== "metric") {
@@ -520,8 +576,9 @@ function indentSql(sql: string, spaces = 2): string {
 }
 
 /**
- * 生成完整查询：除最后一个阶段外，每个阶段渲染为 WITH 中的 CTE；
- * 最后一个阶段作为外层最终 SELECT。单阶段时与旧版输出一致（无 WITH）。
+ * 生成完整查询：最终输出阶段作为外层 SELECT，其依赖（数据来源与关联的
+ * 上游阶段）按阶段顺序渲染为 WITH 中的 CTE。阶段彼此独立，未被最终输出
+ * 阶段引用的草稿阶段不会进入 SQL。单阶段时与旧版输出一致（无 WITH）。
  * Comment-free：模型注释仅在持久化时添加（见 modelIO.embedModel）。
  */
 export function buildSql(
@@ -530,33 +587,40 @@ export function buildSql(
   tableMetas?: Record<string, TableMetadata>,
 ): string {
   const stages = model.stages ?? [];
-  const views = stages.map((stage) => stageView(model, stage));
-  const valid = views
-    .map((view, index) => ({ view, stage: stages[index] }))
-    .filter(({ view }) => view.table);
-  if (valid.length === 0) return "";
+  if (stages.length === 0) return "";
+  const finalIndex = finalStageIndex(model);
+  if (finalIndex < 0) return "";
+  const reachable = reachableStageIds(model);
 
   const ctes: string[] = [];
   let finalSelect = "";
-  valid.forEach(({ view, stage }, index) => {
-    const isLast = index === valid.length - 1;
+  let missingDependency = false;
+  stages.forEach((stage, index) => {
+    if (!reachable.has(stage.id)) return;
+    const view = stageView(model, stage);
+    const isFinal = index === finalIndex;
+    if (!view.table) {
+      // 最终输出阶段依赖的上游阶段尚未配置：不生成半截 SQL。
+      if (!isFinal) missingDependency = true;
+      return;
+    }
     const select = buildStageSelect(
       view,
       backend,
       tableMetas,
       model.schema,
-      isLast,
+      isFinal,
     );
     if (!select) return;
-    if (isLast) {
+    if (isFinal) {
       finalSelect = select;
     } else {
       ctes.push(
-        `${quoteIdent(backend, stage.name)} AS (\n${indentSql(select)}\n)`,
+        `${formatIdent(backend, stage.name)} AS (\n${indentSql(select)}\n)`,
       );
     }
   });
-  if (!finalSelect) return "";
+  if (missingDependency || !finalSelect) return "";
   if (ctes.length === 0) return finalSelect;
   return `WITH\n  ${ctes.join(",\n  ")}\n${finalSelect}`;
 }
@@ -567,11 +631,13 @@ function validateViewForRun(
 ): string | null {
   if (!view.table) return `${prefix}请先选择数据源`;
   for (const join of view.joins) {
-    if (join.keys.length === 0)
-      return `${prefix}关联表 ${join.table} 缺少关联键`;
+    const target = isStageJoin(join)
+      ? `上游阶段 ${join.table}`
+      : `关联表 ${join.table}`;
+    if (join.keys.length === 0) return `${prefix}${target} 缺少关联键`;
     for (const key of join.keys) {
       if (!key.left.column || !key.right.column) {
-        return `${prefix}关联表 ${join.table} 的关联键不完整`;
+        return `${prefix}${target} 的关联键不完整`;
       }
     }
   }
@@ -592,9 +658,17 @@ function validateViewForRun(
     }
     if (!hasValue(filter, 1)) return `${prefix}筛选条件缺少取值`;
   }
+  for (const expression of view.expressions) {
+    if (hasInlineAlias(expression.sql)) {
+      return `${prefix}表达式只填 SQL，「名称」请另填（不要写 AS 别名）`;
+    }
+  }
   for (const metric of view.metrics) {
     if (metric.kind === "custom") {
       if (!metric.customSql?.trim()) return `${prefix}自定义指标缺少表达式`;
+      if (hasInlineAlias(metric.customSql)) {
+        return `${prefix}自定义指标只填聚合表达式，「显示名」请另填（不要写 AS 别名）`;
+      }
       continue;
     }
     if (metric.kind !== "count" && !metric.ref) {
@@ -625,10 +699,19 @@ function validateViewForRun(
   return null;
 }
 
-/** Returns the first blocking reason preventing execution, or null. */
+/**
+ * Returns the first blocking reason preventing execution, or null.
+ *
+ * Stage sources must always point at an existing earlier stage (data integrity),
+ * while unfinished independent draft stages are allowed: only stages reachable
+ * from the final output stage need a complete configuration.
+ */
 export function validateModelForRun(model: VisualQueryModel): string | null {
   const stages = model.stages ?? [];
   if (stages.length === 0) return "请先选择数据表";
+  const finalIndex = finalStageIndex(model);
+  if (finalIndex < 0) return "请先选择数据源";
+  const reachable = reachableStageIds(model);
   for (let i = 0; i < stages.length; i += 1) {
     const stage = stages[i];
     const prefix = stages.length > 1 ? `阶段 ${i + 1}：` : "";
@@ -639,6 +722,13 @@ export function validateModelForRun(model: VisualQueryModel): string | null {
       if (sourceIndex < 0) return `${prefix}上游阶段不存在`;
       if (sourceIndex >= i) return `${prefix}只能引用更早的阶段`;
     }
+    for (const join of stage.joins) {
+      if (!isStageJoin(join)) continue;
+      const targetIndex = stages.findIndex((s) => s.id === join.stageId);
+      if (targetIndex < 0) return `${prefix}关联的上游阶段不存在`;
+      if (targetIndex >= i) return `${prefix}只能关联更早的阶段`;
+    }
+    if (!reachable.has(stage.id)) continue;
     const reason = validateViewForRun(stageView(model, stage), prefix);
     if (reason) return reason;
   }

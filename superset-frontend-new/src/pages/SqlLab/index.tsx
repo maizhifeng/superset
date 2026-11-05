@@ -75,8 +75,14 @@ import {
   removeStage,
   renameStage,
   setStageSource,
+  setStageTableSource,
 } from "./visual/modelEdits";
-import { emptyModel, stageView, type VisualQueryModel } from "./visual/types";
+import {
+  finalStageIndex,
+  stageView,
+  emptyModel,
+  type VisualQueryModel,
+} from "./visual/types";
 import api from "@/api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
@@ -389,10 +395,9 @@ export default function SqlLab() {
 
   /** 是否至少有一个阶段选择了数据源（用于运行/保存等禁用判断）。 */
   const visualHasSource = visual.stageViews.some((view) => view.table);
+  const finalStage = visualModel.stages[finalStageIndex(visualModel)];
   const firstStageTable =
-    visualModel.stages[0]?.source.kind === "table"
-      ? visualModel.stages[0].source.table
-      : "";
+    finalStage?.source.kind === "table" ? finalStage.source.table : "";
 
   // 每个阶段一个 BuilderContext：内层步骤组件完全复用原有逻辑。
   const stageCtxs = useMemo<BuilderContext[]>(() => {
@@ -422,13 +427,21 @@ export default function SqlLab() {
         stageName: stage.name,
         stageIndex: index + 1,
         stageCount: stages.length,
-        isLastStage: index === stages.length - 1,
         upstreamStages: stages
           .slice(0, index)
           .map((s, i) => ({ id: s.id, name: s.name, index: i + 1 })),
-        onSelectUpstream: (sourceId) =>
+        onSelectUpstream: (sourceId, reset = false) =>
           updateActiveTab({
-            model: setStageSource(visualModel, stage.id, sourceId),
+            model: setStageSource(visualModel, stage.id, sourceId, reset),
+          }),
+        onSelectTableSource: (sourceSchema, sourceTable) =>
+          updateActiveTab({
+            model: setStageTableSource(
+              visualModel,
+              stage.id,
+              sourceSchema,
+              sourceTable,
+            ),
           }),
         sourceStageId:
           stage.source.kind === "stage" ? stage.source.stageId : undefined,
@@ -464,7 +477,10 @@ export default function SqlLab() {
         next === visualModel ||
         next.stages.length === visualModel.stages.length
       ) {
-        notify({ severity: "info", message: "该阶段被后续阶段引用，无法删除" });
+        notify({
+          severity: "info",
+          message: "该阶段被其它阶段引用（数据来源或关联），无法删除",
+        });
         return;
       }
       updateActiveTab({ model: next });
@@ -601,6 +617,7 @@ export default function SqlLab() {
     const generated = buildSql(
       extracted.model,
       backendOf(extracted.model.databaseId),
+      tableMetas,
     );
     if (!isModelSqlUnmodified(sql, generated)) {
       setSwitchDialog({ kind: "modified", model: extracted.model });
@@ -616,6 +633,7 @@ export default function SqlLab() {
     updateActiveTab,
     backendOf,
     applyVisualModel,
+    tableMetas,
   ]);
 
   const handleDatabaseChange = useCallback(
@@ -1305,6 +1323,7 @@ export default function SqlLab() {
             <>
               <Box
                 ref={builderRef}
+                data-testid="viz-builder"
                 sx={{
                   flexShrink: 0,
                   // 未拖拽时高度跟随内容（分割线位于最后一个 block 下方）；
@@ -1371,6 +1390,16 @@ export default function SqlLab() {
                   }}
                 />
               </Box>
+              {/* 校验未通过时说明原因：否则「运行」按钮只会呈禁用态。 */}
+              {visual.blockReason && (
+                <Alert
+                  severity="warning"
+                  data-testid="viz-block-reason"
+                  sx={{ flexShrink: 0 }}
+                >
+                  {visual.blockReason}
+                </Alert>
+              )}
             </>
           ) : (
             <Paper

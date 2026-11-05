@@ -1,4 +1,10 @@
-import type { VisualQueryModel, VisualStage, VisualStageSource } from "./types";
+import type {
+  VisualJoin,
+  VisualJoinType,
+  VisualQueryModel,
+  VisualStage,
+  VisualStageSource,
+} from "./types";
 import { DEFAULT_LIMIT } from "./types";
 
 export const VISUAL_MARKER = "-- superset-viz:";
@@ -18,6 +24,28 @@ function records(value: unknown): Record<string, unknown>[] {
 function num(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+const JOIN_TYPES: VisualJoinType[] = ["inner", "left", "right", "full"];
+
+/**
+ * Normalizes a persisted join. Joins whose target is an upstream stage store
+ * only `stageId` (the CTE name is resolved from the model at render time); the
+ * legacy shape (`table` + `schema`) is still accepted.
+ */
+function validateJoin(raw: Record<string, unknown>, index: number): VisualJoin {
+  const id =
+    typeof raw.id === "string" && raw.id ? raw.id : `join_${index + 1}`;
+  const type = JOIN_TYPES.includes(raw.type as VisualJoinType)
+    ? (raw.type as VisualJoinType)
+    : "left";
+  const keys = records(raw.keys) as unknown as VisualJoin["keys"];
+  if (typeof raw.stageId === "string" && raw.stageId) {
+    return { id, type, table: "", schema: "", stageId: raw.stageId, keys };
+  }
+  const table = typeof raw.table === "string" ? raw.table : "";
+  const schema = typeof raw.schema === "string" ? raw.schema : "";
+  return { id, type, table, schema, keys };
 }
 
 function validateStage(
@@ -62,7 +90,7 @@ function validateStage(
     id,
     name,
     source,
-    joins: records(raw.joins) as unknown as VisualStage["joins"],
+    joins: records(raw.joins).map(validateJoin),
     columns: records(raw.columns) as unknown as VisualStage["columns"],
     expressions: records(
       raw.expressions,

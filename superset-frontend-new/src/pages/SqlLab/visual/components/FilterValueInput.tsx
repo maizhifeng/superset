@@ -14,7 +14,7 @@ interface FilterValueInputProps {
   disabled?: boolean;
 }
 
-const datePickerSx = { width: 170 };
+const datePickerSx = { width: 148 };
 
 function toDayjs(
   value: string | number | null | undefined,
@@ -59,7 +59,7 @@ export default function FilterValueInput({
 
   if (op === "date_between") {
     return (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
         <DatePicker
           disabled={disabled}
           value={toDayjs(values[0])}
@@ -106,7 +106,7 @@ export default function FilterValueInput({
 
   if (arity === 2) {
     return (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
         <TextField
           disabled={disabled}
           size="small"

@@ -41,11 +41,21 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
     const tables = [
       {
         key: "base",
-        label: `${ctx.model.table}（主表）`,
+        label: ctx.sourceStageId
+          ? `上游阶段 ${ctx.model.table}（主表）`
+          : `${ctx.model.table}（主表）`,
         table: ctx.model.table,
         schema: ctx.model.schema,
       },
       ...ctx.model.joins.map((j) => {
+        if (j.stageId) {
+          return {
+            key: j.id,
+            label: `上游阶段 ${j.table}（关联）`,
+            table: j.table,
+            schema: "",
+          };
+        }
         const schema = j.schema ?? ctx.model.schema;
         const scope =
           schema && schema !== ctx.model.schema
@@ -88,7 +98,7 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
     );
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
       <TextField
         size="small"
         placeholder="搜索列..."
@@ -106,11 +116,11 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
       />
       <Box
         sx={{
-          maxHeight: 240,
+          maxHeight: 160,
           overflow: "auto",
           display: "flex",
           flexDirection: "column",
-          gap: 0.5,
+          gap: 0.25,
           pr: 0.5,
         }}
       >
@@ -136,7 +146,7 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                     key={column.name}
                     sx={{
                       m: 0,
-                      "& .MuiFormControlLabel-label": { fontSize: "0.8125rem" },
+                      "& .MuiFormControlLabel-label": { fontSize: "0.75rem" },
                     }}
                     control={
                       <Checkbox
@@ -188,7 +198,7 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                     key={expression.id}
                     sx={{
                       m: 0,
-                      "& .MuiFormControlLabel-label": { fontSize: "0.8125rem" },
+                      "& .MuiFormControlLabel-label": { fontSize: "0.75rem" },
                     }}
                     control={
                       <Checkbox
@@ -232,8 +242,8 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
             sx={{
               display: "flex",
               flexDirection: "column",
-              gap: 0.75,
-              mt: 0.5,
+              gap: 0.5,
+              mt: 0.25,
             }}
           >
             {ctx.model.columns.map((column, index) => (
@@ -244,7 +254,7 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                 <Typography
                   variant="body2"
                   sx={{
-                    width: 190,
+                    width: 160,
                     flexShrink: 0,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -266,7 +276,7 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                       }),
                     )
                   }
-                  sx={{ flex: 1, "& input": { fontSize: "0.8125rem" } }}
+                  sx={{ flex: 1, "& input": { fontSize: "0.75rem" } }}
                 />
                 <IconButton
                   size="small"
@@ -314,14 +324,14 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
           自定义表达式
         </Typography>
         <Box
-          sx={{ display: "flex", flexDirection: "column", gap: 0.75, mt: 0.5 }}
+          sx={{ display: "flex", flexDirection: "column", gap: 0.5, mt: 0.25 }}
         >
           {ctx.model.expressions.map((expression) => (
             <Box
               key={expression.id}
-              sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+              sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
             >
-              <FunctionsIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+              <FunctionsIcon sx={{ fontSize: 14, color: "text.secondary" }} />
               <TextField
                 size="small"
                 label="名称"
@@ -333,12 +343,12 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                     }),
                   )
                 }
-                sx={{ width: 160, "& input": { fontSize: "0.8125rem" } }}
+                sx={{ width: 140, "& input": { fontSize: "0.75rem" } }}
               />
               <TextField
                 size="small"
                 label="SQL 表达式"
-                placeholder="如 price * qty"
+                placeholder="如 price * qty（名称请填左侧）"
                 value={expression.sql}
                 onChange={(e) =>
                   ctx.onChange(
@@ -347,8 +357,9 @@ export default function ColumnsStep({ ctx }: ColumnsStepProps) {
                     }),
                   )
                 }
-                sx={{ flex: 1, "& input": { fontSize: "0.8125rem" } }}
+                sx={{ flex: 1, "& input": { fontSize: "0.75rem" } }}
               />
+
               <IconButton
                 size="small"
                 onClick={() =>

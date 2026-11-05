@@ -63,9 +63,10 @@ export default function SqlPreview({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 1,
-          px: 2,
-          py: 1,
+          gap: 0.75,
+          px: 1.25,
+          py: 0.5,
+          minHeight: 34,
           flexShrink: 0,
           borderBottom: "1px solid",
           borderColor: "divider",
@@ -81,7 +82,7 @@ export default function SqlPreview({
             minWidth: 0,
           }}
         >
-          <CodeIcon sx={{ fontSize: 16, flexShrink: 0 }} />
+          <CodeIcon sx={{ fontSize: 14, flexShrink: 0 }} />
           <Typography
             variant="subtitle2"
             sx={{ fontWeight: 600, whiteSpace: "nowrap" }}
@@ -122,15 +123,16 @@ export default function SqlPreview({
       {sql ? (
         <Box
           component="pre"
+          data-testid="viz-sql-preview"
           sx={{
             flex: 1,
             minHeight: 0,
             m: 0,
-            px: 2,
-            py: 1.5,
+            px: 1.25,
+            py: 1,
             fontFamily: monoFontFamily,
             fontSize: "0.75rem",
-            lineHeight: 1.6,
+            lineHeight: 1.55,
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             overflow: "auto",
@@ -148,14 +150,14 @@ export default function SqlPreview({
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: 1,
-            px: 2,
-            py: 3,
+            gap: 0.75,
+            px: 1.5,
+            py: 2,
             textAlign: "center",
             color: "text.disabled",
           }}
         >
-          <CodeIcon sx={{ fontSize: 28, opacity: 0.35 }} />
+          <CodeIcon sx={{ fontSize: 24, opacity: 0.35 }} />
           {emptyHint && (
             <Typography variant="caption" color="text.disabled">
               {emptyHint}
