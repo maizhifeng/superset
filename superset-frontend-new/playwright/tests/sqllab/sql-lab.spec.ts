@@ -298,6 +298,13 @@ test.describe("SQL Lab", () => {
     // CodeMirror keymap and the SqlEditor global shortcut used to both fire.
     expect(executeRequests).toHaveLength(1);
 
+    // Ctrl+Enter 只应运行查询，不能改写编辑器内容：CodeMirror 的
+    // defaultKeymap 把 Mod-Enter 绑成 insertBlankLine，曾在运行查询的同时
+    // 在该行后插入一个空行。
+    await expect
+      .poll(async () => editor.innerText(), { timeout: 5000 })
+      .toBe("SELECT 1 AS one");
+
     // The execution renders either a result grid or an error alert.
     await expect(
       page.locator("table").or(page.getByRole("alert")).first(),

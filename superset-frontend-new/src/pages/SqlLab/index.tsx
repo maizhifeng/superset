@@ -772,7 +772,13 @@ export default function SqlLab() {
       // Mousetrap（allowInInput）统一注册，编辑器内再绑一次会导致同一按键
       //（Ctrl+Enter）触发两次查询请求。
       Prec.high(
-        keymap.of([{ key: "Tab", run: (view) => acceptCompletion(view) }]),
+        keymap.of([
+          { key: "Tab", run: (view) => acceptCompletion(view) },
+          // CodeMirror 的 defaultKeymap 把 Mod-Enter 绑成 insertBlankLine，
+          // 而运行快捷键由全局 Mousetrap 处理。这里先把该默认绑定置空，
+          // 否则 Ctrl+Enter 会在运行查询的同时给 SQL 插入一个空行。
+          { key: "Mod-Enter", run: () => true },
+        ]),
       ),
     ],
     [tableCompletionSource],
