@@ -18,11 +18,9 @@ import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useAuthStore } from "@/store/authStore";
-import { useThemeStore } from "@/store/themeStore";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 
 export default function Login() {
-  const themeMode = useThemeStore((s) => s.theme);
   const REMEMBER_KEY = "superset_remember_username";
   const [remember, setRemember] = useState(false);
   const [username, setUsername] = useState("");
@@ -238,10 +236,6 @@ export default function Login() {
               variant="h4"
               sx={{
                 fontWeight: 650,
-                fontFamily:
-                  themeMode === "paper"
-                    ? "Newsreader, Georgia, 'Times New Roman', serif"
-                    : "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
                 fontSize: "1.75rem",
                 letterSpacing: "-0.01em",
               }}
