@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Popover from "@mui/material/Popover";
@@ -9,8 +9,9 @@ import { alpha, useTheme } from "@mui/material/styles";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import DeltaArrow from "./DeltaArrow";
 import dayjs from "dayjs";
-import type { EChartsOption } from "echarts";
+import type { EChartsOption, EChartsType } from "echarts";
 import EChart from "@/pages/Briefing/EChart";
+import AnalysisGestureGuide from "./AnalysisGestureGuide";
 import type { ChartDataRow } from "@/types/api";
 import { formatPctValue } from "@/utils/formatNumber";
 import {
@@ -28,10 +29,27 @@ import { metricDelta } from "../delta";
 import { isImmature } from "../maturity";
 import { aggregateBucketMetric, groupRowsByWeek } from "../weekly";
 import { ANALYSIS_TIME_COLUMN, topicMetric } from "../topics";
-import type { AnalysisMetric, AnalysisTopic } from "../types";
+import type { AnalysisAxis, AnalysisMetric, AnalysisTopic } from "../types";
 
 /** Legend/series name of the anomaly marker series. */
 const ANOMALY_SERIES_NAME = "异常点";
+
+/** Y axes in rendering order; the weekly delta axis (when present) follows. */
+type AxisKey = "left" | "right" | "right2";
+const AXIS_KEYS: readonly AxisKey[] = ["left", "right", "right2"];
+
+function axisKeyOf(axis: AnalysisAxis | undefined): AxisKey {
+  return axis === "right2" ? "right2" : axis === "right" ? "right" : "left";
+}
+
+function axisIndexOf(axis: AnalysisAxis | undefined): number {
+  return AXIS_KEYS.indexOf(axisKeyOf(axis));
+}
+
+/** Minimal ECharts surface used to map data points to canvas pixels. */
+interface PixelChartInstance {
+  convertToPixel: (finder: unknown, value: unknown) => number | number[];
+}
 /** Chips shown inline before the rest move into the "更多" popover. */
 const VISIBLE_ANOMALY_COUNT = 3;
 
@@ -39,7 +57,9 @@ const VISIBLE_ANOMALY_COUNT = 3;
 function keyPointIndexes(values: (number | null)[]): Set<number> {
   const valid = values
     .map((value, index) => (value === null ? null : { value, index }))
-    .filter((entry): entry is { value: number; index: number } => entry !== null);
+    .filter(
+      (entry): entry is { value: number; index: number } => entry !== null,
+    );
   if (valid.length === 0) return new Set();
   if (valid.length <= 3) return new Set(valid.map((entry) => entry.index));
   const max = valid.reduce((best, entry) =>
@@ -59,7 +79,9 @@ function keyPointIndexes(values: (number | null)[]): Set<number> {
 function barLabelIndexes(values: (number | null)[]): Set<number> {
   const valid = values
     .map((value, index) => (value === null ? null : { value, index }))
-    .filter((entry): entry is { value: number; index: number } => entry !== null);
+    .filter(
+      (entry): entry is { value: number; index: number } => entry !== null,
+    );
   if (valid.length <= 6) return new Set(valid.map((entry) => entry.index));
   const max = valid.reduce((best, entry) =>
     entry.value > best.value ? entry : best,
@@ -94,9 +116,7 @@ function axisPercentile(sorted: number[], fraction: number): number {
   const lower = Math.floor(position);
   const upper = Math.ceil(position);
   if (lower === upper) return sorted[lower];
-  return (
-    sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
-  );
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
 /**
@@ -149,8 +169,7 @@ function paddedAxisRange(values: number[]): {
   const rawMax = Math.max(0, scaleMax + pad);
   const axisMin =
     min < 0
-      ? -niceStep((Math.abs(min) + pad) / AXIS_SPLIT_NUMBER) *
-        AXIS_SPLIT_NUMBER
+      ? -niceStep((Math.abs(min) + pad) / AXIS_SPLIT_NUMBER) * AXIS_SPLIT_NUMBER
       : 0;
   const interval = niceStep((rawMax - axisMin) / AXIS_SPLIT_NUMBER);
   return {
@@ -277,14 +296,14 @@ export default function AnalysisTrendChart({
     [topic, trendSeries],
   );
   const seriesColors = useMemo(
-    () =>
-      seriesDefs.map(
-        (_, index) => chartColors[index % chartColors.length],
-      ),
+    () => seriesDefs.map((_, index) => chartColors[index % chartColors.length]),
     [chartColors, seriesDefs],
   );
   const hasRightAxis = trendSeries.some(
-    (series) => series.axis === "right",
+    (series) => axisKeyOf(series.axis) === "right",
+  );
+  const hasRight2Axis = trendSeries.some(
+    (series) => axisKeyOf(series.axis) === "right2",
   );
   const comparisonMetric = useMemo(
     () =>
@@ -304,8 +323,9 @@ export default function AnalysisTrendChart({
   }, [topic.comparisonMetric, trendSeries]);
   const comparisonColor =
     seriesColors[comparisonSeriesIndex] ?? theme.palette.primary.main;
-  const comparisonAxisIndex =
-    trendSeries[comparisonSeriesIndex]?.axis === "right" ? 1 : 0;
+  const comparisonAxisIndex = axisIndexOf(
+    trendSeries[comparisonSeriesIndex]?.axis,
+  );
   // Calendar buckets for the weekly view; empty while the daily view is active.
   const weeklyBuckets = useMemo(
     () => (weeklyView ? groupRowsByWeek(rows) : []),
@@ -323,11 +343,7 @@ export default function AnalysisTrendChart({
         const weightKey = series.weightBy
           ? topicMetric(topic, series.weightBy).key
           : null;
-        const value = aggregateBucketMetric(
-          definition,
-          bucket.rows,
-          weightKey,
-        );
+        const value = aggregateBucketMetric(definition, bucket.rows, weightKey);
         if (value !== null) aggregated[definition.key] = value;
       });
       return aggregated;
@@ -457,17 +473,12 @@ export default function AnalysisTrendChart({
         weekLabel: bucket.label,
       };
     });
-  }, [
-    comparisonMetric,
-    comparisonWeightKey,
-    weeklyBuckets,
-    weeklyView,
-  ]);
+  }, [comparisonMetric, comparisonWeightKey, weeklyBuckets, weeklyView]);
   const weeklyDeltaVisible =
     weeklyView &&
     !comparisonVisible &&
     weeklyDeltaPoints.some((point) => point !== null);
-  const deltaAxisIndex = hasRightAxis ? 2 : 1;
+  const deltaAxisIndex = 1 + (hasRightAxis ? 1 : 0) + (hasRight2Axis ? 1 : 0);
   const deltaAxisExtent = useMemo(() => {
     const magnitudes = weeklyDeltaPoints
       .filter((point): point is NonNullable<typeof point> => point !== null)
@@ -521,6 +532,78 @@ export default function AnalysisTrendChart({
       ? theme.palette.error.main
       : theme.palette.warning.main;
 
+  // One-time hand gesture pointing at the first anomalous bar/point.  The
+  // position comes from ECharts so the hand lands on the data column itself
+  // instead of the anomaly chips above the chart.
+  const chartInstanceRef = useRef<PixelChartInstance | null>(null);
+  const [chartReadyTick, setChartReadyTick] = useState(0);
+  const [gestureAnchor, setGestureAnchor] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const handleChartReady = useCallback((instance: EChartsType) => {
+    chartInstanceRef.current = instance;
+    setChartReadyTick((tick) => tick + 1);
+  }, []);
+  useEffect(() => {
+    const instance = chartInstanceRef.current;
+    const anomaly = sortedAnomalies[0];
+    if (!instance || !anomaly || weeklyView || !onAnomalyClick) {
+      setGestureAnchor(null);
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      const index = anomaly.index;
+      const pixelPoint = (seriesIndex: number, value: number | null) => {
+        if (seriesIndex < 0 || value === null) return null;
+        try {
+          const raw = instance.convertToPixel({ seriesIndex }, [index, value]);
+          return Array.isArray(raw) &&
+            raw.every((item) => Number.isFinite(item))
+            ? raw
+            : null;
+        } catch {
+          return null;
+        }
+      };
+      const barIndex = trendSeries.findIndex((series) => series.type === "bar");
+      let point = pixelPoint(
+        barIndex,
+        barIndex >= 0
+          ? toNumber(displayRows[index]?.[seriesDefs[barIndex].key])
+          : null,
+      );
+      if (!point && comparisonSeriesIndex >= 0) {
+        point = pixelPoint(
+          comparisonSeriesIndex,
+          toNumber(displayRows[index]?.[seriesDefs[comparisonSeriesIndex].key]),
+        );
+      }
+      if (!point) {
+        try {
+          const fallback = instance.convertToPixel({ xAxisIndex: 0 }, index);
+          const x = Array.isArray(fallback) ? fallback[0] : fallback;
+          point = Number.isFinite(x) ? [x, 36] : null;
+        } catch {
+          point = null;
+        }
+      }
+      setGestureAnchor(
+        point ? { left: point[0], top: Math.max(10, point[1]) } : null,
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    chartReadyTick,
+    comparisonSeriesIndex,
+    displayRows,
+    onAnomalyClick,
+    seriesDefs,
+    sortedAnomalies,
+    trendSeries,
+    weeklyView,
+  ]);
+
   // Include the previous period in the range even when it is hidden, so
   // toggling the comparison does not rescale the axis and make the current
   // curve jump.
@@ -530,24 +613,33 @@ export default function AnalysisTrendChart({
   // current curve against the origin.
   const comparisonRangeFactor = 2;
   const axisRanges = useMemo(() => {
-    const primary = { left: [] as number[], right: [] as number[] };
-    const comparisonValues = { left: [] as number[], right: [] as number[] };
+    const primary = {
+      left: [] as number[],
+      right: [] as number[],
+      right2: [] as number[],
+    };
+    const comparisonValues = {
+      left: [] as number[],
+      right: [] as number[],
+      right2: [] as number[],
+    };
     trendSeries.forEach((series, index) => {
       const definition = seriesDefs[index];
-      const bucket = primary[series.axis === "right" ? "right" : "left"];
+      const bucket = primary[axisKeyOf(series.axis)];
       for (const row of displayRows) {
         if (!weeklyView && isImmature(definition, row)) continue;
         const value = toNumber(row[definition.key]);
         if (value !== null) bucket.push(value);
       }
     });
+    const comparisonAxis = AXIS_KEYS[comparisonAxisIndex] ?? "left";
     for (const value of rollingBaseline ?? []) {
       if (value !== null) {
-        primary[comparisonAxisIndex === 1 ? "right" : "left"].push(value);
+        primary[comparisonAxis].push(value);
       }
     }
     if (comparisonSeries) {
-      comparisonValues[comparisonAxisIndex === 1 ? "right" : "left"].push(
+      comparisonValues[comparisonAxis].push(
         ...comparisonSeries.data.filter(
           (value): value is number => value !== null,
         ),
@@ -561,9 +653,7 @@ export default function AnalysisTrendChart({
       const fallbackUpper =
         compared.length > 0
           ? Math.max(
-              axisUpperBound(
-                [...compared].sort((left, right) => left - right),
-              ),
+              axisUpperBound([...compared].sort((left, right) => left - right)),
               0,
             )
           : 0;
@@ -580,10 +670,16 @@ export default function AnalysisTrendChart({
 
     const left = buildRange(primary.left, comparisonValues.left);
     const right = buildRange(primary.right, comparisonValues.right);
+    const right2 = buildRange(primary.right2, comparisonValues.right2);
     return {
       left: left.range,
       right: right.range,
-      trimmed: { left: left.trimmed, right: right.trimmed },
+      right2: right2.range,
+      trimmed: {
+        left: left.trimmed,
+        right: right.trimmed,
+        right2: right2.trimmed,
+      },
     };
   }, [
     comparisonAxisIndex,
@@ -599,20 +695,19 @@ export default function AnalysisTrendChart({
     const labels = displayLabels;
     const leftMetric =
       seriesDefs[
-        trendSeries.findIndex((series) => series.axis !== "right")
+        trendSeries.findIndex((series) => axisKeyOf(series.axis) === "left")
       ] ?? seriesDefs[0];
     const rightMetric =
       seriesDefs[
-        trendSeries.findIndex((series) => series.axis === "right")
+        trendSeries.findIndex((series) => axisKeyOf(series.axis) === "right")
       ] ?? seriesDefs[0];
-    const leftFormatter = axisLabelFormatter(
-      leftMetric,
-      axisRanges.left,
-    );
-    const rightFormatter = axisLabelFormatter(
-      rightMetric,
-      axisRanges.right,
-    );
+    const right2Metric =
+      seriesDefs[
+        trendSeries.findIndex((series) => axisKeyOf(series.axis) === "right2")
+      ] ?? seriesDefs[0];
+    const leftFormatter = axisLabelFormatter(leftMetric, axisRanges.left);
+    const rightFormatter = axisLabelFormatter(rightMetric, axisRanges.right);
+    const right2Formatter = axisLabelFormatter(right2Metric, axisRanges.right2);
     // Tooltip lines are rebuilt from the row data instead of the ECharts
     // payload so left-axis metrics always read first and the previous-period
     // value sits directly under the metric it belongs to.
@@ -624,8 +719,7 @@ export default function AnalysisTrendChart({
       }))
       .sort((left, right) => {
         const axisDelta =
-          (left.series.axis === "right" ? 1 : 0) -
-          (right.series.axis === "right" ? 1 : 0);
+          axisIndexOf(left.series.axis) - axisIndexOf(right.series.axis);
         return axisDelta !== 0 ? axisDelta : left.index - right.index;
       });
     const tooltipRows = (index: number): string[] => {
@@ -703,16 +797,15 @@ export default function AnalysisTrendChart({
           ...(comparisonVisible && comparisonSeries
             ? [comparisonSeries.name]
             : []),
-          ...(weeklyDeltaVisible
-            ? [`${comparisonMetric.label} 周环比`]
-            : []),
+          ...(weeklyDeltaVisible ? [`${comparisonMetric.label} 周环比`] : []),
         ],
       },
       grid: {
         left: 8,
         // Weekly point labels sit on the last category; leave a little room so
-        // they are not clipped by the right edge.
-        right: weeklyView ? 30 : 20,
+        // they are not clipped by the right edge.  A second right axis needs
+        // extra room for its labels.
+        right: hasRight2Axis ? 56 : weeklyView ? 30 : 20,
         top: 36,
         bottom: 44,
         containLabel: true,
@@ -726,8 +819,7 @@ export default function AnalysisTrendChart({
           color: theme.palette.text.secondary,
           hideOverlap: true,
           // Weekly ticks already read "10-05 ~ 10-11"; daily ticks only need MM-DD.
-          formatter: (value: string) =>
-            weeklyView ? value : value.slice(5),
+          formatter: (value: string) => (weeklyView ? value : value.slice(5)),
         },
         axisLine: { lineStyle: { color: theme.palette.divider } },
         axisTick: { show: false },
@@ -771,6 +863,29 @@ export default function AnalysisTrendChart({
               },
             ]
           : []),
+        ...(hasRight2Axis
+          ? [
+              {
+                ...axisRanges.right2,
+                type: "value" as const,
+                name: right2Metric?.label,
+                nameTextStyle: {
+                  fontSize: 11,
+                  color: theme.palette.text.secondary,
+                },
+                position: "right" as const,
+                offset: hasRightAxis ? 48 : 0,
+                scale: false,
+                splitNumber: AXIS_SPLIT_NUMBER,
+                axisLabel: {
+                  fontSize: 11,
+                  color: theme.palette.text.secondary,
+                  formatter: right2Formatter,
+                },
+                splitLine: { show: false },
+              },
+            ]
+          : []),
         ...(weeklyDeltaVisible
           ? [
               {
@@ -778,7 +893,7 @@ export default function AnalysisTrendChart({
                 min: deltaAxisExtent.min,
                 max: deltaAxisExtent.max,
                 position: "right" as const,
-                offset: hasRightAxis ? 48 : 0,
+                offset: (hasRightAxis ? 48 : 0) + (hasRight2Axis ? 48 : 0),
                 // The delta values are readable from the in-chart labels; the
                 // extra axis itself is noise in the weekly view.
                 show: false,
@@ -793,7 +908,7 @@ export default function AnalysisTrendChart({
           return {
             name: definition.label,
             type: series.type,
-            yAxisIndex: series.axis === "right" ? 1 : 0,
+            yAxisIndex: axisIndexOf(series.axis),
             data: (() => {
               const values = displayRows.map((row) =>
                 !weeklyView && isImmature(definition, row)
@@ -956,10 +1071,7 @@ export default function AnalysisTrendChart({
                         data: anomalies.map((anomaly) => ({
                           xAxis: labels[anomaly.index],
                           lineStyle: {
-                            color: alpha(
-                              severityColor[anomaly.severity],
-                              0.4,
-                            ),
+                            color: alpha(severityColor[anomaly.severity], 0.4),
                             type: "dashed" as const,
                             width: 1,
                           },
@@ -1032,6 +1144,7 @@ export default function AnalysisTrendChart({
     deltaAxisIndex,
     displayLabels,
     displayRows,
+    hasRight2Axis,
     hasRightAxis,
     rollingBaseline,
     seriesColors,
@@ -1086,7 +1199,9 @@ export default function AnalysisTrendChart({
     let rowIndex = event.dataIndex;
     if (event.seriesName === ANOMALY_SERIES_NAME) {
       const markerValue = event.data?.value;
-      rowIndex = Array.isArray(markerValue) ? Number(markerValue[0]) : undefined;
+      rowIndex = Array.isArray(markerValue)
+        ? Number(markerValue[0])
+        : undefined;
     }
     if (rowIndex == null || !Number.isFinite(rowIndex)) return null;
     const row = displayRows[rowIndex];
@@ -1137,7 +1252,7 @@ export default function AnalysisTrendChart({
   };
 
   return (
-    <Box>
+    <Box sx={{ position: "relative" }}>
       {!weeklyView && sortedAnomalies.length > 0 && (
         <Box
           sx={{
@@ -1213,10 +1328,7 @@ export default function AnalysisTrendChart({
                     : undefined,
                   "&.Mui-focusVisible": {
                     outline: "2px solid",
-                    outlineColor: alpha(
-                      severityColor[anomaly.severity],
-                      0.7,
-                    ),
+                    outlineColor: alpha(severityColor[anomaly.severity], 0.7),
                     outlineOffset: 1,
                   },
                   "& .MuiChip-label": {
@@ -1275,10 +1387,7 @@ export default function AnalysisTrendChart({
               颜色表示影响（红=负面，绿=正面）
             </Typography>
             {onAnomalyClick && (
-              <Typography
-                variant="caption"
-                sx={{ color: "text.disabled" }}
-              >
+              <Typography variant="caption" sx={{ color: "text.disabled" }}>
                 · 点击标签查看构成明细
               </Typography>
             )}
@@ -1337,6 +1446,19 @@ export default function AnalysisTrendChart({
         height={height}
         onEvents={Object.keys(chartEvents).length > 0 ? chartEvents : undefined}
         ariaLabel={`${topic.title}趋势图`}
+        onChartReady={handleChartReady}
+        overlay={
+          <AnalysisGestureGuide
+            storageKey="analysis-gesture-guide-chart-v1"
+            anchor={gestureAnchor}
+            visible={
+              !weeklyView &&
+              sortedAnomalies.length > 0 &&
+              Boolean(onAnomalyClick)
+            }
+            ariaLabel="点击异常柱形查看该日异常构成与下钻"
+          />
+        }
       />
       {dataQualityNote && (
         <Typography
@@ -1346,7 +1468,9 @@ export default function AnalysisTrendChart({
           {dataQualityNote}
         </Typography>
       )}
-      {(axisRanges.trimmed.left || axisRanges.trimmed.right) && (
+      {(axisRanges.trimmed.left ||
+        axisRanges.trimmed.right ||
+        axisRanges.trimmed.right2) && (
         <Typography
           variant="caption"
           sx={{ display: "block", mt: 0.25, color: "text.disabled" }}

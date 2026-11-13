@@ -6,6 +6,7 @@ const { postChartDataMock } = vi.hoisted(() => ({
 
 vi.mock("@/api/chartData", () => ({
   postChartData: postChartDataMock,
+  postAnalysisChartData: postChartDataMock,
 }));
 
 import { defaultFilters } from "@/pages/Analysis/filters";
@@ -52,8 +53,8 @@ test("prefetches the single combined query a date click issues", async () => {
     }[];
   };
   expect(payload.force).toBe(false);
-  expect(payload.queries[0].groupby).toEqual(["渠道商", "日期"]);
-  // The drill target of the cost topic is 主游戏 → 渠道商.
+  expect(payload.queries[0].groupby).toEqual(["主游戏", "日期"]);
+  // A date click keeps the dimension the trend is showing (主游戏 for cost).
   expect(payload.queries[0].time_range).toBe("2026-09-05 : 2026-10-05");
   expect(payload.queries[0].metrics.length).toBeGreaterThan(1);
 });
@@ -95,7 +96,7 @@ test("prefetches the next dimension and drilled trend for a row hover", async ()
   const breakdown = payloads.find((payload) => payload.queries.length === 1);
   const trend = payloads.find((payload) => payload.queries.length === 2);
   expect(breakdown?.force).toBe(false);
-  // The drill target of the cost topic is 主游戏 → 渠道商.
+  // A date click keeps the dimension the trend is showing (主游戏 for cost).
   expect(breakdown?.queries[0].groupby).toEqual(["渠道商"]);
   expect(breakdown?.queries[0].filters).toContainEqual({
     col: "主游戏",

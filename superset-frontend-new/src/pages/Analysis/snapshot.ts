@@ -9,6 +9,8 @@ import {
   buildBreakdownQuery,
   buildKpiQueryPlan,
   buildTrendQueryPlan,
+  analysisTargetCacheKey,
+  topicTarget,
   type AnalysisData,
   type AnalysisSectionData,
 } from "./query";
@@ -23,7 +25,7 @@ export const ANALYSIS_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60_000;
  * the default-view query plan changes, so old rows are never rendered with a
  * newer UI (the query signature below also catches metric changes).
  */
-export const ANALYSIS_SNAPSHOT_VERSION = 2;
+export const ANALYSIS_SNAPSHOT_VERSION = 7;
 
 export interface AnalysisSnapshotScope {
   range: string;
@@ -98,6 +100,9 @@ export function snapshotQuerySignature(topic: AnalysisTopic): string {
     return copy;
   };
   return JSON.stringify([
+    // The execution target is part of the contract: a snapshot generated
+    // before a topic moved to backend SQL must not seed the new engine.
+    analysisTargetCacheKey(topicTarget(topic)),
     normalize(kpi.totals),
     normalize(kpi.previous),
     normalize(trend.trend),

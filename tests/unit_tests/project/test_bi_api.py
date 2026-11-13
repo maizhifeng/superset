@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -300,3 +302,98 @@ def test_canonical_cache_payload_changes_with_query() -> None:
     first = bi_api._canonical_chart_payload({"queries": [{"time_range": "a"}]})
     second = bi_api._canonical_chart_payload({"queries": [{"time_range": "b"}]})
     assert first != second
+
+
+def test_federated_dataset_ids_filters_by_extra_config() -> None:
+    federated = '{"federated": {"enabled": true, "databases": ["a", "b"]}}'
+    single_db = '{"federated": {"enabled": true, "databases": ["a"]}}'
+    disabled = '{"federated": {"enabled": false, "databases": ["a", "b"]}}'
+    rows = [
+        (26, federated),
+        (38, federated),
+        (71, federated),
+        (72, disabled),
+        (99, single_db),
+        (100, None),
+        (101, "not-json"),
+    ]
+    assert bi_api._federated_dataset_ids(rows) == [26, 38, 71]
+
+
+def _query_with_window(from_dttm: Any, to_dttm: Any) -> Any:
+    return SimpleNamespace(from_dttm=from_dttm, to_dttm=to_dttm)
+
+
+def test_apply_window_markers_pushes_query_window_into_branch() -> None:
+
+    sql = (
+        "select 1 from t where report_date >= 20250101 "
+        "/*BI_WINDOW:report_date:20250101:99999999*/ and papp_id != 61"
+    )
+    result = bi_api._apply_window_markers(
+        sql, _query_with_window(datetime(2026, 10, 7), datetime(2026, 11, 6))
+    )
+    assert "report_date >= 20261007 and report_date < 20261106" in result
+    assert "BI_WINDOW" not in result
+
+
+def test_apply_window_markers_prunes_non_overlapping_branch() -> None:
+
+    sql = (
+        "select 1 from t where settle_date < 20260601 "
+        "/*BI_WINDOW:settle_date:19700101:20260531*/"
+    )
+    result = bi_api._apply_window_markers(
+        sql, _query_with_window(datetime(2026, 10, 7), datetime(2026, 11, 6))
+    )
+    assert "1 = 0" in result
+    assert "settle_date >=" not in result
+
+
+def test_apply_window_markers_needs_both_window_bounds() -> None:
+
+    sql = "select 1 /*BI_WINDOW:report_date:20250101:99999999*/ from t"
+    assert bi_api._apply_window_markers(sql, _query_with_window(None, None)) == (
+        "select 1  from t"
+    )
+    assert (
+        bi_api._apply_window_markers(
+            "select 1 from t", _query_with_window(datetime(2026, 1, 1), None)
+        )
+        == "select 1 from t"
+    )
+
+
+def test_apply_window_markers_ignores_sql_without_markers() -> None:
+
+    sql = "select 1 from t where report_date >= 20250101"
+    assert (
+        bi_api._apply_window_markers(
+            sql, _query_with_window(datetime(2026, 10, 7), datetime(2026, 11, 6))
+        )
+        == sql
+    )
+
+
+def test_analysis_records_serialize_temporal_columns_as_iso_strings() -> None:
+    from datetime import date
+
+    import pandas as pd
+
+    from superset.project.bi import api as bi_api
+    from superset.utils import json
+
+    df = pd.DataFrame(
+        {
+            "日期": pd.to_datetime(["2026-10-11", "2026-10-12"]),
+            "日期2": [date(2026, 10, 11), date(2026, 10, 12)],
+            "消耗": [1.5, 2.5],
+            "新增进入": [3, 4],
+        }
+    )
+    records = bi_api._analysis_records(df)
+    assert records[0]["日期"] == pd.Timestamp("2026-10-11")
+    assert records[0]["日期2"] == pd.Timestamp("2026-10-11")
+    body = json.dumps(records)
+    assert "2026-10-11T00:00:00" in body
+    assert "1791676800000" not in body

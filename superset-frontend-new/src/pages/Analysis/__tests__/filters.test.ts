@@ -14,11 +14,12 @@ import {
 import { getAnalysisTopic } from "@/pages/Analysis/topics";
 
 const topic = getAnalysisTopic("cost")!;
+const projectCompareTopic = getAnalysisTopic("project-compare")!;
 
 test("default filters use 30 days and the topic dimension", () => {
   const filters = defaultFilters(topic);
   expect(filters.range).toBe("30d");
-  expect(filters.dimension).toBe("主游戏");
+  expect(filters.dimension).toBe("日期");
   expect(filters.games).toEqual([]);
 });
 
@@ -76,7 +77,7 @@ test("drops an invalid drill-down date", () => {
 
 test("unknown dimension falls back to the topic default", () => {
   const params = new URLSearchParams("dim=不存在");
-  expect(filtersFromSearchParams(params, topic).dimension).toBe("主游戏");
+  expect(filtersFromSearchParams(params, topic).dimension).toBe("日期");
 });
 
 test("preset ranges span the expected number of days", () => {
@@ -147,7 +148,7 @@ test("URL round-trips the natural-traffic switch only when disabled", () => {
 });
 
 test("accepts the time dimension in drill URLs", () => {
-  const params = new URLSearchParams("dim=日期&drill_channels=android");
+  const params = new URLSearchParams("v=2&dim=日期&drill_channels=android");
   const filters = filtersFromSearchParams(params, topic);
   expect(filters.dimension).toBe("日期");
   expect(filters.drill.channels).toEqual(["android"]);
@@ -155,7 +156,7 @@ test("accepts the time dimension in drill URLs", () => {
 });
 
 test("parses and resolves a weekly drill context", () => {
-  const params = new URLSearchParams("week=2026-09-27&dim=渠道商");
+  const params = new URLSearchParams("v=2&week=2026-09-27&dim=渠道商");
   const filters = filtersFromSearchParams(params, topic);
   expect(filters.focusWeek).toBe("2026-09-27");
   expect(resolveDateBounds(filters)).toEqual({
@@ -163,4 +164,113 @@ test("parses and resolves a weekly drill context", () => {
     end: "2026-10-03",
   });
   expect(filtersToSearchParams(filters).get("week")).toBe("2026-09-27");
+});
+
+test("ignores view state from unversioned legacy links", () => {
+  // URLs written before the schema marker would otherwise resurrect the old
+  // default view (主游戏) and its drills after the date-first migration.
+  const legacy = new URLSearchParams(
+    "dim=主游戏&drill_games=游戏 A&date=2026-10-09&week=2026-09-27",
+  );
+  const filters = filtersFromSearchParams(legacy, topic);
+  expect(filters.dimension).toBe("日期");
+  expect(filters.drill).toEqual({});
+  expect(filters.focusDate).toBeUndefined();
+  expect(filters.focusWeek).toBeUndefined();
+  // Range and column filters still parse from legacy links.
+  const legacyRange = new URLSearchParams("range=7d&games=游戏 A&dim=主游戏");
+  const rangeFilters = filtersFromSearchParams(legacyRange, topic);
+  expect(rangeFilters.range).toBe("7d");
+  expect(rangeFilters.games).toEqual(["游戏 A"]);
+  expect(rangeFilters.dimension).toBe("日期");
+
+  // Versioned URLs keep honouring an explicit dimension.
+  const current = filtersToSearchParams({
+    ...defaultFilters(topic),
+    dimension: "主游戏",
+  });
+  expect(current.get("v")).toBe("2");
+  expect(filtersFromSearchParams(current, topic).dimension).toBe("主游戏");
+});
+
+test("ignores filters the topic hides from its toolbar", () => {
+  const projectCompare = getAnalysisTopic("project-compare")!;
+  const params = new URLSearchParams();
+  params.set("v", "2");
+  params.set("range", "30d");
+  params.append("games", "游戏 A");
+  params.append("regions", "mainland");
+  params.append("drill_games", "游戏 B");
+
+  // A link shared from another topic can carry the hidden filter; applying it
+  // without showing it in the toolbar would silently narrow the page.
+  const parsed = filtersFromSearchParams(params, projectCompare);
+  expect(parsed.games).toEqual([]);
+  // Region/platform are hidden for the comparison topic as well.
+  expect(parsed.regions).toEqual([]);
+  expect(parsed.platforms).toEqual([]);
+  // Drill context stays honoured: the page renders drilling chips for it.
+  expect(parsed.drill.games).toEqual(["游戏 B"]);
+
+  // Topics that show the filter still parse it.
+  expect(filtersFromSearchParams(params, topic).games).toEqual(["游戏 A"]);
+});
+
+test("round-trips the comparison anchors and window through the URL", () => {
+  const filters = {
+    ...defaultFilters(projectCompareTopic),
+    anchors: ["首测起始时间", "上线时间"] as const,
+    periodDays: 60,
+  };
+  const params = filtersToSearchParams({
+    ...filters,
+    anchors: [...filters.anchors],
+  });
+  expect(params.getAll("anchor")).toEqual(["上线时间", "首测起始时间"]);
+  expect(params.get("period")).toBe("60");
+
+  const parsed = filtersFromSearchParams(params, projectCompareTopic);
+  expect(parsed.anchors).toEqual(["上线时间", "首测起始时间"]);
+  expect(parsed.periodDays).toBe(60);
+});
+
+test("invalid anchor/window values fall back to the (empty) defaults", () => {
+  const params = new URLSearchParams();
+  params.set("v", "2");
+  params.set("range", "30d");
+  params.append("anchor", "不存在的轮次");
+  params.set("period", "13");
+
+  const parsed = filtersFromSearchParams(params, projectCompareTopic);
+  // No anchor is selected by default; an invalid value does not invent one.
+  expect(parsed.anchors).toEqual([]);
+  expect(parsed.periodDays).toBe(30);
+
+  // Duplicates collapse and the selection keeps the display order.
+  const deduped = new URLSearchParams();
+  deduped.set("v", "2");
+  deduped.append("anchor", "二测起始时间");
+  deduped.append("anchor", "二测起始时间");
+  expect(filtersFromSearchParams(deduped, projectCompareTopic).anchors).toEqual(
+    ["二测起始时间"],
+  );
+});
+
+test("default comparison controls are omitted from the URL", () => {
+  const defaults = defaultFilters(projectCompareTopic);
+  expect(defaults.anchors).toEqual([]);
+  expect(defaults.projects).toEqual([]);
+  const params = filtersToSearchParams(defaults);
+  expect(params.getAll("anchor")).toEqual([]);
+  expect(params.getAll("project")).toEqual([]);
+  expect(params.get("metric")).toBeNull();
+  expect(params.get("period")).toBeNull();
+  // A non-default control is written so the link stays shareable.
+  const custom = filtersToSearchParams({
+    ...defaultFilters(projectCompareTopic),
+    anchors: ["上线时间", "二测起始时间"],
+    periodDays: 90,
+  });
+  expect(custom.getAll("anchor")).toEqual(["上线时间", "二测起始时间"]);
+  expect(custom.get("period")).toBe("90");
 });

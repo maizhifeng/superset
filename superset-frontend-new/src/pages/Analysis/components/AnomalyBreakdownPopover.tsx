@@ -24,6 +24,7 @@ import {
   buildDrillAnomalyQuery,
   fetchBreakdownData,
   peekBreakdownData,
+  topicTarget,
 } from "../query";
 import type { AnalysisTopic } from "../types";
 import type { QueryObject } from "@/utils/query/types";
@@ -114,7 +115,10 @@ export default function AnomalyBreakdownPopover({
       setError(null);
       return undefined;
     }
-    const cached = peekBreakdownData(query, { allowStale: false });
+    const cached = peekBreakdownData(query, {
+      allowStale: false,
+      target: topicTarget(topic),
+    });
     if (cached) {
       setRows(cached.rows);
       setLoading(false);
@@ -128,7 +132,10 @@ export default function AnomalyBreakdownPopover({
     setLoading(true);
     setReady(false);
     setError(null);
-    fetchBreakdownData(query, { signal: controller.signal })
+    fetchBreakdownData(query, {
+      signal: controller.signal,
+      target: topicTarget(topic),
+    })
       .then((data) => {
         if (!active) return;
         setRows(data.rows);
@@ -169,10 +176,8 @@ export default function AnomalyBreakdownPopover({
       .map(([value, detail]) => ({ value, detail }))
       .sort(
         (left, right) =>
-          Number(right.detail.significant) -
-            Number(left.detail.significant) ||
-          Math.abs(right.detail.deltaValue) -
-            Math.abs(left.detail.deltaValue),
+          Number(right.detail.significant) - Number(left.detail.significant) ||
+          Math.abs(right.detail.deltaValue) - Math.abs(left.detail.deltaValue),
       );
   }, [anomaly, date, metric, rows, target]);
 
@@ -210,10 +215,7 @@ export default function AnomalyBreakdownPopover({
       const query = buildDrillAnomalyQuery(topic, { ...base, dimension });
       if (!query) return [];
       if (summaryWeightMetric) {
-        query.metrics = [
-          ...(query.metrics ?? []),
-          summaryWeightMetric.metric,
-        ];
+        query.metrics = [...(query.metrics ?? []), summaryWeightMetric.metric];
       }
       return [{ dimension, query }];
     });
@@ -230,9 +232,7 @@ export default function AnomalyBreakdownPopover({
   const [summaryRows, setSummaryRows] = useState<
     Record<string, ChartDataRow[]>
   >({});
-  const [summaryReady, setSummaryReady] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [summaryReady, setSummaryReady] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const entries = summaryQueriesRef.current;
@@ -245,7 +245,10 @@ export default function AnomalyBreakdownPopover({
     const cachedReady: Record<string, boolean> = {};
     const pending: { dimension: string; query: QueryObject }[] = [];
     for (const entry of entries) {
-      const cached = peekBreakdownData(entry.query, { allowStale: false });
+      const cached = peekBreakdownData(entry.query, {
+        allowStale: false,
+        target: topicTarget(topic),
+      });
       if (cached) {
         cachedRows[entry.dimension] = cached.rows;
         cachedReady[entry.dimension] = true;
@@ -261,7 +264,10 @@ export default function AnomalyBreakdownPopover({
     for (const entry of pending) {
       const controller = new AbortController();
       controllers.push(controller);
-      fetchBreakdownData(entry.query, { signal: controller.signal })
+      fetchBreakdownData(entry.query, {
+        signal: controller.signal,
+        target: topicTarget(topic),
+      })
         .then((data) => {
           if (!active) return;
           setSummaryRows((previous) => ({
@@ -285,8 +291,8 @@ export default function AnomalyBreakdownPopover({
       active = false;
       controllers.forEach((controller) => controller.abort());
     };
-    // `summaryQueryKey` captures every query input.
-  }, [summaryQueryKey]);
+    // `summaryQueryKey` captures every query input; the topic adds the dataset.
+  }, [summaryQueryKey, topic]);
 
   const summaryBreakdowns = useMemo(() => {
     if (!metric || !date) return [];
@@ -301,10 +307,7 @@ export default function AnomalyBreakdownPopover({
       const focusRows = new Map<string, ChartDataRow>();
       for (const row of summaryRows[dimension] ?? []) {
         const rowDate = dayjs(row["日期"] ?? row.__timestamp);
-        if (
-          rowDate.isValid() &&
-          rowDate.format("YYYY-MM-DD") === date
-        ) {
+        if (rowDate.isValid() && rowDate.format("YYYY-MM-DD") === date) {
           focusRows.set(String(row[dimension] ?? "").trim(), row);
         }
       }
@@ -502,7 +505,8 @@ export default function AnomalyBreakdownPopover({
             color="text.secondary"
             sx={{ display: "block", mb: 1 }}
           >
-            按「{dimensionLabel}」拆解 · 当前 {formatMetricValue(metric, anomaly.value)}
+            按「{dimensionLabel}」拆解 · 当前{" "}
+            {formatMetricValue(metric, anomaly.value)}
           </Typography>
 
           {ready && summaryParagraphs.length > 0 && (
@@ -526,9 +530,7 @@ export default function AnomalyBreakdownPopover({
               >
                 当前视图总结
               </Typography>
-              <Box
-                sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}
-              >
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
                 {summaryParagraphs
                   .filter((paragraph) => paragraph.key === "overview")
                   .map(renderSummaryParagraph)}
@@ -569,7 +571,8 @@ export default function AnomalyBreakdownPopover({
             </Box>
           ) : ready && !loading && visible.length === 0 ? (
             <Typography variant="caption" color="text.secondary">
-              下级维度暂无足够的历史样本（至少 4 天有效历史）或当天数据，无法拆分归因
+              下级维度暂无足够的历史样本（至少 4
+              天有效历史）或当天数据，无法拆分归因
             </Typography>
           ) : (
             <Box sx={{ display: "flex", flexDirection: "column" }}>
@@ -619,7 +622,10 @@ export default function AnomalyBreakdownPopover({
                       <Typography
                         variant="caption"
                         color="text.secondary"
-                        sx={{ fontVariantNumeric: "tabular-nums", flexShrink: 0 }}
+                        sx={{
+                          fontVariantNumeric: "tabular-nums",
+                          flexShrink: 0,
+                        }}
                       >
                         当前 {formatMetricValue(metric, detail.value)} · 均线{" "}
                         {formatMetricValue(metric, detail.baselineMean)}

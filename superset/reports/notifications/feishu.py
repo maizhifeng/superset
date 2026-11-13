@@ -27,10 +27,18 @@ supported:
   briefing (see ``superset/project/briefing``).  Cards follow the Card 2.0
   schema: ``"schema": "2.0"``, a header whose ``template`` encodes the alert
   severity, one focal metric, supporting metric blocks, an optional alert block
-  and a single full-width "查看完整简报" button.
+  and a single full-width "查看完整简报" button.  A push that delivers the
+  report as a Feishu document instead sets
+  ``NotificationContent.briefing_doc_card`` (see
+  :func:`build_briefing_doc_card`): exactly that one card travels, once per
+  target, with no chapter splitting, table trimming or text fallback.
 * ``text`` — the plain-text briefing summary, for clients/deployments where a
   card is not wanted.
-
+* ``file`` — the client's native file-share card.  A push that already uploaded
+  the report file to IM sets ``NotificationContent.briefing_share_file``
+  (``{"file_key": ..., "file_name": ...}``); exactly one ``file`` message per
+  target carries ``{"file_key": ...}``, again with no splitting, trimming or
+  text fallback.  The message type is derived from that content, not configured.
 Targets are stored per recipient as
 ``{"msg_type": ..., "targets": [{"receive_id_type": ..., "receive_id": ...}]}``
 with a single ``{"target": "...", "target_type": "..."}`` accepted as well, so
@@ -48,9 +56,11 @@ import re
 import threading
 import time
 import uuid
+from datetime import datetime
 from typing import Any
 
 import backoff
+import pytz
 import requests
 from flask import current_app
 
@@ -77,6 +87,8 @@ RECEIVE_ID_TYPES = ("chat_id", "open_id", "user_id", "union_id", "email")
 DEFAULT_RECEIVE_ID_TYPE = "chat_id"
 
 MESSAGE_TYPES = ("interactive", "text")
+# ``file`` is not a configurable type: it is derived from
+# ``NotificationContent.briefing_share_file`` (an uploaded IM file key).
 DEFAULT_MESSAGE_TYPE = "interactive"
 
 # API paths (not credentials): the tenant-token URL trips the bandit-style
@@ -417,6 +429,7 @@ DEFAULT_CRITICAL_LINE = 0.05
 # Header template per severity: the whole card stays in one colour family, and
 # the header carries the "should I care" signal.
 _SEVERITY_TEMPLATE = {"critical": "red", "warning": "orange", "ok": "blue"}
+_SEVERITY_TAG_TEXT = {"critical": "严重", "warning": "预警", "ok": "正常"}
 _SEVERITY_BACKGROUND = {"critical": "red-50", "warning": "orange-50", "ok": "blue-50"}
 _SEVERITY_ALERT_COLOR = {"critical": "red", "warning": "orange", "ok": "grey"}
 
@@ -686,7 +699,9 @@ def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any]
     rows = _trend_rows(result)
     if not rows:
         return None
-    chart_rows = list(reversed(rows))[:MAX_TREND_CHART_BUCKETS]
+    # ``rows`` is oldest first already; keep that order so the time axis runs
+    # left to right, and keep the latest buckets when the window is capped.
+    chart_rows = rows[-MAX_TREND_CHART_BUCKETS:]
     amount_values: list[dict[str, Any]] = []
     roi_values: list[dict[str, Any]] = []
     for row in chart_rows:
@@ -1327,7 +1342,7 @@ def _card_header(
     """Card header: the report's name + period, tagged with the worst alert."""
     weekly = report_type == "weekly"
     period = _report_period(result)
-    tag_text = {"critical": "严重", "warning": "预警", "ok": "正常"}[severity]
+    tag_text = _SEVERITY_TAG_TEXT[severity]
     generated = _as_text(result.get("generated_at"))
     subtitle = " · ".join(
         part for part in (_period_phrase(result, weekly), generated) if part
@@ -1536,11 +1551,11 @@ def _metric_cell(
     )
 
 
-def _detail_button(url: str) -> dict[str, Any]:
-    """The single full-width button that opens the interactive HTML report."""
+def _open_url_button(text: str, url: str) -> dict[str, Any]:
+    """A full-width primary button that opens ``url`` in the Feishu client."""
     return {
         "tag": "button",
-        "text": {"tag": "plain_text", "content": "查看明细"},
+        "text": {"tag": "plain_text", "content": text},
         "type": "primary_filled",
         "width": "fill",
         "behaviors": [
@@ -1552,6 +1567,119 @@ def _detail_button(url: str) -> dict[str, Any]:
                 "android_url": url,
             }
         ],
+    }
+
+
+def _detail_button(url: str) -> dict[str, Any]:
+    """The single full-width button that opens the interactive HTML report."""
+    return _open_url_button("查看明细", url)
+
+
+def _doc_button(url: str, text: str) -> dict[str, Any]:
+    """The single full-width button that opens the shared briefing artifact."""
+    return _open_url_button(text, url)
+
+
+def _doc_generated_text(result: dict[str, Any]) -> str:
+    """When the push ran, in the business timezone the readers are in.
+
+    The payload stores an ISO timestamp with a UTC offset; the card shows it in
+    China Standard Time (the briefing audience's zone) instead of whatever zone
+    the worker happens to run in.  Naive or unparseable values are shown
+    unchanged.
+    """
+    value = result.get("finished_at") or result.get("generated_at")
+    if not value:
+        return ""
+    text = str(value).strip()
+    try:
+        stamp = datetime.fromisoformat(text)
+    except ValueError:
+        # Not every payload carries an ISO timestamp; show it verbatim.
+        return text
+    if stamp.tzinfo is None:
+        return stamp.strftime("%Y-%m-%d %H:%M")
+    local = stamp.astimezone(pytz.timezone("Asia/Shanghai"))
+    return f"{local.strftime('%Y-%m-%d %H:%M')}（北京时间）"
+
+
+def build_briefing_doc_card(
+    result: dict[str, Any],
+    *,
+    name: str,
+    doc_url: str,
+    frontend_url: str | None = None,
+    button_text: str = "查看周报文档",
+    note: str = "完整周报已生成，包含全部指标与明细表。",
+) -> dict[str, Any]:
+    """Build the single interactive card that shares a weekly briefing document.
+
+    A weekly push publishes the complete report outside the card, so the message
+    itself only announces it and links to it: no charts, no metric tables, and
+    one card per target (there is nothing to split or trim).  The header colour
+    follows the worst alert level, like the metric cards, and the body carries
+    the report period and the push time.
+
+    ``frontend_url`` adds a secondary link back to the briefing page; the card
+    must not depend on it because a deployment may only be reachable on
+    localhost.
+
+    ``button_text`` labels the action button and ``note`` is the body's second
+    line, so a push can describe the shared artifact precisely (the weekly push
+    shares an interactive HTML file and says so) without changing the card
+    structure.  Both default to the document wording.
+    """
+    severity = _severity(result)
+    period = _report_period(result)
+    # The card title mirrors the shared artifact's title; a name that already
+    # reads 周报/简报 is not suffixed twice.  The header renders one line.
+    heading = name.strip()
+    if not heading.endswith(("周报", "简报")):
+        heading = f"{heading}周报"
+    title = " ".join(f"{heading} · {period}".split())
+    meta = f"**周期**：{escape_card_text(period)}"
+    if generated := _doc_generated_text(result):
+        meta = f"{meta} ｜ 生成于 {escape_card_text(generated)}"
+    elements: list[dict[str, Any]] = [
+        {"tag": "markdown", "content": meta, "text_size": "body"},
+        {"tag": "markdown", "content": note, "text_size": "body"},
+        _doc_button(doc_url, button_text),
+    ]
+    if frontend_url:
+        elements.append(
+            {
+                "tag": "markdown",
+                "content": f"[打开简报页面]({frontend_url})",
+                "text_size": "caption",
+            }
+        )
+    return {
+        "schema": "2.0",
+        "config": {
+            "update_multi": True,
+            "width_mode": "fill",
+            "summary": {"content": f"周报文档已生成 · {period}"},
+        },
+        "header": {
+            "title": {"tag": "plain_text", "content": title},
+            "template": _SEVERITY_TEMPLATE[severity],
+            "text_tag_list": [
+                {
+                    "tag": "text_tag",
+                    "text": {
+                        "tag": "plain_text",
+                        "content": _SEVERITY_TAG_TEXT[severity],
+                    },
+                    "color": _SEVERITY_TEMPLATE[severity],
+                }
+            ],
+        },
+        "body": {
+            "direction": "vertical",
+            "padding": "12px 12px 20px 12px",
+            "vertical_spacing": "12px",
+            "elements": elements,
+        },
     }
 
 
@@ -2018,6 +2146,14 @@ class FeishuNotification(BaseNotification):
         return bool(self._config().get("include_tables"))
 
     def _msg_type(self) -> str:
+        if self._content.briefing_share_file:
+            # A native file share is a ``file`` message by definition: the
+            # configured message type describes report cards, not the file.
+            return "file"
+        if self._content.briefing_doc_card:
+            # A document-share push is interactive by definition: the configured
+            # message type describes report cards, not the document card.
+            return "interactive"
         msg_type = str(self._config().get("msg_type") or DEFAULT_MESSAGE_TYPE)
         if msg_type not in MESSAGE_TYPES:
             raise NotificationParamException(
@@ -2050,6 +2186,13 @@ class FeishuNotification(BaseNotification):
     # -- message content ---------------------------------------------------
     def _cards(self) -> list[dict[str, Any]]:
         """The card(s) for this notification: one per chapter when requested."""
+        if self._content.briefing_share_file:
+            # A native file share has no card at all: the file message is the
+            # whole notification.
+            return []
+        if self._content.briefing_doc_card:
+            # The push delivers a document; the message is its share card.
+            return [self._content.briefing_doc_card]
         if not self._split_chapters():
             return [self._card()]
         result = self._content.briefing_result or {}
@@ -2082,8 +2225,11 @@ class FeishuNotification(BaseNotification):
         return cards
 
     def _split_chapters(self) -> bool:
-        return bool(self._content.briefing_split_chapters) and bool(
-            self._content.briefing_result
+        return (
+            bool(self._content.briefing_split_chapters)
+            and bool(self._content.briefing_result)
+            and not self._content.briefing_doc_card
+            and not self._content.briefing_share_file
         )
 
     def _card(self) -> dict[str, Any]:
@@ -2140,6 +2286,21 @@ class FeishuNotification(BaseNotification):
 
     def _content_items(self, msg_type: str) -> list[str]:
         """The message payloads to send: one per chapter when splitting."""
+        if share_file := self._content.briefing_share_file:
+            # ``msg_type: "file"`` renders as the client's native file-share
+            # card; the message carries only the uploaded file's key.  Nothing
+            # to split, trim or summarise.
+            file_key = str(share_file.get("file_key") or "").strip()
+            if not file_key:
+                raise NotificationParamException("飞书文件分享缺少 file_key")
+            self.trim_notes = []
+            return [json.dumps({"file_key": file_key})]
+        if card := self._content.briefing_doc_card:
+            # The complete report lives in the linked document, so the message
+            # is this one card: no chapter split, no table trimming and no
+            # text-summary fallback.
+            self.trim_notes = []
+            return [json.dumps(card)]
         content = self._content_json(msg_type)
         return content if isinstance(content, list) else [content]
 

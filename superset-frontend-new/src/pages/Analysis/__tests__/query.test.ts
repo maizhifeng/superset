@@ -14,6 +14,7 @@ const { mockPostChartData } = vi.hoisted(() => ({
 
 vi.mock("@/api/chartData", () => ({
   postChartData: mockPostChartData,
+  postAnalysisChartData: mockPostChartData,
 }));
 
 import {
@@ -32,6 +33,7 @@ import {
   fetchCoreData,
   peekBreakdownData,
   peekCoreData,
+  topicTarget,
 } from "@/pages/Analysis/query";
 import {
   useAnalysisBreakdownData,
@@ -65,7 +67,9 @@ function chartResult(
 
 function coreResponse(rows: Record<string, string | number>[]) {
   return {
-    data: { result: [chartResult(rows), chartResult(), chartResult(), chartResult()] },
+    data: {
+      result: [chartResult(rows), chartResult(), chartResult(), chartResult()],
+    },
   };
 }
 
@@ -98,7 +102,7 @@ test("builds totals, daily trend and breakdown queries", () => {
 
 test("falls back to the default dimension for an unknown dimension", () => {
   const plan = buildQueryPlan(topic, baseFilters(), "不存在");
-  expect(plan.breakdown.groupby).toEqual(["主游戏"]);
+  expect(plan.breakdown.groupby).toEqual(["日期"]);
 });
 
 test("retention totals/breakdown end at the observation cutoff", () => {
@@ -230,7 +234,7 @@ test("parses the five query results into sections", async () => {
   expect(data.breakdown.rows[0]["主游戏"]).toBe("游戏 A");
   expect(mockPostChartData).toHaveBeenCalledWith(
     expect.objectContaining({
-      datasource: { id: 26, type: "table" },
+      topic: "cost",
       result_format: "json",
       force: false,
       queries: expect.arrayContaining([
@@ -353,9 +357,9 @@ test("force refresh bypasses and overwrites the cache entry", async () => {
   expect(first.totals.rows).toEqual([{ cpa: 1 }]);
   expect(forced.totals.rows).toEqual([{ cpa: 2 }]);
   expect(mockPostChartData).toHaveBeenCalledTimes(2);
-  expect(
-    (mockPostChartData.mock.calls[1][0] as { force: boolean }).force,
-  ).toBe(true);
+  expect((mockPostChartData.mock.calls[1][0] as { force: boolean }).force).toBe(
+    true,
+  );
 
   // The forced response overwrote the cached one.
   const third = await fetchCoreData(plan);
@@ -465,7 +469,9 @@ test("breakdown hook serves cached rows without flashing loading", async () => {
     breakdownResponse([{ 主游戏: "游戏 A", cpa: 9 }]),
   );
   const filters = { ...baseFilters(), dimension: "主游戏" };
-  await fetchBreakdownData(buildBreakdownQuery(topic, filters));
+  await fetchBreakdownData(buildBreakdownQuery(topic, filters), {
+    target: topicTarget(topic),
+  });
 
   const { result } = renderHook(() =>
     useAnalysisBreakdownData(topic, filters as AnalysisFilters),
@@ -538,9 +544,9 @@ test("refresh forces a network refetch through the hook", async () => {
     { timeout: 3000 },
   );
   expect(mockPostChartData).toHaveBeenCalledTimes(2);
-  expect(
-    (mockPostChartData.mock.calls[1][0] as { force: boolean }).force,
-  ).toBe(true);
+  expect((mockPostChartData.mock.calls[1][0] as { force: boolean }).force).toBe(
+    true,
+  );
 });
 
 test("builds no drill attribution query outside drill mode", () => {
@@ -690,7 +696,7 @@ test("builds one combined query for the whole drill view", () => {
   expect(buildDrillQueryPlan(topic, baseFilters())).toBeNull();
 });
 
-test("builds a chronological daily breakdown for the time dimension", () => {
+test("builds a newest-first daily breakdown for the time dimension", () => {
   const filters = {
     ...baseFilters(),
     dimension: "日期",
@@ -699,8 +705,8 @@ test("builds a chronological daily breakdown for the time dimension", () => {
   const query = buildBreakdownQuery(topic, filters);
 
   expect(query.groupby).toEqual(["日期"]);
-  expect(query.orderby).toEqual([["日期", true]]);
-  expect(query.order_desc).toBe(false);
+  expect(query.orderby).toEqual([["日期", false]]);
+  expect(query.order_desc).toBe(true);
   expect(query.filters).toContainEqual({
     col: "渠道商",
     op: "IN",
@@ -725,4 +731,16 @@ test("weekly drill scopes KPI, trend and breakdown to that week", () => {
   expect(buildBreakdownQuery(topic, filters).time_range).toBe(
     "2026-10-04 : 2026-10-11",
   );
+});
+
+test("date-view drill queries do not duplicate the date axis", () => {
+  const filters = {
+    ...baseFilters(),
+    dimension: "日期",
+    focusDate: "2026-10-09",
+  } as AnalysisFilters;
+  const drill = buildDrillQueryPlan(topic, filters);
+  const anomaly = buildDrillAnomalyQuery(topic, filters);
+  expect(drill?.groupby).toEqual(["日期"]);
+  expect(anomaly?.groupby).toEqual(["日期"]);
 });

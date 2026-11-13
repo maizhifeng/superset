@@ -352,3 +352,190 @@ test("hides the manual push button without a generated result", async () => {
     screen.queryByRole("button", { name: "立即推送" }),
   ).not.toBeInTheDocument();
 });
+
+const WEEKLY_SETTINGS = {
+  ...SETTINGS,
+  report_type: "weekly",
+  weekly_doc_enabled: true,
+  doc_folder: "",
+  doc_folder_configured: false,
+};
+
+test("daily briefings keep the card switches", async () => {
+  mockLoad({ ...SETTINGS, report_type: "daily" });
+  render(
+    <FeishuDialog
+      open
+      configId={1}
+      configName="测试日报"
+      reportType="daily"
+      onClose={() => {}}
+    />,
+  );
+  expect(await screen.findByText("消息形态")).toBeInTheDocument();
+  expect(
+    screen.getByRole("switch", { name: /推送子表格/ }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("生成「查看明细」飞书文档")).toBeInTheDocument();
+  expect(
+    screen.queryByLabelText("飞书文件夹链接或 token"),
+  ).not.toBeInTheDocument();
+});
+
+test("weekly briefings hide the card switches and explain the doc push", async () => {
+  mockLoad(WEEKLY_SETTINGS);
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      reportType="weekly"
+      onClose={() => {}}
+    />,
+  );
+  expect(
+    await screen.findByText(
+      "周报推送会生成可交互的完整 HTML 周报（全部章节、明细表与交互图表），" +
+        "保存到「周报-飞书播报」文件夹，并以飞书文件分享的形式发送到目标会话——" +
+        "在飞书里预览/下载后用浏览器打开即可查看交互图表。",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText("启用定时推送")).toBeInTheDocument();
+  expect(screen.getByLabelText("飞书文件夹链接或 token")).toBeInTheDocument();
+  expect(screen.queryByText("消息形态")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("switch", { name: /推送子表格/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("生成「查看明细」飞书文档"),
+  ).not.toBeInTheDocument();
+  // Targets stay editable, and the missing folder is called out.
+  expect(screen.getByDisplayValue("oc_group")).toBeInTheDocument();
+  expect(screen.getByText("未配置")).toBeInTheDocument();
+  expect(
+    screen.getByText(/未配置周报文档文件夹：周报推送不会发送任何消息/),
+  ).toBeInTheDocument();
+});
+
+test("weekly form falls back to the report type carried by the settings", async () => {
+  mockLoad(WEEKLY_SETTINGS);
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      onClose={() => {}}
+    />,
+  );
+  expect(
+    await screen.findByText(/周报推送会生成可交互的完整 HTML 周报/),
+  ).toBeInTheDocument();
+});
+
+test("weekly saves the folder token extracted from a pasted link", async () => {
+  mockLoad({
+    ...WEEKLY_SETTINGS,
+    doc_folder: "fldcnOld",
+    doc_folder_configured: true,
+  });
+  mockApi.put.mockResolvedValue({ data: { result: WEEKLY_SETTINGS } });
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      reportType="weekly"
+      onClose={() => {}}
+    />,
+  );
+  const input = await screen.findByLabelText("飞书文件夹链接或 token");
+  fireEvent.change(input, {
+    target: { value: "https://acme.feishu.cn/drive/folder/fldcnNew123" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(mockApi.put).toHaveBeenCalledTimes(1));
+  expect(mockApi.put).toHaveBeenCalledWith(
+    "/briefing/configs/16/feishu",
+    expect.objectContaining({ doc_folder: "fldcnNew123" }),
+  );
+});
+
+test("weekly rejects a folder value that is neither a link nor a token", async () => {
+  mockLoad(WEEKLY_SETTINGS);
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      reportType="weekly"
+      onClose={() => {}}
+    />,
+  );
+  const input = await screen.findByLabelText("飞书文件夹链接或 token");
+  fireEvent.change(input, { target: { value: "hello world" } });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() =>
+    expect(notificationMessages().join("；")).toContain("文档文件夹"),
+  );
+  expect(mockApi.put).not.toHaveBeenCalled();
+});
+
+test("weekly shows the configured folder and the last document link", async () => {
+  mockLoad({
+    ...WEEKLY_SETTINGS,
+    doc_folder: "fldcnAbC123",
+    doc_folder_configured: true,
+    last_push: {
+      at: "2026-11-10T01:00:00+00:00",
+      ok: true,
+      kind: "manual",
+      doc_url: "https://acme.feishu.cn/docx/DocToken123",
+    },
+  });
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      reportType="weekly"
+      onClose={() => {}}
+    />,
+  );
+  expect(await screen.findByText("已配置")).toBeInTheDocument();
+  expect(screen.queryByText(/未配置周报文档文件夹/)).not.toBeInTheDocument();
+  const link = screen.getByRole("link", { name: "查看上次生成的交互周报" });
+  expect(link).toHaveAttribute(
+    "href",
+    "https://acme.feishu.cn/docx/DocToken123",
+  );
+});
+
+test("weekly test push targets the folder being edited", async () => {
+  mockLoad({
+    ...WEEKLY_SETTINGS,
+    doc_folder: "fldcnSaved",
+    doc_folder_configured: true,
+  });
+  mockApi.post.mockResolvedValue({
+    data: { result: { ok: true, dry_run: false, sent: [] } },
+  });
+  render(
+    <FeishuDialog
+      open
+      configId={16}
+      configName="测试周报"
+      reportType="weekly"
+      onClose={() => {}}
+    />,
+  );
+  const input = await screen.findByLabelText("飞书文件夹链接或 token");
+  fireEvent.change(input, {
+    target: { value: "https://acme.feishu.cn/drive/folder/fldcnEdited" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "测试推送" }));
+  await waitFor(() => expect(mockApi.post).toHaveBeenCalledTimes(1));
+  expect(mockApi.post).toHaveBeenCalledWith(
+    "/briefing/configs/16/feishu/test",
+    expect.objectContaining({ doc_folder: "fldcnEdited" }),
+  );
+});

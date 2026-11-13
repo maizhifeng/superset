@@ -21,6 +21,13 @@ export interface AnalysisMetric {
    */
   maturityDays?: number;
   decimals?: number;
+  /**
+   * Catalog key of the denominator used to re-aggregate this rate metric over
+   * a coarser bucket (day → week/month).  A bucket's rate is the ratio of the
+   * bucket's sums, so aggregating daily rates weights each day by this volume
+   * instead of averaging ratios.  Only meaningful for non-additive metrics.
+   */
+  bucketWeight?: string;
 }
 
 export interface AnalysisDimension {
@@ -29,7 +36,7 @@ export interface AnalysisDimension {
 }
 
 export type AnalysisChartType = "bar" | "line";
-export type AnalysisAxis = "left" | "right";
+export type AnalysisAxis = "left" | "right" | "right2";
 
 export interface AnalysisTrendSeries {
   /** Key in the topic metric catalog. */
@@ -45,7 +52,14 @@ export interface AnalysisTrendSeries {
 }
 
 export type AnalysisExtraViewType =
-  "retention-matrix" | "ltv-roi" | "efficiency-scatter";
+  "retention-matrix" | "ltv-roi" | "efficiency-scatter" | "project-compare";
+
+/**
+ * Standard page sections a topic renders above its extra view.  A topic whose
+ * extra view owns the whole page hides the ones it does not use, which also
+ * skips their queries.
+ */
+export type AnalysisPageSection = "kpis" | "trend" | "breakdown";
 
 export interface AnalysisExtraView {
   type: AnalysisExtraViewType;
@@ -55,12 +69,34 @@ export interface AnalysisExtraView {
   totalsMetrics?: string[];
   /** Extra metrics the breakdown query must fetch for this view. */
   breakdownMetrics?: string[];
+  /**
+   * Metric-catalog keys the view compares, in display order.  Also used by the
+   * "查看 SQL" dialog when the topic hides the standard sections, so the
+   * preview shows the view's own query instead of an empty one.
+   */
+  metrics?: string[];
+  /**
+   * Hide the section title/description row above the view.  Set by views whose
+   * own header already explains the content (project comparison).
+   */
+  hideHeader?: boolean;
 }
 
 export interface AnalysisTopic {
   id: string;
   title: string;
   description: string;
+  /**
+   * When set, the topic's queries are executed by the backend from the
+   * topic's own trimmed SQL (no Superset dataset involved).  Unset topics
+   * still run on the shared legacy dataset (``ANALYSIS_DATASET_ID``).
+   */
+  backendSql?: boolean;
+  /**
+   * ``"wip"`` marks a topic that has not been migrated to backend SQL yet;
+   * the UI shows a "未完工" badge and keeps the legacy dataset.
+   */
+  status?: "wip";
   icon: ReactNode;
   /** MUI palette token used by the topic card accent. */
   color: string;
@@ -86,6 +122,30 @@ export interface AnalysisTopic {
   comparisonMetric?: string;
   dimensions: AnalysisDimension[];
   defaultDimension: string;
+  /**
+   * Filter-bar controls the topic hides.  A topic whose own view owns one of
+   * the dimensions (for example the project comparison selects projects in
+   * its own picker) hides that global filter to avoid two competing scopes;
+   * values carried in the URL are ignored as well, so the visible scope always
+   * matches the effective one.
+   */
+  hiddenFilters?: string[];
+  /**
+   * Preferred order of the remaining column filters (filter keys).  Filters not
+   * listed keep the shared definition order after the pinned ones.
+   */
+  filterOrder?: string[];
+  /**
+   * Standard sections this topic replaces with its extra view.  The hidden
+   * sections are neither rendered nor queried, so a comparison view never pays
+   * for a KPI / trend / breakdown scan it does not show.
+   */
+  hiddenSections?: AnalysisPageSection[];
+  /**
+   * Hide the date-range control.  Used by the project comparison, whose
+   * observation window (基准 + 窗口) replaces the page date range.
+   */
+  hideDateRange?: boolean;
   /**
    * Ordered hierarchy used by row drill-down.  A row click keeps the current
    * value as a filter and moves the table to the next dimension.  Defaults to

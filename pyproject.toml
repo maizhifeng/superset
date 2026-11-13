@@ -517,6 +517,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "superset/mcp_service/app.py" = ["S608", "E501"]  # LLM instruction text: SQL examples (S608) and long lines in multiline string (E501)
 "superset/mcp_service/*/tool/list_*.py" = ["E501"]  # LLM docstring examples show full request shapes which exceed line length
 "scripts/*" = ["TID251"]
+"analysis-sql-review/scripts/*" = ["B007", "C901", "E501", "E731", "S108", "S608", "TID251"]  # Ad-hoc verification scripts kept beside the analysis notes; not shipped or imported
 "setup.py" = ["TID251"]
 "superset/config.py" = ["TID251"]
 "superset/cli/update.py" = ["TID251"]
@@ -526,6 +527,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "superset/utils/json.py" = ["TID251"]
 "docker/*" = ["I"]  # Docker config files have non-standard imports that vary by environment
 "superset/db_engine_specs/lib.py" = ["E501"]  # Database config file with long description strings
+"superset/project/briefing/html_export.py" = ["E501"]  # Inline CSS/JS template: long style declarations in the exported page
 
 [tool.ruff.lint.isort]
 case-sensitive = false

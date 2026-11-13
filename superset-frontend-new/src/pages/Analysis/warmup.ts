@@ -9,6 +9,7 @@ import {
   peekBreakdownData,
   peekKpiData,
   peekTrendData,
+  topicTarget,
 } from "./query";
 import { saveAnalysisSnapshot } from "./snapshot";
 import { ANALYSIS_TOPICS } from "./topics";
@@ -71,6 +72,12 @@ export async function warmAnalysisCaches(options?: {
   let skipped = 0;
 
   for (const topic of topics) {
+    // Topics whose extra view owns the page have no KPI/trend/breakdown cache
+    // to warm; their view fetches only what it renders.
+    if (topic.hiddenSections?.length) {
+      skipped += ranges.length;
+      continue;
+    }
     for (const range of ranges) {
       if (signal?.aborted) return { warmed, skipped };
       const filters = { ...defaultFilters(topic), range };
@@ -85,9 +92,17 @@ export async function warmAnalysisCaches(options?: {
         tasks.push(fetchers.trend(trendPlan, { force: false }));
       }
       if (
-        peekBreakdownData(breakdownQuery, { allowStale: false }) === undefined
+        peekBreakdownData(breakdownQuery, {
+          allowStale: false,
+          target: topicTarget(topic),
+        }) === undefined
       ) {
-        tasks.push(fetchers.breakdown(breakdownQuery, { force: false }));
+        tasks.push(
+          fetchers.breakdown(breakdownQuery, {
+            force: false,
+            target: topicTarget(topic),
+          }),
+        );
       }
 
       if (tasks.length === 0) {
@@ -106,6 +121,7 @@ export async function warmAnalysisCaches(options?: {
         const trend = peekTrendData(trendPlan, { allowStale: false });
         const breakdown = peekBreakdownData(breakdownQuery, {
           allowStale: false,
+          target: topicTarget(topic),
         });
         if (kpi && trend && breakdown) {
           await saveAnalysisSnapshot(topic, filters, {

@@ -38,6 +38,7 @@ from superset.reports.notifications.feishu import (
     _TOKEN_CACHE,
     _wan,
     build_briefing_card,
+    build_briefing_doc_card,
     build_project_daily_table,
     build_project_table,
     build_text_card,
@@ -162,6 +163,19 @@ BRIEFING_RESULT: dict[str, Any] = {
     "alerts": [],
     "empty": False,
 }
+
+# A weekly payload: the same numbers over a week-long window, as stored by the
+# weekly briefing job (``finished_at`` is the UTC push timestamp).
+WEEKLY_RESULT: dict[str, Any] = {
+    **BRIEFING_RESULT,
+    "report_type": "weekly",
+    "period_start": "2026-08-23",
+    "period_end": "2026-08-29",
+    "report_date": "2026-08-29",
+    "finished_at": "2026-11-10T08:20:00+00:00",
+}
+
+DOC_URL = "https://x.feishu.cn/docx/WeeklyDoc1"
 
 
 @pytest.fixture(autouse=True)
@@ -973,6 +987,359 @@ def test_text_card_converts_html_breaks() -> None:
     assert card["body"]["elements"][0]["content"].startswith("甲\n乙")
 
 
+# --------------------------------------------------------------------------- #
+# Weekly document-share card
+# --------------------------------------------------------------------------- #
+
+
+def test_doc_card_shares_only_the_document() -> None:
+    """The weekly message is one card: header, two lines, one document button.
+
+    The default button label and note are pinned here: the weekly push shares an
+    interactive HTML file and overrides both (``test_doc_card_accepts_custom_
+    wording``), but the bare builder keeps the document wording.
+    """
+    card = build_briefing_doc_card(WEEKLY_RESULT, name="222", doc_url=DOC_URL)
+    assert card["schema"] == "2.0"
+    assert card["header"]["title"]["content"] == "222周报 · 2026-08-23 ~ 2026-08-29"
+    assert card["header"]["template"] == "blue"
+    # No report content travels in the message: the document carries it.
+    assert {element["tag"] for element in card["body"]["elements"]} == {
+        "markdown",
+        "button",
+    }
+    body = " ".join(element.get("content", "") for element in card["body"]["elements"])
+    assert "完整周报已生成，包含全部指标与明细表。" in body
+    assert "生成于 2026-11-10" in body
+    # Exactly one button, and it opens the imported document.
+    buttons = [
+        element for element in card["body"]["elements"] if element["tag"] == "button"
+    ]
+    assert len(buttons) == 1
+    button = buttons[0]
+    assert button["text"]["content"] == "查看周报文档"
+    behavior = button["behaviors"][0]
+    assert behavior["type"] == "open_url"
+    assert behavior["default_url"] == DOC_URL
+    # The card stays far below Feishu's 30 KB message limit.
+    assert card_bytes(card) < CARD_BYTE_BUDGET
+
+
+def test_doc_card_accepts_custom_wording() -> None:
+    """A weekly push words the card for its artifact: an interactive HTML file.
+
+    ``button_text`` labels the only action and ``note`` is the second body line;
+    neither changes the rest of the card (header, period line, single button).
+    """
+    html_url = "https://x.feishu.cn/file/WeeklyHtml1"
+    note = "完整周报已生成（HTML 格式，图表可交互，建议在浏览器中打开）。"
+    card = build_briefing_doc_card(
+        WEEKLY_RESULT,
+        name="222",
+        doc_url=html_url,
+        button_text="查看交互式周报",
+        note=note,
+    )
+    # The rest of the card is untouched by the custom wording.
+    assert card["schema"] == "2.0"
+    assert card["header"]["title"]["content"] == "222周报 · 2026-08-23 ~ 2026-08-29"
+    buttons = [
+        element for element in card["body"]["elements"] if element["tag"] == "button"
+    ]
+    assert [button["text"]["content"] for button in buttons] == ["查看交互式周报"]
+    assert buttons[0]["behaviors"][0]["default_url"] == html_url
+    # The note replaces the default second line (which still leads the card's
+    # first line: the period).
+    contents = [
+        element["content"]
+        for element in card["body"]["elements"]
+        if element["tag"] == "markdown"
+    ]
+    assert note in contents
+    assert "完整周报已生成，包含全部指标与明细表。" not in json.dumps(
+        card, ensure_ascii=False
+    )
+    assert contents[0].startswith("**周期**：")
+    # Each parameter is independent: overriding one keeps the other default.
+    only_note = build_briefing_doc_card(
+        WEEKLY_RESULT, name="222", doc_url=html_url, note=note
+    )
+    only_note_button = next(
+        element
+        for element in only_note["body"]["elements"]
+        if element["tag"] == "button"
+    )
+    assert only_note_button["text"]["content"] == "查看周报文档"
+    only_button = build_briefing_doc_card(
+        WEEKLY_RESULT,
+        name="222",
+        doc_url=html_url,
+        button_text="查看交互式周报",
+    )
+    assert "完整周报已生成，包含全部指标与明细表。" in json.dumps(
+        only_button, ensure_ascii=False
+    )
+
+
+def test_doc_card_header_colour_follows_severity() -> None:
+    cases = (
+        ([{"level": "critical", "message": "ROI1 低于盈亏线"}], "red"),
+        ([{"level": "warning", "message": "ROI1 偏低"}], "orange"),
+        ([], "blue"),
+    )
+    for alerts, expected in cases:
+        card = build_briefing_doc_card(
+            {**WEEKLY_RESULT, "alerts": alerts}, name="222", doc_url=DOC_URL
+        )
+        assert card["header"]["template"] == expected
+        assert card["header"]["text_tag_list"][0]["color"] == expected
+
+
+def test_doc_card_title_falls_back_to_the_report_date() -> None:
+    result = {**WEEKLY_RESULT, "period_start": None, "period_end": None}
+    card = build_briefing_doc_card(result, name="222", doc_url=DOC_URL)
+    assert "2026-08-29" in card["header"]["title"]["content"]
+    assert "None" not in card["header"]["title"]["content"]
+
+
+def test_doc_card_does_not_suffix_a_weekly_name_twice() -> None:
+    card = build_briefing_doc_card(WEEKLY_RESULT, name="222周报", doc_url=DOC_URL)
+    title = card["header"]["title"]["content"]
+    assert title.startswith("222周报 · ")
+    assert "周报周报" not in title
+
+
+def test_doc_card_never_contains_metric_tables_or_images() -> None:
+    card = build_briefing_doc_card(
+        {**WEEKLY_RESULT, "alerts": [{"level": "critical", "message": "x"}]},
+        name="222",
+        doc_url=DOC_URL,
+        frontend_url="http://localhost:9000/briefing/16",
+    )
+    for element in _walk_elements(card["body"]):
+        assert element["tag"] not in {"table", "chart", "image", "img", "img_v2"}
+        assert "chart_spec" not in element
+    assert "table" not in json.dumps(card, ensure_ascii=False)
+
+
+def test_doc_card_links_the_frontend_when_given() -> None:
+    url = "http://localhost:9000/briefing/16"
+    card = build_briefing_doc_card(
+        WEEKLY_RESULT, name="222", doc_url=DOC_URL, frontend_url=url
+    )
+    assert any(
+        element["tag"] == "markdown" and url in element["content"]
+        for element in card["body"]["elements"]
+    )
+    # The document button stays the primary action either way.
+    buttons = [
+        element for element in card["body"]["elements"] if element["tag"] == "button"
+    ]
+    assert [button["text"]["content"] for button in buttons] == ["查看周报文档"]
+    without = build_briefing_doc_card(WEEKLY_RESULT, name="222", doc_url=DOC_URL)
+    assert url not in json.dumps(without, ensure_ascii=False)
+
+
+def test_doc_card_uses_only_documented_properties() -> None:
+    card = build_briefing_doc_card(
+        {**WEEKLY_RESULT, "alerts": [{"level": "critical", "message": "x"}]},
+        name="222",
+        doc_url=DOC_URL,
+        frontend_url="http://localhost:9000/briefing/16",
+    )
+    assert set(card) <= {"schema", "config", "header", "body"}
+    assert set(card["header"]) <= {
+        "title",
+        "subtitle",
+        "template",
+        "text_tag_list",
+        "icon",
+        "padding",
+    }
+    assert set(card["body"]) <= {
+        "direction",
+        "padding",
+        "vertical_spacing",
+        "horizontal_spacing",
+        "horizontal_align",
+        "vertical_align",
+        "elements",
+    }
+    for element in _walk_elements(card["body"]):
+        assert element["tag"] in CARD_PROPERTIES, element["tag"]
+        assert set(element) <= CARD_PROPERTIES[element["tag"]], element
+
+
+def test_doc_card_send_posts_one_interactive_message_per_target(
+    app: Any, header_data: HeaderDataType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A document-share push sends the card once per target and nothing else.
+
+    The configured message type and the split flag describe report cards; a
+    document push ignores both so the group never gets a text summary or one
+    message per chapter.
+    """
+    card = build_briefing_doc_card(WEEKLY_RESULT, name="222", doc_url=DOC_URL)
+    calls = _install_api(
+        app,
+        monkeypatch,
+        [_token_response(), _message_response("om_1"), _message_response("om_2")],
+    )
+    content = _briefing_content(
+        header_data,
+        name="222周报",
+        briefing_result=WEEKLY_RESULT,
+        briefing_doc_card=card,
+        briefing_split_chapters=True,
+    )
+    notification = _notification(
+        content,
+        {
+            "msg_type": "text",
+            "targets": [
+                {"receive_id_type": "chat_id", "receive_id": "oc_group"},
+                {"receive_id_type": "open_id", "receive_id": "ou_user"},
+            ],
+        },
+    )
+    notification.send()
+
+    messages = [call for call in calls if call["url"].endswith("/im/v1/messages")]
+    assert len(messages) == 2
+    assert [message["params"] for message in messages] == [
+        {"receive_id_type": "chat_id"},
+        {"receive_id_type": "open_id"},
+    ]
+    for message in messages:
+        assert message["json"]["msg_type"] == "interactive"
+        assert json.loads(message["json"]["content"]) == card
+        assert message["json"]["uuid"]
+    # One idempotency key per target, so neither message is treated as a dupe.
+    assert len({message["json"]["uuid"] for message in messages}) == 2
+    # Nothing was split, trimmed or replaced by the text summary.
+    assert notification.trim_notes == []
+
+
+# --------------------------------------------------------------------------- #
+# Native file-share message
+# --------------------------------------------------------------------------- #
+
+SHARE_FILE: dict[str, Any] = {
+    "file_key": "file_v3_abc123",
+    "file_name": "222周报 · 2026-08-23 ~ 2026-08-29.html",
+}
+
+
+def test_share_file_posts_one_native_file_message_per_target(
+    app: Any, header_data: HeaderDataType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A share-file push is the client's own file card: one ``file`` each.
+
+    The IM file message accepts the ``file_key`` only — ``file_name`` is the
+    uploaded file's metadata, not part of the message content.
+    """
+    calls = _install_api(
+        app,
+        monkeypatch,
+        [_token_response(), _message_response("om_1"), _message_response("om_2")],
+    )
+    content = _briefing_content(
+        header_data,
+        name="222周报",
+        briefing_result=WEEKLY_RESULT,
+        briefing_share_file=SHARE_FILE,
+    )
+    notification = _notification(
+        content,
+        {
+            "targets": [
+                {"receive_id_type": "chat_id", "receive_id": "oc_group"},
+                {"receive_id_type": "open_id", "receive_id": "ou_user"},
+            ],
+        },
+    )
+    notification.send()
+
+    messages = [call for call in calls if call["url"].endswith("/im/v1/messages")]
+    assert len(messages) == 2
+    assert [message["params"] for message in messages] == [
+        {"receive_id_type": "chat_id"},
+        {"receive_id_type": "open_id"},
+    ]
+    for message in messages:
+        assert message["json"]["msg_type"] == "file"
+        assert json.loads(message["json"]["content"]) == {"file_key": "file_v3_abc123"}
+        assert message["json"]["uuid"]
+        # Neither a card nor report content travels in a file message.
+        assert "schema" not in message["json"]["content"]
+        assert "table" not in message["json"]["content"]
+    # One idempotency key per target, so neither message is treated as a dupe.
+    assert len({message["json"]["uuid"] for message in messages}) == 2
+    # Nothing was split, trimmed or replaced by a text summary.
+    assert notification.trim_notes == []
+
+
+@pytest.mark.parametrize("configured", ["text", "interactive"])
+def test_share_file_ignores_the_configured_message_type(
+    app: Any,
+    header_data: HeaderDataType,
+    monkeypatch: pytest.MonkeyPatch,
+    configured: str,
+) -> None:
+    """The configured msg_type describes report cards, not a native file share."""
+    calls = _install_api(app, monkeypatch, [_token_response(), _message_response()])
+    notification = _notification(
+        _briefing_content(
+            header_data, briefing_share_file={"file_key": "file_v3_abc123"}
+        ),
+        {"msg_type": configured, "targets": [{"receive_id": "oc_group"}]},
+    )
+    assert notification._msg_type() == "file"
+    notification.send()
+
+    messages = [call for call in calls if call["url"].endswith("/im/v1/messages")]
+    assert len(messages) == 1
+    assert messages[0]["json"]["msg_type"] == "file"
+    assert json.loads(messages[0]["json"]["content"]) == {"file_key": "file_v3_abc123"}
+
+
+def test_share_file_wins_over_a_stale_doc_card(header_data: HeaderDataType) -> None:
+    """A file share is one plain file message even if card fields are still set."""
+    card = build_briefing_doc_card(WEEKLY_RESULT, name="222", doc_url=DOC_URL)
+    content = _briefing_content(
+        header_data,
+        briefing_result=WEEKLY_RESULT,
+        briefing_doc_card=card,
+        briefing_share_file={"file_key": "file_v3_abc123", "file_name": "a.html"},
+        briefing_split_chapters=True,
+    )
+    notification = _notification(content, {"targets": [{"receive_id": "oc_group"}]})
+    assert notification._msg_type() == "file"
+    assert notification._content_items("interactive") == [
+        json.dumps({"file_key": "file_v3_abc123"})
+    ]
+    assert notification._cards() == []
+    assert notification._split_chapters() is False
+
+
+def test_share_file_without_a_file_key_raises(
+    app: Any, header_data: HeaderDataType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A malformed share (no ``file_key``) is a config error, not a push failure."""
+    calls = _install_api(app, monkeypatch, [])
+    notification = _notification(
+        _briefing_content(
+            header_data,
+            briefing_share_file={"file_name": "222周报 · 2026-08-23 ~ 2026-08-29.html"},
+        ),
+        {"targets": [{"receive_id": "oc_group"}]},
+    )
+    with pytest.raises(NotificationParamException, match="缺少 file_key"):
+        notification.send()
+    # Nothing reached Feishu: the payload is built before the token request.
+    assert calls == []
+
+
 # Card 2.0 properties documented for the components the briefing card uses
 # (see the Feishu card component reference).  Anything outside these sets is
 # rejected by the API with `code=200621 ... unknown property`, so the test below
@@ -1153,22 +1520,23 @@ def test_trend_chart_groups_both_money_series_with_labels() -> None:
     buckets = len(BRIEFING_RESULT["daily"])
     assert len(datasets["amount"]) == 2 * buckets
     assert len(datasets[ROI_SERIES_ID]) == buckets
-    # Chart rows run newest-first (the chart reads top-down).
-    newest = BRIEFING_RESULT["daily"][0]
-    label = newest["date"][-5:]
+    # Chart rows run oldest-first so the time axis reads left to right, like
+    # the table underneath it (the payload itself is newest-first).
+    oldest = BRIEFING_RESULT["daily"][-1]
+    label = oldest["date"][-5:]
     assert datasets["amount"][:2] == [
         {
             "周期": label,
             "指标": "消耗（万元）",
-            "金额": round(newest["spend"] / 10000, 1),
+            "金额": round(oldest["spend"] / 10000, 1),
         },
         {
             "周期": label,
             "指标": "流水（万元）",
-            "金额": round(newest["recharge"] / 10000, 1),
+            "金额": round(oldest["recharge"] / 10000, 1),
         },
     ]
-    assert datasets[ROI_SERIES_ID][0]["ROI1"] == round(newest["roi1"] * 100, 1)
+    assert datasets[ROI_SERIES_ID][0]["ROI1"] == round(oldest["roi1"] * 100, 1)
     # A constant metric field names the ROI series in the tooltip; without it
     # VChart labels the row with the dimension value.
     assert datasets[ROI_SERIES_ID][0]["指标"] == "ROI1（%）"

@@ -1806,6 +1806,8 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             csrf.exempt("superset.project.channel.api.update_profit_sharing")
             # Bi (federated query) endpoints
             csrf.exempt("superset.project.bi.api.chart_data")
+            csrf.exempt("superset.project.bi.api.analysis_chart_data")
+            csrf.exempt("superset.project.bi.api.analysis_sql_preview")
             csrf.exempt("superset.project.bi.api.filter_values")
             csrf.exempt("superset.project.bi.api.federated_datasets")
             csrf.exempt("superset.project.bi.api.analysis_snapshot_put")

@@ -1,4 +1,5 @@
 import RequestQuoteIcon from "@mui/icons-material/RequestQuote";
+import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
@@ -95,6 +96,15 @@ const lowerBetter = (metricDef: AnalysisMetric): AnalysisMetric => ({
   higherIsBetter: false,
 });
 
+/**
+ * Rate metric whose coarse buckets (week/month) are re-aggregated as the ratio
+ * of the bucket's sums, weighted by the denominator's volume metric.
+ */
+const weighted = (
+  metricDef: AnalysisMetric,
+  weightKey: string,
+): AnalysisMetric => ({ ...metricDef, bucketWeight: weightKey });
+
 /** Common additive metrics. */
 const spend = number("消耗", "消耗", sum("消耗"), "投放消耗（未扣返点）");
 const netSpend = number(
@@ -110,7 +120,18 @@ const newUsers = number(
   "统计周期内进入游戏的新增用户数",
 );
 const revenue1 = number("1日充值", "1日充值", sum("1日充值"));
-const revenue = number("充值流水", "充值流水", sum("充值流水"));
+const revenue = number(
+  "充值流水",
+  "充值流水",
+  sum("充值流水"),
+  "按支付日的当日全量充值流水（含商店内购与三方支付）",
+);
+const merchantRecharge = number(
+  "商户充值",
+  "商户充值",
+  sum("商户充值"),
+  "商户实收充值（海外扣除 payment_id 19/20 的商店税，大陆取运营表 switch_pay_amount/pos_p_money）",
+);
 const cumulativeRevenue = number(
   "累计充值",
   "累计充值",
@@ -121,47 +142,96 @@ const payers1 = number("1日付费数", "1日付费数", sum("1日付费数"));
 const activePayers = number("活跃付费", "活跃付费", sum("活跃付费"));
 const cumulativePayers = number("累计付费数", "累计付费数", sum("累计付费数"));
 
-const cpa = lowerBetter(decimal("cpa", "CPA", "cpa", "返点后消耗 / 新增进入"));
-const cpp = lowerBetter(
-  decimal("cpp", "CPP", "cpp", "返点后消耗 / 1日付费数（单付费用户获客成本）"),
+const cpa = weighted(
+  lowerBetter(decimal("cpa", "CPA", "cpa", "返点后消耗 / 新增进入")),
+  "newUsers",
 );
-const revenueRoi = higherBetter(
-  percent("流水ROI", "流水ROI", "流水ROI", "充值流水 / 返点后消耗"),
+const cpp = weighted(
+  lowerBetter(
+    decimal(
+      "cpp",
+      "CPP",
+      "cpp",
+      "返点后消耗 / 1日付费数（单付费用户获客成本）",
+    ),
+  ),
+  "payers1",
 );
-const payRate1 = higherBetter(
-  percent("1日付费率", "1日付费率", "1日付费率", "1日付费数 / 新增进入", 1),
+const revenueRoi = weighted(
+  higherBetter(
+    percent("流水ROI", "流水ROI", "流水ROI", "充值流水 / 返点后消耗"),
+  ),
+  "netSpend",
 );
-const retention2 = higherBetter(
-  percent("2日留存率", "2日留存率", "2日留存率", "2日留存数 / 新增进入", 2),
+const payRate1 = weighted(
+  higherBetter(
+    percent("1日付费率", "1日付费率", "1日付费率", "1日付费数 / 新增进入", 1),
+  ),
+  "newUsers",
 );
-const naturalNew = higherBetter(
-  percent("自然新增%", "自然新增%", "自然新增%", "自然量新增 / 全部新增"),
+const retention2 = weighted(
+  higherBetter(
+    percent("2日留存率", "2日留存率", "2日留存率", "2日留存数 / 新增进入", 2),
+  ),
+  "newUsers",
 );
-const cumulativeRoi = higherBetter(
-  percent("累计roi", "累计ROI", "累计roi", "累计充值 / 返点后消耗"),
+const retention3 = weighted(
+  higherBetter(
+    percent("3日留存率", "3日留存率", "3日留存率", "3日留存数 / 新增进入", 3),
+  ),
+  "newUsers",
+);
+const retention7 = weighted(
+  higherBetter(
+    percent("7日留存率", "7日留存率", "7日留存率", "7日留存数 / 新增进入", 7),
+  ),
+  "newUsers",
+);
+const naturalNew = weighted(
+  higherBetter(
+    percent("自然新增%", "自然新增%", "自然新增%", "自然量新增 / 全部新增"),
+  ),
+  "newUsers",
+);
+const cumulativeRoi = weighted(
+  higherBetter(
+    percent("累计roi", "累计ROI", "累计roi", "累计充值 / 返点后消耗"),
+  ),
+  "netSpend",
+);
+/** Lifetime value built from the attributed cumulative revenue column. */
+const ltvCum = weighted(
+  higherBetter(decimal("ltv_cum", "累计LTV", "ltv_cum", "累计充值 / 新增进入")),
+  "newUsers",
 );
 
 function roi(day: number): AnalysisMetric {
-  return higherBetter(
-    percent(
-      `roi_${day}`,
-      `ROI-第${day}天`,
-      `roi_${day}`,
-      `第${day}天充值 / 返点后消耗`,
-      day,
+  return weighted(
+    higherBetter(
+      percent(
+        `roi_${day}`,
+        `ROI-第${day}天`,
+        `roi_${day}`,
+        `第${day}天充值 / 返点后消耗`,
+        day,
+      ),
     ),
+    "netSpend",
   );
 }
 
 function ltv(day: number): AnalysisMetric {
-  return higherBetter(
-    decimal(
-      `ltv_${day}`,
-      `LTV-第${day}天`,
-      `ltv_${day}`,
-      `第${day}天充值 / 新增进入`,
-      day,
+  return weighted(
+    higherBetter(
+      decimal(
+        `ltv_${day}`,
+        `LTV-第${day}天`,
+        `ltv_${day}`,
+        `第${day}天充值 / 新增进入`,
+        day,
+      ),
     ),
+    "newUsers",
   );
 }
 
@@ -190,13 +260,59 @@ const paidRetentionMetrics = Object.fromEntries(
 ) as Record<string, AnalysisMetric>;
 
 // Breakdown-table aliases: the cost table shows the day-1 payback columns.
-const ltv1Column = { ...ltv(1), label: "LTV1" };
-const roi1Column = { ...roi(1), label: "ROI1" };
+// LTV day-N columns use the compact "LTV1".."LTV7" labels (instead of the
+// trend chart's "LTV-第N天") so the comparison table columns line up.
+const ltvColumn = (day: number) => ({ ...ltv(day), label: `LTV${day}` });
+const roiColumn = (day: number) => ({ ...roi(day), label: `ROI${day}` });
+const ltv1Column = ltvColumn(1);
+const roi1Column = roiColumn(1);
 
 const ltvRoiMetrics = Object.fromEntries([
   ...LTV_ROI_DAYS.map((day) => [`ltv_${day}`, ltv(day)]),
   ...LTV_ROI_DAYS.map((day) => [`roi_${day}`, roi(day)]),
 ]) as Record<string, AnalysisMetric>;
+
+/**
+ * Metrics shown by the project-comparison matrix and its metric selector, in
+ * display order.  These are catalog keys, so the view resolves them through
+ * {@link topicMetric} and reuses the topic's metric definitions/formatting.
+ */
+export const PROJECT_COMPARE_METRIC_KEYS = [
+  // Base volume / money metrics.
+  "spend",
+  "netSpend",
+  "newUsers",
+  "naturalNew",
+  "充值流水",
+  "商户充值",
+  // Cost efficiency and paying users.
+  "cpa",
+  "cpp",
+  "payers1",
+  "payRate1",
+  // Metric groups run ROI → LTV → 留存, each group kept contiguous so the
+  // comparison table reads left to right in that order.
+  "流水ROI",
+  "roi1",
+  "roi2",
+  "roi3",
+  "roi4",
+  "roi5",
+  "roi6",
+  "roi7",
+  "cumulativeRoi",
+  "ltv1",
+  "ltv2",
+  "ltv3",
+  "ltv4",
+  "ltv5",
+  "ltv6",
+  "ltv7",
+  "ltvCum",
+  "retention2",
+  "retention3",
+  "retention7",
+] as const;
 
 export const ANALYSIS_TOPICS: AnalysisTopic[] = [
   {
@@ -204,12 +320,14 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
     title: "成本分析",
     description:
       "按日期、游戏、媒体与渠道拆解消耗和新增，跟踪 CPA 与回收效率。",
+    backendSql: true,
     icon: <RequestQuoteIcon sx={{ fontSize: 22 }} />,
     color: "primary.main",
     metrics: {
       spend,
       netSpend,
       newUsers,
+      payers1,
       cpa,
       cpp,
       revenue1,
@@ -224,11 +342,16 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
       series: [
         { metric: "netSpend", type: "bar", axis: "left" },
         { metric: "cpa", type: "line", axis: "right", weightBy: "newUsers" },
+        // CPP is ~75x CPA, so it gets its own right-hand scale instead of
+        // flattening the CPA line against the axis.
+        { metric: "cpp", type: "line", axis: "right2", weightBy: "payers1" },
       ],
     },
     comparisonMetric: "cpa",
     dimensions: GAME_DIMENSIONS,
-    defaultDimension: "主游戏",
+    // The breakdown table opens on daily rows, newest first; the drill
+    // hierarchy itself still starts at 主游戏 (see drilldownPath).
+    defaultDimension: "日期",
     drilldownPath: ["主游戏", "渠道商", "媒体"],
     breakdown: {
       metrics: [
@@ -245,7 +368,77 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
     },
   },
   {
+    id: "project-compare",
+    title: "项目对比分析",
+    description:
+      "按上线、首测、二测、三测锚点各自对齐后 N 天窗口，横向对比多个项目的消耗、付费与回收表现。",
+    backendSql: true,
+    icon: <CompareArrowsIcon sx={{ fontSize: 22 }} />,
+    color: "primary.main",
+    metrics: {
+      spend,
+      netSpend,
+      newUsers,
+      // Catalog keys are the response field names used by the comparison
+      // column order (自然新增% after 新增进入; 充值流水 / 商户充值 / 流水ROI;
+      // CPP followed by 1日付费率 / 2日留存率).
+      naturalNew,
+      充值流水: revenue,
+      商户充值: merchantRecharge,
+      流水ROI: revenueRoi,
+      cpa,
+      cpp,
+      payers1,
+      payRate1,
+      retention2,
+      retention3,
+      retention7,
+      ltv1: ltv1Column,
+      ltv2: ltvColumn(2),
+      ltv3: ltvColumn(3),
+      ltv4: ltvColumn(4),
+      ltv5: ltvColumn(5),
+      ltv6: ltvColumn(6),
+      ltv7: ltvColumn(7),
+      roi1: roi1Column,
+      roi2: roiColumn(2),
+      roi3: roiColumn(3),
+      roi4: roiColumn(4),
+      roi5: roiColumn(5),
+      roi6: roiColumn(6),
+      roi7: roiColumn(7),
+      ltvCum,
+      cumulativeRoi,
+    },
+    // The comparison view owns the page: it renders its own metric selector,
+    // chart and per-anchor tables, so the standard KPI / trend / breakdown
+    // sections are neither rendered nor queried.
+    hiddenSections: ["kpis", "trend", "breakdown"],
+    // The observation window (基准 + 窗口) replaces the page date range.
+    hideDateRange: true,
+    kpis: [],
+    trend: { series: [] },
+    comparisonMetric: "cpa",
+    dimensions: GAME_DIMENSIONS,
+    defaultDimension: "主游戏",
+    // The comparison view owns the project selection, and region/platform do
+    // not scope a project comparison meaningfully (each project is compared
+    // inside its own anchor window), so those filters are hidden as well.
+    hiddenFilters: ["games", "regions", "platforms"],
+    // Column filters: 渠道商 before 媒体 (the metric picker follows 媒体).
+    filterOrder: ["channels", "media"],
+    drilldownPath: ["主游戏", "渠道商", "媒体"],
+    breakdown: { metrics: [], orderBy: "spend" },
+    extra: {
+      type: "project-compare",
+      title: "项目对比",
+      hideHeader: true,
+      metrics: [...PROJECT_COMPARE_METRIC_KEYS],
+    },
+  },
+  {
     id: "retention",
+    status: "wip",
     title: "留存分析",
     description: "查看新增与付费留存走势，按游戏、媒体与渠道对比长期留存质量。",
     icon: <AutorenewIcon sx={{ fontSize: 22 }} />,
@@ -320,6 +513,7 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
   },
   {
     id: "ltv-roi",
+    status: "wip",
     title: "LTV / ROI 分析",
     description: "对比不同回收周期的 LTV 与 ROI，评估获客投入的长期回报。",
     icon: <TrendingUpIcon sx={{ fontSize: 22 }} />,
@@ -367,6 +561,7 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
   },
   {
     id: "payment",
+    status: "wip",
     title: "付费分析",
     description: "跟踪充值流水、付费人数与付费率，定位付费表现的变化。",
     icon: <AccountBalanceWalletIcon sx={{ fontSize: 22 }} />,
@@ -416,6 +611,7 @@ export const ANALYSIS_TOPICS: AnalysisTopic[] = [
   },
   {
     id: "channel",
+    status: "wip",
     title: "渠道 / 媒体分析",
     description: "按媒体与渠道商比较消耗、CPA 与回收，识别高效投放。",
     icon: <CampaignIcon sx={{ fontSize: 22 }} />,

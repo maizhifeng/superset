@@ -43,10 +43,11 @@ function drillSeries(topic: AnalysisTopic): DrillSeries[] {
     topic.breakdown.metrics.map((key) => topicMetric(topic, key).key),
   );
   const series = topic.trend.series
+    .filter((item) => item.axis !== "right2")
     .map((item) => ({
       metric: topicMetric(topic, item.metric),
       type: item.type,
-      axis: item.axis ?? "left",
+      axis: item.axis === "right" ? ("right" as const) : ("left" as const),
     }))
     .filter((item) => breakdownKeys.has(item.metric.key));
   if (series.length > 0) return series;

@@ -11,6 +11,7 @@ import {
   buildTrendQueryPlan,
   fetchBreakdownData,
   fetchTrendData,
+  topicTarget,
 } from "./query";
 import type { AnalysisTopic } from "./types";
 
@@ -47,7 +48,10 @@ export function prefetchDateDrill(
   prefetched.set(key, now);
 
   for (const query of queries) {
-    void fetchBreakdownData(query, { force: false }).catch(() => {
+    void fetchBreakdownData(query, {
+      force: false,
+      target: topicTarget(topic),
+    }).catch(() => {
       // A failed prefetch must not affect the page; the click path retries.
       prefetched.delete(key);
     });
@@ -70,7 +74,9 @@ export function prefetchDimensionDrill(
   const breakdownQuery = buildBreakdownQuery(topic, target);
   // A date drill keeps the core/trend chart out of view, so only the table
   // query is worth warming there.
-  const trendPlan = target.focusDate ? null : buildTrendQueryPlan(topic, target);
+  const trendPlan = target.focusDate
+    ? null
+    : buildTrendQueryPlan(topic, target);
   const key = `${topic.id}:${JSON.stringify([
     breakdownQuery,
     trendPlan?.trend ?? null,
@@ -81,7 +87,10 @@ export function prefetchDimensionDrill(
   if (last !== undefined && now - last < PREFETCH_TTL_MS) return;
   prefetched.set(key, now);
 
-  void fetchBreakdownData(breakdownQuery, { force: false }).catch(() => {
+  void fetchBreakdownData(breakdownQuery, {
+    force: false,
+    target: topicTarget(topic),
+  }).catch(() => {
     prefetched.delete(key);
   });
   if (trendPlan) {
@@ -114,7 +123,10 @@ export function prefetchDimensionBreakdown(
   if (last !== undefined && now - last < PREFETCH_TTL_MS) return;
   prefetched.set(key, now);
 
-  void fetchBreakdownData(query, { force: false })
+  void fetchBreakdownData(query, {
+    force: false,
+    target: topicTarget(topic),
+  })
     .then((data) => {
       if (depth <= 1) return;
       // Speculatively warm one more level for the top row of the freshly
@@ -163,7 +175,10 @@ export function prefetchTimeDrill(
   if (last !== undefined && now - last < PREFETCH_TTL_MS) return;
   prefetched.set(key, now);
 
-  void fetchBreakdownData(breakdownQuery, { force: false }).catch(() => {
+  void fetchBreakdownData(breakdownQuery, {
+    force: false,
+    target: topicTarget(topic),
+  }).catch(() => {
     prefetched.delete(key);
   });
   if (trendPlan) {

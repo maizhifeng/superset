@@ -476,6 +476,55 @@ def _find_date_column(columns: list[str]) -> str | None:
     return None
 
 
+# Virtual datasets for the /analysis topics ship only the columns their queries
+# need, and read the narrow source tables directly instead of the wide legacy
+# views.  Those SQL statements carry window markers so the chart's date range can
+# be pushed into the base scans (the BI layer is the only place that knows the
+# selected window; the dataset SQL itself cannot see it).
+_WINDOW_MARKER_RE = re.compile(
+    r"/\*BI_WINDOW:(?P<column>[A-Za-z_][A-Za-z0-9_]*):(?P<min_date>\d{8}):(?P<max_date>\d{8})\*/"
+)
+
+
+def _query_window_bounds(query_obj: Any) -> tuple[int, int] | None:
+    """Return the query window as inclusive-start/exclusive-end ``YYYYMMDD``."""
+    from_dttm = getattr(query_obj, "from_dttm", None)
+    to_dttm = getattr(query_obj, "to_dttm", None)
+    if from_dttm is None or to_dttm is None:
+        return None
+    start = int(from_dttm.strftime("%Y%m%d"))
+    end = int(to_dttm.strftime("%Y%m%d"))
+    if end <= start:
+        return None
+    return start, end
+
+
+def _apply_window_markers(sql: str, query_obj: Any) -> str:
+    """Push the query window into ``/*BI_WINDOW:col:min:max*/`` markers.
+
+    Each marker declares the date range a union branch can possibly contribute.
+    A window that cannot overlap the branch replaces the marker with ``1 = 0``
+    so the branch is pruned; otherwise the window bounds are appended to the
+    branch predicate.  Datasets without markers are returned unchanged.
+    """
+    if not sql or "BI_WINDOW:" not in sql:
+        return sql
+    bounds = _query_window_bounds(query_obj)
+
+    def _replace(match: re.Match[str]) -> str:
+        if bounds is None:
+            return ""
+        start, end = bounds
+        column = match.group("column")
+        branch_min = int(match.group("min_date"))
+        branch_max = int(match.group("max_date"))
+        if start > branch_max or end - 1 < branch_min:
+            return " and 1 = 0"
+        return f" and {column} >= {start} and {column} < {end}"
+
+    return _WINDOW_MARKER_RE.sub(_replace, sql)
+
+
 def _side_query_dict(query_obj: Any, side_limit: int | None) -> dict[str, Any]:
     """Build a query dict for a single database side.
 
@@ -899,13 +948,14 @@ def _run_federated_query(  # noqa: C901
         datasource, query_obj, side_limit, metrics_override
     ):
         partner_sql, partner_catalog, partner_schema = partner_result
+        partner_sql = _apply_window_markers(partner_sql, query_obj)
 
     # Generate SQL from the primary dataset for the primary database
     primary_qdict = _side_query_dict(query_obj, side_limit)
     if metrics_override is not None:
         primary_qdict["metrics"] = metrics_override
     primary_ext = datasource.get_query_str_extended(primary_qdict)
-    primary_sql = primary_ext.sql
+    primary_sql = _apply_window_markers(primary_ext.sql, query_obj)
     labels_expected = primary_ext.labels_expected
     final_labels = _restore_metric_labels(labels_expected, ratio_components)
 
@@ -1363,6 +1413,408 @@ def analysis_snapshot_put(topic: str) -> Any:
     return jsonify({"result": result}), 200
 
 
+def _federated_dataset_ids(rows: list[tuple[int, Any]]) -> list[int]:
+    """Filter ``(dataset_id, extra)`` rows down to federated dataset ids."""
+    ids: list[int] = []
+    for ds_id, extra_raw in rows:
+        federated = _parse_extra(extra_raw).get("federated", {})
+        databases = federated.get("databases")
+        if (
+            federated.get("enabled")
+            and isinstance(databases, (list, tuple))
+            and len(databases) == 2
+        ):
+            ids.append(ds_id)
+    return ids
+
+
+# ---------------------------------------------------------------------------
+# Analysis topics executed from backend SQL (方案 B)
+# ---------------------------------------------------------------------------
+# The /analysis page does not read datasets any more: each topic owns the
+# trimmed SQL for both federated sides and the BI layer compiles the chart
+# query around it.  This keeps the dataset layer out of the read path while
+# still sharing the federated execution / ratio re-aggregation helpers below.
+
+
+def _analysis_databases(topic: Any) -> tuple[Any, Any]:
+    """Resolve the two registered databases used by an analysis topic."""
+    from superset import db
+    from superset.models.core import Database
+
+    names = (topic.mainland.database, topic.oversea.database)
+    rows = db.session.query(Database).filter(Database.database_name.in_(names)).all()
+    by_name = {row.database_name: row for row in rows}
+    missing = [name for name in names if name not in by_name]
+    if missing:
+        raise _ChartDataRequestError(
+            f"analysis source database not found: {', '.join(missing)}", 404
+        )
+    return by_name[names[0]], by_name[names[1]]
+
+
+_LAUNCH_DATE_RE = re.compile(r"^\s*(\d{4})\D(\d{1,2})\D(\d{1,2})\s*$")
+
+
+def _parse_launch_date(value: Any) -> int | None:
+    """Parse a manually maintained launch date (``2025/10/10``) to ``YYYYMMDD``."""
+    if value is None:
+        return None
+    match = _LAUNCH_DATE_RE.match(str(value))
+    if not match:
+        return None
+    year, month, day = (int(part) for part in match.groups())
+    if not (1 <= month <= 12 and 1 <= day <= 31 and 2000 <= year <= 2100):
+        return None
+    return year * 10000 + month * 100 + day
+
+
+def _oversea_launch_dates() -> dict[int, int]:
+    """Oversea ``papp_id -> launch day`` map from the metadata configuration.
+
+    Reservation spend (``ad_type = 2``) is re-dated to this day inside the
+    oversea topic SQL, so the map is part of the compiled query and therefore
+    also part of the response cache key.  Missing/unparseable dates leave those
+    projects untouched (their reservation spend keeps its original date).
+    """
+    try:
+        from superset import db
+        from superset.models.profit_sharing import ProfitSharing
+
+        rows = (
+            db.session.query(ProfitSharing.papp_id, ProfitSharing.上线时间)
+            .filter(ProfitSharing.region == "oversea")
+            .all()
+        )
+    except Exception:  # noqa: BLE001 - analysis must not fail on metadata issues
+        logger.warning("could not load oversea launch dates", exc_info=True)
+        return {}
+    dates: dict[int, int] = {}
+    for papp_id, raw in rows:
+        parsed = _parse_launch_date(raw)
+        if parsed is None:
+            continue
+        key = int(papp_id)
+        current = dates.get(key)
+        dates[key] = parsed if current is None else min(current, parsed)
+    return dates
+
+
+def _analysis_compiled_queries(
+    topic: Any, queries: list[Any], launch_dates: Mapping[int, int] | None = None
+) -> list[Any]:
+    """Compile every analysis QueryObject for both federated sides."""
+    from superset.project.bi.analysis_topics import (
+        AnalysisCompileError,
+        compile_query,
+    )
+
+    compiled: list[Any] = []
+    for query in queries:
+        if not isinstance(query, dict):
+            raise _ChartDataRequestError("analysis query must be an object", 400)
+        try:
+            compiled.append(compile_query(topic, query, launch_dates))
+        except AnalysisCompileError as error:
+            raise _ChartDataRequestError(str(error), 400) from error
+    return compiled
+
+
+def _analysis_cache_keys(
+    topic_id: str,
+    json_body: Mapping[str, Any],
+    launch_dates: Mapping[int, int] | None = None,
+) -> tuple[str, str]:
+    """Return ``(fresh_key, stale_key)`` for one analysis chart-data request."""
+    launch_signature = ",".join(
+        f"{papp_id}:{day}" for papp_id, day in sorted((launch_dates or {}).items())
+    )
+    base = _cache_key(
+        "analysis-chart",
+        # v3: oversea reservation spend is re-dated to the launch day.
+        "v3",
+        topic_id,
+        launch_signature,
+        _canonical_chart_payload(json_body),
+    )
+    return f"{base}:fresh", f"{base}:stale"
+
+
+def _analysis_records(result_df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Serialize an analysis result frame like the legacy chart-data path.
+
+    Temporal columns are emitted as ISO strings (``2026-10-11T00:00:00``); a
+    pandas ``to_json`` round trip would turn them into epoch milliseconds and
+    the breakdown table would render the raw number.
+    """
+    from superset.dataframe import df_to_records
+    from superset.utils.core import extract_dataframe_dtypes, GenericDataType
+
+    coltypes = extract_dataframe_dtypes(result_df, None)
+    records = df_to_records(result_df)
+    temporal_columns = {
+        column
+        for column, dtype in zip(result_df.columns, coltypes, strict=True)
+        if dtype == GenericDataType.TEMPORAL
+    }
+    for record in records:
+        for column in temporal_columns:
+            value = record.get(column)
+            if value is not None and not isinstance(value, pd.Timestamp):
+                try:
+                    record[column] = pd.Timestamp(value)
+                except (TypeError, ValueError):
+                    pass
+    return records
+
+
+def _run_analysis_query(  # noqa: C901
+    topic: Any,
+    compiled: Any,
+    query: dict[str, Any],
+    aliyun_db: Any,
+    oversea_db: Any,
+) -> dict[str, Any]:
+    """Execute one compiled analysis query on both sides and merge the rows."""
+    from types import SimpleNamespace
+
+    from superset.common.db_query_status import QueryStatus
+    from superset.exceptions import QueryObjectValidationError
+    from superset.utils.core import extract_dataframe_dtypes
+
+    side_configs = [
+        (
+            aliyun_db,
+            compiled.mainland_sql,
+            topic.mainland.database,
+            topic.mainland.catalog,
+            topic.mainland.schema,
+        ),
+        (
+            oversea_db,
+            compiled.oversea_sql,
+            topic.oversea.database,
+            topic.oversea.catalog,
+            topic.oversea.schema,
+        ),
+    ]
+    side_results, _failed_labels = _execute_federated_sides(
+        side_configs, compiled.labels
+    )
+    if not side_results:
+        raise QueryObjectValidationError("All federated database sides failed")
+
+    dims = compiled.dimensions
+    metric_cols = [column for column in compiled.labels if column not in dims]
+    if len(side_results) == 1:
+        merged = side_results[0][1].copy()
+    else:
+        merged = _merge_dataframes(
+            [frame.copy() for _label, frame in side_results],
+            [label for label, _frame in side_results],
+        )
+        if "_db_source" in merged.columns:
+            merged = merged.drop(columns=["_db_source"])
+
+    final_labels = [*dims, *compiled.metric_labels]
+    if merged.empty:
+        result_df = pd.DataFrame(columns=final_labels)
+    else:
+        merged = merged.reindex(columns=compiled.labels)
+        if dims:
+            agg_df = merged.groupby(dims, as_index=False, sort=False)[metric_cols].sum()
+        else:
+            agg_df = merged[metric_cols].sum().to_frame().T
+        after_ratio = _recompute_ratio_columns(agg_df, compiled.ratio_components)
+        result_df = after_ratio.reindex(columns=final_labels)
+        order_query = SimpleNamespace(
+            orderby=query.get("orderby") or [],
+            columns=dims,
+            groupby=dims,
+            row_limit=query.get("row_limit"),
+            row_offset=None,
+        )
+        result_df = _apply_global_order_and_pagination(
+            result_df, order_query, final_labels
+        )
+
+    data_raw = _analysis_records(result_df)
+    payload: dict[str, Any] = {
+        "status": QueryStatus.SUCCESS,
+        "data": data_raw,
+        "colnames": list(result_df.columns),
+        "coltypes": [int(dtype) for dtype in extract_dataframe_dtypes(result_df, None)],
+        "indexnames": [],
+        "rowcount": len(result_df),
+        "sql_rowcount": len(result_df),
+        "sql": compiled.mainland_sql,
+        "oversea_sql": compiled.oversea_sql,
+        "result_format": "json",
+        "applied_filters": list(query.get("filters") or []),
+        "rejected_filters": [],
+        "from_dttm": None,
+        "to_dttm": None,
+    }
+    for field in (
+        "cache_key",
+        "cached_dttm",
+        "cache_timeout",
+        "error",
+        "is_cached",
+        "queried_dttm",
+        "annotation_data",
+        "applied_template_filters",
+        "stacktrace",
+    ):
+        payload[field] = None
+    return payload
+
+
+def _json_loads(payload: str) -> Any:
+    from superset.utils import json as _json
+
+    return _json.loads(payload)
+
+
+def _execute_analysis_queries(
+    topic: Any,
+    compiled_queries: list[Any],
+    queries: list[Any],
+    aliyun_db: Any,
+    oversea_db: Any,
+) -> list[dict[str, Any] | None]:
+    """Run every query of one analysis request, one thread each."""
+    _app = current_app._get_current_object()
+    user_raw = g.get("user", None)
+    user = (
+        user_raw._get_current_object() if isinstance(user_raw, LocalProxy) else user_raw
+    )
+
+    def _run_one(index: int) -> dict[str, Any]:
+        with _app.app_context():
+            if user is not None:
+                g.user = user
+            return _run_analysis_query(
+                topic,
+                compiled_queries[index],
+                queries[index],
+                aliyun_db,
+                oversea_db,
+            )
+
+    results: list[dict[str, Any] | None] = [None] * len(queries)
+    with ThreadPoolExecutor(max_workers=max(1, min(len(queries), 4))) as pool:
+        futures = {pool.submit(_run_one, index): index for index in range(len(queries))}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+    return results
+
+
+@bi_blueprint.route("/analysis/chart-data", methods=["POST"])
+def analysis_chart_data() -> Any:  # noqa: C901
+    """Execute the /analysis page's topic queries from backend SQL.
+
+    Expected payload::
+
+        {"topic": "cost", "queries": [<QueryObject>, ...], "force": false}
+
+    Responses mirror ``/bi/chart/data`` (``{"result": [...]}``) and are cached
+    in the same Redis data cache so warmup/snapshot flows keep working.
+    """
+    from superset import cache_manager
+    from superset.exceptions import QueryObjectValidationError
+    from superset.project.bi.analysis_topics import get_topic
+
+    json_body = request.json
+    if json_body is None:
+        return jsonify({"error": "Request is not JSON"}), 400
+    topic = get_topic(json_body.get("topic"))
+    if topic is None:
+        return jsonify({"error": "Unknown analysis topic"}), 404
+    queries = json_body.get("queries") or []
+    if not isinstance(queries, list) or not queries:
+        return jsonify({"error": "At least one query is required"}), 400
+
+    launch_dates = _oversea_launch_dates()
+    try:
+        compiled_queries = _analysis_compiled_queries(topic, queries, launch_dates)
+        aliyun_db, oversea_db = _analysis_databases(topic)
+    except _ChartDataRequestError as error:
+        return jsonify({"error": error.message}), error.status_code
+
+    force = bool(json_body.get("force"))
+    fresh_ttl, stale_ttl = _chart_cache_ttls(current_app.config, {})
+    fresh_key, stale_key = _analysis_cache_keys(topic.id, json_body, launch_dates)
+    if fresh_ttl > 0 and not force:
+        cached_body = cache_manager.data_cache.get(fresh_key)
+        if cached_body is not None:
+            return _chart_cache_response(cached_body, "hit")
+
+    try:
+        query_results = _execute_analysis_queries(
+            topic, compiled_queries, queries, aliyun_db, oversea_db
+        )
+    except QueryObjectValidationError as ex:
+        return jsonify({"error": ex.message}), 400
+
+    body = _chart_data_body(query_results)
+    if fresh_ttl > 0 and _chart_results_succeeded(query_results):
+        _store_chart_cache(fresh_key, stale_key, body, fresh_ttl, stale_ttl)
+    return _chart_cache_response(body, "miss")
+
+
+@bi_blueprint.route("/analysis/sql", methods=["POST"])
+def analysis_sql_preview() -> Any:
+    """Return the SQL an analysis topic would execute (no execution).
+
+    Used by the topic page's "查看 SQL" dialog: the frontend sends the queries
+    of the default view and receives the compiled SQL for both federated sides,
+    plus the raw topic SQL (with its window markers).
+    """
+    from superset.project.bi.analysis_topics import get_topic, historical_topic
+
+    json_body = request.json
+    if json_body is None:
+        return jsonify({"error": "Request is not JSON"}), 400
+    topic = get_topic(json_body.get("topic"))
+    if topic is None:
+        return jsonify({"error": "Unknown analysis topic"}), 404
+    queries = json_body.get("queries") or []
+    if not isinstance(queries, list):
+        return jsonify({"error": "queries must be a list"}), 400
+    launch_dates = _oversea_launch_dates()
+    try:
+        compiled_queries = _analysis_compiled_queries(topic, queries, launch_dates)
+        wide_topic = historical_topic(topic)
+        wide_queries = _analysis_compiled_queries(wide_topic, queries, launch_dates)
+    except _ChartDataRequestError as error:
+        return jsonify({"error": error.message}), error.status_code
+
+    return jsonify(
+        {
+            "result": {
+                "topic": topic.id,
+                "title": topic.title,
+                "base_sql": {
+                    "mainland": topic.mainland.sql,
+                    "oversea": topic.oversea.sql,
+                    "wide_mainland": wide_topic.mainland.sql,
+                },
+                "queries": [
+                    {
+                        "index": index,
+                        "mainland_sql": compiled.mainland_sql,
+                        "oversea_sql": compiled.oversea_sql,
+                        "wide_mainland_sql": wide_queries[index].mainland_sql,
+                        "labels": compiled.labels,
+                    }
+                    for index, compiled in enumerate(compiled_queries)
+                ],
+            }
+        }
+    )
+
+
 @bi_blueprint.route("/federated-datasets", methods=["GET"])
 def federated_datasets() -> Any:
     """Return the list of dataset IDs configured for federated queries.
@@ -1374,17 +1826,7 @@ def federated_datasets() -> Any:
     from superset.connectors.sqla.models import SqlaTable
 
     rows = db.session.query(SqlaTable.id, SqlaTable.extra).all()
-    ids: list[int] = []
-    for ds_id, extra_raw in rows:
-        federated = _read_federated_extra({"extra": extra_raw})
-        databases = federated.get("databases")
-        if (
-            federated.get("enabled")
-            and isinstance(databases, (list, tuple))
-            and len(databases) == 2
-        ):
-            ids.append(ds_id)
-    return jsonify({"result": ids})
+    return jsonify({"result": _federated_dataset_ids(rows)})
 
 
 _AGG_STRIP_RE = re.compile(

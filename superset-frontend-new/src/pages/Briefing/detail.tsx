@@ -5458,6 +5458,7 @@ export default function DailyReportDetail() {
           open={feishuOpen}
           configId={configId}
           configName={reportName}
+          reportType={resultIsWeekly ? "weekly" : "daily"}
           hasResult={!!result}
           onClose={() => setFeishuOpen(false)}
           onChanged={() => void loadFeishu()}

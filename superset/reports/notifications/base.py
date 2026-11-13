@@ -49,6 +49,16 @@ class NotificationContent:
     # Split the report into one card per chapter, so each message gets its own
     # 30 KB card budget and the tables can keep more rows.
     briefing_split_chapters: bool = False
+    # A complete interactive card (Feishu card JSON object) that shares the
+    # report's document instead of carrying the report itself.  When it is set
+    # the Feishu channel sends exactly this card — one message per target — and
+    # never splits chapters, trims tables or falls back to a text summary.
+    briefing_doc_card: Optional[dict[str, Any]] = None
+    # A file already uploaded to Feishu IM (``{"file_key": ..., "file_name":
+    # ...}``).  When it is set the Feishu channel shares it as one native
+    # ``file`` message per target (the client renders its file-preview card),
+    # without splitting chapters, trimming tables or falling back to text.
+    briefing_share_file: Optional[dict[str, Any]] = None
     slack_retry_deadline: Optional[float] = None
     # Populated only when this is a per-retry or final-failure notification
     retry_attempt: Optional[int] = None

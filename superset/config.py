@@ -2861,6 +2861,10 @@ FEISHU_WEB_BASE = ""
 # Drive folder the HTML exports are uploaded into (a folder shared with the
 # app).  Empty = the app's own space root.
 FEISHU_DOC_FOLDER_TOKEN = ""
+# Drive folder that weekly briefing HTML reports are uploaded into (a folder
+# shared with the app with edit permission, e.g.「周报-飞书播报」).  Empty =
+# weekly pushes require the per-configuration folder link instead.
+FEISHU_WEEKLY_DOC_FOLDER_TOKEN = ""
 # Seconds before an outbound Feishu request is considered failed.
 FEISHU_REQUEST_TIMEOUT = 30
 # Base URL of the MUI frontend used by the card's "查看完整简报" button

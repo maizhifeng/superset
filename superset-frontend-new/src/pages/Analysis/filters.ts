@@ -1,5 +1,14 @@
 import dayjs from "dayjs";
 import type { SimpleFilter } from "@/utils/query/types";
+import {
+  DEFAULT_PROJECT_COMPARE_ANCHORS,
+  DEFAULT_PROJECT_COMPARE_PERIOD_DAYS,
+  isPeriodDays,
+  normalizeAnchors,
+  PROJECT_COMPARE_ANCHORS,
+  sameAnchors,
+  type AnchorKey,
+} from "./anchorOptions";
 import { ANALYSIS_TIME_COLUMN } from "./topics";
 import type { AnalysisTopic } from "./types";
 
@@ -43,6 +52,21 @@ export interface AnalysisFilters {
   media: string[];
   channels: string[];
   platforms: string[];
+  /**
+   * Anchor rounds compared by the project-comparison topic (上线/首测/二测/
+   * 三测).  Unused by other topics; kept in the shared filter state so the
+   * control lives in the page's filter bar and the URL stays shareable.
+   */
+  anchors: AnchorKey[];
+  /** Observation window in days after the anchor (project comparison). */
+  periodDays: number;
+  /**
+   * Explicitly selected comparison projects (``region:papp_id`` keys).  Empty
+   * means "automatic": the view seeds the spend ranking's top projects.
+   */
+  projects: string[];
+  /** Metric-catalog key shown by the comparison chart; unset uses the first. */
+  compareMetric?: string;
   /** Parent-dimension filters kept by hierarchical table drill-down. */
   drill: Partial<Record<FilterKey, string[]>>;
   dimension: string;
@@ -53,6 +77,16 @@ export interface AnalysisFilters {
    */
   includeNatural?: boolean;
 }
+
+/**
+ * Version of the analysis filter URL schema.
+ *
+ * URLs written before this marker predate the date-first breakdown default, so
+ * their ``dim``/``date``/``week``/``drill_*`` params would keep resurrecting the
+ * old view (e.g. 主游戏).  They are parsed without that view state; every URL
+ * written by the current page carries ``v=2`` and round-trips fully.
+ */
+export const FILTERS_URL_VERSION = "2";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -68,6 +102,9 @@ export function defaultFilters(topic: AnalysisTopic): AnalysisFilters {
     media: [],
     channels: [],
     platforms: [],
+    anchors: [...DEFAULT_PROJECT_COMPARE_ANCHORS],
+    periodDays: DEFAULT_PROJECT_COMPARE_PERIOD_DAYS,
+    projects: [],
     drill: {},
     dimension: topic.defaultDimension,
     includeNatural: true,
@@ -80,6 +117,12 @@ export function filtersFromSearchParams(
   topic: AnalysisTopic,
 ): AnalysisFilters {
   const fallback = defaultFilters(topic);
+  const versioned = params.get("v") === FILTERS_URL_VERSION;
+  // Filters the topic hides from its toolbar are ignored on read: a link
+  // shared from another topic (or kept by the breadcrumb topic switcher) can
+  // still carry them, and silently applying a scope the page no longer shows
+  // would make the page disagree with its own toolbar.
+  const hiddenFilters = new Set(topic.hiddenFilters ?? []);
   const rawRange = params.get("range");
   let range: RangeValue = fallback.range;
   if (RANGE_OPTIONS.some((option) => option.value === rawRange)) {
@@ -103,31 +146,56 @@ export function filtersFromSearchParams(
   }
 
   const values = (key: FilterKey) =>
-    params
-      .getAll(key)
-      .map((value) => value.trim())
-      .filter(Boolean);
+    // Hidden filters are ignored, not just removed from the toolbar: a link
+    // shared from another topic can still carry them, and applying a scope the
+    // page no longer shows would be invisible.  Drill context is separate and
+    // stays honoured because the drill chips are rendered in the page.
+    hiddenFilters.has(key)
+      ? []
+      : params
+          .getAll(key)
+          .map((value) => value.trim())
+          .filter(Boolean);
 
-  const rawDimension = params.get("dim");
+  const rawDimension = versioned ? params.get("dim") : null;
   const dimension =
     rawDimension &&
     (rawDimension === ANALYSIS_TIME_COLUMN ||
       topic.dimensions.some((item) => item.key === rawDimension))
       ? rawDimension
       : fallback.dimension;
-  const rawFocusDate = params.get("date");
+  const rawFocusDate = versioned ? params.get("date") : null;
   const focusDate = isValidDate(rawFocusDate) ? rawFocusDate : undefined;
-  const rawFocusWeek = params.get("week");
+  const rawFocusWeek = versioned ? params.get("week") : null;
   const focusWeek = isValidDate(rawFocusWeek) ? rawFocusWeek : undefined;
   const drill: Partial<Record<FilterKey, string[]>> = {};
   // The switch is URL-encoded only when disabled; older links default to on.
   const includeNatural = params.get("natural") !== "0";
-  for (const definition of FILTER_DEFINITIONS) {
-    const drillValues = params
-      .getAll(`drill_${definition.key}`)
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (drillValues.length > 0) drill[definition.key] = drillValues;
+  // Project-comparison controls: an absent/invalid selection falls back to the
+  // defaults, so links written by other topics still load here.
+  const anchors = normalizeAnchors(params.getAll("anchor"));
+  const rawPeriod = Number(params.get("period"));
+  const periodDays = isPeriodDays(rawPeriod)
+    ? rawPeriod
+    : DEFAULT_PROJECT_COMPARE_PERIOD_DAYS;
+  const projects = params
+    .getAll("project")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  // Only metrics the topic actually compares are accepted from the URL.
+  const rawMetric = params.get("metric");
+  const compareMetric =
+    rawMetric && topic.extra?.metrics?.includes(rawMetric)
+      ? rawMetric
+      : undefined;
+  if (versioned) {
+    for (const definition of FILTER_DEFINITIONS) {
+      const drillValues = params
+        .getAll(`drill_${definition.key}`)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      if (drillValues.length > 0) drill[definition.key] = drillValues;
+    }
   }
 
   return {
@@ -141,6 +209,10 @@ export function filtersFromSearchParams(
     media: values("media"),
     channels: values("channels"),
     platforms: values("platforms"),
+    anchors,
+    periodDays,
+    projects,
+    compareMetric,
     drill,
     dimension,
     includeNatural,
@@ -152,6 +224,7 @@ export function filtersToSearchParams(
   filters: AnalysisFilters,
 ): URLSearchParams {
   const params = new URLSearchParams();
+  params.set("v", FILTERS_URL_VERSION);
   params.set("range", filters.range);
   if (filters.range === "custom" && filters.start && filters.end) {
     params.set("start", filters.start);
@@ -174,6 +247,19 @@ export function filtersToSearchParams(
   if (filters.includeNatural === false) {
     params.set("natural", "0");
   }
+  // Compare controls are only written when they differ from the defaults, so
+  // other topics' links stay free of parameters they never use.
+  if (!sameAnchors(filters.anchors, DEFAULT_PROJECT_COMPARE_ANCHORS)) {
+    // Canonical order keeps shared links stable regardless of click order.
+    for (const anchor of PROJECT_COMPARE_ANCHORS) {
+      if (filters.anchors.includes(anchor)) params.append("anchor", anchor);
+    }
+  }
+  if (filters.periodDays !== DEFAULT_PROJECT_COMPARE_PERIOD_DAYS) {
+    params.set("period", String(filters.periodDays));
+  }
+  for (const project of filters.projects) params.append("project", project);
+  if (filters.compareMetric) params.set("metric", filters.compareMetric);
   params.set("dim", filters.dimension);
   return params;
 }

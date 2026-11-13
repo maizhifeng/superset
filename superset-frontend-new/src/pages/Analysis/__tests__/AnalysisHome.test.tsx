@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import AnalysisHome from "@/pages/Analysis";
@@ -11,10 +17,12 @@ const { postChartDataMock } = vi.hoisted(() => ({
 
 vi.mock("@/api/chartData", () => ({
   postChartData: postChartDataMock,
+  postAnalysisChartData: postChartDataMock,
 }));
 
 const TOPIC_TITLES = [
   "成本分析",
+  "项目对比分析",
   "留存分析",
   "LTV / ROI 分析",
   "付费分析",
@@ -83,6 +91,21 @@ test("renders the 30-day overview and every analysis topic", async () => {
   };
   expect(payload.datasource).toEqual({ id: 26, type: "table" });
   expect(payload.queries).toHaveLength(2);
+});
+
+test("marks the topics that are not migrated yet as 未完工", () => {
+  renderHome();
+
+  const wipChips = screen.getAllByText("未完工");
+  expect(wipChips).toHaveLength(4);
+  for (const title of ["成本分析", "项目对比分析"]) {
+    const card = screen.getByRole("button", { name: `进入${title}` });
+    expect(within(card).queryByText("未完工")).not.toBeInTheDocument();
+  }
+  for (const title of ["留存分析", "付费分析", "渠道 / 媒体分析"]) {
+    const card = screen.getByRole("button", { name: `进入${title}` });
+    expect(within(card).getByText("未完工")).toBeInTheDocument();
+  }
 });
 
 test("opens a topic page when its card is clicked", () => {

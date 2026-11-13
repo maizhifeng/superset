@@ -4,6 +4,7 @@ const { mockPost } = vi.hoisted(() => ({ mockPost: vi.fn() }));
 
 vi.mock("@/api/chartData", () => ({
   postChartData: mockPost,
+  postAnalysisChartData: mockPost,
 }));
 
 vi.mock("@/api", () => ({
@@ -18,6 +19,7 @@ import { getAnalysisTopic } from "@/pages/Analysis/topics";
 import { warmAnalysisCaches } from "@/pages/Analysis/warmup";
 
 const cost = getAnalysisTopic("cost")!;
+const projectCompare = getAnalysisTopic("project-compare")!;
 
 beforeEach(() => {
   mockPost.mockReset();
@@ -66,4 +68,24 @@ test("can be driven by injected fetchers", async () => {
   expect(fetchers.kpi).toHaveBeenCalledTimes(1);
   expect(fetchers.trend).toHaveBeenCalledTimes(1);
   expect(fetchers.breakdown).toHaveBeenCalledTimes(1);
+});
+
+test("skips topics that hide the standard sections", async () => {
+  const fetchers = {
+    kpi: vi.fn().mockResolvedValue({}),
+    trend: vi.fn().mockResolvedValue({}),
+    breakdown: vi.fn().mockResolvedValue({}),
+  };
+  const result = await warmAnalysisCaches({
+    topics: [projectCompare],
+    ranges: ["30d", "7d"],
+    gapMs: 0,
+    fetchers,
+  });
+
+  // Nothing to warm: the comparison view owns its own queries.
+  expect(result).toEqual({ warmed: 0, skipped: 2 });
+  expect(fetchers.kpi).not.toHaveBeenCalled();
+  expect(fetchers.trend).not.toHaveBeenCalled();
+  expect(fetchers.breakdown).not.toHaveBeenCalled();
 });

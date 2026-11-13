@@ -68,21 +68,28 @@ test("does not drill below the last hierarchy level", () => {
   expect(applyDimensionDrill(filters, cost, "媒体", "Facebook")).toBeNull();
 });
 
-test("enters date drill mode one hierarchy level deeper", () => {
-  const filters = defaultFilters(cost);
-  const next = enterDateDrill(cost, filters, "2026-10-09");
-  expect(next.focusDate).toBe("2026-10-09");
-  expect(next.dimension).toBe("渠道商");
-  // Retention/LTV used to drill media-first; the unified order is vendor-first.
-  expect(
-    enterDateDrill(retention, defaultFilters(retention), "2026-10-09").dimension,
-  ).toBe("渠道商");
+test("enters date drill mode on the dimension currently displayed", () => {
+  // Cost now starts on the date dimension; a date click opens the first
+  // hierarchy level (主游戏), then a game row pivots to its daily trend.
+  const fromDateView = enterDateDrill(cost, defaultFilters(cost), "2026-10-09");
+  expect(fromDateView.focusDate).toBe("2026-10-09");
+  expect(fromDateView.dimension).toBe("主游戏");
 
-  // The channel topic starts on 媒体 (terminal level), so the date drill keeps
-  // that dimension and only applies the day filter.
-  expect(enterDateDrill(channel, defaultFilters(channel), "2026-10-09").dimension).toBe(
-    "媒体",
+  // From a category view the drill keeps that category.
+  const categoryView = { ...defaultFilters(cost), dimension: "渠道商" };
+  expect(enterDateDrill(cost, categoryView, "2026-10-09").dimension).toBe(
+    "渠道商",
   );
+
+  expect(
+    enterDateDrill(retention, defaultFilters(retention), "2026-10-09")
+      .dimension,
+  ).toBe("主游戏");
+
+  // The channel topic starts on 媒体 (terminal level); the date drill keeps it.
+  expect(
+    enterDateDrill(channel, defaultFilters(channel), "2026-10-09").dimension,
+  ).toBe("媒体");
 });
 
 test("keeps the last dimension when there is nothing deeper to drill into", () => {

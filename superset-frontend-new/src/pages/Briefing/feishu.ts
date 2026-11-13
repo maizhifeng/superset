@@ -12,6 +12,9 @@ export type FeishuReceiveIdType =
 
 export type FeishuMsgType = "interactive" | "text";
 
+/** A briefing is either a daily report or a weekly one. */
+export type FeishuReportType = "daily" | "weekly";
+
 export interface FeishuTarget {
   receive_id_type: FeishuReceiveIdType;
   receive_id: string;
@@ -65,6 +68,14 @@ export interface FeishuSettings {
   last_push: FeishuLastPush | null;
   /** null until a briefing has been generated for this configuration. */
   last_result: FeishuLastResult | null;
+  /** The configuration's report type; weekly pushes send a Feishu document. */
+  report_type?: FeishuReportType;
+  /** Whether pushes generate a Feishu doc and share it (weekly only). */
+  weekly_doc_enabled?: boolean;
+  /** Feishu Drive folder token that weekly documents are imported into. */
+  doc_folder?: string;
+  /** Whether a weekly doc folder is configured (per config or deployment). */
+  doc_folder_configured?: boolean;
 }
 
 export interface FeishuChat {
@@ -133,6 +144,10 @@ export function emptyFeishuSettings(): FeishuSettings {
     frontend_url: "",
     last_push: null,
     last_result: null,
+    report_type: "daily",
+    weekly_doc_enabled: false,
+    doc_folder: "",
+    doc_folder_configured: false,
   };
 }
 
@@ -169,6 +184,18 @@ export function normalizeSettings(
     targets,
     last_push: raw.last_push ?? null,
     last_result: raw.last_result ?? null,
+    report_type: raw.report_type === "weekly" ? "weekly" : "daily",
+    // The backend sends the flag explicitly; deriving it from the report type
+    // keeps a payload from a slightly older server usable.
+    weekly_doc_enabled:
+      raw.weekly_doc_enabled === undefined
+        ? raw.report_type === "weekly"
+        : !!raw.weekly_doc_enabled,
+    doc_folder: typeof raw.doc_folder === "string" ? raw.doc_folder.trim() : "",
+    doc_folder_configured:
+      raw.doc_folder_configured === undefined
+        ? !!(typeof raw.doc_folder === "string" && raw.doc_folder.trim())
+        : !!raw.doc_folder_configured,
   };
 }
 
@@ -211,6 +238,38 @@ export function targetLabel(target: FeishuTarget): string {
   return option ? option.label : target.receive_id_type;
 }
 
+/**
+ * Extract a Feishu Drive folder token from a pasted value.
+ *
+ * Both a folder link (``https://…/drive/folder/<token>``) and the bare token
+ * are accepted; returns ``""`` when the input is neither.
+ */
+export function docFolderToken(value: string | null | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const fromLink = raw.match(/\/folder\/([A-Za-z0-9_-]+)/);
+  if (fromLink) return fromLink[1];
+  return /^[A-Za-z0-9_-]{6,}$/.test(raw) ? raw : "";
+}
+
+/** Mirror of the backend validation for the weekly 文档文件夹 field. */
+export function validateDocFolder(value: string | null | undefined): string[] {
+  const raw = String(value ?? "").trim();
+  if (!raw || docFolderToken(raw)) return [];
+  return ["文档文件夹需填写飞书文件夹链接（含 /folder/）或文件夹 token"];
+}
+
+/**
+ * Canonical value sent to the API: the bare token when the input is a link,
+ * the trimmed input otherwise (empty clears the setting).
+ */
+export function docFolderPayloadValue(
+  value: string | null | undefined,
+): string {
+  const raw = String(value ?? "").trim();
+  return docFolderToken(raw) || raw;
+}
+
 /** Body accepted by ``PUT /briefing/configs/<id>/feishu``. */
 export function settingsPayload(settings: {
   enabled: boolean;
@@ -219,6 +278,7 @@ export function settingsPayload(settings: {
   include_doc: boolean;
   split_chapters: boolean;
   targets: FeishuTarget[];
+  doc_folder?: string;
 }): Record<string, unknown> {
   return {
     enabled: settings.enabled,
@@ -227,6 +287,7 @@ export function settingsPayload(settings: {
     include_doc: settings.include_doc,
     split_chapters: settings.split_chapters,
     targets: cleanTargets(settings.targets),
+    doc_folder: docFolderPayloadValue(settings.doc_folder),
   };
 }
 

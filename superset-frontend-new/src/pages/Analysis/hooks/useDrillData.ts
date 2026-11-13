@@ -7,6 +7,7 @@ import {
   buildDrillQueryPlan,
   fetchBreakdownData,
   peekBreakdownData,
+  topicTarget,
 } from "../query";
 import { ANALYSIS_TIME_COLUMN } from "../topics";
 import type { AnalysisMetric, AnalysisTopic } from "../types";
@@ -50,10 +51,10 @@ export function useDrillData(
   filters: AnalysisFilters,
 ): DrillData {
   const metric = useMemo(() => drillAnomalyMetric(topic), [topic]);
-  const query = useMemo(() => buildDrillQueryPlan(topic, filters), [
-    filters,
-    topic,
-  ]);
+  const query = useMemo(
+    () => buildDrillQueryPlan(topic, filters),
+    [filters, topic],
+  );
   const queryKey = useMemo(
     () => (query ? JSON.stringify(query) : null),
     [query],
@@ -80,7 +81,10 @@ export function useDrillData(
     forceRef.current = false;
     const cached = force
       ? undefined
-      : peekBreakdownData(query, { allowStale: false });
+      : peekBreakdownData(query, {
+          allowStale: false,
+          target: topicTarget(topic),
+        });
     if (cached) {
       setState({
         rows: cached.rows,
@@ -97,7 +101,11 @@ export function useDrillData(
       loading: true,
       error: null,
     }));
-    fetchBreakdownData(query, { signal: controller.signal, force })
+    fetchBreakdownData(query, {
+      signal: controller.signal,
+      force,
+      target: topicTarget(topic),
+    })
       .then((data) => {
         if (!active) return;
         setState({

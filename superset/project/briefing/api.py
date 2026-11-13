@@ -702,21 +702,37 @@ def _require_user() -> Any | None:
 
 
 def _feishu_payload(config_id: int) -> dict[str, Any]:
-    """Settings + deployment status for the Feishu push dialog."""
+    """Settings + deployment status for the Feishu push dialog.
+
+    Weekly configurations get the document-push fields: ``report_type`` and
+    ``weekly_doc_enabled`` let the dialog render the weekly form,
+    ``doc_folder`` is the configured 「周报-飞书播报」 folder (token form, empty
+    when unset) and ``doc_folder_configured`` says whether a push actually has
+    one (including the deployment default, which the dialog describes as the
+    implicit folder).
+    """
+    from superset.project.briefing.config import normalize_report_type
     from superset.project.briefing.feishu import (
         app_status,
         frontend_url,
         latest_result_meta,
         normalize_settings,
         scheduled_dry_run,
+        weekly_doc_folder_token,
     )
-    from superset.project.briefing.store import get_feishu_settings
+    from superset.project.briefing.store import get_config, get_feishu_settings
 
     stored = get_feishu_settings(config_id) or {}
     settings = normalize_settings(stored)
+    cfg = get_config(config_id) or {}
+    report_type = normalize_report_type(cfg.get("report_type"))
     return {
         **settings,
         **app_status(),
+        "report_type": report_type,
+        "weekly_doc_enabled": report_type == "weekly",
+        "doc_folder": settings["doc_folder"],
+        "doc_folder_configured": bool(weekly_doc_folder_token(settings)),
         "scheduled_dry_run": scheduled_dry_run(),
         "frontend_url": frontend_url(config_id),
         "last_push": stored.get("last_push"),
@@ -742,9 +758,11 @@ def get_feishu_settings_route(config_id: int) -> Any:
 def put_feishu_settings(config_id: int) -> Any:
     """Create or update a briefing's Feishu push settings.
 
-    Body: ``{enabled?, msg_type?, targets?: [{receive_id_type, receive_id}]}``.
-    Application credentials are never part of this payload — they live in the
-    deployment configuration.
+    Body: ``{enabled?, msg_type?, include_tables?, doc_folder?,
+    targets?: [{receive_id_type, receive_id}]}``.  ``doc_folder`` accepts a
+    Feishu Drive folder link or a bare folder token (invalid values are
+    rejected with 422); an empty string clears it.  Application credentials are
+    never part of this payload — they live in the deployment configuration.
     """
     from superset.project.briefing.feishu import normalize_settings, validate_settings
     from superset.project.briefing.store import get_config, save_feishu_settings

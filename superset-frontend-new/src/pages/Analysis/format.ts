@@ -45,8 +45,7 @@ function formatAxisCount(value: number): string {
         : abs >= 1e6
           ? value / 1e6
           : value / 1e3;
-  const suffix =
-    abs >= 1e12 ? "T" : abs >= 1e9 ? "B" : abs >= 1e6 ? "M" : "K";
+  const suffix = abs >= 1e12 ? "T" : abs >= 1e9 ? "B" : abs >= 1e6 ? "M" : "K";
   const scaledAbs = Math.abs(scaled);
   const decimals = scaledAbs >= 100 ? 0 : scaledAbs >= 10 ? 1 : 2;
   return `${Number(scaled.toFixed(decimals))}${suffix}`;
@@ -65,8 +64,18 @@ export function formatAxisValue(metric: AnalysisMetric, value: number): string {
 
 export function formatFullDay(value: unknown): string {
   if (value === null || value === undefined) return "";
+  // Older payloads/caches serialized DATE columns as epoch milliseconds
+  // (``1791676800000``).  A numeric string would otherwise fail to parse and
+  // leak the raw number into the date column.
+  const numericEpoch =
+    typeof value === "number" ||
+    (typeof value === "string" && /^\d{10,13}$/.test(value));
   const parsed = dayjs(
-    typeof value === "number" || typeof value === "string" ? value : undefined,
+    numericEpoch
+      ? Number(value)
+      : typeof value === "string"
+        ? value
+        : undefined,
   );
   return parsed.isValid() ? parsed.format("YYYY-MM-DD") : String(value);
 }

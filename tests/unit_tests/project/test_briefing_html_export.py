@@ -21,7 +21,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from superset.project.briefing.html_export import build_briefing_html
+from superset.project.briefing.html_export import (
+    build_briefing_doc_title,
+    build_briefing_html,
+)
 from superset.utils import json
 
 RESULT: dict[str, Any] = {
@@ -181,3 +184,90 @@ def test_export_is_valid_json_inline() -> None:
     _, spec_json = blob.split(",", 1)
     spec = json.loads(spec_json.rstrip("]"))
     assert spec["type"] == "common"
+
+
+# --------------------------------------------------------------------------- #
+# Exported file title (used as the uploaded HTML's Drive name)
+# --------------------------------------------------------------------------- #
+
+WEEKLY_RESULT: dict[str, Any] = {
+    **json.loads(json.dumps(RESULT)),
+    "report_type": "weekly",
+    "report_date": "2026-08-29",
+    "period_start": "2026-08-23",
+    "period_end": "2026-08-29",
+    "previous_period_start": "2026-08-16",
+    "previous_period_end": "2026-08-22",
+    "daily": [
+        {
+            "date": "2026-08-23",
+            "label": "2026-08-23 ~ 2026-08-29",
+            "spend": 42400,
+            "new_users": 39125,
+            "recharge": 1627000,
+            "roi1": 0.355,
+            "roi_cum": 0.61,
+        },
+    ],
+}
+
+
+def test_export_title_names_the_weekly_file() -> None:
+    assert (
+        build_briefing_doc_title(WEEKLY_RESULT, name="111")
+        == "111周报 · 2026-08-23 ~ 2026-08-29"
+    )
+    assert build_briefing_doc_title(RESULT, name="111", report_type="daily") == (
+        "111日报 · 2026-09-27"
+    )
+
+
+def test_export_defaults_to_a_full_width_page() -> None:
+    """The exported page fills the viewport and offers a centred toggle."""
+    page = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
+    # The old fixed 1080px column is gone: the shell is fluid, with an opt-in
+    # centred mode remembered through localStorage.
+    assert "max-width: 1080px" not in page
+    assert ".shell { width: 100%" in page
+    assert "body.centred .shell { max-width: 1480px; }" in page
+    assert 'id="btn-width"' in page
+    assert 'getItem("briefing-width")' in page
+    # Charts follow the container instead of a fixed pixel height.
+    assert ".chart { width: 100%; height: clamp(" in page
+    assert "autoFit: true" in page
+
+
+def test_export_chapters_are_panels_with_tables_and_nav() -> None:
+    page = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
+    assert page.count('class="panel"') == 4
+    # The sticky nav uses the weekly trend wording for a weekly report.
+    assert '<a href="#trend">分周对比</a>' in page
+    assert "分天对比" not in page
+    # Every chapter's detail table is captioned and counted.
+    for caption in ("平台拆分", "分周明细", "主游戏 × 渠道", "媒体明细"):
+        assert caption in page
+    assert 'class="table-count"' in page
+    # Expand-all + back-to-top round out the page structure.
+    assert 'id="btn-details"' in page
+    assert 'class="to-top"' in page
+
+
+def test_weekly_export_is_interactive_html() -> None:
+    """The weekly push uploads this page as-is; charts stay interactive."""
+    from superset.project.briefing.html_export import VCHART_CDN
+
+    page = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
+    # Script, VChart runtime and inline chart specs make the charts interactive.
+    assert "<script" in page
+    assert VCHART_CDN in page
+    assert page.count("__SPECS.push") == 3
+    # Every chapter and its detail table travel with the file.
+    for heading in (
+        "1. 核心指标速览",
+        "2. 分周对比",
+        "3. 主游戏维度分析",
+        "4. 媒体表现分析",
+    ):
+        assert heading in page
+    assert page.count("<table>") >= 4
+    assert "游戏A" in page

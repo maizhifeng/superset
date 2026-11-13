@@ -20,6 +20,7 @@ import {
   peekKpiData,
   peekTrendData,
   seedAnalysisData,
+  topicTarget,
 } from "@/pages/Analysis/query";
 import {
   ANALYSIS_SNAPSHOT_VERSION,
@@ -44,7 +45,7 @@ function snapshotData(): AnalysisSnapshot["data"] {
     previous: section(),
     trend: section([{ 日期: "2026-10-01", cpa: 10 }]),
     previousTrend: section([{ 日期: "2026-09-01", cpa: 9 }]),
-    breakdown: section([{ 主游戏: "游戏 A", cpa: 10 }]),
+    breakdown: section([{ 日期: "2026-10-01", cpa: 10 }]),
   };
 }
 
@@ -68,10 +69,12 @@ beforeEach(() => {
 test("only the untouched default view is snapshot eligible", () => {
   const defaults = defaultFilters(cost);
   expect(isDefaultSnapshotScope(cost, defaults)).toBe(true);
-  expect(isDefaultSnapshotScope(cost, { ...defaults, range: "7d" })).toBe(false);
-  expect(
-    isDefaultSnapshotScope(cost, { ...defaults, games: ["游戏 A"] }),
-  ).toBe(false);
+  expect(isDefaultSnapshotScope(cost, { ...defaults, range: "7d" })).toBe(
+    false,
+  );
+  expect(isDefaultSnapshotScope(cost, { ...defaults, games: ["游戏 A"] })).toBe(
+    false,
+  );
   expect(
     isDefaultSnapshotScope(cost, { ...defaults, drill: { games: ["游戏 A"] } }),
   ).toBe(false);
@@ -90,14 +93,16 @@ test("seeds the split query caches so the page paints from the snapshot", () => 
   const filters = defaultFilters(cost);
   seedAnalysisData(cost, filters, snapshotData());
 
-  expect(peekKpiData(buildKpiQueryPlan(cost, filters), { allowStale: false }))
-    .toBeDefined();
+  expect(
+    peekKpiData(buildKpiQueryPlan(cost, filters), { allowStale: false }),
+  ).toBeDefined();
   expect(
     peekTrendData(buildTrendQueryPlan(cost, filters), { allowStale: false }),
   ).toBeDefined();
   expect(
     peekBreakdownData(buildBreakdownQuery(cost, filters), {
       allowStale: false,
+      target: topicTarget(cost),
     }),
   ).toBeDefined();
 });
@@ -124,9 +129,7 @@ test("ignores snapshots whose version or date window is outdated", async () => {
 
 test("rejects a snapshot whose rows belong to another dimension", async () => {
   const broken = snapshot();
-  broken.data.breakdown = section([
-    { 日期: "2026-10-01", cpa: 10 },
-  ]);
+  broken.data.breakdown = section([{ 渠道商: "android", cpa: 10 }]);
   mockGet.mockResolvedValue({ data: { result: broken } });
   expect(await loadAnalysisSnapshot(cost)).toBeNull();
 });
@@ -178,7 +181,7 @@ test("saves the default snapshot with its scope and generation time", async () =
   expect(url).toBe(`/bi/analysis-snapshots/${cost.id}`);
   expect(body.scope).toEqual({
     range: "30d",
-    dimension: "主游戏",
+    dimension: "日期",
     includeNatural: true,
     time_range: expect.stringMatching(/\d{4}-\d{2}-\d{2} : /),
   });

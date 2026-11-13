@@ -27,12 +27,12 @@ const DATA_SCOPE_ITEMS: DataScopeItem[] = [
   {
     title: "数据集",
     description:
-      "ad_combined_report（国内 + 海外合并），全部专题共用同一数据集与日期字段。",
+      "成本分析与项目对比分析由后端直接执行专题精简 SQL（不建独立数据集，只取该专题所需字段）；其余专题未完工，暂用 ad_combined_report（国内 + 海外合并）。",
   },
   {
     title: "观察期与筛选",
     description:
-      "默认近 30 天，可按日期、主游戏、地区、媒体、渠道商与平台筛选；筛选条件会写入链接，可直接分享。",
+      "默认近 30 天，可按日期、主游戏、地区、媒体、渠道商与平台筛选；筛选条件会写入链接，可直接分享。项目对比分析的项目选择与锚点窗口在该视图内设置，不受日期范围限制。",
   },
   {
     title: "CPA 与付费留存率",
@@ -85,7 +85,11 @@ function DataScopePanel() {
               alignItems: "flex-start",
             }}
           >
-            <Typography component="span" variant="body2" sx={{ fontWeight: 600 }}>
+            <Typography
+              component="span"
+              variant="body2"
+              sx={{ fontWeight: 600 }}
+            >
               数据口径与观察期
             </Typography>
             <Typography
@@ -238,7 +242,7 @@ export default function AnalysisHome() {
     <PageFrame
       page="analysis"
       title="专题分析"
-      subtitle="围绕成本、留存、LTV、付费与渠道效率，快速进入预置分析视角"
+      subtitle="围绕成本、项目对比、留存、LTV、付费与渠道效率，快速进入预置分析视角"
       compact
       hideTitle
     >

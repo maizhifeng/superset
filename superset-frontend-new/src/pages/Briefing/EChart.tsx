@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { EChartsOption } from "echarts";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { EChartsOption, EChartsType } from "echarts";
 import Box from "@mui/material/Box";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { getECharts, loadECharts } from "@/utils/echarts";
@@ -13,12 +13,18 @@ export default function EChart({
   height = 300,
   onEvents,
   ariaLabel,
+  onChartReady,
+  overlay,
 }: {
   option: EChartsOption;
   height?: number | string;
   onEvents?: Record<string, (params: any) => void>;
   /** Text alternative for the canvas, exposed through ECharts' aria label. */
   ariaLabel?: string;
+  /** Receives the ECharts instance once the canvas is ready. */
+  onChartReady?: (instance: EChartsType) => void;
+  /** Absolutely-positioned layer above the canvas (coach marks, gestures). */
+  overlay?: ReactNode;
 }) {
   const [ready, setReady] = useState(false);
   const [skeletonMounted, setSkeletonMounted] = useState(true);
@@ -101,8 +107,21 @@ export default function EChart({
           option={chartOption}
           lazyUpdate
           onEvents={onEvents}
+          onChartReady={onChartReady}
           style={{ height, width: "100%" }}
         />
+      )}
+      {overlay && (
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: "none",
+          }}
+        >
+          {overlay}
+        </Box>
       )}
       {skeletonMounted && (
         <Box

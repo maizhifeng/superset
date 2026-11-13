@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Autocomplete from "@mui/material/Autocomplete";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -7,6 +7,7 @@ import TextField from "@mui/material/TextField";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import dayjs from "dayjs";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import { DEFAULT_PROJECT_COMPARE_ANCHORS, sameAnchors } from "../anchorOptions";
 import {
   defaultFilters,
   FILTER_DEFINITIONS,
@@ -53,6 +54,12 @@ function isDefaultFilters(
     return false;
   }
   if (filters.dimension !== defaults.dimension) return false;
+  if (!sameAnchors(filters.anchors, DEFAULT_PROJECT_COMPARE_ANCHORS)) {
+    return false;
+  }
+  if (filters.periodDays !== defaults.periodDays) return false;
+  if (filters.projects.length > 0) return false;
+  if (filters.compareMetric) return false;
   const hasDrill = FILTER_DEFINITIONS.some(
     (definition) => (filters.drill?.[definition.key] ?? []).length > 0,
   );
@@ -66,20 +73,45 @@ export default function AnalysisFilterBar({
   topic,
   filters,
   onChange,
+  extraControls,
+  trailingControls,
 }: {
   topic: AnalysisTopic;
   filters: AnalysisFilters;
   onChange: (next: AnalysisFilters) => void;
+  /** Topic-specific controls rendered before the column filters. */
+  extraControls?: ReactNode;
+  /** Topic-specific controls rendered after the column filters. */
+  trailingControls?: ReactNode;
 }) {
   const [options, setOptions] = useState<FilterOptions>(EMPTY_OPTIONS);
   const [loadingOptions, setLoadingOptions] = useState(true);
+
+  // Topics whose own view owns a dimension (project comparison picks projects
+  // in its own control) hide that global filter, so there is only one place to
+  // scope the page.  Hidden filters also skip their value request.
+  const visibleDefinitions = useMemo(() => {
+    const visible = FILTER_DEFINITIONS.filter(
+      (definition) => !topic.hiddenFilters?.includes(definition.key),
+    );
+    // A topic can pin a column order without changing the shared definition
+    // order used by the other topics.
+    const order = topic.filterOrder ?? [];
+    if (order.length === 0) return visible;
+    const rank = new Map(order.map((key, index) => [key, index]));
+    return [...visible].sort(
+      (left, right) =>
+        (rank.get(left.key) ?? Number.MAX_SAFE_INTEGER) -
+        (rank.get(right.key) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [topic.filterOrder, topic.hiddenFilters]);
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
     setLoadingOptions(true);
     void Promise.all(
-      FILTER_DEFINITIONS.map(async (definition) => {
+      visibleDefinitions.map(async (definition) => {
         try {
           // filterValues.ts caches per column, so remounting a topic page or
           // revisiting it within the TTL does not repeat these requests.
@@ -104,7 +136,7 @@ export default function AnalysisFilterBar({
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [visibleDefinitions]);
 
   const selectedValues = useMemo(
     () => ({
@@ -172,62 +204,68 @@ export default function AnalysisFilterBar({
           },
       }}
     >
-      <TextField
-        select
-        size="small"
-        label="日期范围"
-        value={filters.range}
-        onChange={(event) => updateRange(event.target.value as RangeValue)}
-        sx={{ minWidth: 124 }}
-      >
-        {RANGE_OPTIONS.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </TextField>
+      {!topic.hideDateRange && (
+        <>
+          <TextField
+            select
+            size="small"
+            label="日期范围"
+            value={filters.range}
+            onChange={(event) => updateRange(event.target.value as RangeValue)}
+            sx={{ minWidth: 124 }}
+          >
+            {RANGE_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </TextField>
 
-      {filters.range === "custom" && (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-          <DatePicker
-            label="开始日期"
-            value={filters.start ? dayjs(filters.start) : null}
-            onChange={(value) => {
-              if (!value?.isValid()) return;
-              const start = value.format("YYYY-MM-DD");
-              const end =
-                filters.end && filters.end < start ? start : filters.end;
-              onChange({
-                ...filters,
-                range: "custom",
-                start,
-                end,
-                focusDate: undefined,
-              });
-            }}
-            format="YYYY-MM-DD"
-            slotProps={{ textField: { size: "small", sx: { width: 150 } } }}
-          />
-          <DatePicker
-            label="结束日期"
-            value={filters.end ? dayjs(filters.end) : null}
-            onChange={(value) => {
-              if (!value?.isValid()) return;
-              onChange({
-                ...filters,
-                range: "custom",
-                end: value.format("YYYY-MM-DD"),
-                focusDate: undefined,
-              });
-            }}
-            format="YYYY-MM-DD"
-            minDate={filters.start ? dayjs(filters.start) : undefined}
-            slotProps={{ textField: { size: "small", sx: { width: 150 } } }}
-          />
-        </Box>
+          {filters.range === "custom" && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+              <DatePicker
+                label="开始日期"
+                value={filters.start ? dayjs(filters.start) : null}
+                onChange={(value) => {
+                  if (!value?.isValid()) return;
+                  const start = value.format("YYYY-MM-DD");
+                  const end =
+                    filters.end && filters.end < start ? start : filters.end;
+                  onChange({
+                    ...filters,
+                    range: "custom",
+                    start,
+                    end,
+                    focusDate: undefined,
+                  });
+                }}
+                format="YYYY-MM-DD"
+                slotProps={{ textField: { size: "small", sx: { width: 150 } } }}
+              />
+              <DatePicker
+                label="结束日期"
+                value={filters.end ? dayjs(filters.end) : null}
+                onChange={(value) => {
+                  if (!value?.isValid()) return;
+                  onChange({
+                    ...filters,
+                    range: "custom",
+                    end: value.format("YYYY-MM-DD"),
+                    focusDate: undefined,
+                  });
+                }}
+                format="YYYY-MM-DD"
+                minDate={filters.start ? dayjs(filters.start) : undefined}
+                slotProps={{ textField: { size: "small", sx: { width: 150 } } }}
+              />
+            </Box>
+          )}
+        </>
       )}
 
-      {FILTER_DEFINITIONS.map((definition) => {
+      {extraControls}
+
+      {visibleDefinitions.map((definition) => {
         const selected = selectedValues[definition.key];
         return (
           <Autocomplete
@@ -275,13 +313,15 @@ export default function AnalysisFilterBar({
         );
       })}
 
+      {trailingControls}
+
       <Button
         size="small"
         variant="text"
         startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
         onClick={() => onChange(defaultFilters(topic))}
         disabled={defaultsApplied}
-        sx={{ textTransform: "none", flexShrink: 0 }}
+        sx={{ textTransform: "none", flexShrink: 0, ml: "auto" }}
       >
         重置
       </Button>

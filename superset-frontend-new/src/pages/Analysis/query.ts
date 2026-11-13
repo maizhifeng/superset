@@ -1,4 +1,4 @@
-import { postChartData } from "@/api/chartData";
+import { postAnalysisChartData, postChartData } from "@/api/chartData";
 import dayjs from "dayjs";
 import type { ChartDataRow } from "@/types/api";
 import type {
@@ -27,6 +27,8 @@ import {
 import type { AnalysisTopic } from "./types";
 
 export interface AnalysisCorePlan {
+  /** Where the queries run (backend SQL topic or the legacy dataset). */
+  target: AnalysisQueryTarget;
   totals: QueryObject;
   previous: QueryObject;
   trend: QueryObject;
@@ -35,12 +37,14 @@ export interface AnalysisCorePlan {
 
 /** KPI-only slice of the page data (independent of table drills / toggles). */
 export interface AnalysisKpiPlan {
+  target: AnalysisQueryTarget;
   totals: QueryObject;
   previous: QueryObject;
 }
 
 /** Trend-only slice, which follows table drills and the natural-traffic switch. */
 export interface AnalysisTrendPlan {
+  target: AnalysisQueryTarget;
   trend: QueryObject;
   previousTrend: QueryObject;
 }
@@ -75,7 +79,39 @@ export interface AnalysisData extends AnalysisCoreData {
   breakdown: AnalysisSectionData;
 }
 
-const DATASOURCE = { id: ANALYSIS_DATASET_ID, type: "table" as const };
+/** Where a topic's queries are executed. */
+export type AnalysisQueryTarget =
+  | {
+      kind: "dataset";
+      dataSource: { id: number; type: "table" };
+    }
+  | { kind: "backend"; topicId: string };
+
+/** Topics with backend SQL run without a Superset dataset. */
+export function topicTarget(topic: AnalysisTopic): AnalysisQueryTarget {
+  if (topic.backendSql) {
+    return { kind: "backend", topicId: topic.id };
+  }
+  return {
+    kind: "dataset",
+    dataSource: { id: ANALYSIS_DATASET_ID, type: "table" },
+  };
+}
+
+const LEGACY_DATASET_TARGET: AnalysisQueryTarget = {
+  kind: "dataset",
+  dataSource: { id: ANALYSIS_DATASET_ID, type: "table" },
+};
+
+/** Stable identity of a target, used in the browser-side cache keys. */
+export function analysisTargetCacheKey(target: AnalysisQueryTarget): string {
+  return target.kind === "backend"
+    ? `backend:${target.topicId}`
+    : `dataset:${target.dataSource.id}`;
+}
+
+const LEGACY_TARGET_CACHE_KEY = analysisTargetCacheKey(LEGACY_DATASET_TARGET);
+
 const BREAKDOWN_ROW_LIMIT = 500;
 const TREND_ROW_LIMIT = 400;
 /** One drill attribution needs (categories × lookback days); keep a margin. */
@@ -130,20 +166,13 @@ function canonicalCacheValue(value: unknown): unknown {
   return value;
 }
 
-/** Stable key built from the datasource and the exact query payload. */
+/** Stable key built from the execution target and the exact payload. */
 function analysisCacheKey(
-  kind:
-    | "core"
-    | "kpi"
-    | "trend"
-    | "breakdown"
-    | "analysis"
-    | "drill",
+  kind: "core" | "kpi" | "trend" | "breakdown" | "analysis" | "drill",
   queries: readonly QueryObject[],
+  targetKey: string = LEGACY_TARGET_CACHE_KEY,
 ): string {
-  return `${kind}:${ANALYSIS_DATASET_ID}:${JSON.stringify(
-    canonicalCacheValue(queries),
-  )}`;
+  return `${kind}:${targetKey}:${JSON.stringify(canonicalCacheValue(queries))}`;
 }
 
 function readAnalysisCache<T>(key: string, allowStale: boolean): T | undefined {
@@ -283,26 +312,32 @@ export function clearAnalysisQueryCache(): void {
 }
 
 function coreCacheKey(plan: AnalysisCorePlan): string {
-  return analysisCacheKey("core", [
-    plan.totals,
-    plan.previous,
-    plan.trend,
-    plan.previousTrend,
-  ]);
+  return analysisCacheKey(
+    "core",
+    [plan.totals, plan.previous, plan.trend, plan.previousTrend],
+    analysisTargetCacheKey(plan.target),
+  );
 }
 
-function breakdownCacheKey(query: QueryObject): string {
-  return analysisCacheKey("breakdown", [query]);
+function breakdownCacheKey(
+  query: QueryObject,
+  targetKey: string = LEGACY_TARGET_CACHE_KEY,
+): string {
+  return analysisCacheKey("breakdown", [query], targetKey);
 }
 
 function analysisCacheKeyForPlan(plan: AnalysisQueryPlan): string {
-  return analysisCacheKey("analysis", [
-    plan.totals,
-    plan.previous,
-    plan.trend,
-    plan.previousTrend,
-    plan.breakdown,
-  ]);
+  return analysisCacheKey(
+    "analysis",
+    [
+      plan.totals,
+      plan.previous,
+      plan.trend,
+      plan.previousTrend,
+      plan.breakdown,
+    ],
+    analysisTargetCacheKey(plan.target),
+  );
 }
 
 /** Synchronous cache peek for hooks; stale entries are allowed by default. */
@@ -319,10 +354,13 @@ export function peekCoreData(
 /** Synchronous cache peek for hooks; stale entries are allowed by default. */
 export function peekBreakdownData(
   query: QueryObject,
-  options?: { allowStale?: boolean },
+  options?: { allowStale?: boolean; target?: AnalysisQueryTarget },
 ): AnalysisSectionData | undefined {
   return readAnalysisCache<AnalysisSectionData>(
-    breakdownCacheKey(query),
+    breakdownCacheKey(
+      query,
+      options?.target && analysisTargetCacheKey(options.target),
+    ),
     options?.allowStale ?? true,
   );
 }
@@ -400,7 +438,13 @@ export function buildCoreQueryPlan(
     row_limit: TREND_ROW_LIMIT,
   };
 
-  return { totals, previous, trend, previousTrend };
+  return {
+    target: topicTarget(topic),
+    totals,
+    previous,
+    trend,
+    previousTrend,
+  };
 }
 
 /**
@@ -421,6 +465,7 @@ export function buildKpiQueryPlan(
   };
   const totalMetrics = totalsMetrics(topic).map((item) => item.metric);
   return {
+    target: topicTarget(topic),
     totals: {
       ...common,
       metrics: totalMetrics,
@@ -456,6 +501,7 @@ export function buildTrendQueryPlan(
   };
   const trendMetricValues = trendMetrics(topic).map((item) => item.metric);
   return {
+    target: topicTarget(topic),
     trend: {
       ...common,
       metrics: trendMetricValues,
@@ -509,8 +555,10 @@ export function buildBreakdownQuery(
     columns: [],
     filters: toBreakdownFilters(filters),
     granularity: ANALYSIS_TIME_COLUMN,
-    orderby: [[orderBy, isTimeDimension]],
-    order_desc: !isTimeDimension,
+    // Both kinds of breakdown start on the highest value: newest day first
+    // for the date dimension, largest metric first for category dimensions.
+    orderby: [[orderBy, false]],
+    order_desc: true,
     time_range: breakdownTimeRange,
     row_limit: BREAKDOWN_ROW_LIMIT,
   };
@@ -521,6 +569,13 @@ export function buildBreakdownQuery(
  * metric for every dimension value over the rolling baseline window plus the
  * drilled day.  Returns ``null`` outside drill mode (no focus date).
  */
+/** Drill dimensions: the date axis is already part of the grouping. */
+function drillGroupby(filters: AnalysisFilters): string[] {
+  return filters.dimension === ANALYSIS_TIME_COLUMN
+    ? [ANALYSIS_TIME_COLUMN]
+    : [filters.dimension, ANALYSIS_TIME_COLUMN];
+}
+
 export function buildDrillAnomalyQuery(
   topic: AnalysisTopic,
   filters: AnalysisFilters,
@@ -538,7 +593,7 @@ export function buildDrillAnomalyQuery(
   return {
     result_type: "full",
     metrics: [metric.metric],
-    groupby: [filters.dimension, ANALYSIS_TIME_COLUMN],
+    groupby: drillGroupby(filters),
     columns: [],
     filters: toBreakdownFilters(filters),
     granularity: ANALYSIS_TIME_COLUMN,
@@ -574,7 +629,7 @@ export function buildDrillQueryPlan(
   return {
     result_type: "full",
     metrics,
-    groupby: [filters.dimension, ANALYSIS_TIME_COLUMN],
+    groupby: drillGroupby(filters),
     columns: [],
     filters: toBreakdownFilters(filters),
     granularity: ANALYSIS_TIME_COLUMN,
@@ -616,20 +671,66 @@ function responseResults(response: unknown): ChartDataResponseResult[] {
   return payload?.result ?? [];
 }
 
+interface AnalysisRequestEnvelope {
+  queries: QueryObject[];
+  result_type: "full";
+  result_format: "json";
+  force: boolean;
+  datasource?: { id: number; type: "table" };
+  topic?: string;
+}
+
+/** Build the request body for the target's endpoint. */
+function buildRequestEnvelope(
+  target: AnalysisQueryTarget,
+  queries: QueryObject[],
+  force: boolean,
+): AnalysisRequestEnvelope {
+  if (target.kind === "backend") {
+    return {
+      topic: target.topicId,
+      queries,
+      result_type: "full",
+      result_format: "json",
+      force,
+    };
+  }
+  return {
+    datasource: target.dataSource,
+    queries,
+    result_type: "full",
+    result_format: "json",
+    force,
+  };
+}
+
+/** Send queries to the endpoint that executes the topic's target. */
+function postQueries(
+  target: AnalysisQueryTarget,
+  queries: QueryObject[],
+  force: boolean,
+  signal: AbortSignal,
+) {
+  const payload = buildRequestEnvelope(
+    target,
+    queries,
+    force,
+  ) as unknown as Record<string, unknown>;
+  return target.kind === "backend"
+    ? postAnalysisChartData(payload, { signal })
+    : postChartData(payload, { signal });
+}
+
 async function requestCoreData(
   plan: AnalysisCorePlan,
   force: boolean,
   signal: AbortSignal,
 ): Promise<AnalysisCoreData> {
-  const response = await postChartData(
-    {
-      datasource: DATASOURCE,
-      queries: [plan.totals, plan.previous, plan.trend, plan.previousTrend],
-      result_type: "full",
-      result_format: "json",
-      force,
-    },
-    { signal },
+  const response = await postQueries(
+    plan.target,
+    [plan.totals, plan.previous, plan.trend, plan.previousTrend],
+    force,
+    signal,
   );
   const results = responseResults(response);
   return {
@@ -654,11 +755,19 @@ export function fetchCoreData(
 }
 
 function kpiCacheKey(plan: AnalysisKpiPlan): string {
-  return analysisCacheKey("kpi", [plan.totals, plan.previous]);
+  return analysisCacheKey(
+    "kpi",
+    [plan.totals, plan.previous],
+    analysisTargetCacheKey(plan.target),
+  );
 }
 
 function trendCacheKey(plan: AnalysisTrendPlan): string {
-  return analysisCacheKey("trend", [plan.trend, plan.previousTrend]);
+  return analysisCacheKey(
+    "trend",
+    [plan.trend, plan.previousTrend],
+    analysisTargetCacheKey(plan.target),
+  );
 }
 
 /** Synchronous cache peek for the KPI slice. */
@@ -688,15 +797,11 @@ async function requestKpiData(
   force: boolean,
   signal: AbortSignal,
 ): Promise<AnalysisKpiData> {
-  const response = await postChartData(
-    {
-      datasource: DATASOURCE,
-      queries: [plan.totals, plan.previous],
-      result_type: "full",
-      result_format: "json",
-      force,
-    },
-    { signal },
+  const response = await postQueries(
+    plan.target,
+    [plan.totals, plan.previous],
+    force,
+    signal,
   );
   const results = responseResults(response);
   return {
@@ -710,15 +815,11 @@ async function requestTrendData(
   force: boolean,
   signal: AbortSignal,
 ): Promise<AnalysisTrendData> {
-  const response = await postChartData(
-    {
-      datasource: DATASOURCE,
-      queries: [plan.trend, plan.previousTrend],
-      result_type: "full",
-      result_format: "json",
-      force,
-    },
-    { signal },
+  const response = await postQueries(
+    plan.target,
+    [plan.trend, plan.previousTrend],
+    force,
+    signal,
   );
   const results = responseResults(response);
   return {
@@ -755,31 +856,28 @@ export function fetchTrendData(
 
 async function requestBreakdownData(
   query: QueryObject,
+  target: AnalysisQueryTarget,
   force: boolean,
   signal: AbortSignal,
 ): Promise<AnalysisSectionData> {
-  const response = await postChartData(
-    {
-      datasource: DATASOURCE,
-      queries: [query],
-      result_type: "full",
-      result_format: "json",
-      force,
-    },
-    { signal },
-  );
+  const response = await postQueries(target, [query], force, signal);
   return readResult(responseResults(response)[0]);
 }
 
 /** Execute the single breakdown query (cached, with in-flight dedupe). */
 export function fetchBreakdownData(
   query: QueryObject,
-  options?: { signal?: AbortSignal; force?: boolean },
+  options?: {
+    signal?: AbortSignal;
+    force?: boolean;
+    target?: AnalysisQueryTarget;
+  },
 ): Promise<AnalysisSectionData> {
   const force = options?.force === true;
+  const target = options?.target ?? LEGACY_DATASET_TARGET;
   return loadAnalysisQuery(
-    breakdownCacheKey(query),
-    (signal) => requestBreakdownData(query, force, signal),
+    breakdownCacheKey(query, analysisTargetCacheKey(target)),
+    (signal) => requestBreakdownData(query, target, force, signal),
     options,
   );
 }
@@ -789,21 +887,17 @@ async function requestAnalysisData(
   force: boolean,
   signal: AbortSignal,
 ): Promise<AnalysisData> {
-  const response = await postChartData(
-    {
-      datasource: DATASOURCE,
-      queries: [
-        plan.totals,
-        plan.previous,
-        plan.trend,
-        plan.previousTrend,
-        plan.breakdown,
-      ],
-      result_type: "full",
-      result_format: "json",
-      force,
-    },
-    { signal },
+  const response = await postQueries(
+    plan.target,
+    [
+      plan.totals,
+      plan.previous,
+      plan.trend,
+      plan.previousTrend,
+      plan.breakdown,
+    ],
+    force,
+    signal,
   );
   const results = responseResults(response);
   return {
@@ -849,7 +943,10 @@ export function seedAnalysisData(
     previousTrend: data.previousTrend,
   });
   writeAnalysisCache(
-    breakdownCacheKey(buildBreakdownQuery(topic, filters)),
+    breakdownCacheKey(
+      buildBreakdownQuery(topic, filters),
+      analysisTargetCacheKey(topicTarget(topic)),
+    ),
     data.breakdown,
   );
 }

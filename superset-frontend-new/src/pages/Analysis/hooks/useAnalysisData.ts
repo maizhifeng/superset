@@ -18,6 +18,7 @@ import {
   peekCoreData,
   peekKpiData,
   peekTrendData,
+  topicTarget,
   type AnalysisCoreData,
   type AnalysisKpiData,
   type AnalysisSectionData,
@@ -249,18 +250,25 @@ function trendFilterKey(filters: AnalysisFilters): string {
  * Split page data: KPI totals and trend series live in separate cache entries,
  * so table drills / natural-traffic toggles only re-issue the 2 trend queries
  * instead of the full 4-query bundle.
+ *
+ * Topics can hide either slice (see {@link AnalysisTopic.hiddenSections}); a
+ * hidden slice is neither fetched nor counted in `loading`.
  */
 export function useAnalysisPageData(
   topic: AnalysisTopic,
   filters: AnalysisFilters,
+  options?: { kpi?: boolean; trend?: boolean },
 ) {
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+  const kpiEnabled = options?.kpi !== false;
+  const trendEnabled = options?.trend !== false;
 
   const kpi = useAnalysisQuery<AnalysisKpiData>({
     key: kpiFilterKey(filters),
     topic,
     filtersRef,
+    enabled: kpiEnabled,
     request: (current, force, signal) =>
       fetchKpiData(buildKpiQueryPlan(topic, current), { force, signal }),
     peek: (current, allowStale) =>
@@ -275,7 +283,7 @@ export function useAnalysisPageData(
     filtersRef,
     // Drill mode shows the drill chart instead of the trend chart, so skip the
     // trend scan entirely for direct drill links.
-    enabled: !filters.focusDate,
+    enabled: trendEnabled && !filters.focusDate,
     request: (current, force, signal) =>
       fetchTrendData(buildTrendQueryPlan(topic, current), { force, signal }),
     peek: (current, allowStale) =>
@@ -322,10 +330,12 @@ export function useAnalysisBreakdownData(
       fetchBreakdownData(buildBreakdownQuery(topic, currentFilters), {
         signal,
         force,
+        target: topicTarget(topic),
       }),
     peek: (currentFilters, allowStale) =>
       peekBreakdownData(buildBreakdownQuery(topic, currentFilters), {
         allowStale,
+        target: topicTarget(topic),
       }),
     empty: emptyBreakdownData,
     fallbackError: "明细数据加载失败",

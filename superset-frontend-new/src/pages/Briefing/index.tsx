@@ -539,6 +539,7 @@ export default function BriefingList() {
           open={!!feishuTarget}
           configId={feishuTarget.id}
           configName={feishuTarget.name}
+          reportType={normalizeReportType(feishuTarget.report_type)}
           hasResult={!!feishuTarget.last_report_date}
           onClose={() => setFeishuTarget(null)}
           onChanged={() => void load({ silent: true })}

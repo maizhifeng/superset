@@ -18,6 +18,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import CodeIcon from "@mui/icons-material/Code";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import LinkIcon from "@mui/icons-material/Link";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -28,6 +29,7 @@ import PageFrame from "@/components/PageFrame";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import AnalysisBreakdownTable from "./components/AnalysisBreakdownTable";
+import AnalysisSqlDialog from "./components/AnalysisSqlDialog";
 import AnomalyBreakdownPopover from "./components/AnomalyBreakdownPopover";
 import AnalysisDrillChart from "./components/AnalysisDrillChart";
 import {
@@ -41,6 +43,10 @@ import AnalysisKpiCards from "./components/AnalysisKpiCards";
 import AnalysisTrendChart from "./components/AnalysisTrendChart";
 import EfficiencyScatter from "./components/EfficiencyScatter";
 import LtvRoiCurves from "./components/LtvRoiCurves";
+import ProjectCompare from "./components/ProjectCompare";
+import ProjectCompareFilterControls, {
+  ProjectCompareMetricFilter,
+} from "./components/ProjectCompareFilterControls";
 import RetentionMatrix from "./components/RetentionMatrix";
 import {
   FILTER_DEFINITIONS,
@@ -101,6 +107,7 @@ function TopicPageContent({
   const [comparePrevious, setComparePrevious] = useState(true);
   const [showBaseline, setShowBaseline] = useState(false);
   const [weeklyView, setWeeklyView] = useState(false);
+  const [sqlDialogOpen, setSqlDialogOpen] = useState(false);
   const compareBeforeWeeklyRef = useRef(true);
   const [anomalyDetail, setAnomalyDetail] = useState<{
     anomaly: AnalysisAnomaly;
@@ -125,12 +132,21 @@ function TopicPageContent({
   const refreshPendingRef = useRef(false);
   const refreshSawLoadingRef = useRef(false);
 
-  const core = useAnalysisPageData(topic, filters);
+  // Topics whose extra view owns the page hide the standard sections; hidden
+  // sections are also skipped at the query level (no KPI/trend/breakdown scan).
+  const hiddenSections = topic.hiddenSections ?? [];
+  const showKpis = !hiddenSections.includes("kpis");
+  const showTrend = !hiddenSections.includes("trend");
+  const showBreakdown = !hiddenSections.includes("breakdown");
+  const core = useAnalysisPageData(topic, filters, {
+    kpi: showKpis,
+    trend: showTrend,
+  });
   const dateDrillMode = Boolean(filters.focusDate);
   const weekDrillMode = Boolean(filters.focusWeek) && !dateDrillMode;
   const drillMode = dateDrillMode || weekDrillMode;
   const breakdown = useAnalysisBreakdownData(topic, filters, {
-    enabled: !dateDrillMode,
+    enabled: showBreakdown && !dateDrillMode,
   });
   const drillData = useDrillData(topic, filters);
   // Drill mode uses the single combined query for both the day rows and the
@@ -151,8 +167,10 @@ function TopicPageContent({
   const coreLoading = core.loading;
   const loading = coreLoading || breakdownLoading;
   const error = core.error ?? breakdownError ?? drillData.error;
-  const snapshotActive =
-    Boolean(snapshotGeneratedAt) && isDefaultSnapshotScope(topic, filters);
+  // Topics that hide the standard sections have no snapshot payload.
+  const snapshotEligible =
+    !topic.hiddenSections?.length && isDefaultSnapshotScope(topic, filters);
+  const snapshotActive = Boolean(snapshotGeneratedAt) && snapshotEligible;
 
   useEffect(() => {
     if (snapshot?.generated_at) {
@@ -164,7 +182,7 @@ function TopicPageContent({
   // next visitor can paint without federated queries.  Snapshots loaded from
   // the server are not re-saved unless the user explicitly refreshes.
   useEffect(() => {
-    if (!isDefaultSnapshotScope(topic, filters)) return;
+    if (!snapshotEligible) return;
     if (refreshPendingRef.current) {
       if (loading) {
         refreshSawLoadingRef.current = true;
@@ -218,6 +236,7 @@ function TopicPageContent({
     loading,
     snapshot,
     snapshotDirty,
+    snapshotEligible,
     topic,
   ]);
   const refresh = () => {
@@ -439,7 +458,7 @@ function TopicPageContent({
     prefetchTimer.current = setTimeout(() => {
       prefetchTimer.current = null;
       prefetchDateDrill(topic, filters, date);
-    }, 200);
+    }, 100);
   };
 
   // Clicking an anomaly chip opens the next dimension's contribution list;
@@ -476,10 +495,18 @@ function TopicPageContent({
       ? String(firstRow[filters.dimension] ?? "").trim()
       : "";
     if (!value || value === "–") return undefined;
-    const timer = window.setTimeout(() => {
-      prefetchDimensionBreakdown(topic, filters, filters.dimension, value);
+    // A row click refetches the trend (2 queries) and the next breakdown level,
+    // so warm both parts of that click, then the deeper table levels.
+    const firstTimer = window.setTimeout(() => {
+      prefetchDimensionDrill(topic, filters, filters.dimension, value);
     }, 50);
-    return () => window.clearTimeout(timer);
+    const deeperTimer = window.setTimeout(() => {
+      prefetchDimensionBreakdown(topic, filters, filters.dimension, value);
+    }, 1200);
+    return () => {
+      window.clearTimeout(firstTimer);
+      window.clearTimeout(deeperTimer);
+    };
   }, [
     breakdownLoading,
     coreLoading,
@@ -489,6 +516,21 @@ function TopicPageContent({
     nextDimension,
     topic,
   ]);
+
+  // The latest trend point is the most likely chart-click target; warm its
+  // drill response once the page has settled so that click is instant.
+  useEffect(() => {
+    if (drillMode || filters.focusDate || filters.focusWeek) return undefined;
+    if (coreLoading || data.trend.rows.length === 0) return undefined;
+    const lastRow = data.trend.rows[data.trend.rows.length - 1];
+    const rawDate = lastRow?.[ANALYSIS_TIME_COLUMN];
+    const date = dayjs(rawDate).format("YYYY-MM-DD");
+    if (!date || date === "Invalid Date") return undefined;
+    const timer = window.setTimeout(() => {
+      prefetchDateDrill(topic, filters, date);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [coreLoading, data.trend.rows, drillMode, filters, topic]);
 
   // Hovering a table row speculatively loads what its click will open: the
   // next hierarchy level, or (inside a date drill) that row's daily view.
@@ -516,24 +558,27 @@ function TopicPageContent({
           : nextDimension
             ? `点击行下钻至 ${nextDimensionLabel}`
             : "当前维度无下级";
-  /** Dimension the chart switches to when a date is clicked. */
-  const dateDrillDimension = nextDimension ?? filters.dimension;
+  /** Dimension the chart shows when a date is clicked (keeps the current one). */
+  const dateDrillDimension = filters.dimension;
   const dateDrillLabel =
     topic.dimensions.find((item) => item.key === dateDrillDimension)?.label ??
     dateDrillDimension;
-  const dateDrillTargetLabel =
-    filters.dimension === ANALYSIS_TIME_COLUMN
-      ? timeDrillTargetLabel
-      : dateDrillLabel;
+  const weekDrillTargetDimension =
+    weeklyDrillDimension(topic) ??
+    (filters.dimension === ANALYSIS_TIME_COLUMN
+      ? nextDimensionAfterDrills
+      : nextDimension) ??
+    filters.dimension;
+  const weekDrillTargetLabel =
+    topic.dimensions.find((item) => item.key === weekDrillTargetDimension)
+      ?.label ?? weekDrillTargetDimension;
   const dateDrillTooltip = weeklyView
-    ? `点击图表中的周柱体：将该周作为筛选条件，并把拆解维度切换为「${dateDrillTargetLabel}」。`
+    ? `点击图表中的周柱体：将该周作为筛选条件，并查看该周按「${weekDrillTargetLabel}」拆解的明细。`
     : filters.dimension === ANALYSIS_TIME_COLUMN
       ? timeDrillTargetLabel
         ? `点击图表中的日期柱体或折线点：将该日作为筛选条件，并把拆解维度切换为「${timeDrillTargetLabel}」。`
         : `当前已是最末级拆解，点击日期不再继续下钻。`
-      : nextDimension
-        ? `点击图表中的日期柱体或折线点：将该日作为筛选条件，并把图表切换为按「${dateDrillLabel}」拆解的下钻视图。`
-        : `点击图表中的日期柱体或折线点：将该日作为筛选条件，并查看当日按「${currentDimensionLabel}」拆解的数据（已属钻取末级）。`;
+      : `点击图表中的日期柱体或折线点：将该日作为筛选条件，并查看当日按「${dateDrillLabel}」拆解的下钻视图。`;
 
   const kpiMetrics = topic.kpis.map((key) => topicMetric(topic, key));
   const totalsRow = data.totals.rows[0] ?? null;
@@ -698,16 +743,31 @@ function TopicPageContent({
               <LinkIcon sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-            onClick={refresh}
-            disabled={loading}
-            sx={{ textTransform: "none" }}
-          >
-            刷新
-          </Button>
+          {topic.backendSql && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<CodeIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setSqlDialogOpen(true)}
+              sx={{ textTransform: "none" }}
+            >
+              查看 SQL
+            </Button>
+          )}
+          {/* Topics whose extra view owns the page refresh from inside that
+              view, so the header button would have nothing to act on. */}
+          {!topic.hiddenSections?.length && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
+              onClick={refresh}
+              disabled={loading}
+              sx={{ textTransform: "none" }}
+            >
+              刷新
+            </Button>
+          )}
         </>
       }
       toolbar={
@@ -715,6 +775,23 @@ function TopicPageContent({
           topic={topic}
           filters={filters}
           onChange={handleFilterChange}
+          extraControls={
+            topic.extra?.type === "project-compare" ? (
+              <ProjectCompareFilterControls
+                filters={filters}
+                onChange={handleFilterChange}
+              />
+            ) : undefined
+          }
+          trailingControls={
+            topic.extra?.type === "project-compare" ? (
+              <ProjectCompareMetricFilter
+                topic={topic}
+                filters={filters}
+                onChange={handleFilterChange}
+              />
+            ) : undefined
+          }
         />
       }
     >
@@ -726,6 +803,12 @@ function TopicPageContent({
           flexDirection: "column",
         }}
       >
+        <AnalysisSqlDialog
+          topic={topic}
+          filters={filters}
+          open={sqlDialogOpen}
+          onClose={() => setSqlDialogOpen(false)}
+        />
         <Box
           sx={{
             position: "relative",
@@ -746,6 +829,13 @@ function TopicPageContent({
                 borderRadius: 1,
               }}
             />
+          )}
+
+          {topic.status === "wip" && (
+            <Alert severity="warning" sx={{ mb: 1.5 }}>
+              该专题未完工：当前仍使用共用数据集（ad_combined_report），尚未迁移到精简
+              SQL；成本分析已完成迁移。
+            </Alert>
           )}
 
           {!loading && sectionError && (
@@ -802,193 +892,216 @@ function TopicPageContent({
             </Box>
           )}
 
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "baseline",
-              justifyContent: "space-between",
-              gap: 1,
-              flexWrap: "wrap",
-              mb: 0.5,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              核心指标
-            </Typography>
+          {showKpis && (
             <Box
               sx={{
                 display: "flex",
                 alignItems: "baseline",
-                gap: { xs: 1, md: 2 },
-                flexWrap: "wrap",
-                rowGap: 0.5,
-              }}
-            >
-              <Tooltip title="核心指标的统计窗口及其等长对比窗口；留存/LTV 专题有观察期，统计窗口会整体前移。趋势图的“趋势对比期”与所选日期等长，逐日对齐到上期同一天。">
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: { xs: 1, md: 2 },
-                    flexWrap: "wrap",
-                    rowGap: 0.5,
-                  }}
-                >
-                  <Typography variant="caption" color="text.secondary">
-                    统计窗口{" "}
-                    <Box
-                      component="span"
-                      sx={{
-                        color: "text.primary",
-                        fontWeight: 600,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {kpiWindowLabel}
-                    </Box>
-                    （{kpiWindowDays} 天）
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    对比窗口{" "}
-                    <Box
-                      component="span"
-                      sx={{
-                        color: "text.primary",
-                        fontWeight: 600,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {kpiComparisonLabel}
-                    </Box>
-                  </Typography>
-                </Box>
-              </Tooltip>
-              {snapshotActive && snapshotGeneratedAt && (
-                <Tooltip
-                  title={`默认视图快照生成于 ${dayjs(snapshotGeneratedAt).format("YYYY-MM-DD HH:mm")}；点击刷新可获取最新数据`}
-                >
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label={`快照 ${dayjs(snapshotGeneratedAt).format("MM-DD HH:mm")}`}
-                    sx={{
-                      height: 20,
-                      color: "text.secondary",
-                      borderColor: "divider",
-                      "& .MuiChip-label": {
-                        px: 0.75,
-                        fontSize: "0.6875rem",
-                        fontVariantNumeric: "tabular-nums",
-                      },
-                    }}
-                  />
-                </Tooltip>
-              )}
-            </Box>
-          </Box>
-
-          <AnalysisKpiCards
-            metrics={kpiMetrics}
-            row={totalsRow}
-            previousRow={previousRow}
-            comparisonRange={kpiComparisonLabel}
-            unavailableMetricKeys={retentionUnavailableKeys}
-            loading={coreLoading && !hasAnyData}
-          />
-
-          <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5, borderRadius: 2 }}>
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
                 justifyContent: "space-between",
                 gap: 1,
                 flexWrap: "wrap",
-                mb: 0.75,
+                mb: 0.5,
               }}
             >
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                核心指标
+              </Typography>
               <Box
                 sx={{
                   display: "flex",
                   alignItems: "baseline",
-                  gap: 1,
-                  minWidth: 0,
+                  gap: { xs: 1, md: 2 },
                   flexWrap: "wrap",
+                  rowGap: 0.5,
                 }}
               >
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  {drillMode ? "下钻" : "趋势"}
-                </Typography>
-                {!drillMode && (
-                  <Tooltip
-                    title={
-                      <Box component="span">
-                        <Box component="span" sx={{ display: "block" }}>
-                          {topic.trend.note ?? "按自然日聚合，随筛选条件变化"}
-                        </Box>
-                        <Box
-                          component="span"
-                          sx={{ display: "block", mt: 0.5 }}
-                        >
-                          {dateDrillTooltip}
-                        </Box>
-                      </Box>
-                    }
+                <Tooltip title="核心指标的统计窗口及其等长对比窗口；留存/LTV 专题有观察期，统计窗口会整体前移。趋势图的“趋势对比期”与所选日期等长，逐日对齐到上期同一天。">
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: { xs: 1, md: 2 },
+                      flexWrap: "wrap",
+                      rowGap: 0.5,
+                    }}
                   >
-                    <InfoOutlinedIcon
+                    <Typography variant="caption" color="text.secondary">
+                      统计窗口{" "}
+                      <Box
+                        component="span"
+                        sx={{
+                          color: "text.primary",
+                          fontWeight: 600,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {kpiWindowLabel}
+                      </Box>
+                      （{kpiWindowDays} 天）
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      对比窗口{" "}
+                      <Box
+                        component="span"
+                        sx={{
+                          color: "text.primary",
+                          fontWeight: 600,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {kpiComparisonLabel}
+                      </Box>
+                    </Typography>
+                  </Box>
+                </Tooltip>
+                {snapshotActive && snapshotGeneratedAt && (
+                  <Tooltip
+                    title={`默认视图快照生成于 ${dayjs(snapshotGeneratedAt).format("YYYY-MM-DD HH:mm")}；点击刷新可获取最新数据`}
+                  >
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={`快照 ${dayjs(snapshotGeneratedAt).format("MM-DD HH:mm")}`}
                       sx={{
-                        fontSize: 15,
-                        color: "text.disabled",
-                        cursor: "help",
+                        height: 20,
+                        color: "text.secondary",
+                        borderColor: "divider",
+                        "& .MuiChip-label": {
+                          px: 0.75,
+                          fontSize: "0.6875rem",
+                          fontVariantNumeric: "tabular-nums",
+                        },
                       }}
                     />
                   </Tooltip>
                 )}
-                {drillMode && (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontVariantNumeric: "tabular-nums" }}
-                  >
-                    {filters.focusDate
-                      ? `${filters.focusDate} · 按 ${currentDimensionLabel} 拆解`
-                      : `周 ${filters.focusWeek} ~ ${dayjs(filters.focusWeek)
-                          .add(6, "day")
-                          .format("MM-DD")} · 按 ${currentDimensionLabel} 拆解`}
-                    {drillDateImmature ? "（观察期内，部分指标未成熟）" : ""}
-                  </Typography>
-                )}
               </Box>
+            </Box>
+          )}
+
+          {showKpis && (
+            <AnalysisKpiCards
+              metrics={kpiMetrics}
+              row={totalsRow}
+              previousRow={previousRow}
+              comparisonRange={kpiComparisonLabel}
+              unavailableMetricKeys={retentionUnavailableKeys}
+              loading={coreLoading && !hasAnyData}
+            />
+          )}
+
+          {showTrend && (
+            <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5, borderRadius: 2 }}>
               <Box
                 sx={{
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "space-between",
                   gap: 1,
                   flexWrap: "wrap",
-                  justifyContent: "flex-end",
+                  mb: 0.75,
                 }}
               >
-                {drillMode ? (
-                  <>
-                    {drillChips}
-                    <Button
-                      size="small"
-                      variant="text"
-                      startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
-                      onClick={clearDrill}
-                      sx={{ textTransform: "none" }}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 1,
+                    minWidth: 0,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    {drillMode ? "下钻" : "趋势"}
+                  </Typography>
+                  {!drillMode && (
+                    <Tooltip
+                      title={
+                        <Box component="span">
+                          <Box component="span" sx={{ display: "block" }}>
+                            {topic.trend.note ?? "按自然日聚合，随筛选条件变化"}
+                          </Box>
+                          <Box
+                            component="span"
+                            sx={{ display: "block", mt: 0.5 }}
+                          >
+                            {dateDrillTooltip}
+                          </Box>
+                        </Box>
+                      }
                     >
-                      返回趋势
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {weeklyView ? (
-                      <Tooltip title="按周日–周六分组；选中区间的首、末周可能不是完整周，需要精确周期时请用日视图或自定义日期">
+                      <InfoOutlinedIcon
+                        sx={{
+                          fontSize: 15,
+                          color: "text.disabled",
+                          cursor: "help",
+                        }}
+                      />
+                    </Tooltip>
+                  )}
+                  {drillMode && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ fontVariantNumeric: "tabular-nums" }}
+                    >
+                      {filters.focusDate
+                        ? `${filters.focusDate} · 按 ${currentDimensionLabel} 拆解`
+                        : `周 ${filters.focusWeek} ~ ${dayjs(filters.focusWeek)
+                            .add(6, "day")
+                            .format(
+                              "MM-DD",
+                            )} · 按 ${currentDimensionLabel} 拆解`}
+                      {drillDateImmature ? "（观察期内，部分指标未成熟）" : ""}
+                    </Typography>
+                  )}
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  {drillMode ? (
+                    <>
+                      {drillChips}
+                      <Button
+                        size="small"
+                        variant="text"
+                        startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
+                        onClick={clearDrill}
+                        sx={{ textTransform: "none" }}
+                      >
+                        返回趋势
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {weeklyView ? (
+                        <Tooltip title="按周日–周六分组；选中区间的首、末周可能不是完整周，需要精确周期时请用日视图或自定义日期">
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label="周视图：周日–周六"
+                            sx={{
+                              height: 20,
+                              color: "text.secondary",
+                              borderColor: "divider",
+                              "& .MuiChip-label": {
+                                px: 0.75,
+                                fontSize: "0.6875rem",
+                              },
+                            }}
+                          />
+                        </Tooltip>
+                      ) : comparePrevious ? (
                         <Chip
                           size="small"
                           variant="outlined"
-                          label="周视图：周日–周六"
+                          label={`趋势对比期 ${trendComparisonLabel}`}
                           sx={{
                             height: 20,
                             color: "text.secondary",
@@ -996,360 +1109,352 @@ function TopicPageContent({
                             "& .MuiChip-label": {
                               px: 0.75,
                               fontSize: "0.6875rem",
+                              fontVariantNumeric: "tabular-nums",
+                            },
+                          }}
+                        />
+                      ) : null}
+                      <Tooltip
+                        title={
+                          weeklyView
+                            ? "周视图下默认不叠加对比曲线：悬停可查看上一周值与周环比；需要叠加时再打开。"
+                            : `对比期 ${trendComparisonLabel}：与所选日期等长，逐日对齐到上期同一天。`
+                        }
+                      >
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              size="small"
+                              checked={comparePrevious}
+                              onChange={(event) =>
+                                setComparePrevious(event.target.checked)
+                              }
+                            />
+                          }
+                          label="对比上期"
+                          sx={{
+                            m: 0,
+                            "& .MuiFormControlLabel-label": {
+                              fontSize: "0.75rem",
                             },
                           }}
                         />
                       </Tooltip>
-                    ) : comparePrevious ? (
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={`趋势对比期 ${trendComparisonLabel}`}
-                        sx={{
-                          height: 20,
-                          color: "text.secondary",
-                          borderColor: "divider",
-                          "& .MuiChip-label": {
-                            px: 0.75,
-                            fontSize: "0.6875rem",
-                            fontVariantNumeric: "tabular-nums",
-                          },
-                        }}
-                      />
-                    ) : null}
-                    <Tooltip
-                      title={
-                        weeklyView
-                          ? "周视图下默认不叠加对比曲线：悬停可查看上一周值与周环比；需要叠加时再打开。"
-                          : `对比期 ${trendComparisonLabel}：与所选日期等长，逐日对齐到上期同一天。`
-                      }
-                    >
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            size="small"
-                            checked={comparePrevious}
-                            onChange={(event) =>
-                              setComparePrevious(event.target.checked)
-                            }
-                          />
+                      <Tooltip
+                        title={
+                          weeklyView
+                            ? "7 日移动平均只适用于按日查看，切换回日视图后可用"
+                            : "虚线 = 前 7 天实际值的移动平均（不含当天）。异常判定就是当天值相对这条均线：既要超过 2.5 倍近期波动，也要超过最小幅度阈值（成本类上涨 ≥20%、下降 ≥40%）"
                         }
-                        label="对比上期"
-                        sx={{
-                          m: 0,
-                          "& .MuiFormControlLabel-label": {
-                            fontSize: "0.75rem",
-                          },
-                        }}
-                      />
-                    </Tooltip>
-                    <Tooltip
-                      title={
-                        weeklyView
-                          ? "7 日移动平均只适用于按日查看，切换回日视图后可用"
-                          : "虚线 = 前 7 天实际值的移动平均（不含当天）。异常判定就是当天值相对这条均线：既要超过 2.5 倍近期波动，也要超过最小幅度阈值（成本类上涨 ≥20%、下降 ≥40%）"
-                      }
-                    >
-                      <FormControlLabel
-                        disabled={weeklyView}
-                        control={
-                          <Switch
-                            size="small"
-                            checked={showBaseline && !weeklyView}
-                            onChange={(event) =>
-                              setShowBaseline(event.target.checked)
-                            }
-                          />
-                        }
-                        label="7日均线"
-                        sx={{
-                          m: 0,
-                          "& .MuiFormControlLabel-label": {
-                            fontSize: "0.75rem",
-                          },
-                        }}
-                      />
-                    </Tooltip>
-                    <Tooltip title="按周日–周六聚合：累加指标取周合计，率值按对应量加权（如 CPA 按新增进入加权）">
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            size="small"
-                            checked={weeklyView}
-                            onChange={(event) => {
-                              setWeeklyView(event.target.checked);
-                              if (event.target.checked) {
-                                compareBeforeWeeklyRef.current =
-                                  comparePrevious;
-                                setShowBaseline(false);
-                                // At weekly granularity the previous-week curve
-                                // mostly duplicates the current one; keep a
-                                // single curve and expose WoW in the tooltip.
-                                setComparePrevious(false);
-                              } else {
-                                // Restore the daily comparison the user had
-                                // before switching to the weekly view.
-                                setComparePrevious(
-                                  compareBeforeWeeklyRef.current,
-                                );
+                      >
+                        <FormControlLabel
+                          disabled={weeklyView}
+                          control={
+                            <Switch
+                              size="small"
+                              checked={showBaseline && !weeklyView}
+                              onChange={(event) =>
+                                setShowBaseline(event.target.checked)
                               }
-                            }}
-                          />
+                            />
+                          }
+                          label="7日均线"
+                          sx={{
+                            m: 0,
+                            "& .MuiFormControlLabel-label": {
+                              fontSize: "0.75rem",
+                            },
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip title="按周日–周六聚合：累加指标取周合计，率值按对应量加权（如 CPA 按新增进入加权）">
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              size="small"
+                              checked={weeklyView}
+                              onChange={(event) => {
+                                setWeeklyView(event.target.checked);
+                                if (event.target.checked) {
+                                  compareBeforeWeeklyRef.current =
+                                    comparePrevious;
+                                  setShowBaseline(false);
+                                  // At weekly granularity the previous-week curve
+                                  // mostly duplicates the current one; keep a
+                                  // single curve and expose WoW in the tooltip.
+                                  setComparePrevious(false);
+                                } else {
+                                  // Restore the daily comparison the user had
+                                  // before switching to the weekly view.
+                                  setComparePrevious(
+                                    compareBeforeWeeklyRef.current,
+                                  );
+                                }
+                              }}
+                            />
+                          }
+                          label="周视图"
+                          sx={{
+                            m: 0,
+                            "& .MuiFormControlLabel-label": {
+                              fontSize: "0.75rem",
+                            },
+                          }}
+                        />
+                      </Tooltip>
+                      <Tooltip
+                        title={
+                          filters.media.length > 0
+                            ? "已手动筛选媒体，该开关不生效"
+                            : "关闭后趋势图排除媒体=自然量的数据；核心指标与明细表不受影响"
                         }
-                        label="周视图"
-                        sx={{
-                          m: 0,
-                          "& .MuiFormControlLabel-label": {
-                            fontSize: "0.75rem",
-                          },
-                        }}
-                      />
-                    </Tooltip>
-                    <Tooltip
-                      title={
-                        filters.media.length > 0
-                          ? "已手动筛选媒体，该开关不生效"
-                          : "关闭后趋势图排除媒体=自然量的数据；核心指标与明细表不受影响"
-                      }
-                    >
-                      <FormControlLabel
-                        disabled={filters.media.length > 0}
-                        control={
-                          <Switch
-                            size="small"
-                            checked={filters.includeNatural !== false}
-                            onChange={(event) =>
-                              updateFilters({
-                                ...filters,
-                                includeNatural: event.target.checked,
-                              })
-                            }
-                          />
-                        }
-                        label="含自然量"
-                        sx={{
-                          m: 0,
-                          "& .MuiFormControlLabel-label": {
-                            fontSize: "0.75rem",
-                          },
-                        }}
-                      />
-                    </Tooltip>
-                  </>
-                )}
-              </Box>
-            </Box>
-            {hasDrill && !drillMode && (
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.75,
-                  flexWrap: "wrap",
-                  mb: 1,
-                  px: 1,
-                  py: 0.5,
-                  borderRadius: 1.5,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  bgcolor: "action.hover",
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{ fontWeight: 700, color: "text.secondary" }}
-                >
-                  下钻路径
-                </Typography>
-                {drillChips}
-                <Typography variant="caption" color="text.disabled">
-                  {filters.focusWeek
-                    ? "已进入该周下钻，按渠道商拆解"
-                    : weeklyView && filters.dimension === ANALYSIS_TIME_COLUMN
-                      ? "已按周展示当前筛选趋势"
-                      : filters.dimension === ANALYSIS_TIME_COLUMN
-                        ? "已切换为按日期查看分天情况"
-                        : "趋势图已按此条件联动"}
-                </Typography>
-                <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
-                  <Button
-                    size="small"
-                    variant="text"
-                    disabled={!deepestDrill}
-                    onClick={() => {
-                      if (!deepestDrill) return;
-                      removeDrill(deepestDrill.key, deepestDrill.value);
-                    }}
-                    sx={{ textTransform: "none" }}
-                  >
-                    返回上一级
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={clearDrill}
-                    sx={{ textTransform: "none" }}
-                  >
-                    清除
-                  </Button>
+                      >
+                        <FormControlLabel
+                          disabled={filters.media.length > 0}
+                          control={
+                            <Switch
+                              size="small"
+                              checked={filters.includeNatural !== false}
+                              onChange={(event) =>
+                                updateFilters({
+                                  ...filters,
+                                  includeNatural: event.target.checked,
+                                })
+                              }
+                            />
+                          }
+                          label="含自然量"
+                          sx={{
+                            m: 0,
+                            "& .MuiFormControlLabel-label": {
+                              fontSize: "0.75rem",
+                            },
+                          }}
+                        />
+                      </Tooltip>
+                    </>
+                  )}
                 </Box>
               </Box>
-            )}
-            {drillMode ? (
-              <AnalysisDrillChart
+              {hasDrill && !drillMode && (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    flexWrap: "wrap",
+                    mb: 1,
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1.5,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{ fontWeight: 700, color: "text.secondary" }}
+                  >
+                    下钻路径
+                  </Typography>
+                  {drillChips}
+                  <Typography variant="caption" color="text.disabled">
+                    {filters.focusWeek
+                      ? "已进入该周下钻，按渠道商拆解"
+                      : weeklyView && filters.dimension === ANALYSIS_TIME_COLUMN
+                        ? "已按周展示当前筛选趋势"
+                        : filters.dimension === ANALYSIS_TIME_COLUMN
+                          ? "已切换为按日期查看分天情况"
+                          : "趋势图已按此条件联动"}
+                  </Typography>
+                  <Box sx={{ ml: "auto", display: "flex", gap: 0.5 }}>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={!deepestDrill}
+                      onClick={() => {
+                        if (!deepestDrill) return;
+                        removeDrill(deepestDrill.key, deepestDrill.value);
+                      }}
+                      sx={{ textTransform: "none" }}
+                    >
+                      返回上一级
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={clearDrill}
+                      sx={{ textTransform: "none" }}
+                    >
+                      清除
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+              {drillMode ? (
+                <AnalysisDrillChart
+                  topic={topic}
+                  rows={data.breakdown.rows}
+                  dimension={filters.dimension}
+                  focusDate={filters.focusDate}
+                  focusWeek={filters.focusWeek}
+                  nextDimensionLabel={dateDrillMode ? nextDimensionLabel : null}
+                  drillHint={
+                    dateDrillMode
+                      ? `查看该${currentDimensionLabel}的分天情况`
+                      : `查看该${currentDimensionLabel}的分周趋势`
+                  }
+                  onDrill={
+                    nextDimension || filters.focusDate || filters.focusWeek
+                      ? (value) => handleDrill(filters.dimension, value)
+                      : undefined
+                  }
+                  anomalies={dateDrillMode ? drillData.anomalies : undefined}
+                  anomalyMetric={dateDrillMode ? drillData.metric : undefined}
+                  anomalyLoading={dateDrillMode ? drillData.loading : false}
+                  anomalyError={dateDrillMode ? drillData.error : null}
+                  loading={breakdownLoading}
+                  height={240}
+                />
+              ) : (
+                <AnalysisTrendChart
+                  topic={topic}
+                  rows={data.trend.rows}
+                  previousRows={data.previousTrend.rows}
+                  showComparison={comparePrevious}
+                  comparisonOffsetDays={comparisonOffsetDays}
+                  onDateClick={
+                    filters.dimension === ANALYSIS_TIME_COLUMN &&
+                    !timeDrillTarget
+                      ? undefined
+                      : handleDateClick
+                  }
+                  onWeekClick={
+                    !filters.focusDate &&
+                    !filters.focusWeek &&
+                    (filters.dimension !== ANALYSIS_TIME_COLUMN ||
+                      Boolean(timeDrillTarget))
+                      ? handleWeekClick
+                      : undefined
+                  }
+                  onDateHover={
+                    filters.dimension === ANALYSIS_TIME_COLUMN
+                      ? undefined
+                      : handleDateHover
+                  }
+                  onAnomalyClick={handleAnomalyClick}
+                  onAnomalyHover={handleAnomalyHover}
+                  hiddenSeriesKeys={
+                    overseasRetentionGap ? retentionUnavailableKeys : undefined
+                  }
+                  dataQualityNote={
+                    overseasRetentionGap
+                      ? "海外平台付费留存明细暂未接入，相关留存曲线已隐藏；表格与 KPI 以「–」展示"
+                      : undefined
+                  }
+                  showRollingBaseline={showBaseline}
+                  weeklyView={weeklyView}
+                  loading={coreLoading && data.trend.rows.length === 0}
+                  height={240}
+                />
+              )}
+            </Paper>
+          )}
+
+          {showTrend && (
+            <AnomalyBreakdownPopover
+              topic={topic}
+              filters={filters}
+              anomaly={anomalyDetail?.anomaly ?? null}
+              date={anomalyDetail?.date ?? null}
+              anchorEl={anomalyDetail?.anchor ?? null}
+              totalsRow={data.totals.rows[0] ?? null}
+              windowLabel={kpiWindowLabel}
+              windowDays={kpiWindowDays}
+              onClose={() => setAnomalyDetail(null)}
+              onDrillDate={(date) => {
+                setAnomalyDetail(null);
+                handleDateClick(date);
+              }}
+            />
+          )}
+
+          {showBreakdown && (
+            <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5, borderRadius: 2 }}>
+              <AnalysisBreakdownTable
                 topic={topic}
                 rows={data.breakdown.rows}
                 dimension={filters.dimension}
-                focusDate={filters.focusDate}
-                focusWeek={filters.focusWeek}
-                nextDimensionLabel={dateDrillMode ? nextDimensionLabel : null}
-                drillHint={
-                  dateDrillMode
-                    ? `查看该${currentDimensionLabel}的分天情况`
-                    : `查看该${currentDimensionLabel}的分周趋势`
+                onDimensionChange={(dimension) =>
+                  updateFilters({ ...filters, dimension })
                 }
                 onDrill={
+                  nextDimension ||
+                  filters.focusDate ||
+                  filters.focusWeek ||
+                  Boolean(timeDrillTarget)
+                    ? handleDrill
+                    : undefined
+                }
+                onRowHover={
                   nextDimension || filters.focusDate || filters.focusWeek
-                    ? (value) => handleDrill(filters.dimension, value)
+                    ? handleRowHover
                     : undefined
                 }
+                drillHint={drillHint}
+                focusDate={filters.focusDate}
+                focusWeek={filters.focusWeek}
                 anomalies={dateDrillMode ? drillData.anomalies : undefined}
+                anomalyMetricLabel={
+                  dateDrillMode ? drillData.metric?.label : undefined
+                }
                 anomalyMetric={dateDrillMode ? drillData.metric : undefined}
-                anomalyLoading={dateDrillMode ? drillData.loading : false}
-                anomalyError={dateDrillMode ? drillData.error : null}
+                unavailableMetricKeys={retentionUnavailableKeys}
+                unavailableAllRows={overseasRetentionGap}
+                unavailableDimensionValues={retentionUnavailableRowValues}
                 loading={breakdownLoading}
-                height={240}
+                height={360}
               />
-            ) : (
-              <AnalysisTrendChart
-                topic={topic}
-                rows={data.trend.rows}
-                previousRows={data.previousTrend.rows}
-                showComparison={comparePrevious}
-                comparisonOffsetDays={comparisonOffsetDays}
-                onDateClick={
-                  filters.dimension === ANALYSIS_TIME_COLUMN && !timeDrillTarget
-                    ? undefined
-                    : handleDateClick
-                }
-                onWeekClick={
-                  !filters.focusDate &&
-                  !filters.focusWeek &&
-                  (filters.dimension !== ANALYSIS_TIME_COLUMN ||
-                    Boolean(timeDrillTarget))
-                    ? handleWeekClick
-                    : undefined
-                }
-                onDateHover={
-                  filters.dimension === ANALYSIS_TIME_COLUMN
-                    ? undefined
-                    : handleDateHover
-                }
-                onAnomalyClick={handleAnomalyClick}
-                onAnomalyHover={handleAnomalyHover}
-                hiddenSeriesKeys={
-                  overseasRetentionGap ? retentionUnavailableKeys : undefined
-                }
-                dataQualityNote={
-                  overseasRetentionGap
-                    ? "海外平台付费留存明细暂未接入，相关留存曲线已隐藏；表格与 KPI 以「–」展示"
-                    : undefined
-                }
-                showRollingBaseline={showBaseline}
-                weeklyView={weeklyView}
-                loading={coreLoading && data.trend.rows.length === 0}
-                height={240}
-              />
-            )}
-          </Paper>
-
-          <AnomalyBreakdownPopover
-            topic={topic}
-            filters={filters}
-            anomaly={anomalyDetail?.anomaly ?? null}
-            date={anomalyDetail?.date ?? null}
-            anchorEl={anomalyDetail?.anchor ?? null}
-            totalsRow={data.totals.rows[0] ?? null}
-            windowLabel={kpiWindowLabel}
-            windowDays={kpiWindowDays}
-            onClose={() => setAnomalyDetail(null)}
-            onDrillDate={(date) => {
-              setAnomalyDetail(null);
-              handleDateClick(date);
-            }}
-          />
-
-          <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5, borderRadius: 2 }}>
-            <AnalysisBreakdownTable
-              topic={topic}
-              rows={data.breakdown.rows}
-              dimension={filters.dimension}
-              onDimensionChange={(dimension) =>
-                updateFilters({ ...filters, dimension })
-              }
-              onDrill={
-                nextDimension ||
-                filters.focusDate ||
-                filters.focusWeek ||
-                Boolean(timeDrillTarget)
-                  ? handleDrill
-                  : undefined
-              }
-              onRowHover={
-                nextDimension || filters.focusDate || filters.focusWeek
-                  ? handleRowHover
-                  : undefined
-              }
-              drillHint={drillHint}
-              focusDate={filters.focusDate}
-              focusWeek={filters.focusWeek}
-              anomalies={dateDrillMode ? drillData.anomalies : undefined}
-              anomalyMetricLabel={
-                dateDrillMode ? drillData.metric?.label : undefined
-              }
-              anomalyMetric={dateDrillMode ? drillData.metric : undefined}
-              unavailableMetricKeys={retentionUnavailableKeys}
-              unavailableAllRows={overseasRetentionGap}
-              unavailableDimensionValues={retentionUnavailableRowValues}
-              loading={breakdownLoading}
-              height={360}
-            />
-          </Paper>
+            </Paper>
+          )}
 
           {topic.extra && (
             <Paper variant="outlined" sx={{ p: 1.5, mt: 1.5, borderRadius: 2 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 1,
-                  minWidth: 0,
-                  mb: 1,
-                }}
-              >
-                <Typography
-                  variant="subtitle2"
-                  sx={{ fontWeight: 700, flexShrink: 0 }}
+              {!topic.extra.hideHeader && (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 1,
+                    minWidth: 0,
+                    mb: 1,
+                  }}
                 >
-                  {topic.extra.title}
-                </Typography>
-                {topic.extra.description && (
-                  <Tooltip title={topic.extra.description}>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{
-                        minWidth: 0,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {topic.extra.description}
-                    </Typography>
-                  </Tooltip>
-                )}
-              </Box>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ fontWeight: 700, flexShrink: 0 }}
+                  >
+                    {topic.extra.title}
+                  </Typography>
+                  {topic.extra.description && (
+                    <Tooltip title={topic.extra.description}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {topic.extra.description}
+                      </Typography>
+                    </Tooltip>
+                  )}
+                </Box>
+              )}
               {topic.extra.type === "retention-matrix" && (
                 <RetentionMatrix
                   topic={topic}
@@ -1373,6 +1478,9 @@ function TopicPageContent({
                   dimension={filters.dimension}
                   loading={breakdownLoading}
                 />
+              )}
+              {topic.extra.type === "project-compare" && (
+                <ProjectCompare topic={topic} filters={filters} />
               )}
             </Paper>
           )}
@@ -1398,8 +1506,13 @@ export default function TopicPage() {
         : null,
     [searchParams, topic],
   );
+  // A topic that hides the standard sections has no KPI/trend/breakdown payload
+  // to snapshot, so it never reads or writes the persisted default view.
   const snapshotEligible = Boolean(
-    topic && filters && isDefaultSnapshotScope(topic, filters),
+    topic &&
+    filters &&
+    !topic.hiddenSections?.length &&
+    isDefaultSnapshotScope(topic, filters),
   );
   const snapshotState = useAnalysisSnapshot(topic?.id, snapshotEligible);
 

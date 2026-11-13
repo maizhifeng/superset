@@ -1,12 +1,15 @@
 import { test, expect } from "vitest";
 import {
   cleanTargets,
+  docFolderPayloadValue,
+  docFolderToken,
   emptyFeishuSettings,
   MAX_FEISHU_TARGETS,
   normalizeSettings,
   outcomeMessage,
   settingsPayload,
   targetLabel,
+  validateDocFolder,
   validateTargets,
   type FeishuTarget,
 } from "@/pages/Briefing/feishu";
@@ -74,6 +77,7 @@ test("settingsPayload sends only the writable fields", () => {
     include_doc: false,
     split_chapters: true,
     targets: [{ receive_id_type: "chat_id", receive_id: " oc_9 " }],
+    doc_folder: "https://acme.feishu.cn/drive/folder/fldcnAbC123",
   });
   expect(payload).toEqual({
     enabled: true,
@@ -82,7 +86,81 @@ test("settingsPayload sends only the writable fields", () => {
     include_doc: false,
     split_chapters: true,
     targets: [{ receive_id_type: "chat_id", receive_id: "oc_9" }],
+    doc_folder: "fldcnAbC123",
   });
+});
+
+test("settingsPayload clears the doc folder with an empty value", () => {
+  const payload = settingsPayload({
+    enabled: false,
+    msg_type: "interactive",
+    include_tables: false,
+    include_doc: true,
+    split_chapters: true,
+    targets: [],
+  });
+  expect(payload.doc_folder).toBe("");
+});
+
+test("normalizeSettings keeps the daily form as the default", () => {
+  const settings = normalizeSettings({});
+  expect(settings.report_type).toBe("daily");
+  expect(settings.weekly_doc_enabled).toBe(false);
+  expect(settings.doc_folder).toBe("");
+  expect(settings.doc_folder_configured).toBe(false);
+});
+
+test("normalizeSettings carries the weekly doc fields", () => {
+  const settings = normalizeSettings({
+    report_type: "weekly",
+    weekly_doc_enabled: true,
+    doc_folder: " fldcnAbC123 ",
+    doc_folder_configured: true,
+  });
+  expect(settings.report_type).toBe("weekly");
+  expect(settings.weekly_doc_enabled).toBe(true);
+  expect(settings.doc_folder).toBe("fldcnAbC123");
+  expect(settings.doc_folder_configured).toBe(true);
+});
+
+test("normalizeSettings derives the weekly flag from an older payload", () => {
+  const settings = normalizeSettings({ report_type: "weekly" });
+  expect(settings.report_type).toBe("weekly");
+  expect(settings.weekly_doc_enabled).toBe(true);
+});
+
+test("normalizeSettings keeps an unknown report type as daily", () => {
+  expect(
+    normalizeSettings({ report_type: "monthly" as never }).report_type,
+  ).toBe("daily");
+});
+
+test("docFolderToken accepts links and bare tokens only", () => {
+  expect(
+    docFolderToken("https://acme.feishu.cn/drive/folder/fldcnAbC123?from=copy"),
+  ).toBe("fldcnAbC123");
+  expect(docFolderToken("  fldcnAbC123  ")).toBe("fldcnAbC123");
+  expect(docFolderToken("")).toBe("");
+  expect(docFolderToken("hello world")).toBe("");
+});
+
+test("validateDocFolder allows empty input and valid folders", () => {
+  expect(validateDocFolder("")).toEqual([]);
+  expect(validateDocFolder("fldcnAbC123")).toEqual([]);
+  expect(
+    validateDocFolder("https://acme.feishu.cn/drive/folder/fldcnAbC123"),
+  ).toEqual([]);
+  expect(validateDocFolder("hello world")).toContain(
+    "文档文件夹需填写飞书文件夹链接（含 /folder/）或文件夹 token",
+  );
+});
+
+test("docFolderPayloadValue canonicalises a pasted link to its token", () => {
+  expect(
+    docFolderPayloadValue(" https://x.feishu.cn/drive/folder/fldcn1 "),
+  ).toBe("fldcn1");
+  expect(docFolderPayloadValue("fldcn1")).toBe("fldcn1");
+  expect(docFolderPayloadValue("")).toBe("");
 });
 
 test("normalizeSettings carries the sub-table switch", () => {

@@ -20,8 +20,14 @@ Owns everything between "a briefing result exists" and "the Feishu channel
 sent it": settings normalization/validation, the frontend deep link used by the
 card button, the dry-run switch, per-target delivery reporting and the
 ``last_push`` record.  The transport and card rendering live in
-``superset.reports.notifications.feishu`` — this module never talks HTTP to
-Feishu directly except to list the groups the bot belongs to.
+``superset.reports.notifications.feishu`` — this module only talks HTTP to
+Feishu to list the groups the bot belongs to and to upload/share the weekly
+HTML report.
+
+Weekly pushes (``report_type == "weekly"``) do not send metric cards: the whole
+report is exported as a self-contained interactive HTML file (charts run in the
+browser) inside the「周报-飞书播报」folder, and every target receives a single
+card that links it.
 
 Settings are stored per briefing configuration (key_value
 ``daily_report_feishu``) rather than inside the report configuration payload, so
@@ -30,7 +36,8 @@ saving the parameter editor cannot drop them:
 .. code-block:: json
 
     {"enabled": true, "msg_type": "interactive", "include_tables": false,
-     "targets": [{"receive_id_type": "chat_id", "receive_id": "oc_xxx"}]}
+     "doc_folder": "", "targets": [{"receive_id_type": "chat_id",
+     "receive_id": "oc_xxx"}]}
 """
 
 from __future__ import annotations
@@ -45,7 +52,10 @@ from uuid import uuid4
 from flask import current_app
 
 from superset.project.briefing.config import normalize_report_type
-from superset.project.briefing.html_export import build_briefing_html
+from superset.project.briefing.html_export import (
+    build_briefing_doc_title,
+    build_briefing_html,
+)
 from superset.reports.models import ReportRecipients, ReportRecipientType
 from superset.reports.notifications.base import NotificationContent
 from superset.reports.notifications.exceptions import (
@@ -53,6 +63,7 @@ from superset.reports.notifications.exceptions import (
     NotificationUnprocessableException,
 )
 from superset.reports.notifications.feishu import (
+    build_briefing_doc_card,
     DEFAULT_MAX_TRIES,
     DEFAULT_MESSAGE_TYPE,
     DEFAULT_RECEIVE_ID_TYPE,
@@ -70,8 +81,8 @@ logger = logging.getLogger(__name__)
 
 # Upper bound of push targets per briefing configuration.
 MAX_TARGETS = 5
-# Publish the complete HTML report as a Feishu document on every push, so the
-# card's 「查看明细」 button has somewhere to go.
+# Publish the complete HTML report as a Feishu Drive file on every daily push,
+# so the card's 「查看明细」 button has somewhere to go.
 DEFAULT_INCLUDE_DOC = True
 # Send one card per chapter (① 核心指标 ② 分天对比 ③ 主游戏 ④ 媒体).
 DEFAULT_SPLIT_CHAPTERS = True
@@ -120,6 +131,40 @@ def clean_receive_id(value: Any) -> str:
     return matches[-1] if matches else raw
 
 
+# Feishu folder links look like ``https://acme.feishu.cn/drive/folder/<token>``
+# (possibly with a query string); the token is the last path segment.  The
+# pattern mirrors the frontend validator, and a bare token is accepted too, so
+# the setting can be filled from either the browser URL or the copied link.
+_DOC_FOLDER_LINK = re.compile(r"/folder/([A-Za-z0-9_-]+)")
+_DOC_FOLDER_TOKEN = re.compile(r"^[A-Za-z0-9_-]{6,}$")
+
+
+def resolve_doc_folder_token(
+    raw: Any,
+    api_base: str = "",
+    headers: dict[str, str] | None = None,
+    timeout: int = 0,
+) -> str:
+    """Resolve a stored folder link/token to a Drive folder token.
+
+    Accepts a Feishu Drive folder URL or a bare folder token and returns ``""``
+    when the value cannot be one (an invalid value makes the settings PUT answer
+    422 instead of storing a folder that a push can never use).  ``api_base``,
+    ``headers`` and ``timeout`` are accepted for signature compatibility with
+    the call sites that may resolve links through the Drive API later.
+    """
+    value = str(raw or "").strip()
+    if not value:
+        return ""
+    match = _DOC_FOLDER_LINK.search(value)
+    if match:
+        return match.group(1)
+    if "://" in value or "/" in value or "?" in value:
+        # Some other URL (a document, a wiki page): not a folder reference.
+        return ""
+    return value if _DOC_FOLDER_TOKEN.fullmatch(value) else ""
+
+
 def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
     """Fold stored/requested settings into the canonical shape.
 
@@ -148,6 +193,9 @@ def normalize_settings(raw: dict[str, Any] | None) -> dict[str, Any]:
         "include_doc": _as_bool(raw.get("include_doc"), DEFAULT_INCLUDE_DOC),
         # One message per chapter by default: each card then has the full 30 KB.
         "split_chapters": _as_bool(raw.get("split_chapters"), DEFAULT_SPLIT_CHAPTERS),
+        # Drive folder the weekly HTML report is uploaded into (token form; empty
+        # = fall back to FEISHU_WEEKLY_DOC_FOLDER_TOKEN, then to a push error).
+        "doc_folder": resolve_doc_folder_token(raw.get("doc_folder")),
         "targets": targets[:MAX_TARGETS],
     }
 
@@ -187,6 +235,12 @@ def validate_settings(raw: dict[str, Any] | None) -> list[str]:
             errors.append(f"第 {index} 个目标不能为空")
     if _as_bool(raw.get("enabled")) and not targets:
         errors.append("启用定时推送前请先配置至少一个目标")
+    raw_folder = raw.get("doc_folder")
+    if raw_folder not in (None, "") and not resolve_doc_folder_token(raw_folder):
+        errors.append(
+            "周报文档文件夹链接无效，请粘贴「周报-飞书播报」文件夹链接"
+            "（…/drive/folder/…）或文件夹 token"
+        )
     return errors
 
 
@@ -194,6 +248,22 @@ def is_enabled(settings: dict[str, Any] | None) -> bool:
     """True when settings ask for scheduled pushes and have a destination."""
     normalized = normalize_settings(settings)
     return bool(normalized["enabled"] and normalized["targets"])
+
+
+def weekly_doc_folder_token(settings: dict[str, Any] | None) -> str:
+    """The Drive folder weekly HTML reports are uploaded into (``""`` when unset).
+
+    Resolution order: the per-configuration folder, then the deployment-wide
+    ``FEISHU_WEEKLY_DOC_FOLDER_TOKEN`` (Flask config first, then the process
+    environment, so docker compose can set it without rebuilding the image).
+    """
+    normalized = normalize_settings(settings)
+    if token := normalized["doc_folder"]:
+        return token
+    configured = current_app.config.get(
+        "FEISHU_WEEKLY_DOC_FOLDER_TOKEN"
+    ) or os.environ.get("FEISHU_WEEKLY_DOC_FOLDER_TOKEN")
+    return resolve_doc_folder_token(configured)
 
 
 # --------------------------------------------------------------------------- #
@@ -249,6 +319,20 @@ def frontend_url(config_id: int) -> str:
     return f"{base.rstrip('/')}/briefing/{config_id}"
 
 
+# A loopback page link only works on the deployment host, so it must never be
+# sent to a chat: the readers of a shared card are on their own machines.
+_LOOPBACK_BASE = re.compile(
+    r"^https?://(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])(?::\d+)?(?:/|$)",
+    re.IGNORECASE,
+)
+
+
+def shareable_frontend_url(config_id: int) -> str:
+    """The briefing page link when chat readers can open it, else ``""``."""
+    url = frontend_url(config_id)
+    return "" if _LOOPBACK_BASE.match(url) else url
+
+
 # --------------------------------------------------------------------------- #
 # Pushing
 # --------------------------------------------------------------------------- #
@@ -272,11 +356,13 @@ def _header_data(config_id: int) -> HeaderDataType:
     }
 
 
-# Feishu rejects an import result document whose title is longer than this.
+# The uploaded HTML file name is the report title, capped so the Drive entry
+# stays readable.
 MAX_DOC_TITLE = 60
-# How long we wait for the HTML → docx import task (seconds).
-IMPORT_TIMEOUT = 60
-IMPORT_POLL_SECONDS = 2
+# A weekly push without a document folder cannot work; say how to fix it.
+MISSING_DOC_FOLDER_ERROR = (
+    "未配置周报文档文件夹，请在飞书推送设置里填写「周报-飞书播报」文件夹链接"
+)
 
 
 def _drive_root_token(api_base: str, headers: dict[str, str], timeout: int) -> str:
@@ -466,14 +552,17 @@ def publish_briefing_doc(
     *,
     title: str,
     targets: list[dict[str, str]] | None = None,
+    folder_token: str | None = None,
 ) -> dict[str, str] | None:
-    """Upload an exported briefing HTML and import it as a Feishu document.
+    """Upload an exported briefing HTML file to Feishu Drive.
 
     Returns ``{"doc_url", "html_url", "doc_token"}`` or ``None`` when the
-    deployment has no Feishu credentials or the tenant refuses the import — the
-    card then simply ships without the 「查看明细」 button.  The uploaded HTML is
-    left in Drive next to the document so the interactive version stays
-    reachable.
+    deployment has no Feishu credentials or the tenant refuses the upload — the
+    card then simply ships without its detail button.  ``folder_token`` picks the
+    Drive folder to upload into (the weekly report folder); ``None`` keeps the
+    historical behaviour of the deployment's export folder / app root, so daily
+    pushes are unchanged.  The uploaded HTML stays in Drive: it is the
+    deliverable itself (it opens in a browser with interactive charts).
     """
     creds = credentials()
     if not creds:
@@ -488,7 +577,7 @@ def publish_briefing_doc(
     file_name = f"{title[:MAX_DOC_TITLE]}.html"
     raw = html_text.encode("utf-8")
     try:
-        folder = _drive_root_token(api_base, headers, timeout)
+        folder = folder_token or _drive_root_token(api_base, headers, timeout)
         import requests  # noqa: PLC0415 - only needed for the multipart upload
 
         uploaded = requests.post(
@@ -507,9 +596,9 @@ def publish_briefing_doc(
         if not file_token:
             logger.warning("简报文档导出失败（上传）：%s", uploaded)
             return None
-        # The HTML file is the 查看明细 target: it opens in the browser with the
-        # interactive charts, so there is no docx import to wait for.  Its
-        # browser URL comes from the Drive metadata (tenant host).
+        # The HTML file is the deliverable (and the 查看明细 target): it opens
+        # in the browser with the interactive charts.  Its browser URL comes
+        # from the Drive metadata (tenant host).
         html_url = _file_browser_url(api_base, headers, timeout, file_token)
         _share_document(
             api_base,
@@ -573,12 +662,18 @@ def _push_outcome(
     error_kind: str | None,
     doc_url: str | None,
     html_url: str | None = None,
+    error: str | None = None,
 ) -> dict[str, Any]:
-    """Fold the per-target results into the recorded push outcome."""
-    ok = all(entry["ok"] for entry in sent)
-    error = None
+    """Fold the per-target results into the recorded push outcome.
+
+    ``error`` records a failure that happened before any card was sent (a
+    missing weekly folder, a failed upload); it always makes
+    the outcome ``ok=False`` even though no target carries a message.
+    """
+    ok = error is None and all(entry["ok"] for entry in sent)
+    message: str | None = None
     if not ok:
-        error = "；".join(
+        message = error or "；".join(
             f"{entry['target']} → {entry['message']}"
             for entry in sent
             if not entry["ok"]
@@ -586,11 +681,10 @@ def _push_outcome(
     return {
         "ok": ok,
         "dry_run": dry,
-        "error": error,
+        "error": message,
         "error_kind": error_kind,
-        # The complete HTML report as a Feishu document (None when the export
-        # failed or was disabled); the card links its 「查看明细」 button here,
-        # plus the raw interactive HTML file kept in Drive.
+        # The complete HTML report as a Feishu Drive file (None when the export
+        # failed or was disabled); the card links its 「查看明细」 button here.
         "doc_url": doc_url,
         "html_url": html_url,
         "sent": sent,
@@ -603,7 +697,7 @@ def _export_detail_doc(
     label: str,
     targets: list[dict[str, str]] | None = None,
 ) -> dict[str, str] | None:
-    """Export the complete HTML report to a Feishu document (best effort)."""
+    """Export the complete HTML report as a Feishu Drive file (best effort)."""
     try:
         report_type = normalize_report_type(result.get("report_type"))
         html_text = build_briefing_html(result, name=label, report_type=report_type)
@@ -616,6 +710,195 @@ def _export_detail_doc(
     except Exception as ex:  # noqa: BLE001 - a failed export never blocks the card
         logger.warning("简报明细文档生成失败：%s", ex)
         return None
+
+
+def _publish_weekly_html(
+    result: dict[str, Any],
+    *,
+    label: str,
+    folder_token: str,
+    targets: list[dict[str, str]],
+) -> dict[str, str] | None:
+    """Render the interactive weekly report and archive it in the weekly folder.
+
+    Uses :func:`build_briefing_html` unchanged, so the file carries every
+    chapter, every detail table and the VChart charts the report page renders —
+    charts stay interactive because the page executes its own JavaScript in the
+    browser.  ``publish_briefing_doc`` uploads it into the weekly folder and
+    shares it with the targets.  The rendered ``html_text`` is returned with the
+    URL so the IM share can reuse it instead of rendering the report twice.
+    """
+    try:
+        html_text = build_briefing_html(result, name=label, report_type="weekly")
+        title = build_briefing_doc_title(result, name=label, report_type="weekly")
+        published = publish_briefing_doc(
+            html_text,
+            title=title,
+            targets=targets,
+            folder_token=folder_token,
+        )
+        if not published:
+            return None
+        return {
+            "html_url": published.get("html_url") or "",
+            "html_text": html_text,
+            "title": title,
+        }
+    except Exception as ex:  # noqa: BLE001 - reported through the outcome
+        logger.warning("周报 HTML 生成失败：%s", ex)
+        return None
+
+
+def _upload_weekly_html_to_im(html_text: str, *, file_name: str) -> str | None:
+    """Upload the weekly HTML to Feishu IM and return the message file's key.
+
+    A ``msg_type="file"`` message references an IM file (``file_key``), not a
+    Drive file; the Feishu client renders it as the native file-share card with
+    a preview/open entry.  The same HTML is therefore uploaded twice on a normal
+    push: once to Drive for archiving and once here for the message.  Failing
+    here is not fatal — the caller falls back to the document share card.
+    """
+    resolved = credentials()
+    if resolved is None:
+        return None
+    app_id, app_secret, api_base, timeout = resolved
+    try:
+        token = tenant_access_token(app_id, app_secret, api_base, timeout)
+        import requests  # noqa: PLC0415 - only needed for the multipart upload
+
+        uploaded = requests.post(
+            f"{api_base}/open-apis/im/v1/files",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"file_type": "stream", "file_name": file_name},
+            files={
+                "file": (
+                    file_name,
+                    html_text.encode("utf-8"),
+                    "text/html",
+                )
+            },
+            timeout=timeout,
+        ).json()
+        file_key = str(((uploaded or {}).get("data") or {}).get("file_key") or "")
+        if not file_key:
+            logger.warning("周报 IM 文件上传失败：%s", uploaded)
+            return None
+        return file_key
+    except Exception as ex:  # noqa: BLE001 - the caller falls back to the card
+        logger.warning("周报 IM 文件上传失败：%s", ex)
+        return None
+
+
+def _push_weekly_doc(
+    config_id: int,
+    result: dict[str, Any],
+    *,
+    kind: str,
+    label: str,
+    normalized: dict[str, Any],
+    dry: bool,
+    tries: int,
+) -> dict[str, Any]:
+    """Weekly push: one interactive HTML report, shared as a native file.
+
+    The report is archived in the weekly Drive folder and also uploaded to IM so
+    every target receives Feishu's native file-share card (the message style the
+    user asked for).  When the IM upload fails the push falls back to the
+    document share card that links the Drive file, and the outcome records which
+    style was used.  Nothing is sent when the folder is missing or the archive
+    upload fails.
+    """
+    folder_token = weekly_doc_folder_token(normalized)
+    if not folder_token:
+        outcome = _push_outcome(
+            [],
+            dry=dry,
+            error_kind="param",
+            doc_url=None,
+            error=MISSING_DOC_FOLDER_ERROR,
+        )
+        _record(config_id, outcome, kind=kind)
+        return outcome
+
+    published = _publish_weekly_html(
+        result,
+        label=label,
+        folder_token=folder_token,
+        targets=normalized["targets"],
+    )
+    html_url = (published or {}).get("html_url") or ""
+    if not html_url:
+        outcome = _push_outcome(
+            [],
+            dry=dry,
+            error_kind="transient",
+            doc_url=None,
+            error=(
+                "周报 HTML 生成失败，请稍后重试或检查飞书应用是否有该文件夹的编辑权限"
+            ),
+        )
+        _record(config_id, outcome, kind=kind)
+        return outcome
+
+    html_text = (published or {}).get("html_text") or ""
+    title = (published or {}).get("title") or label
+    file_name = f"{title[:MAX_DOC_TITLE]}.html"
+    # The native file-share message: FeishuNotification sends one msg_type="file"
+    # message per target and leaves the card pipeline untouched.
+    periodic = shareable_frontend_url(config_id)
+    content = NotificationContent(
+        name=label,
+        header_data=_header_data(config_id),
+        briefing_result=result,
+        url=periodic,
+        description="",
+    )
+    file_key = _upload_weekly_html_to_im(html_text, file_name=file_name)
+    if file_key:
+        message_style = "file"
+        content.briefing_share_file = {"file_key": file_key, "file_name": file_name}
+    else:
+        # Fallback when the IM upload is refused (e.g. missing im:resource
+        # scope): link the archived Drive HTML from the document share card.
+        message_style = "card-fallback"
+        content.briefing_doc_card = build_briefing_doc_card(
+            result,
+            name=label,
+            doc_url=html_url,
+            frontend_url=periodic or None,
+            button_text="查看交互式周报",
+            note="完整周报已生成（HTML 格式，图表可交互，建议在浏览器中打开）。",
+        )
+
+    sent: list[dict[str, Any]] = []
+    error_kind: str | None = None
+    for target in normalized["targets"]:
+        target_label = f"{target['receive_id_type']}:{target['receive_id']}"
+        entry, kind_failed = _send_one(
+            target,
+            content,
+            config_id=config_id,
+            kind=kind,
+            normalized=normalized,
+            label=target_label,
+            tries=tries,
+        )
+        sent.append(entry)
+        error_kind = error_kind or kind_failed
+
+    outcome = _push_outcome(
+        sent,
+        dry=dry,
+        error_kind=error_kind,
+        # ``doc_url`` is what the frontend shows as "last pushed document";
+        # weekly pushes share the interactive HTML file itself.
+        doc_url=html_url,
+        html_url=html_url,
+    )
+    # Which message style was actually delivered, for UI/debugging.
+    outcome["message_style"] = message_style
+    _record(config_id, outcome, kind=kind)
+    return outcome
 
 
 def push_result(
@@ -635,14 +918,17 @@ def push_result(
     .. code-block:: json
 
         {"ok": true, "dry_run": false, "error": null, "error_kind": null,
-         "doc_url": "https://…/docx/…",
+         "doc_url": "https://…/file/…",
          "sent": [{"target": "chat_id:oc_xxx", "ok": true, "message": ""}]}
 
     ``error_kind`` is ``"param"`` for configuration/credential problems and
     ``"transient"`` when Feishu was unavailable, so callers can map it onto an
     HTTP status.  Targets are pushed one by one so a failing destination does
-    not hide the state of the others.  Raises ``NotificationParamException``
-    when there is nothing to push to.
+    not hide the state of the others.  Weekly results take the interactive
+    HTML path (:func:`_push_weekly_doc`) instead of this card loop and add a
+    top-level ``message_style`` (``"file"`` for the native file share,
+    ``"card-fallback"`` when the IM upload was refused).  Raises
+    ``NotificationParamException`` when there is nothing to push to.
     """
     normalized = normalize_settings(
         settings if settings is not None else _load_settings(config_id)
@@ -656,6 +942,19 @@ def push_result(
     dry = scheduled_dry_run() if dry_run is None else dry_run
     tries = max_tries if max_tries is not None else DEFAULT_MAX_TRIES
     label = name or f"简报 #{config_id}"
+    report_type = normalize_report_type((result or {}).get("report_type"))
+    if report_type == "weekly" and not dry:
+        # Weekly pushes own the interactive HTML report and announce it with one
+        # card; daily pushes keep the metric-card pipeline below unchanged.
+        return _push_weekly_doc(
+            config_id,
+            result,
+            kind=kind,
+            label=label,
+            normalized=normalized,
+            dry=dry,
+            tries=tries,
+        )
     # The complete HTML report is exported to a Feishu document first, so the
     # card can offer its 「查看明细」 button.  Best effort: a failing export never
     # blocks the card.
@@ -728,6 +1027,9 @@ def _record(config_id: int, outcome: dict[str, Any], *, kind: str) -> None:
                 "kind": kind,
                 "dry_run": outcome["dry_run"],
                 "message": outcome.get("error") or "",
+                # The document a weekly push created (empty for daily pushes and
+                # failures); the dialog links 「上次推送的文档」 from it.
+                "doc_url": outcome.get("doc_url") or "",
             },
         )
     except Exception:  # noqa: BLE001

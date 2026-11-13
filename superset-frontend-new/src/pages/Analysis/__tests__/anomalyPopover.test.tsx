@@ -9,6 +9,7 @@ const { postChartDataMock } = vi.hoisted(() => ({
 
 vi.mock("@/api/chartData", () => ({
   postChartData: postChartDataMock,
+  postAnalysisChartData: postChartDataMock,
 }));
 
 import AnomalyBreakdownPopover from "@/pages/Analysis/components/AnomalyBreakdownPopover";
@@ -32,14 +33,14 @@ const anomaly: AnalysisAnomaly = {
   text: "10-09 CPA较7日移动平均上升 36.2%",
 };
 
-function historyRows() {
+function historyRows(dimension: string) {
   const rows: Record<string, string | number>[] = [];
   for (let offset = 29; offset >= 0; offset -= 1) {
     const date = dayjs(FOCUS_DATE).subtract(offset, "day").format("YYYY-MM-DD");
     const spike = offset === 0;
     rows.push(
-      { 渠道商: "android", 日期: date, cpa: spike ? 80 : 50 },
-      { 渠道商: "ios", 日期: date, cpa: spike ? 55 : 50 },
+      { [dimension]: "android", 日期: date, cpa: spike ? 80 : 50 },
+      { [dimension]: "ios", 日期: date, cpa: spike ? 55 : 50 },
     );
   }
   return rows;
@@ -48,9 +49,22 @@ function historyRows() {
 beforeEach(() => {
   postChartDataMock.mockReset();
   clearAnalysisQueryCache();
-  postChartDataMock.mockResolvedValue({
-    data: { result: [{ data: historyRows(), colnames: ["渠道商", "日期", "cpa"] }] },
-  });
+  postChartDataMock.mockImplementation(
+    (payload: { queries?: { groupby?: string[] }[] }) => {
+      const groupby = payload.queries?.[0]?.groupby ?? [];
+      const dimension = groupby.find((item) => item !== "日期") ?? "主游戏";
+      return Promise.resolve({
+        data: {
+          result: [
+            {
+              data: historyRows(dimension),
+              colnames: [dimension, "日期", "cpa"],
+            },
+          ],
+        },
+      });
+    },
+  );
 });
 
 test("expands an anomaly into its next-dimension contribution", async () => {
@@ -71,12 +85,12 @@ test("expands an anomaly into its next-dimension contribution", async () => {
   await waitFor(() =>
     expect(screen.getAllByText("android").length).toBeGreaterThan(0),
   );
-  // The trend's next dimension for cost is 渠道商.
-  expect(screen.getByText(/按「渠道商」拆解/)).toBeInTheDocument();
+  // The day drill keeps the dimension the trend is showing (主游戏 for cost).
+  expect(screen.getByText(/按「主游戏」拆解/)).toBeInTheDocument();
   // Current value vs its own rolling baseline is shown per channel.
   expect(
-    screen.getAllByText((content) =>
-      content.includes("当前 80") && content.includes("均线 50"),
+    screen.getAllByText(
+      (content) => content.includes("当前 80") && content.includes("均线 50"),
     ).length,
   ).toBeGreaterThan(0);
   expect(screen.getAllByText("ios").length).toBeGreaterThan(0);
@@ -86,7 +100,7 @@ test("expands an anomaly into its next-dimension contribution", async () => {
   // as nested coloured spans, so assert against the container's text content.
   const summaryHeading = screen.getByText("当前视图总结");
   expect(summaryHeading.parentElement?.textContent).toContain(
-    "从渠道商来看，主要来自",
+    "从主游戏来看，主要来自",
   );
   // The narrative also decomposes 主游戏 / 媒体; 渠道商 reuses the drill query.
   await waitFor(() => expect(postChartDataMock).toHaveBeenCalledTimes(4));

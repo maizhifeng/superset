@@ -26,6 +26,7 @@ import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
 import {
   cleanTargets,
+  docFolderPayloadValue,
   EMPTY_FEISHU_TARGET,
   emptyFeishuSettings,
   FEISHU_TARGET_OPTIONS,
@@ -33,10 +34,12 @@ import {
   normalizeSettings,
   outcomeMessage,
   settingsPayload,
+  validateDocFolder,
   validateTargets,
   type FeishuChat,
   type FeishuMsgType,
   type FeishuOutcome,
+  type FeishuReportType,
   type FeishuSettings,
   type FeishuTarget,
 } from "./feishu";
@@ -67,6 +70,7 @@ export default function FeishuDialog({
   open,
   configId,
   configName,
+  reportType,
   hasResult = false,
   onClose,
   onChanged,
@@ -74,6 +78,12 @@ export default function FeishuDialog({
   open: boolean;
   configId: number;
   configName: string;
+  /**
+   * The briefing's report type.  Weekly briefings only generate a Feishu
+   * document and share a single card, so their form is narrower than a daily
+   * briefing's.  Falls back to the type carried by the settings payload.
+   */
+  reportType?: FeishuReportType;
   /** Whether a generated briefing result exists (enables 立即推送). */
   hasResult?: boolean;
   onClose: () => void;
@@ -86,6 +96,7 @@ export default function FeishuDialog({
   const [includeTables, setIncludeTables] = useState(false);
   const [includeDoc, setIncludeDoc] = useState(true);
   const [splitChapters, setSplitChapters] = useState(true);
+  const [docFolder, setDocFolder] = useState("");
   const [targets, setTargets] = useState<FeishuTarget[]>([]);
   const [chats, setChats] = useState<FeishuChat[]>([]);
   const [loading, setLoading] = useState(false);
@@ -116,6 +127,7 @@ export default function FeishuDialog({
           setIncludeTables(next.include_tables);
           setIncludeDoc(next.include_doc);
           setSplitChapters(next.split_chapters);
+          setDocFolder(next.doc_folder ?? "");
           setTargets(next.targets.length > 0 ? next.targets : []);
         }
         if (next.app_configured) {
@@ -143,26 +155,52 @@ export default function FeishuDialog({
     if (open) void load({ resetForm: true });
   }, [open, load]);
 
-  const dirty = useMemo(() => {
-    const saved = settingsPayload(settings);
-    const current = settingsPayload({
+  // Weekly briefings push one Feishu document instead of metric cards, so the
+  // dialog only exposes the doc folder, the targets and the switches that
+  // still apply.  The API payload wins when the caller does not say.
+  const weekly =
+    reportType !== undefined
+      ? reportType === "weekly"
+      : settings.report_type === "weekly" || !!settings.weekly_doc_enabled;
+
+  const docFolderErrors = useMemo(
+    () => (weekly ? validateDocFolder(docFolder) : []),
+    [weekly, docFolder],
+  );
+
+  /** Whether a folder is in use already (saved value or valid unsaved edit). */
+  const docFolderConfigured =
+    !!settings.doc_folder_configured ||
+    (!!docFolder.trim() && docFolderErrors.length === 0);
+
+  /** The writable form state, canonicalised exactly like the save payload. */
+  const formPayload = useMemo(
+    () =>
+      settingsPayload({
+        enabled,
+        msg_type: msgType,
+        include_tables: includeTables,
+        include_doc: includeDoc,
+        split_chapters: splitChapters,
+        targets,
+        doc_folder: docFolder,
+      }),
+    [
       enabled,
-      msg_type: msgType,
-      include_tables: includeTables,
-      include_doc: includeDoc,
-      split_chapters: splitChapters,
+      msgType,
+      includeTables,
+      includeDoc,
+      splitChapters,
       targets,
-    });
-    return JSON.stringify(saved) !== JSON.stringify(current);
-  }, [
-    settings,
-    enabled,
-    msgType,
-    includeTables,
-    includeDoc,
-    splitChapters,
-    targets,
-  ]);
+      docFolder,
+    ],
+  );
+
+  const dirty = useMemo(
+    () =>
+      JSON.stringify(settingsPayload(settings)) !== JSON.stringify(formPayload),
+    [settings, formPayload],
+  );
 
   const updateTarget = (index: number, patch: Partial<FeishuTarget>) => {
     setTargets((prev) =>
@@ -171,7 +209,7 @@ export default function FeishuDialog({
   };
 
   const handleTest = async () => {
-    const errors = validateTargets(targets);
+    const errors = [...validateTargets(targets), ...docFolderErrors];
     if (errors.length > 0) {
       notify({ severity: "warning", message: errors.join("；") });
       return;
@@ -186,6 +224,9 @@ export default function FeishuDialog({
           include_doc: includeDoc,
           split_chapters: splitChapters,
           targets: cleanTargets(targets),
+          // The test push shows exactly what the scheduled push would send,
+          // so the folder being edited travels with it.
+          ...(weekly ? { doc_folder: docFolderPayloadValue(docFolder) } : {}),
         },
       );
       const outcome = res.data.result;
@@ -226,21 +267,14 @@ export default function FeishuDialog({
   };
 
   const handleSave = async () => {
-    const errors = validateTargets(targets, enabled);
+    const errors = [...validateTargets(targets, enabled), ...docFolderErrors];
     if (errors.length > 0) {
       notify({ severity: "warning", message: errors.join("；") });
       return;
     }
     setSaving(true);
     try {
-      await api.put(`/briefing/configs/${configId}/feishu`, {
-        enabled,
-        msg_type: msgType,
-        include_tables: includeTables,
-        include_doc: includeDoc,
-        split_chapters: splitChapters,
-        targets: cleanTargets(targets),
-      });
+      await api.put(`/briefing/configs/${configId}/feishu`, formPayload);
       notify({ severity: "success", message: "飞书推送设置已保存" });
       onChanged?.();
       onClose();
@@ -295,7 +329,9 @@ export default function FeishuDialog({
           </Alert>
         ) : (
           <Alert severity="info" sx={{ mb: 1.5 }}>
-            定时任务执行完成后会自动推送卡片；「启用」只控制定时推送，测试与手动推送始终可用。
+            {weekly
+              ? "定时任务执行完成后会自动生成并推送周报文档；「启用」只控制定时推送，测试与手动推送始终可用。"
+              : "定时任务执行完成后会自动推送卡片；「启用」只控制定时推送，测试与手动推送始终可用。"}
           </Alert>
         )}
 
@@ -323,6 +359,13 @@ export default function FeishuDialog({
           </Alert>
         )}
 
+        {weekly && (
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            周报推送会生成可交互的完整 HTML
+            周报（全部章节、明细表与交互图表），保存到「周报-飞书播报」文件夹，并以飞书文件分享的形式发送到目标会话——在飞书里预览/下载后用浏览器打开即可查看交互图表。
+          </Alert>
+        )}
+
         <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 1 }}>
           <FormControlLabel
             control={
@@ -342,60 +385,102 @@ export default function FeishuDialog({
           )}
         </Box>
 
-        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          消息形态
-        </Typography>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={msgType}
-          onChange={(_, v: FeishuMsgType | null) => {
-            if (v !== null) setMsgType(v);
-          }}
-          sx={{ mb: 2 }}
-        >
-          <ToggleButton value="interactive" sx={{ textTransform: "none" }}>
-            交互卡片
-          </ToggleButton>
-          <ToggleButton value="text" sx={{ textTransform: "none" }}>
-            纯文本摘要
-          </ToggleButton>
-        </ToggleButtonGroup>
+        {weekly ? (
+          <>
+            <Box
+              sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}
+            >
+              <Typography variant="subtitle2">文档文件夹</Typography>
+              <Chip
+                size="small"
+                variant="outlined"
+                color={docFolderConfigured ? "success" : "warning"}
+                label={docFolderConfigured ? "已配置" : "未配置"}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              size="small"
+              label="飞书文件夹链接或 token"
+              placeholder="https://xxx.feishu.cn/drive/folder/… 或文件夹 token"
+              value={docFolder}
+              onChange={(e) => setDocFolder(e.target.value)}
+              error={docFolderErrors.length > 0}
+              helperText={
+                docFolderErrors[0] ??
+                (docFolder.trim()
+                  ? "保存时会从链接中提取文件夹 token；机器人需拥有该文件夹的编辑权限"
+                  : settings.doc_folder_configured
+                    ? "已配置默认文件夹；留空沿用默认，填写后改用指定文件夹"
+                    : "粘贴「周报-飞书播报」文件夹链接或 token")
+              }
+              sx={{ mb: 1.5 }}
+            />
+            {!docFolderConfigured && (
+              <Alert severity="warning" sx={{ mb: 1.5 }}>
+                未配置周报文档文件夹：周报推送不会发送任何消息，请填写「周报-飞书播报」文件夹链接。
+              </Alert>
+            )}
+          </>
+        ) : (
+          <>
+            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+              消息形态
+            </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={msgType}
+              onChange={(_, v: FeishuMsgType | null) => {
+                if (v !== null) setMsgType(v);
+              }}
+              sx={{ mb: 2 }}
+            >
+              <ToggleButton value="interactive" sx={{ textTransform: "none" }}>
+                交互卡片
+              </ToggleButton>
+              <ToggleButton value="text" sx={{ textTransform: "none" }}>
+                纯文本摘要
+              </ToggleButton>
+            </ToggleButtonGroup>
 
-        <FormControlLabel
-          control={
-            <Switch
-              checked={includeTables}
-              onChange={(e) => setIncludeTables(e.target.checked)}
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={includeTables}
+                  onChange={(e) => setIncludeTables(e.target.checked)}
+                />
+              }
+              label="推送子表格（明细表）"
+              sx={{ display: "flex", mb: 0.5 }}
             />
-          }
-          label="推送子表格（明细表）"
-          sx={{ display: "flex", mb: 0.5 }}
-        />
-        <Typography
-          variant="caption"
-          sx={{ color: "text.secondary", display: "block", mb: 1.5 }}
-        >
-          关闭时只推送各章节的指标与图表；开启后附带平台拆分、分天明细、主游戏与媒体明细表
-          （卡片有 30KB 上限，超限时自动裁剪表格行数并在推送结果里说明）。
-        </Typography>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={includeDoc}
-              onChange={(e) => setIncludeDoc(e.target.checked)}
+            <Typography
+              variant="caption"
+              sx={{ color: "text.secondary", display: "block", mb: 1.5 }}
+            >
+              关闭时只推送各章节的指标与图表；开启后附带平台拆分、分天明细、主游戏与媒体明细表
+              （卡片有 30KB 上限，超限时自动裁剪表格行数并在推送结果里说明）。
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={includeDoc}
+                  onChange={(e) => setIncludeDoc(e.target.checked)}
+                />
+              }
+              label="生成「查看明细」飞书文档"
+              sx={{ display: "flex", mb: 0.5 }}
             />
-          }
-          label="生成「查看明细」飞书文档"
-          sx={{ display: "flex", mb: 0.5 }}
-        />
-        <Typography
-          variant="caption"
-          sx={{ color: "text.secondary", display: "block", mb: 1.5 }}
-        >
-          每次推送会把完整 HTML 简报（全部章节、全量明细表、可交互图表）导出成飞书云文档，
-          卡片底部出现「查看明细」按钮直达该文档。
-        </Typography>
+            <Typography
+              variant="caption"
+              sx={{ color: "text.secondary", display: "block", mb: 1.5 }}
+            >
+              每次推送会把完整 HTML
+              简报（全部章节、全量明细表、可交互图表）导出成飞书云文档，
+              卡片底部出现「查看明细」按钮直达该文档。
+            </Typography>
+          </>
+        )}
 
         <Divider sx={{ mb: 1.5 }} />
 
@@ -487,7 +572,9 @@ export default function FeishuDialog({
                   }
                   onChange={(_event, value) =>
                     updateTarget(index, {
-                      receive_id: normalizeChatId(typeof value === "string" ? value : ""),
+                      receive_id: normalizeChatId(
+                        typeof value === "string" ? value : "",
+                      ),
                     })
                   }
                   noOptionsText="没有匹配的群，可直接输入 chat_id"
@@ -555,7 +642,7 @@ export default function FeishuDialog({
         {lastPush?.doc_url && (
           <Typography variant="caption" sx={{ display: "block", mt: 0.5 }}>
             <Link href={lastPush.doc_url} target="_blank" rel="noopener">
-              查看最近一次的完整明细文档
+              {weekly ? "查看上次生成的交互周报" : "查看最近一次的完整明细文档"}
             </Link>
             {lastPush.html_url && (
               <>

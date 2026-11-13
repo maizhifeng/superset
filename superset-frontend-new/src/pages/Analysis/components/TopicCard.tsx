@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { alpha, type Theme } from "@mui/material/styles";
@@ -17,6 +18,7 @@ const CORE_METRIC_COUNT = 3;
  */
 const TOPIC_HIGHLIGHTS: Record<string, string[]> = {
   cost: ["spend", "newUsers", "cpa"],
+  "project-compare": ["spend", "cpa", "ltvCum"],
   retention: ["newUsers", "retention2", "paidRetention7"],
   "ltv-roi": ["ltv_7", "roi_7", "cumulativeRoi"],
   payment: ["revenue", "payRate1", "activePayers"],
@@ -61,7 +63,11 @@ export default function TopicCard({
   recent = false,
 }: TopicCardProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+    if (
+      event.key === "Enter" ||
+      event.key === " " ||
+      event.key === "Spacebar"
+    ) {
       event.preventDefault();
       onClick();
     }
@@ -123,6 +129,21 @@ export default function TopicCard({
             </Typography>
           ) : null}
         </Box>
+        {topic.status === "wip" && (
+          <Tooltip title="尚未迁移到专题精简 SQL，当前仍使用共用数据集">
+            <Chip
+              label="未完工"
+              size="small"
+              color="warning"
+              variant="outlined"
+              sx={{
+                height: 20,
+                flexShrink: 0,
+                "& .MuiChip-label": { px: 0.75, fontSize: "0.6875rem" },
+              }}
+            />
+          </Tooltip>
+        )}
         {recent && (
           <Box
             sx={{

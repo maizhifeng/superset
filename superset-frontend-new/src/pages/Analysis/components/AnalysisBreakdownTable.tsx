@@ -12,6 +12,7 @@ import MenuItem from "@mui/material/MenuItem";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import { alpha, useTheme } from "@mui/material/styles";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import DeltaArrow from "./DeltaArrow";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -24,6 +25,7 @@ import { downloadCsv } from "@/utils/exportCsv";
 import type { DrillAnomaly } from "../anomalies";
 import { formatFullDay, formatMetricValue, toNumber } from "../format";
 import { ANALYSIS_TIME_COLUMN, topicMetric } from "../topics";
+import AnalysisGestureGuide from "./AnalysisGestureGuide";
 import type { AnalysisMetric, AnalysisTopic } from "../types";
 
 interface TableRow {
@@ -77,6 +79,9 @@ export default function AnalysisBreakdownTable({
   loading: boolean;
   height?: number;
 }) {
+  const theme = useTheme();
+  const guideRowBackground = alpha(theme.palette.primary.main, 0.12);
+  const guideRowBackgroundPulse = alpha(theme.palette.primary.main, 0.2);
   const isTimeDimension = dimension === ANALYSIS_TIME_COLUMN;
   const dimensionLabel = isTimeDimension
     ? ANALYSIS_TIME_COLUMN
@@ -88,7 +93,7 @@ export default function AnalysisBreakdownTable({
   // Mirror the DataGrid sort state so the caption can name the active sort.
   const [sortModel, setSortModel] = useState<GridSortModel>([
     isTimeDimension
-      ? { field: "__dimension", sort: "asc" }
+      ? { field: "__dimension", sort: "desc" }
       : { field: orderByKey, sort: "desc" },
   ]);
 
@@ -98,7 +103,7 @@ export default function AnalysisBreakdownTable({
     setSortModel([
       {
         field: isTimeDimension ? "__dimension" : orderByKey,
-        sort: isTimeDimension ? "asc" : "desc",
+        sort: "desc",
       },
     ]);
   }, [isTimeDimension, orderByKey]);
@@ -182,13 +187,66 @@ export default function AnalysisBreakdownTable({
       return result;
     });
     // The grid is uncontrolled, so the query's metric order would otherwise
-    // decide the display order; date rows must read chronologically.
+    // decide the display order; date rows must read newest first.
     return isTimeDimension
       ? [...mapped].sort((left, right) =>
-          String(left.__dimension).localeCompare(String(right.__dimension)),
+          String(right.__dimension).localeCompare(String(left.__dimension)),
         )
       : mapped;
   }, [anomalies, dimension, displayRows, isTimeDimension, topic]);
+
+  const gridContainerRef = useRef<HTMLDivElement | null>(null);
+  const [tableGuideAnchor, setTableGuideAnchor] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const [guideRowId, setGuideRowId] = useState<string | null>(null);
+  // The one-time tap hand points at the first row it refers to: the anomaly
+  // chip in drill mode, otherwise the first clickable dimension row.  The
+  // position is measured from the rendered grid so it lands on the row instead
+  // of floating at a cell edge (and it is not clipped by the grid cells).
+  useEffect(() => {
+    const wantsGuide = Boolean(onDrill) || Boolean(anomalies);
+    if (!wantsGuide || loading || tableRows.length === 0) {
+      setTableGuideAnchor(null);
+      setGuideRowId(null);
+      return undefined;
+    }
+    let frame = 0;
+    frame = requestAnimationFrame(() => {
+      const container = gridContainerRef.current;
+      if (!container) {
+        setTableGuideAnchor(null);
+        setGuideRowId(null);
+        return;
+      }
+      const cell = container.querySelector(
+        '.MuiDataGrid-row .MuiDataGrid-cell[data-field="__dimension"]',
+      );
+      if (!cell) {
+        setTableGuideAnchor(null);
+        setGuideRowId(null);
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      if (!containerRect.width || !cellRect.width || !cellRect.height) {
+        setTableGuideAnchor(null);
+        setGuideRowId(null);
+        return;
+      }
+      const rowElement = cell.closest(".MuiDataGrid-row");
+      setGuideRowId(rowElement?.getAttribute("data-id") ?? null);
+      setTableGuideAnchor({
+        left:
+          cellRect.right -
+          containerRect.left -
+          Math.min(28, cellRect.width / 2),
+        top: cellRect.top - containerRect.top + cellRect.height / 2,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anomalies, loading, onDrill, sortModel, tableRows]);
 
   const rowValueById = useMemo(
     () => new Map(tableRows.map((row) => [row.__id, row.__dimension])),
@@ -574,6 +632,7 @@ export default function AnalysisBreakdownTable({
             onChange={(event) => onDimensionChange(event.target.value)}
             sx={{ minWidth: 150 }}
           >
+            <MenuItem value={ANALYSIS_TIME_COLUMN}>日期</MenuItem>
             {topic.dimensions.map((item) => (
               <MenuItem key={item.key} value={item.key}>
                 {item.label}
@@ -600,6 +659,7 @@ export default function AnalysisBreakdownTable({
         </Box>
       ) : (
         <Box
+          ref={gridContainerRef}
           sx={{ position: "relative", height }}
           onMouseOver={scheduleRowHover}
         >
@@ -611,6 +671,9 @@ export default function AnalysisBreakdownTable({
             density="compact"
             loading={loading}
             getRowId={(row) => row.__id}
+            getRowClassName={(params) =>
+              params.id === guideRowId ? "analysis-guide-row" : ""
+            }
             disableRowSelectionOnClick
             onRowClick={
               onDrill
@@ -644,13 +707,37 @@ export default function AnalysisBreakdownTable({
               "& .MuiDataGrid-row": {
                 cursor: onDrill ? "pointer" : "default",
               },
+              // The one-time gesture highlights the row it points at.
+              "& .MuiDataGrid-row.analysis-guide-row": {
+                backgroundColor: guideRowBackground,
+                animation: "analysisGuideRow 1.6s ease-in-out infinite",
+              },
+              "@keyframes analysisGuideRow": {
+                "0%, 100%": { backgroundColor: guideRowBackground },
+                "50%": { backgroundColor: guideRowBackgroundPulse },
+              },
             }}
             initialState={{
               pagination: { paginationModel: { page: 0, pageSize: 25 } },
               sorting: {
-                sortModel: [{ field: orderByKey, sort: "desc" }],
+                sortModel: [
+                  {
+                    field: isTimeDimension ? "__dimension" : orderByKey,
+                    sort: "desc",
+                  },
+                ],
               },
             }}
+          />
+          <AnalysisGestureGuide
+            storageKey="analysis-gesture-guide-table-v1"
+            anchor={tableGuideAnchor}
+            ariaLabel={
+              anomalies
+                ? "点击异常标记可查看该维度的分天趋势"
+                : "点击该行可下钻查看明细"
+            }
+            onDismiss={() => setGuideRowId(null)}
           />
         </Box>
       )}

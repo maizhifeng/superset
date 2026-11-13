@@ -67,19 +67,27 @@ export function drillTargetLabel(
 }
 
 /**
- * Enter drill mode from a trend-chart date: apply that single day and move one
- * level down the topic hierarchy (time → next dimension).  When the current
- * dimension is already the last level, the chart stays on it and only the date
- * becomes the active drill context.
+ * Enter drill mode from a trend-chart date.
+ *
+ * The day becomes the active filter.  From a category view the chart keeps the
+ * dimension already displayed (cost: 主游戏); from the date view it opens the
+ * first hierarchy level above the time axis (主游戏), so anomaly attribution
+ * and prefetching always land on a category dimension.
  */
 export function enterDateDrill(
   topic: AnalysisTopic,
   filters: AnalysisFilters,
   date: string,
 ): AnalysisFilters {
-  const target =
-    nextDrillDimension(topic, filters.dimension) ?? filters.dimension;
-  return { ...filters, focusDate: date, dimension: target };
+  if (filters.dimension !== ANALYSIS_TIME_COLUMN) {
+    return { ...filters, focusDate: date };
+  }
+  const next = nextDimensionAfterDrills(topic, filters);
+  return {
+    ...filters,
+    focusDate: date,
+    dimension: next ?? filters.dimension,
+  };
 }
 
 /**

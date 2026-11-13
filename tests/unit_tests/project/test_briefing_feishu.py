@@ -47,7 +47,7 @@ def stub_doc_export(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         briefing_feishu,
         "publish_briefing_doc",
-        lambda html, *, title, targets=None: {
+        lambda html, *, title, targets=None, folder_token=None: {
             "doc_url": "",
             "html_url": "https://example.feishu.cn/file/StubFile",
             "doc_token": "StubFile",
@@ -230,6 +230,26 @@ def test_frontend_url_prefers_dedicated_base(app: Any) -> None:
     app.config["BRIEFING_FRONTEND_BASE_URL"] = ""
     app.config["WEBDRIVER_BASEURL_USER_FRIENDLY"] = "http://superset.example.com/"
     assert briefing_feishu.frontend_url(7) == "http://superset.example.com/briefing/7"
+
+
+def test_shareable_frontend_url_drops_loopback_hosts(app: Any) -> None:
+    """A shared card must not carry a page link only the host can open."""
+    app.config["WEBDRIVER_BASEURL_USER_FRIENDLY"] = ""
+    for base in (
+        "http://localhost:9000",
+        "http://127.0.0.1:9000",
+        "http://0.0.0.0:9000",
+        "https://localhost",
+        "http://localhost:9000/",
+    ):
+        app.config["BRIEFING_FRONTEND_BASE_URL"] = base
+        assert briefing_feishu.shareable_frontend_url(7) == "", base
+    app.config["BRIEFING_FRONTEND_BASE_URL"] = "https://bi.example.com/"
+    assert (
+        briefing_feishu.shareable_frontend_url(7) == "https://bi.example.com/briefing/7"
+    )
+    app.config["BRIEFING_FRONTEND_BASE_URL"] = ""
+    assert briefing_feishu.shareable_frontend_url(7) == ""
 
 
 # --------------------------------------------------------------------------- #
@@ -782,3 +802,575 @@ def test_group_member_lookup_failure_is_not_fatal(
         "FileToken",
         [{"receive_id_type": "chat_id", "receive_id": "oc_group"}],
     )
+
+
+# --------------------------------------------------------------------------- #
+# Weekly HTML pipeline (interactive HTML file in the weekly folder)
+# --------------------------------------------------------------------------- #
+
+WEEKLY_RESULT: dict[str, Any] = {
+    "report_type": "weekly",
+    "report_date": "2026-08-29",
+    "period_start": "2026-08-23",
+    "period_end": "2026-08-29",
+    "previous_period_start": "2026-08-16",
+    "previous_period_end": "2026-08-22",
+    "generated_at": "2026-08-30 01:00:50",
+    "core": {"spend": 591567.48, "new_users": 40518, "ROI1": 0.152},
+    "core_previous": {"spend": 400000.0},
+    "thresholds": {"default_breakeven_line": 0.1, "roi_critical_line": 0.05},
+    "daily": [
+        {
+            "date": "2026-08-23",
+            "label": "2026-08-23 ~ 2026-08-29",
+            "spend": 42400,
+            "new_users": 39125,
+            "recharge": 1627000,
+            "roi1": 0.355,
+            "roi_cum": 0.61,
+        },
+        {
+            "date": "2026-08-29",
+            "label": "2026-08-29 ~ 2026-08-29",
+            "spend": 59156.748,
+            "new_users": 40518,
+            "recharge": 1367042.7,
+            "roi1": 0.152,
+            "roi_cum": 0.18,
+        },
+    ],
+    "platforms": [
+        {"platform": "mobile", "spend": 101600, "new_users": 48950, "roi1": 0.158}
+    ],
+    "projects": [
+        {
+            "project": "游戏A",
+            "channel": "android",
+            "spend": 106100,
+            "new_users": 26660,
+            "roi1": 0.062,
+        }
+    ],
+    "media": [
+        {
+            "channel": "今日头条",
+            "spend": 170200,
+            "new_users": 45710,
+            "roi1": 0.127,
+        }
+    ],
+    "alerts": [],
+    "empty": False,
+}
+
+FOLDER_LINK = "https://acme.feishu.cn/drive/folder/FldWeeklyDocToken0123456789"
+FOLDER_TOKEN = "FldWeeklyDocToken0123456789"  # noqa: S105
+HTML_URL = "https://acme.feishu.cn/file/File1"
+
+
+def _no_deployment_folder(app: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the deployment default empty so only settings can configure it."""
+    app.config["FEISHU_WEEKLY_DOC_FOLDER_TOKEN"] = ""
+    monkeypatch.delenv("FEISHU_WEEKLY_DOC_FOLDER_TOKEN", raising=False)
+
+
+def _stub_weekly_push(
+    monkeypatch: pytest.MonkeyPatch, *, im_file_key: str | None = "file_v3_key_1"
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Stub the Drive archive upload and the IM file upload.
+
+    Returns the captured ``publish_briefing_doc`` / ``_upload_weekly_html_to_im``
+    calls; ``im_file_key=None`` simulates a refused IM upload (card fallback).
+    """
+    uploads: list[dict[str, Any]] = []
+
+    def fake_publish(
+        html_text: str,
+        *,
+        title: str,
+        targets: Any = None,
+        folder_token: str | None = None,
+    ) -> dict[str, str]:
+        uploads.append(
+            {
+                "html": html_text,
+                "title": title,
+                "targets": targets,
+                "folder_token": folder_token,
+            }
+        )
+        return {"doc_url": "", "html_url": HTML_URL, "doc_token": "File1"}
+
+    im_uploads: list[dict[str, Any]] = []
+
+    def fake_im_upload(html_text: str, *, file_name: str) -> str | None:
+        im_uploads.append({"html": html_text, "file_name": file_name})
+        return im_file_key
+
+    monkeypatch.setattr(briefing_feishu, "publish_briefing_doc", fake_publish)
+    monkeypatch.setattr(briefing_feishu, "_upload_weekly_html_to_im", fake_im_upload)
+    return uploads, im_uploads
+
+
+def _card_button(card: dict[str, Any]) -> dict[str, Any]:
+    """The action button of a doc-share card (the card has exactly one)."""
+    return next(
+        element
+        for element in card["body"]["elements"]
+        if element.get("tag") == "button"
+    )
+
+
+def test_resolve_doc_folder_token_accepts_links_and_tokens() -> None:
+    assert briefing_feishu.resolve_doc_folder_token(FOLDER_LINK) == FOLDER_TOKEN
+    assert (
+        briefing_feishu.resolve_doc_folder_token(FOLDER_LINK + "?from=drive")
+        == FOLDER_TOKEN
+    )
+    assert briefing_feishu.resolve_doc_folder_token(FOLDER_TOKEN) == FOLDER_TOKEN
+    assert briefing_feishu.resolve_doc_folder_token("  ") == ""
+    # Other Feishu objects are not folders.
+    assert (
+        briefing_feishu.resolve_doc_folder_token(
+            "https://acme.feishu.cn/docx/doxcnAbcdefg"
+        )
+        == ""
+    )
+    assert briefing_feishu.resolve_doc_folder_token("not a folder") == ""
+    assert briefing_feishu.resolve_doc_folder_token("short") == ""
+
+
+def test_normalize_settings_extracts_the_weekly_folder_token() -> None:
+    assert (
+        briefing_feishu.normalize_settings({"doc_folder": FOLDER_LINK})["doc_folder"]
+        == FOLDER_TOKEN
+    )
+    assert briefing_feishu.normalize_settings({})["doc_folder"] == ""
+
+
+def test_validate_settings_rejects_an_invalid_weekly_folder() -> None:
+    errors = briefing_feishu.validate_settings(
+        {"doc_folder": "https://acme.feishu.cn/docx/doxcnAbcdefg"}
+    )
+    assert errors
+    assert "周报文档文件夹" in errors[0]
+    assert (
+        briefing_feishu.validate_settings(
+            {
+                "doc_folder": FOLDER_LINK,
+                "targets": [{"receive_id_type": "chat_id", "receive_id": "oc_1"}],
+            }
+        )
+        == []
+    )
+
+
+def test_weekly_doc_folder_token_settings_beat_the_deployment(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.config["FEISHU_WEEKLY_DOC_FOLDER_TOKEN"] = "fldDeployment1"  # noqa: S105
+    monkeypatch.delenv("FEISHU_WEEKLY_DOC_FOLDER_TOKEN", raising=False)
+    assert briefing_feishu.weekly_doc_folder_token({}) == "fldDeployment1"
+    assert (
+        briefing_feishu.weekly_doc_folder_token(
+            {"doc_folder": "https://acme.feishu.cn/drive/folder/fldConfigured1"}
+        )
+        == "fldConfigured1"
+    )
+    app.config["FEISHU_WEEKLY_DOC_FOLDER_TOKEN"] = ""
+    assert briefing_feishu.weekly_doc_folder_token({}) == ""
+
+
+def test_publish_briefing_doc_uploads_into_the_weekly_folder(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``folder_token`` picks the weekly folder instead of the export root."""
+    monkeypatch.setattr(briefing_feishu, "publish_briefing_doc", _REAL_PUBLISH_DOC)
+    monkeypatch.setattr(
+        briefing_feishu, "credentials", lambda: ("cli_a", "secret", "https://open", 5)
+    )
+    monkeypatch.setattr(briefing_feishu, "tenant_access_token", lambda *a, **k: "t-1")
+    monkeypatch.setattr(
+        briefing_feishu,
+        "_drive_root_token",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must use folder_token")),
+    )
+    monkeypatch.setattr(
+        briefing_feishu,
+        "_file_browser_url",
+        lambda *a, **k: "https://x.feishu.cn/file/file_1",
+    )
+    uploads: list[dict[str, Any]] = []
+
+    def fake_upload(*args: Any, **kwargs: Any) -> Any:
+        uploads.append(kwargs)
+        return type(
+            "Response",
+            (),
+            {"json": staticmethod(lambda: {"data": {"file_token": "file_1"}})},
+        )()
+
+    monkeypatch.setattr("requests.post", fake_upload)
+    shared: list[tuple[str, str, Any]] = []
+    monkeypatch.setattr(
+        briefing_feishu,
+        "_share_document",
+        lambda api, headers, timeout, token, targets, file_type="docx": shared.append(
+            (token, file_type, targets)
+        ),
+    )
+    targets = [{"receive_id_type": "open_id", "receive_id": "ou_1"}]
+
+    published = briefing_feishu.publish_briefing_doc(
+        "<html></html>",
+        title="222周报 · 2026-08-23 ~ 2026-08-29",
+        targets=targets,
+        folder_token=FOLDER_TOKEN,
+    )
+    assert published == {
+        "doc_url": "",
+        "html_url": "https://x.feishu.cn/file/file_1",
+        "doc_token": "file_1",
+    }
+    assert uploads[0]["data"]["parent_node"] == FOLDER_TOKEN
+    # The HTML file itself is shared with the targets (link sharing is closed).
+    assert shared == [("file_1", "file", targets)]
+
+
+def test_push_result_weekly_shares_the_interactive_html_as_a_native_file(
+    app: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_last_push: list[dict[str, Any]],
+) -> None:
+    app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+    # The MUI dev server is a loopback URL: a card must not carry a dead link.
+    app.config["BRIEFING_FRONTEND_BASE_URL"] = "http://localhost:9000"
+    _no_deployment_folder(app, monkeypatch)
+    uploads, im_uploads = _stub_weekly_push(monkeypatch)
+    from superset.project.briefing.html_export import VCHART_CDN
+
+    targets = [
+        {"receive_id_type": "chat_id", "receive_id": "oc_1"},
+        {"receive_id_type": "open_id", "receive_id": "ou_2"},
+    ]
+    outcome = briefing_feishu.push_result(
+        16,
+        WEEKLY_RESULT,
+        kind="test",
+        name="222",
+        dry_run=False,
+        settings={"doc_folder": FOLDER_LINK, "targets": targets},
+    )
+    assert outcome["ok"] is True
+    # The interactive HTML file is archived in Drive; doc_url mirrors it for the
+    # frontend's "last pushed document" link.
+    assert outcome["doc_url"] == HTML_URL
+    assert outcome["html_url"] == HTML_URL
+    assert outcome["message_style"] == "file"
+    # One Drive archive upload, into the weekly folder, with the report title.
+    assert len(uploads) == 1
+    assert uploads[0]["folder_token"] == FOLDER_TOKEN
+    assert uploads[0]["targets"] == targets
+    assert uploads[0]["title"] == "222周报 · 2026-08-23 ~ 2026-08-29"
+    html = uploads[0]["html"]
+    # Interactive evidence: page scripts, VChart runtime and the weekly chapters.
+    assert "<script" in html
+    assert VCHART_CDN in html
+    assert "__SPECS.push" in html
+    assert "<h2>2. 分周对比</h2>" in html
+    assert html.count("<table>") >= 4
+    # The rendered HTML is reused for the IM upload (no second render), as a
+    # .html file named after the report.
+    assert len(im_uploads) == 1
+    assert im_uploads[0]["html"] == html
+    expected_file_name = "222周报 · 2026-08-23 ~ 2026-08-29.html"
+    assert im_uploads[0]["file_name"] == expected_file_name
+    # One single notification per target carrying the native file share.
+    assert len(StubNotification.calls) == 2
+    for call in StubNotification.calls:
+        content = call["content"]
+        assert content.briefing_detail_url is None
+        assert content.briefing_html_url is None
+        assert content.briefing_doc_card is None
+        assert content.briefing_share_file == {
+            "file_key": "file_v3_key_1",
+            "file_name": expected_file_name,
+        }
+    assert captured_last_push[0]["doc_url"] == HTML_URL
+    assert captured_last_push[0]["ok"] is True
+    # The docx import path was removed entirely.
+    assert not hasattr(briefing_feishu, "publish_briefing_docx")
+    assert not hasattr(briefing_feishu, "_wait_docx_import")
+
+
+def test_push_result_weekly_falls_back_to_the_card_when_im_upload_fails(
+    app: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_last_push: list[dict[str, Any]],
+) -> None:
+    """A refused IM upload still delivers a card that links the Drive HTML."""
+    app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+    app.config["BRIEFING_FRONTEND_BASE_URL"] = "http://localhost:9000"
+    _no_deployment_folder(app, monkeypatch)
+    uploads, im_uploads = _stub_weekly_push(monkeypatch, im_file_key=None)
+    targets = [
+        {"receive_id_type": "chat_id", "receive_id": "oc_1"},
+        {"receive_id_type": "open_id", "receive_id": "ou_2"},
+    ]
+    outcome = briefing_feishu.push_result(
+        16,
+        WEEKLY_RESULT,
+        kind="manual",
+        name="222",
+        dry_run=False,
+        settings={"doc_folder": FOLDER_LINK, "targets": targets},
+    )
+    assert outcome["ok"] is True
+    assert outcome["message_style"] == "card-fallback"
+    assert outcome["doc_url"] == HTML_URL
+    assert len(uploads) == 1  # Drive archive still happened
+    assert len(im_uploads) == 1  # the failed IM attempt is visible for debugging
+    assert len(StubNotification.calls) == 2
+    for call in StubNotification.calls:
+        content = call["content"]
+        assert getattr(content, "briefing_share_file", None) is None
+        card = content.briefing_doc_card
+        assert card["schema"] == "2.0"
+        button = _card_button(card)
+        assert button["text"]["content"] == "查看交互式周报"
+        assert button["behaviors"][0]["default_url"] == HTML_URL
+    assert captured_last_push[0]["ok"] is True
+
+
+def test_upload_weekly_html_to_im_posts_a_stream_file(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The IM upload uses ``file_type=stream`` and returns ``data.file_key``."""
+    monkeypatch.setattr(
+        briefing_feishu, "credentials", lambda: ("cli_a", "secret", "https://open", 5)
+    )
+    monkeypatch.setattr(briefing_feishu, "tenant_access_token", lambda *a, **k: "t-1")
+    calls: list[dict[str, Any]] = []
+
+    def fake_post(url: str, **kwargs: Any) -> Any:
+        calls.append({"url": url, **kwargs})
+        return type(
+            "Response",
+            (),
+            {"json": staticmethod(lambda: {"code": 0, "data": {"file_key": "fk_1"}})},
+        )()
+
+    monkeypatch.setattr("requests.post", fake_post)
+    file_name = "222周报 · 2026-08-23 ~ 2026-08-29.html"
+    file_key = briefing_feishu._upload_weekly_html_to_im(
+        "<html><script></script></html>", file_name=file_name
+    )
+    assert file_key == "fk_1"
+    assert calls[0]["url"].endswith("/open-apis/im/v1/files")
+    assert calls[0]["headers"]["Authorization"] == "Bearer t-1"
+    assert calls[0]["data"] == {"file_type": "stream", "file_name": file_name}
+    uploaded = calls[0]["files"]["file"]
+    assert uploaded[0] == file_name
+    assert uploaded[1] == "<html><script></script></html>".encode()
+    assert uploaded[2] == "text/html"
+
+
+def test_upload_weekly_html_to_im_never_raises(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(briefing_feishu, "credentials", lambda: None)
+    assert (
+        briefing_feishu._upload_weekly_html_to_im("<html></html>", file_name="x.html")
+        is None
+    )
+
+    monkeypatch.setattr(
+        briefing_feishu, "credentials", lambda: ("cli_a", "secret", "https://open", 5)
+    )
+    monkeypatch.setattr(briefing_feishu, "tenant_access_token", lambda *a, **k: "t-1")
+    monkeypatch.setattr(
+        "requests.post",
+        lambda *a, **k: (_ for _ in ()).throw(ConnectionError("im down")),
+    )
+    assert (
+        briefing_feishu._upload_weekly_html_to_im("<html></html>", file_name="x.html")
+        is None
+    )
+
+
+def test_push_result_weekly_without_folder_records_a_clear_error(
+    app: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_last_push: list[dict[str, Any]],
+) -> None:
+    app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+    _no_deployment_folder(app, monkeypatch)
+    uploads, _im_uploads = _stub_weekly_push(monkeypatch)
+    outcome = briefing_feishu.push_result(
+        16,
+        WEEKLY_RESULT,
+        kind="schedule",
+        settings={"targets": [{"receive_id_type": "chat_id", "receive_id": "oc_1"}]},
+        dry_run=False,
+    )
+    assert outcome["ok"] is False
+    assert outcome["error_kind"] == "param"
+    assert "未配置周报文档文件夹" in outcome["error"]
+    assert outcome["sent"] == []
+    assert uploads == []
+    assert StubNotification.calls == []
+    assert captured_last_push[0]["ok"] is False
+    assert captured_last_push[0]["doc_url"] == ""
+
+
+def test_push_result_weekly_upload_failure_sends_nothing(
+    app: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    captured_last_push: list[dict[str, Any]],
+) -> None:
+    app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+    _no_deployment_folder(app, monkeypatch)
+    monkeypatch.setattr(briefing_feishu, "publish_briefing_doc", lambda *a, **k: None)
+    outcome = briefing_feishu.push_result(
+        16,
+        WEEKLY_RESULT,
+        kind="manual",
+        settings={
+            "doc_folder": FOLDER_LINK,
+            "targets": [{"receive_id_type": "chat_id", "receive_id": "oc_1"}],
+        },
+        dry_run=False,
+    )
+    assert outcome["ok"] is False
+    assert outcome["error_kind"] == "transient"
+    assert "周报 HTML 生成失败" in outcome["error"]
+    assert StubNotification.calls == []
+    assert captured_last_push[0]["ok"] is False
+
+
+def test_push_result_weekly_dry_run_skips_the_upload(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uploads, _im_uploads = _stub_weekly_push(monkeypatch)
+    outcome = briefing_feishu.push_result(
+        16,
+        WEEKLY_RESULT,
+        kind="schedule",
+        settings={
+            "doc_folder": FOLDER_LINK,
+            "targets": [{"receive_id_type": "chat_id", "receive_id": "oc_1"}],
+        },
+        dry_run=True,
+    )
+    assert outcome["dry_run"] is True
+    assert outcome["ok"] is True
+    assert outcome["doc_url"] is None
+    assert uploads == []
+    assert StubNotification.calls == []
+    assert outcome["sent"][0]["message"] == "试运行：未实际发送"
+
+
+def test_push_result_daily_keeps_the_card_pipeline(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.config["BRIEFING_FEISHU_DRY_RUN"] = False
+    uploads: list[dict[str, Any]] = []
+
+    def fake_publish(
+        html_text: str,
+        *,
+        title: str,
+        targets: Any = None,
+        folder_token: str | None = None,
+    ) -> dict[str, str]:
+        uploads.append(
+            {
+                "html": html_text,
+                "title": title,
+                "targets": targets,
+                "folder_token": folder_token,
+            }
+        )
+        return {"doc_url": "", "html_url": "", "doc_token": "StubFile"}
+
+    monkeypatch.setattr(briefing_feishu, "publish_briefing_doc", fake_publish)
+    outcome = briefing_feishu.push_result(
+        3,
+        RESULT,
+        kind="manual",
+        name="111",
+        settings={"targets": [{"receive_id": "oc_1"}]},
+        dry_run=False,
+    )
+    assert outcome["ok"] is True
+    # A daily export keeps the historical export folder (no folder_token).
+    assert len(uploads) == 1
+    assert uploads[0]["folder_token"] is None
+    assert uploads[0]["title"] == "111明细 · 2026-09-27"
+    content = StubNotification.calls[0]["content"]
+    assert content.briefing_doc_card is None
+    assert getattr(content, "briefing_share_file", None) is None
+    assert content.briefing_result is RESULT
+    assert "message_style" not in outcome
+
+
+def test_api_feishu_payload_exposes_the_weekly_document_fields(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dialog's GET carries the weekly-document settings (DESIGN §6.2)."""
+    from superset.project.briefing import (
+        api as briefing_api,
+        feishu as briefing_feishu_module,
+    )
+
+    monkeypatch.setattr(
+        "superset.project.briefing.store.get_config",
+        lambda config_id: {"report_type": "weekly"},
+    )
+    monkeypatch.setattr(
+        "superset.project.briefing.store.get_feishu_settings",
+        lambda config_id: {"doc_folder": FOLDER_LINK, "targets": []},
+    )
+    monkeypatch.setattr(
+        briefing_feishu_module, "latest_result_meta", lambda config_id: None
+    )
+    _no_deployment_folder(app, monkeypatch)
+
+    payload = briefing_api._feishu_payload(16)
+    assert payload["report_type"] == "weekly"
+    assert payload["weekly_doc_enabled"] is True
+    assert payload["doc_folder"] == FOLDER_TOKEN
+    assert payload["doc_folder_configured"] is True
+    # The last push record (which carries the uploaded file URL) is exposed.
+    assert payload["last_push"] is None
+
+
+def test_api_feishu_payload_marks_the_deployment_default_configured(
+    app: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty per-config folder is fine when the deployment sets one."""
+    from superset.project.briefing import (
+        api as briefing_api,
+        feishu as briefing_feishu_module,
+    )
+
+    monkeypatch.setattr(
+        "superset.project.briefing.store.get_config",
+        lambda config_id: {"report_type": "daily"},
+    )
+    monkeypatch.setattr(
+        "superset.project.briefing.store.get_feishu_settings",
+        lambda config_id: {},
+    )
+    monkeypatch.setattr(
+        briefing_feishu_module, "latest_result_meta", lambda config_id: None
+    )
+    monkeypatch.delenv("FEISHU_WEEKLY_DOC_FOLDER_TOKEN", raising=False)
+    app.config["FEISHU_WEEKLY_DOC_FOLDER_TOKEN"] = "fldDeployment1"  # noqa: S105
+
+    payload = briefing_api._feishu_payload(16)
+    assert payload["report_type"] == "daily"
+    assert payload["weekly_doc_enabled"] is False
+    # The per-config value stays empty so the input can say "留空沿用默认".
+    assert payload["doc_folder"] == ""
+    assert payload["doc_folder_configured"] is True

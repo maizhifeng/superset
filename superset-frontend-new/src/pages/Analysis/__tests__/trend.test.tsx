@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ThemeProvider, alpha, createTheme } from "@mui/material/styles";
 import dayjs from "dayjs";
 import { test, expect, vi } from "vitest";
@@ -7,16 +7,20 @@ import type { EChartsOption } from "echarts";
 const captured = vi.hoisted(() => ({
   option: null as EChartsOption | null,
   onEvents: undefined as Record<string, (params: unknown) => void> | undefined,
+  onChartReady: undefined as ((instance: unknown) => void) | undefined,
 }));
 
 vi.mock("@/pages/Briefing/EChart", () => ({
   default: (props: {
     option: EChartsOption;
     onEvents?: Record<string, (params: unknown) => void>;
+    onChartReady?: (instance: unknown) => void;
+    overlay?: React.ReactNode;
   }) => {
     captured.option = props.option;
     captured.onEvents = props.onEvents;
-    return <div data-testid="chart" />;
+    captured.onChartReady = props.onChartReady;
+    return <div data-testid="chart">{props.overlay}</div>;
   },
 }));
 
@@ -41,6 +45,7 @@ interface CapturedSeries {
 interface CapturedAxis {
   show?: boolean;
   name?: string;
+  position?: string;
   min?: number;
   max?: number;
   axisLabel?: {
@@ -62,7 +67,11 @@ const cost = getAnalysisTopic("cost")!;
 
 function retentionRow(
   date: string,
-  values: { retention2?: number; payRate1?: number; paidRetention7?: number } = {},
+  values: {
+    retention2?: number;
+    payRate1?: number;
+    paidRetention7?: number;
+  } = {},
 ) {
   return {
     日期: date,
@@ -234,15 +243,11 @@ test("falls back to semantic palette colours without a chart palette", () => {
     />,
   );
   const series = capturedSeries();
-  expect(series[0].itemStyle?.color).toBe(
-    defaultTheme.palette.primary.main,
-  );
-  expect(series[1].itemStyle?.color).toBe(
-    defaultTheme.palette.warning.main,
-  );
+  expect(series[0].itemStyle?.color).toBe(defaultTheme.palette.primary.main);
+  expect(series[1].itemStyle?.color).toBe(defaultTheme.palette.warning.main);
 });
 
-test("cost analysis compares CPA on the right axis", () => {
+test("cost analysis plots CPA and CPP on separate right axes", () => {
   const currentDates = Array.from({ length: 9 }, (_, index) =>
     dayjs()
       .subtract(60 - index, "day")
@@ -260,11 +265,13 @@ test("cost analysis compares CPA on the right axis", () => {
         日期: date,
         返点后消耗: 100,
         cpa: 10,
+        cpp: 750,
       }))}
       previousRows={previousDates.map((date) => ({
         日期: date,
         返点后消耗: 90,
         cpa: 9,
+        cpp: 700,
       }))}
       showComparison
       comparisonOffsetDays={30}
@@ -273,8 +280,20 @@ test("cost analysis compares CPA on the right axis", () => {
   );
 
   const series = capturedSeries();
-  expect(series[2].name).toBe("CPA（上期）");
-  expect(series[2].yAxisIndex).toBe(1);
+  expect(series[0].name).toBe("返点后消耗");
+  expect(series[0].yAxisIndex).toBe(0);
+  expect(series[1].name).toBe("CPA");
+  expect(series[1].yAxisIndex).toBe(1);
+  // CPP gets its own right-hand axis instead of being squashed by CPA's scale.
+  expect(series[2].name).toBe("CPP");
+  expect(series[2].yAxisIndex).toBe(2);
+  expect(series[3].name).toBe("CPA（上期）");
+  expect(series[3].yAxisIndex).toBe(1);
+  const axes = capturedAxes();
+  expect(axes[0].name).toBe("返点后消耗");
+  expect(axes[1].name).toBe("CPA");
+  expect(axes[2].name).toBe("CPP");
+  expect(axes[2].position).toBe("right");
 });
 
 test("calls onDateClick with the clicked series date", () => {
@@ -347,9 +366,7 @@ test("marks negative anomalies with a ringed triangle above the lines", () => {
   expect(markerData[0].value).toEqual([8, 0.15]);
   expect(markerData[0].symbolSize).toBe(15);
   expect(markerData[0].symbolRotate).toBe(180);
-  expect(markerData[0].itemStyle?.color).toBe(
-    defaultTheme.palette.error.main,
-  );
+  expect(markerData[0].itemStyle?.color).toBe(defaultTheme.palette.error.main);
   expect(markerData[0].itemStyle?.borderWidth).toBe(2);
   expect(markerData[0].itemStyle?.borderColor).toBe(
     defaultTheme.palette.background.paper,
@@ -523,7 +540,9 @@ test("overlays the 7-day rolling baseline when enabled", () => {
   const series = capturedSeries() as (CapturedSeries & {
     data?: (number | null)[];
   })[];
-  const baseline = series.find((item) => item.name === "2日留存率（7日移动平均）");
+  const baseline = series.find(
+    (item) => item.name === "2日留存率（7日移动平均）",
+  );
   expect(baseline).toBeDefined();
   expect(baseline?.type).toBe("line");
   expect((baseline?.data ?? []).some((value) => value !== null)).toBe(true);
@@ -588,7 +607,7 @@ test("weekly view adds the WoW delta as a main-chart series and legend", () => {
   const cpaValues = [10, 12, 9, 13.5];
   const rows = sundays.map((date, index) => ({
     日期: date,
-    "返点后消耗": 100000,
+    返点后消耗: 100000,
     cpa: cpaValues[index],
     新增进入: 100,
   }));
@@ -602,17 +621,18 @@ test("weekly view adds the WoW delta as a main-chart series and legend", () => {
     type?: string;
     xAxisIndex?: number;
     yAxisIndex?: number;
-    data?: (
-      | { value?: number; label?: { show?: boolean; formatter?: string } }
-      | null
-    )[];
+    data?: ({
+      value?: number;
+      label?: { show?: boolean; formatter?: string };
+    } | null)[];
   })[];
   const deltaSeries = series.find((item) => item.name === "CPA 周环比");
   expect(deltaSeries).toBeDefined();
   expect(deltaSeries?.type).toBe("bar");
   expect(deltaSeries?.xAxisIndex).toBe(0);
-  // Cost has two main axes (spend left, CPA right), so the delta axis is third.
-  expect(deltaSeries?.yAxisIndex).toBe(2);
+  // Cost has three main axes (spend left, CPA right, CPP right2), so the
+  // hidden delta axis comes fourth.
+  expect(deltaSeries?.yAxisIndex).toBe(3);
   expect(deltaSeries?.data?.[1]?.value).toBeCloseTo(20);
   expect(deltaSeries?.data?.[1]?.label?.formatter).toBe("+20.0%");
   expect(deltaSeries?.data?.[2]?.value).toBeCloseTo(-25);
@@ -622,8 +642,8 @@ test("weekly view adds the WoW delta as a main-chart series and legend", () => {
 
   // The WoW axis is hidden; exact values live in the labels instead.
   const axes = capturedAxes();
-  expect(axes[2].show).toBe(false);
-  expect(axes[2].name).toBeUndefined();
+  expect(axes[3].show).toBe(false);
+  expect(axes[3].name).toBeUndefined();
   const labelled = (name: string) =>
     (series.find((entry) => entry.name === name)?.data ?? []).filter(
       (entry) => entry?.label?.show,
@@ -716,9 +736,7 @@ test("weekly view hides daily baseline, anomalies and date drill", () => {
   expect(captured.onEvents).toBeUndefined();
   expect(screen.queryByText(/检测到/)).toBeNull();
   // Weekly roll-up compares against the previous week instead of the shifted day.
-  expect(
-    series.some((item) => item.name === "2日留存率（上一周）"),
-  ).toBe(true);
+  expect(series.some((item) => item.name === "2日留存率（上一周）")).toBe(true);
 });
 
 test("trims extreme comparison outliers from the axis range", () => {
@@ -763,12 +781,9 @@ test("anomaly chips open the sub-dimension breakdown", () => {
     </ThemeProvider>,
   );
 
-  expect(
-    screen.getByText("· 点击标签查看构成明细"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("· 点击标签查看构成明细")).toBeInTheDocument();
   const chip = screen.getByText(
-    (content) =>
-      content.includes("2日留存率") && /\d+\.\d+%|pp/.test(content),
+    (content) => content.includes("2日留存率") && /\d+\.\d+%|pp/.test(content),
   );
   fireEvent.click(chip);
 
@@ -797,7 +812,50 @@ test("anomalies are based on the rolling baseline, not the comparison line", () 
   expect(screen.getByText(/检测到 1 个异常波动/)).toBeInTheDocument();
   const series = capturedSeries();
   expect(series.some((item) => item.name === "异常点")).toBe(true);
-  expect(series.some((item) => String(item.name ?? "").includes("（上期）"))).toBe(
-    false,
+  expect(
+    series.some((item) => String(item.name ?? "").includes("（上期）")),
+  ).toBe(false);
+});
+
+test("points the one-time hand gesture at the anomalous bar", async () => {
+  localStorage.removeItem("analysis-gesture-guide-chart-v1");
+  const dates = Array.from({ length: 12 }, (_, index) =>
+    dayjs()
+      .subtract(11 - index, "day")
+      .format("YYYY-MM-DD"),
   );
+  render(
+    <ThemeProvider theme={createTheme({ palette: supersetPalette })}>
+      <AnalysisTrendChart
+        topic={cost}
+        rows={dates.map((date, index) => ({
+          日期: date,
+          返点后消耗: 100,
+          cpa: index === 11 ? 600 : 50,
+        }))}
+        loading={false}
+        onAnomalyClick={vi.fn()}
+      />
+    </ThemeProvider>,
+  );
+
+  expect(screen.getByText(/检测到 1 个异常波动/)).toBeInTheDocument();
+  const hand = () =>
+    screen.queryByRole("button", {
+      name: "点击异常柱形查看该日异常构成与下钻",
+    });
+  expect(hand()).not.toBeInTheDocument();
+
+  // The chart reports its instance; the gesture then anchors to the bar pixel.
+  act(() => {
+    captured.onChartReady?.({
+      convertToPixel: () => [140, 70],
+    });
+  });
+  const gesture = await screen.findByRole("button", {
+    name: "点击异常柱形查看该日异常构成与下钻",
+  });
+  fireEvent.click(gesture);
+  expect(hand()).not.toBeInTheDocument();
+  expect(localStorage.getItem("analysis-gesture-guide-chart-v1")).toBe("1");
 });

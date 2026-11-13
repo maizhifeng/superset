@@ -6,6 +6,7 @@ import {
   buildDrillAnomalyQuery,
   fetchBreakdownData,
   peekBreakdownData,
+  topicTarget,
 } from "../query";
 import { topicMetric } from "../topics";
 import type { AnalysisMetric, AnalysisTopic } from "../types";
@@ -67,7 +68,10 @@ export function useDrillAnomalies(
       setState(EMPTY_STATE);
       return undefined;
     }
-    const cached = peekBreakdownData(query, { allowStale: false });
+    const cached = peekBreakdownData(query, {
+      allowStale: false,
+      target: topicTarget(topic),
+    });
     if (cached) {
       setState({ rows: cached.rows, loading: false, error: cached.error });
       return undefined;
@@ -82,7 +86,10 @@ export function useDrillAnomalies(
     }));
 
     const timer = setTimeout(() => {
-      fetchBreakdownData(query, { signal: controller.signal })
+      fetchBreakdownData(query, {
+        signal: controller.signal,
+        target: topicTarget(topic),
+      })
         .then((data) => {
           if (!active) return;
           setState({ rows: data.rows, loading: false, error: data.error });
