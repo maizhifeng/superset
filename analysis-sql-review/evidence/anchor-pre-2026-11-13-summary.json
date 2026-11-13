@@ -1,0 +1,1914 @@
+{
+ "generated_at": "2026-11-13T03:05:57",
+ "metadata": {
+  "profit_sharing_rows": 172,
+  "projects": 20,
+  "with_anchor": {
+   "首测": 8,
+   "二测": 1,
+   "三测": 1,
+   "上线": 17
+  }
+ },
+ "facts": {
+  "domestic_rows": 28003,
+  "oversea_rows": 23580,
+  "domestic_projects": 67,
+  "oversea_projects": 48
+ },
+ "anchors": {
+  "首测": {
+   "projects_with_anchor": 8,
+   "projects_with_any_data_before": 8,
+   "projects_with_meaningful_data_before": 5,
+   "pre_cost_total": 8534824.71,
+   "pre_cost_recent30_total": 3111913.82,
+   "post30_cost_total": 21711671.69,
+   "pre_new_users_total": 82268.0,
+   "post30_new_users_total": 122818.0,
+   "rows": [],
+   "days_before": {
+    "max": 1343,
+    "median": 272,
+    "p90": 624
+   },
+   "pre_cost_share_of_total": 0.2822,
+   "avg_pre_share": 0.2747,
+   "pre_new_users_share": 0.4011,
+   "top_projects": [
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2023-12-06",
+     "first_fact_day": "2023-01-08",
+     "days_before": 332,
+     "pre_days": 123,
+     "pre_cost": 7132963.4,
+     "pre_cost_recent30": 2885136.17,
+     "post30_cost": 11750423.26,
+     "pre_cost_share": 0.3777,
+     "pre_new_users": 51007.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 325,
+     "project": "斗破苍穹：异火降世",
+     "anchor_day": "2024-09-20",
+     "first_fact_day": "2023-01-05",
+     "days_before": 624,
+     "pre_days": 258,
+     "pre_cost": 1025623.63,
+     "pre_cost_recent30": 2428.0,
+     "post30_cost": 466235.41,
+     "pre_cost_share": 0.6875,
+     "pre_new_users": 19941.0,
+     "before_all_anchors_cost": 1025623.63,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-09-22",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1343,
+     "pre_days": 41,
+     "pre_cost": 220310.58,
+     "pre_cost_recent30": 200802.7,
+     "post30_cost": 3676205.54,
+     "pre_cost_share": 0.0565,
+     "pre_new_users": 83.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 379,
+     "project": "庆余年：南庆大亨",
+     "anchor_day": "2026-11-05",
+     "first_fact_day": "2026-02-06",
+     "days_before": 272,
+     "pre_days": 155,
+     "pre_cost": 131571.3,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 0.0,
+     "pre_cost_share": 1.0,
+     "pre_new_users": 10021.0,
+     "before_all_anchors_cost": 131571.3,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-04-30",
+     "first_fact_day": "2026-02-27",
+     "days_before": 62,
+     "pre_days": 62,
+     "pre_cost": 12953.99,
+     "pre_cost_recent30": 12145.14,
+     "post30_cost": 245063.08,
+     "pre_cost_share": 0.0502,
+     "pre_new_users": 682.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2161,
+     "project": "战地无疆韩国",
+     "anchor_day": "2025-01-16",
+     "first_fact_day": "2024-11-26",
+     "days_before": 51,
+     "pre_days": 27,
+     "pre_cost": 11401.81,
+     "pre_cost_recent30": 11401.81,
+     "post30_cost": 427926.59,
+     "pre_cost_share": 0.026,
+     "pre_new_users": 293.0,
+     "before_all_anchors_cost": 11401.81,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1909,
+     "project": "战地无疆港澳台",
+     "anchor_day": "2024-07-03",
+     "first_fact_day": "2024-04-26",
+     "days_before": 68,
+     "pre_days": 16,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 1760702.93,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 208.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2341,
+     "project": "战地无疆-日本",
+     "anchor_day": "2025-04-23",
+     "first_fact_day": "2025-04-01",
+     "days_before": 22,
+     "pre_days": 14,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 3385114.88,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 33.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    }
+   ]
+  },
+  "二测": {
+   "projects_with_anchor": 1,
+   "projects_with_any_data_before": 1,
+   "projects_with_meaningful_data_before": 1,
+   "pre_cost_total": 174750.27,
+   "pre_cost_recent30_total": 173761.87,
+   "post30_cost_total": 87277.95,
+   "pre_new_users_total": 6931.0,
+   "post30_new_users_total": 2716.0,
+   "rows": [],
+   "days_before": {
+    "max": 69,
+    "median": 69,
+    "p90": 69
+   },
+   "pre_cost_share_of_total": 0.6669,
+   "avg_pre_share": 0.6669,
+   "pre_new_users_share": 0.7185,
+   "top_projects": [
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2023-12-06",
+     "first_fact_day": "2023-01-08",
+     "days_before": 332,
+     "pre_days": 123,
+     "pre_cost": 7132963.4,
+     "pre_cost_recent30": 2885136.17,
+     "post30_cost": 11750423.26,
+     "pre_cost_share": 0.3777,
+     "pre_new_users": 51007.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 325,
+     "project": "斗破苍穹：异火降世",
+     "anchor_day": "2024-09-20",
+     "first_fact_day": "2023-01-05",
+     "days_before": 624,
+     "pre_days": 258,
+     "pre_cost": 1025623.63,
+     "pre_cost_recent30": 2428.0,
+     "post30_cost": 466235.41,
+     "pre_cost_share": 0.6875,
+     "pre_new_users": 19941.0,
+     "before_all_anchors_cost": 1025623.63,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-09-22",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1343,
+     "pre_days": 41,
+     "pre_cost": 220310.58,
+     "pre_cost_recent30": 200802.7,
+     "post30_cost": 3676205.54,
+     "pre_cost_share": 0.0565,
+     "pre_new_users": 83.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 379,
+     "project": "庆余年：南庆大亨",
+     "anchor_day": "2026-11-05",
+     "first_fact_day": "2026-02-06",
+     "days_before": 272,
+     "pre_days": 155,
+     "pre_cost": 131571.3,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 0.0,
+     "pre_cost_share": 1.0,
+     "pre_new_users": 10021.0,
+     "before_all_anchors_cost": 131571.3,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-04-30",
+     "first_fact_day": "2026-02-27",
+     "days_before": 62,
+     "pre_days": 62,
+     "pre_cost": 12953.99,
+     "pre_cost_recent30": 12145.14,
+     "post30_cost": 245063.08,
+     "pre_cost_share": 0.0502,
+     "pre_new_users": 682.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2161,
+     "project": "战地无疆韩国",
+     "anchor_day": "2025-01-16",
+     "first_fact_day": "2024-11-26",
+     "days_before": 51,
+     "pre_days": 27,
+     "pre_cost": 11401.81,
+     "pre_cost_recent30": 11401.81,
+     "post30_cost": 427926.59,
+     "pre_cost_share": 0.026,
+     "pre_new_users": 293.0,
+     "before_all_anchors_cost": 11401.81,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1909,
+     "project": "战地无疆港澳台",
+     "anchor_day": "2024-07-03",
+     "first_fact_day": "2024-04-26",
+     "days_before": 68,
+     "pre_days": 16,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 1760702.93,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 208.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2341,
+     "project": "战地无疆-日本",
+     "anchor_day": "2025-04-23",
+     "first_fact_day": "2025-04-01",
+     "days_before": 22,
+     "pre_days": 14,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 3385114.88,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 33.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "二测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-05-07",
+     "first_fact_day": "2026-02-27",
+     "days_before": 69,
+     "pre_days": 69,
+     "pre_cost": 174750.27,
+     "pre_cost_recent30": 173761.87,
+     "post30_cost": 87277.95,
+     "pre_cost_share": 0.6669,
+     "pre_new_users": 6931.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 161796.28,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    }
+   ]
+  },
+  "三测": {
+   "projects_with_anchor": 1,
+   "projects_with_any_data_before": 1,
+   "projects_with_meaningful_data_before": 1,
+   "pre_cost_total": 275258.85,
+   "pre_cost_recent30_total": 2509.5,
+   "post30_cost_total": 296608.24,
+   "pre_new_users_total": 10251.0,
+   "post30_new_users_total": 10549.0,
+   "rows": [],
+   "days_before": {
+    "max": 187,
+    "median": 187,
+    "p90": 187
+   },
+   "pre_cost_share_of_total": 0.4813,
+   "avg_pre_share": 0.4813,
+   "pre_new_users_share": 0.4928,
+   "top_projects": [
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2023-12-06",
+     "first_fact_day": "2023-01-08",
+     "days_before": 332,
+     "pre_days": 123,
+     "pre_cost": 7132963.4,
+     "pre_cost_recent30": 2885136.17,
+     "post30_cost": 11750423.26,
+     "pre_cost_share": 0.3777,
+     "pre_new_users": 51007.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 325,
+     "project": "斗破苍穹：异火降世",
+     "anchor_day": "2024-09-20",
+     "first_fact_day": "2023-01-05",
+     "days_before": 624,
+     "pre_days": 258,
+     "pre_cost": 1025623.63,
+     "pre_cost_recent30": 2428.0,
+     "post30_cost": 466235.41,
+     "pre_cost_share": 0.6875,
+     "pre_new_users": 19941.0,
+     "before_all_anchors_cost": 1025623.63,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-09-22",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1343,
+     "pre_days": 41,
+     "pre_cost": 220310.58,
+     "pre_cost_recent30": 200802.7,
+     "post30_cost": 3676205.54,
+     "pre_cost_share": 0.0565,
+     "pre_new_users": 83.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "二测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-05-07",
+     "first_fact_day": "2026-02-27",
+     "days_before": 69,
+     "pre_days": 69,
+     "pre_cost": 174750.27,
+     "pre_cost_recent30": 173761.87,
+     "post30_cost": 87277.95,
+     "pre_cost_share": 0.6669,
+     "pre_new_users": 6931.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 161796.28,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 379,
+     "project": "庆余年：南庆大亨",
+     "anchor_day": "2026-11-05",
+     "first_fact_day": "2026-02-06",
+     "days_before": 272,
+     "pre_days": 155,
+     "pre_cost": 131571.3,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 0.0,
+     "pre_cost_share": 1.0,
+     "pre_new_users": 10021.0,
+     "before_all_anchors_cost": 131571.3,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-04-30",
+     "first_fact_day": "2026-02-27",
+     "days_before": 62,
+     "pre_days": 62,
+     "pre_cost": 12953.99,
+     "pre_cost_recent30": 12145.14,
+     "post30_cost": 245063.08,
+     "pre_cost_share": 0.0502,
+     "pre_new_users": 682.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2161,
+     "project": "战地无疆韩国",
+     "anchor_day": "2025-01-16",
+     "first_fact_day": "2024-11-26",
+     "days_before": 51,
+     "pre_days": 27,
+     "pre_cost": 11401.81,
+     "pre_cost_recent30": 11401.81,
+     "post30_cost": 427926.59,
+     "pre_cost_share": 0.026,
+     "pre_new_users": 293.0,
+     "before_all_anchors_cost": 11401.81,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1909,
+     "project": "战地无疆港澳台",
+     "anchor_day": "2024-07-03",
+     "first_fact_day": "2024-04-26",
+     "days_before": 68,
+     "pre_days": 16,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 1760702.93,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 208.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2341,
+     "project": "战地无疆-日本",
+     "anchor_day": "2025-04-23",
+     "first_fact_day": "2025-04-01",
+     "days_before": 22,
+     "pre_days": 14,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 3385114.88,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 33.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "三测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-09-02",
+     "first_fact_day": "2026-02-27",
+     "days_before": 187,
+     "pre_days": 187,
+     "pre_cost": 275258.85,
+     "pre_cost_recent30": 2509.5,
+     "post30_cost": 296608.24,
+     "pre_cost_share": 0.4813,
+     "pre_new_users": 10251.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 262304.86,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    }
+   ]
+  },
+  "上线": {
+   "projects_with_anchor": 17,
+   "projects_with_any_data_before": 17,
+   "projects_with_meaningful_data_before": 14,
+   "pre_cost_total": 91282785.63,
+   "pre_cost_recent30_total": 66096657.59,
+   "post30_cost_total": 293024778.68,
+   "pre_new_users_total": 1012750.0,
+   "post30_new_users_total": 6740494.0,
+   "rows": [],
+   "days_before": {
+    "max": 1393,
+    "median": 242,
+    "p90": 461
+   },
+   "pre_cost_share_of_total": 0.2375,
+   "avg_pre_share": 0.1875,
+   "pre_new_users_share": 0.1306,
+   "top_projects": [
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2023-12-06",
+     "first_fact_day": "2023-01-08",
+     "days_before": 332,
+     "pre_days": 123,
+     "pre_cost": 7132963.4,
+     "pre_cost_recent30": 2885136.17,
+     "post30_cost": 11750423.26,
+     "pre_cost_share": 0.3777,
+     "pre_new_users": 51007.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 325,
+     "project": "斗破苍穹：异火降世",
+     "anchor_day": "2024-09-20",
+     "first_fact_day": "2023-01-05",
+     "days_before": 624,
+     "pre_days": 258,
+     "pre_cost": 1025623.63,
+     "pre_cost_recent30": 2428.0,
+     "post30_cost": 466235.41,
+     "pre_cost_share": 0.6875,
+     "pre_new_users": 19941.0,
+     "before_all_anchors_cost": 1025623.63,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "三测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-09-02",
+     "first_fact_day": "2026-02-27",
+     "days_before": 187,
+     "pre_days": 187,
+     "pre_cost": 275258.85,
+     "pre_cost_recent30": 2509.5,
+     "post30_cost": 296608.24,
+     "pre_cost_share": 0.4813,
+     "pre_new_users": 10251.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 262304.86,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-09-22",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1343,
+     "pre_days": 41,
+     "pre_cost": 220310.58,
+     "pre_cost_recent30": 200802.7,
+     "post30_cost": 3676205.54,
+     "pre_cost_share": 0.0565,
+     "pre_new_users": 83.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "二测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-05-07",
+     "first_fact_day": "2026-02-27",
+     "days_before": 69,
+     "pre_days": 69,
+     "pre_cost": 174750.27,
+     "pre_cost_recent30": 173761.87,
+     "post30_cost": 87277.95,
+     "pre_cost_share": 0.6669,
+     "pre_new_users": 6931.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 161796.28,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 379,
+     "project": "庆余年：南庆大亨",
+     "anchor_day": "2026-11-05",
+     "first_fact_day": "2026-02-06",
+     "days_before": 272,
+     "pre_days": 155,
+     "pre_cost": 131571.3,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 0.0,
+     "pre_cost_share": 1.0,
+     "pre_new_users": 10021.0,
+     "before_all_anchors_cost": 131571.3,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-04-30",
+     "first_fact_day": "2026-02-27",
+     "days_before": 62,
+     "pre_days": 62,
+     "pre_cost": 12953.99,
+     "pre_cost_recent30": 12145.14,
+     "post30_cost": 245063.08,
+     "pre_cost_share": 0.0502,
+     "pre_new_users": 682.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2161,
+     "project": "战地无疆韩国",
+     "anchor_day": "2025-01-16",
+     "first_fact_day": "2024-11-26",
+     "days_before": 51,
+     "pre_days": 27,
+     "pre_cost": 11401.81,
+     "pre_cost_recent30": 11401.81,
+     "post30_cost": 427926.59,
+     "pre_cost_share": 0.026,
+     "pre_new_users": 293.0,
+     "before_all_anchors_cost": 11401.81,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 1909,
+     "project": "战地无疆港澳台",
+     "anchor_day": "2024-07-03",
+     "first_fact_day": "2024-04-26",
+     "days_before": 68,
+     "pre_days": 16,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 1760702.93,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 208.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "首测",
+     "side": "oversea",
+     "papp_id": 2341,
+     "project": "战地无疆-日本",
+     "anchor_day": "2025-04-23",
+     "first_fact_day": "2025-04-01",
+     "days_before": 22,
+     "pre_days": 14,
+     "pre_cost": 0.0,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 3385114.88,
+     "pre_cost_share": 0.0,
+     "pre_new_users": 33.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    }
+   ]
+  }
+ },
+ "cases": {
+  "before_all_anchors": {
+   "count": 14,
+   "cost": 48579819.86,
+   "top": [
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 299,
+     "project": "三国群英传：策定九州",
+     "anchor_day": "2025-10-09",
+     "first_fact_day": "2023-01-16",
+     "days_before": 997,
+     "pre_days": 497,
+     "pre_cost": 9961241.3,
+     "pre_cost_recent30": 4326760.97,
+     "post30_cost": 46239801.06,
+     "pre_cost_share": 0.1772,
+     "pre_new_users": 60278.0,
+     "before_all_anchors_cost": 9961241.3,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 344,
+     "project": "仙境传说：破晓",
+     "anchor_day": "2025-02-20",
+     "first_fact_day": "2024-04-01",
+     "days_before": 325,
+     "pre_days": 109,
+     "pre_cost": 9654827.55,
+     "pre_cost_recent30": 8601138.54,
+     "post30_cost": 39283472.77,
+     "pre_cost_share": 0.1973,
+     "pre_new_users": 233039.0,
+     "before_all_anchors_cost": 9654827.55,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2024-01-24",
+     "first_fact_day": "2023-01-08",
+     "days_before": 381,
+     "pre_days": 172,
+     "pre_cost": 42578907.53,
+     "pre_cost_recent30": 33239431.1,
+     "post30_cost": 39879714.99,
+     "pre_cost_share": 0.5164,
+     "pre_new_users": 405712.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 35445944.13,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 355,
+     "project": "代号：盗墓笔记",
+     "anchor_day": "2025-07-17",
+     "first_fact_day": "2024-07-01",
+     "days_before": 381,
+     "pre_days": 177,
+     "pre_cost": 6831140.02,
+     "pre_cost_recent30": 3791625.54,
+     "post30_cost": 39665682.2,
+     "pre_cost_share": 0.1469,
+     "pre_new_users": 104673.0,
+     "before_all_anchors_cost": 6831140.02,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 353,
+     "project": "代号：武侠",
+     "anchor_day": "2025-01-19",
+     "first_fact_day": "2024-11-07",
+     "days_before": 73,
+     "pre_days": 58,
+     "pre_cost": 6621751.02,
+     "pre_cost_recent30": 6558451.02,
+     "post30_cost": 31299202.18,
+     "pre_cost_share": 0.1746,
+     "pre_new_users": 81287.0,
+     "before_all_anchors_cost": 6621751.02,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 376,
+     "project": "代号：山海经",
+     "anchor_day": "2025-10-14",
+     "first_fact_day": "2025-07-16",
+     "days_before": 90,
+     "pre_days": 70,
+     "pre_cost": 4809070.88,
+     "pre_cost_recent30": 3750449.3,
+     "post30_cost": 20260456.29,
+     "pre_cost_share": 0.1918,
+     "pre_new_users": 64196.0,
+     "before_all_anchors_cost": 4809070.88,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 1837,
+     "project": "策定九州东南亚",
+     "anchor_day": "2026-09-16",
+     "first_fact_day": "2026-07-03",
+     "days_before": 75,
+     "pre_days": 57,
+     "pre_cost": 1713563.18,
+     "pre_cost_recent30": 1317497.37,
+     "post30_cost": 5689187.24,
+     "pre_cost_share": 0.2315,
+     "pre_new_users": 154.0,
+     "before_all_anchors_cost": 1713563.18,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 358,
+     "project": "冒险岛：枫之新篇",
+     "anchor_day": "2026-03-25",
+     "first_fact_day": "2024-12-19",
+     "days_before": 461,
+     "pre_days": 220,
+     "pre_cost": 1142677.92,
+     "pre_cost_recent30": 1300.22,
+     "post30_cost": 8465380.89,
+     "pre_cost_share": 0.1189,
+     "pre_new_users": 25788.0,
+     "before_all_anchors_cost": 1142677.92,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 1801,
+     "project": "策定九州越南",
+     "anchor_day": "2026-09-16",
+     "first_fact_day": "2026-07-28",
+     "days_before": 50,
+     "pre_days": 16,
+     "pre_cost": 456868.93,
+     "pre_cost_recent30": 456868.93,
+     "post30_cost": 1780692.03,
+     "pre_cost_share": 0.2042,
+     "pre_new_users": 45.0,
+     "before_all_anchors_cost": 456868.93,
+     "earlier_rounds_cost": 0.0,
+     "configured_stages": [
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-11-11",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1393,
+     "pre_days": 91,
+     "pre_cost": 6060720.26,
+     "pre_cost_recent30": 3622925.74,
+     "post30_cost": 2121407.4,
+     "pre_cost_share": 0.7407,
+     "pre_new_users": 3937.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 5840409.68,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    }
+   ]
+  },
+  "earlier_rounds_before_launch": {
+   "count": 6,
+   "cost": 42702965.77,
+   "top": [
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 203,
+     "project": "冒险岛",
+     "anchor_day": "2024-01-24",
+     "first_fact_day": "2023-01-08",
+     "days_before": 381,
+     "pre_days": 172,
+     "pre_cost": 42578907.53,
+     "pre_cost_recent30": 33239431.1,
+     "post30_cost": 39879714.99,
+     "pre_cost_share": 0.5164,
+     "pre_new_users": 405712.0,
+     "before_all_anchors_cost": 7132963.4,
+     "earlier_rounds_cost": 35445944.13,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 1441,
+     "project": "策定九州韩国",
+     "anchor_day": "2026-11-11",
+     "first_fact_day": "2023-01-18",
+     "days_before": 1393,
+     "pre_days": 91,
+     "pre_cost": 6060720.26,
+     "pre_cost_recent30": 3622925.74,
+     "post30_cost": 2121407.4,
+     "pre_cost_share": 0.7407,
+     "pre_new_users": 3937.0,
+     "before_all_anchors_cost": 220310.58,
+     "earlier_rounds_cost": 5840409.68,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "domestic",
+     "papp_id": 380,
+     "project": "代号：斗破",
+     "anchor_day": "2026-10-27",
+     "first_fact_day": "2026-02-27",
+     "days_before": 242,
+     "pre_days": 242,
+     "pre_cost": 580923.68,
+     "pre_cost_recent30": 9478.84,
+     "post30_cost": 808612.54,
+     "pre_cost_share": 0.4181,
+     "pre_new_users": 21202.0,
+     "before_all_anchors_cost": 12953.99,
+     "earlier_rounds_cost": 567969.69,
+     "configured_stages": [
+      "first_test",
+      "launch",
+      "second_test",
+      "third_test"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 2161,
+     "project": "战地无疆韩国",
+     "anchor_day": "2025-03-18",
+     "first_fact_day": "2024-11-26",
+     "days_before": 112,
+     "pre_days": 84,
+     "pre_cost": 439328.4,
+     "pre_cost_recent30": 0.0,
+     "post30_cost": 10767481.81,
+     "pre_cost_share": 0.0392,
+     "pre_new_users": 4155.0,
+     "before_all_anchors_cost": 11401.81,
+     "earlier_rounds_cost": 427926.59,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 2341,
+     "project": "战地无疆-日本",
+     "anchor_day": "2025-05-20",
+     "first_fact_day": "2025-04-01",
+     "days_before": 49,
+     "pre_days": 41,
+     "pre_cost": 250522.58,
+     "pre_cost_recent30": 250522.58,
+     "post30_cost": 21325765.79,
+     "pre_cost_share": 0.0116,
+     "pre_new_users": 4247.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 250522.58,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    },
+    {
+     "anchor": "上线",
+     "side": "oversea",
+     "papp_id": 1909,
+     "project": "战地无疆港澳台",
+     "anchor_day": "2024-07-30",
+     "first_fact_day": "2024-04-26",
+     "days_before": 95,
+     "pre_days": 42,
+     "pre_cost": 170193.1,
+     "pre_cost_recent30": 170193.1,
+     "post30_cost": 11142558.49,
+     "pre_cost_share": 0.015,
+     "pre_new_users": 3407.0,
+     "before_all_anchors_cost": 0.0,
+     "earlier_rounds_cost": 170193.1,
+     "configured_stages": [
+      "first_test",
+      "launch"
+     ]
+    }
+   ]
+  }
+ },
+ "missing_anchor_projects": {
+  "domestic": {
+   "count": 56,
+   "last90_cost": 63133.57,
+   "top": [
+    {
+     "papp_id": 334,
+     "project": "战地无疆",
+     "last90_cost": 53391.42
+    },
+    {
+     "papp_id": 377,
+     "project": "冒险岛：扎昆之瞳",
+     "last90_cost": 7912.15
+    },
+    {
+     "papp_id": 289,
+     "project": "代号：放置卡牌",
+     "last90_cost": 1830.0
+    },
+    {
+     "papp_id": 0,
+     "project": "",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 45,
+     "project": "烈火荣耀",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 24,
+     "project": "龙族契约",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 13,
+     "project": "test1",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 100,
+     "project": "烈火雷霆",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 202,
+     "project": "策魂三国",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 169,
+     "project": "小小三国志",
+     "last90_cost": 0.0
+    }
+   ]
+  },
+  "oversea": {
+   "count": 40,
+   "last90_cost": 387436.42,
+   "top": [
+    {
+     "papp_id": 2449,
+     "project": "RO东南亚",
+     "last90_cost": 387436.35
+    },
+    {
+     "papp_id": 2881,
+     "project": "策定九州-日本",
+     "last90_cost": 0.07
+    },
+    {
+     "papp_id": 253,
+     "project": "三国群英传-霸王之业",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 7,
+     "project": "RSDK-海外版-Demo",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 721,
+     "project": "霸王之野望-韩国",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 757,
+     "project": "放置三国-日本",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 901,
+     "project": "荣耀新三国-日本",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 505,
+     "project": "霸王之野望-港台",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 0,
+     "project": "",
+     "last90_cost": 0.0
+    },
+    {
+     "papp_id": 1261,
+     "project": "楓之谷-港台-PC",
+     "last90_cost": 0.0
+    }
+   ]
+  }
+ },
+ "projects": [
+  {
+   "anchor": "三测",
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "anchor_day": "2026-09-02",
+   "first_fact_day": "2026-02-27",
+   "days_before": 187,
+   "pre_days": 187,
+   "pre_cost": 275258.85,
+   "pre_cost_recent30": 2509.5,
+   "post30_cost": 296608.24,
+   "pre_cost_share": 0.4813,
+   "pre_new_users": 10251.0,
+   "before_all_anchors_cost": 12953.99,
+   "earlier_rounds_cost": 262304.86,
+   "configured_stages": [
+    "first_test",
+    "launch",
+    "second_test",
+    "third_test"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 203,
+   "project": "冒险岛",
+   "anchor_day": "2024-01-24",
+   "first_fact_day": "2023-01-08",
+   "days_before": 381,
+   "pre_days": 172,
+   "pre_cost": 42578907.53,
+   "pre_cost_recent30": 33239431.1,
+   "post30_cost": 39879714.99,
+   "pre_cost_share": 0.5164,
+   "pre_new_users": 405712.0,
+   "before_all_anchors_cost": 7132963.4,
+   "earlier_rounds_cost": 35445944.13,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 299,
+   "project": "三国群英传：策定九州",
+   "anchor_day": "2025-10-09",
+   "first_fact_day": "2023-01-16",
+   "days_before": 997,
+   "pre_days": 497,
+   "pre_cost": 9961241.3,
+   "pre_cost_recent30": 4326760.97,
+   "post30_cost": 46239801.06,
+   "pre_cost_share": 0.1772,
+   "pre_new_users": 60278.0,
+   "before_all_anchors_cost": 9961241.3,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 344,
+   "project": "仙境传说：破晓",
+   "anchor_day": "2025-02-20",
+   "first_fact_day": "2024-04-01",
+   "days_before": 325,
+   "pre_days": 109,
+   "pre_cost": 9654827.55,
+   "pre_cost_recent30": 8601138.54,
+   "post30_cost": 39283472.77,
+   "pre_cost_share": 0.1973,
+   "pre_new_users": 233039.0,
+   "before_all_anchors_cost": 9654827.55,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 355,
+   "project": "代号：盗墓笔记",
+   "anchor_day": "2025-07-17",
+   "first_fact_day": "2024-07-01",
+   "days_before": 381,
+   "pre_days": 177,
+   "pre_cost": 6831140.02,
+   "pre_cost_recent30": 3791625.54,
+   "post30_cost": 39665682.2,
+   "pre_cost_share": 0.1469,
+   "pre_new_users": 104673.0,
+   "before_all_anchors_cost": 6831140.02,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 353,
+   "project": "代号：武侠",
+   "anchor_day": "2025-01-19",
+   "first_fact_day": "2024-11-07",
+   "days_before": 73,
+   "pre_days": 58,
+   "pre_cost": 6621751.02,
+   "pre_cost_recent30": 6558451.02,
+   "post30_cost": 31299202.18,
+   "pre_cost_share": 0.1746,
+   "pre_new_users": 81287.0,
+   "before_all_anchors_cost": 6621751.02,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 1441,
+   "project": "策定九州韩国",
+   "anchor_day": "2026-11-11",
+   "first_fact_day": "2023-01-18",
+   "days_before": 1393,
+   "pre_days": 91,
+   "pre_cost": 6060720.26,
+   "pre_cost_recent30": 3622925.74,
+   "post30_cost": 2121407.4,
+   "pre_cost_share": 0.7407,
+   "pre_new_users": 3937.0,
+   "before_all_anchors_cost": 220310.58,
+   "earlier_rounds_cost": 5840409.68,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 376,
+   "project": "代号：山海经",
+   "anchor_day": "2025-10-14",
+   "first_fact_day": "2025-07-16",
+   "days_before": 90,
+   "pre_days": 70,
+   "pre_cost": 4809070.88,
+   "pre_cost_recent30": 3750449.3,
+   "post30_cost": 20260456.29,
+   "pre_cost_share": 0.1918,
+   "pre_new_users": 64196.0,
+   "before_all_anchors_cost": 4809070.88,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 1837,
+   "project": "策定九州东南亚",
+   "anchor_day": "2026-09-16",
+   "first_fact_day": "2026-07-03",
+   "days_before": 75,
+   "pre_days": 57,
+   "pre_cost": 1713563.18,
+   "pre_cost_recent30": 1317497.37,
+   "post30_cost": 5689187.24,
+   "pre_cost_share": 0.2315,
+   "pre_new_users": 154.0,
+   "before_all_anchors_cost": 1713563.18,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 358,
+   "project": "冒险岛：枫之新篇",
+   "anchor_day": "2026-03-25",
+   "first_fact_day": "2024-12-19",
+   "days_before": 461,
+   "pre_days": 220,
+   "pre_cost": 1142677.92,
+   "pre_cost_recent30": 1300.22,
+   "post30_cost": 8465380.89,
+   "pre_cost_share": 0.1189,
+   "pre_new_users": 25788.0,
+   "before_all_anchors_cost": 1142677.92,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "anchor_day": "2026-10-27",
+   "first_fact_day": "2026-02-27",
+   "days_before": 242,
+   "pre_days": 242,
+   "pre_cost": 580923.68,
+   "pre_cost_recent30": 9478.84,
+   "post30_cost": 808612.54,
+   "pre_cost_share": 0.4181,
+   "pre_new_users": 21202.0,
+   "before_all_anchors_cost": 12953.99,
+   "earlier_rounds_cost": 567969.69,
+   "configured_stages": [
+    "first_test",
+    "launch",
+    "second_test",
+    "third_test"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 1801,
+   "project": "策定九州越南",
+   "anchor_day": "2026-09-16",
+   "first_fact_day": "2026-07-28",
+   "days_before": 50,
+   "pre_days": 16,
+   "pre_cost": 456868.93,
+   "pre_cost_recent30": 456868.93,
+   "post30_cost": 1780692.03,
+   "pre_cost_share": 0.2042,
+   "pre_new_users": 45.0,
+   "before_all_anchors_cost": 456868.93,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 2161,
+   "project": "战地无疆韩国",
+   "anchor_day": "2025-03-18",
+   "first_fact_day": "2024-11-26",
+   "days_before": 112,
+   "pre_days": 84,
+   "pre_cost": 439328.4,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 10767481.81,
+   "pre_cost_share": 0.0392,
+   "pre_new_users": 4155.0,
+   "before_all_anchors_cost": 11401.81,
+   "earlier_rounds_cost": 427926.59,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 2341,
+   "project": "战地无疆-日本",
+   "anchor_day": "2025-05-20",
+   "first_fact_day": "2025-04-01",
+   "days_before": 49,
+   "pre_days": 41,
+   "pre_cost": 250522.58,
+   "pre_cost_recent30": 250522.58,
+   "post30_cost": 21325765.79,
+   "pre_cost_share": 0.0116,
+   "pre_new_users": 4247.0,
+   "before_all_anchors_cost": 0.0,
+   "earlier_rounds_cost": 250522.58,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 1909,
+   "project": "战地无疆港澳台",
+   "anchor_day": "2024-07-30",
+   "first_fact_day": "2024-04-26",
+   "days_before": 95,
+   "pre_days": 42,
+   "pre_cost": 170193.1,
+   "pre_cost_recent30": 170193.1,
+   "post30_cost": 11142558.49,
+   "pre_cost_share": 0.015,
+   "pre_new_users": 3407.0,
+   "before_all_anchors_cost": 0.0,
+   "earlier_rounds_cost": 170193.1,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 2197,
+   "project": "战地无疆东南亚",
+   "anchor_day": "2026-01-21",
+   "first_fact_day": "2025-01-02",
+   "days_before": 384,
+   "pre_days": 40,
+   "pre_cost": 11034.94,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 2540258.69,
+   "pre_cost_share": 0.0043,
+   "pre_new_users": 293.0,
+   "before_all_anchors_cost": 11034.94,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "domestic",
+   "papp_id": 382,
+   "project": "三国：天命再临",
+   "anchor_day": "2026-05-15",
+   "first_fact_day": "2026-05-12",
+   "days_before": 3,
+   "pre_days": 3,
+   "pre_cost": 14.34,
+   "pre_cost_recent30": 14.34,
+   "post30_cost": 10484507.95,
+   "pre_cost_share": 0.0,
+   "pre_new_users": 25.0,
+   "before_all_anchors_cost": 14.34,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "上线",
+   "side": "oversea",
+   "papp_id": 2233,
+   "project": "战地无疆越南",
+   "anchor_day": "2026-01-21",
+   "first_fact_day": "2025-01-09",
+   "days_before": 377,
+   "pre_days": 47,
+   "pre_cost": 0.0,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 1270596.36,
+   "pre_cost_share": 0.0,
+   "pre_new_users": 312.0,
+   "before_all_anchors_cost": 0.0,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "launch"
+   ]
+  },
+  {
+   "anchor": "二测",
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "anchor_day": "2026-05-07",
+   "first_fact_day": "2026-02-27",
+   "days_before": 69,
+   "pre_days": 69,
+   "pre_cost": 174750.27,
+   "pre_cost_recent30": 173761.87,
+   "post30_cost": 87277.95,
+   "pre_cost_share": 0.6669,
+   "pre_new_users": 6931.0,
+   "before_all_anchors_cost": 12953.99,
+   "earlier_rounds_cost": 161796.28,
+   "configured_stages": [
+    "first_test",
+    "launch",
+    "second_test",
+    "third_test"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "domestic",
+   "papp_id": 203,
+   "project": "冒险岛",
+   "anchor_day": "2023-12-06",
+   "first_fact_day": "2023-01-08",
+   "days_before": 332,
+   "pre_days": 123,
+   "pre_cost": 7132963.4,
+   "pre_cost_recent30": 2885136.17,
+   "post30_cost": 11750423.26,
+   "pre_cost_share": 0.3777,
+   "pre_new_users": 51007.0,
+   "before_all_anchors_cost": 7132963.4,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "domestic",
+   "papp_id": 325,
+   "project": "斗破苍穹：异火降世",
+   "anchor_day": "2024-09-20",
+   "first_fact_day": "2023-01-05",
+   "days_before": 624,
+   "pre_days": 258,
+   "pre_cost": 1025623.63,
+   "pre_cost_recent30": 2428.0,
+   "post30_cost": 466235.41,
+   "pre_cost_share": 0.6875,
+   "pre_new_users": 19941.0,
+   "before_all_anchors_cost": 1025623.63,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "oversea",
+   "papp_id": 1441,
+   "project": "策定九州韩国",
+   "anchor_day": "2026-09-22",
+   "first_fact_day": "2023-01-18",
+   "days_before": 1343,
+   "pre_days": 41,
+   "pre_cost": 220310.58,
+   "pre_cost_recent30": 200802.7,
+   "post30_cost": 3676205.54,
+   "pre_cost_share": 0.0565,
+   "pre_new_users": 83.0,
+   "before_all_anchors_cost": 220310.58,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "domestic",
+   "papp_id": 379,
+   "project": "庆余年：南庆大亨",
+   "anchor_day": "2026-11-05",
+   "first_fact_day": "2026-02-06",
+   "days_before": 272,
+   "pre_days": 155,
+   "pre_cost": 131571.3,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 0.0,
+   "pre_cost_share": 1.0,
+   "pre_new_users": 10021.0,
+   "before_all_anchors_cost": 131571.3,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "anchor_day": "2026-04-30",
+   "first_fact_day": "2026-02-27",
+   "days_before": 62,
+   "pre_days": 62,
+   "pre_cost": 12953.99,
+   "pre_cost_recent30": 12145.14,
+   "post30_cost": 245063.08,
+   "pre_cost_share": 0.0502,
+   "pre_new_users": 682.0,
+   "before_all_anchors_cost": 12953.99,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch",
+    "second_test",
+    "third_test"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "oversea",
+   "papp_id": 2161,
+   "project": "战地无疆韩国",
+   "anchor_day": "2025-01-16",
+   "first_fact_day": "2024-11-26",
+   "days_before": 51,
+   "pre_days": 27,
+   "pre_cost": 11401.81,
+   "pre_cost_recent30": 11401.81,
+   "post30_cost": 427926.59,
+   "pre_cost_share": 0.026,
+   "pre_new_users": 293.0,
+   "before_all_anchors_cost": 11401.81,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "oversea",
+   "papp_id": 1909,
+   "project": "战地无疆港澳台",
+   "anchor_day": "2024-07-03",
+   "first_fact_day": "2024-04-26",
+   "days_before": 68,
+   "pre_days": 16,
+   "pre_cost": 0.0,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 1760702.93,
+   "pre_cost_share": 0.0,
+   "pre_new_users": 208.0,
+   "before_all_anchors_cost": 0.0,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  },
+  {
+   "anchor": "首测",
+   "side": "oversea",
+   "papp_id": 2341,
+   "project": "战地无疆-日本",
+   "anchor_day": "2025-04-23",
+   "first_fact_day": "2025-04-01",
+   "days_before": 22,
+   "pre_days": 14,
+   "pre_cost": 0.0,
+   "pre_cost_recent30": 0.0,
+   "post30_cost": 3385114.88,
+   "pre_cost_share": 0.0,
+   "pre_new_users": 33.0,
+   "before_all_anchors_cost": 0.0,
+   "earlier_rounds_cost": 0.0,
+   "configured_stages": [
+    "first_test",
+    "launch"
+   ]
+  }
+ ]
+}

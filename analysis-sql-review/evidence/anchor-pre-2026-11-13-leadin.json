@@ -1,0 +1,963 @@
+{
+ "lead_in_capture": {
+  "7d": {
+   "projects_with_pre_cost": 12,
+   "pre_cost": 27839635.12,
+   "pre_new_users": 462948
+  },
+  "14d": {
+   "projects_with_pre_cost": 13,
+   "pre_cost": 42130169.1,
+   "pre_new_users": 557062
+  },
+  "30d": {
+   "projects_with_pre_cost": 14,
+   "pre_cost": 66096657.59,
+   "pre_new_users": 705807
+  },
+  "60d": {
+   "projects_with_pre_cost": 16,
+   "pre_cost": 78281125.93,
+   "pre_new_users": 830740
+  },
+  "90d": {
+   "projects_with_pre_cost": 16,
+   "pre_cost": 83778976.32,
+   "pre_new_users": 865582
+  }
+ },
+ "pre_launch_media": {
+  "mainland": {
+   "total": 82180554.24,
+   "top": [
+    {
+     "media": "今日头条",
+     "cost": 51558313.65,
+     "share": 0.6274
+    },
+    {
+     "media": "广点通",
+     "cost": 7944249.2,
+     "share": 0.0967
+    },
+    {
+     "media": "TAPTAP",
+     "cost": 4213891.72,
+     "share": 0.0513
+    },
+    {
+     "media": "",
+     "cost": 3869613.78,
+     "share": 0.0471
+    },
+    {
+     "media": "物料",
+     "cost": 3131308.99,
+     "share": 0.0381
+    },
+    {
+     "media": "冒险岛联盟的意志-线上推广",
+     "cost": 2205265.23,
+     "share": 0.0268
+    },
+    {
+     "media": "苹果-ASA",
+     "cost": 1995864.28,
+     "share": 0.0243
+    },
+    {
+     "media": "线上传播",
+     "cost": 1536189.55,
+     "share": 0.0187
+    }
+   ]
+  },
+  "oversea": {
+   "total": 9102231.39,
+   "top": [
+    {
+     "media": "Facebook",
+     "cost": 6847737.54,
+     "share": 0.7523
+    },
+    {
+     "media": "Google",
+     "cost": 752516.17,
+     "share": 0.0827
+    },
+    {
+     "media": "品牌合作",
+     "cost": 559972.0,
+     "share": 0.0615
+    },
+    {
+     "media": "线上推广",
+     "cost": 385243.6,
+     "share": 0.0423
+    },
+    {
+     "media": "Tiktok",
+     "cost": 366570.47,
+     "share": 0.0403
+    },
+    {
+     "media": "Applesearch",
+     "cost": 108238.55,
+     "share": 0.0119
+    },
+    {
+     "media": "物料",
+     "cost": 30758.0,
+     "share": 0.0034
+    },
+    {
+     "media": "UNICORN",
+     "cost": 24945.06,
+     "share": 0.0027
+    }
+   ]
+  }
+ },
+ "launch_projects": [
+  {
+   "side": "domestic",
+   "papp_id": 203,
+   "project": "冒险岛",
+   "launch": "2024-01-24",
+   "complete_post_window": true,
+   "first_fact": "2023-01-08",
+   "pre": {
+    "7d": {
+     "cost": 14729895.68,
+     "new_users": 352986,
+     "revenue": 300.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 20927307.65,
+     "new_users": 353349,
+     "revenue": 420.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 33239431.1,
+     "new_users": 353981,
+     "revenue": 522.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 35869853.86,
+     "new_users": 359401,
+     "revenue": 56652.0,
+     "days": 60
+    },
+    "90d": {
+     "cost": 40430603.64,
+     "new_users": 375296,
+     "revenue": 154856.0,
+     "days": 90
+    }
+   },
+   "post30_cost": 39879714.99,
+   "post30_new": 801702,
+   "pre_spend_only_cost": 229434.29,
+   "pre_with_installs_cost": 42349473.24
+  },
+  {
+   "side": "domestic",
+   "papp_id": 344,
+   "project": "仙境传说：破晓",
+   "launch": "2025-02-20",
+   "complete_post_window": true,
+   "first_fact": "2024-04-01",
+   "pre": {
+    "7d": {
+     "cost": 3111286.63,
+     "new_users": 66244,
+     "revenue": 342054.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 4723712.13,
+     "new_users": 109206,
+     "revenue": 529964.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 8601138.54,
+     "new_users": 202568,
+     "revenue": 1042125.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 9654827.55,
+     "new_users": 230963,
+     "revenue": 1220150.0,
+     "days": 55
+    },
+    "90d": {
+     "cost": 9654827.55,
+     "new_users": 230965,
+     "revenue": 1220150.0,
+     "days": 57
+    }
+   },
+   "post30_cost": 39283472.77,
+   "post30_new": 1120341,
+   "pre_spend_only_cost": 161600.0,
+   "pre_with_installs_cost": 9493227.55
+  },
+  {
+   "side": "domestic",
+   "papp_id": 353,
+   "project": "代号：武侠",
+   "launch": "2025-01-19",
+   "complete_post_window": true,
+   "first_fact": "2024-11-07",
+   "pre": {
+    "7d": {
+     "cost": 3077085.15,
+     "new_users": 31237,
+     "revenue": 377312.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 5016606.62,
+     "new_users": 52719,
+     "revenue": 608508.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 6558451.02,
+     "new_users": 78883,
+     "revenue": 827996.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 6621751.02,
+     "new_users": 81280,
+     "revenue": 842050.0,
+     "days": 52
+    },
+    "90d": {
+     "cost": 6621751.02,
+     "new_users": 81287,
+     "revenue": 842068.0,
+     "days": 58
+    }
+   },
+   "post30_cost": 31299202.18,
+   "post30_new": 641760,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 6621751.02
+  },
+  {
+   "side": "domestic",
+   "papp_id": 299,
+   "project": "三国群英传：策定九州",
+   "launch": "2025-10-09",
+   "complete_post_window": true,
+   "first_fact": "2023-01-16",
+   "pre": {
+    "7d": {
+     "cost": 1485344.58,
+     "new_users": 382,
+     "revenue": 550.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 2787843.39,
+     "new_users": 893,
+     "revenue": 6146.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 4326760.97,
+     "new_users": 3576,
+     "revenue": 6320.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 6591480.85,
+     "new_users": 4507,
+     "revenue": 8846.0,
+     "days": 60
+    },
+    "90d": {
+     "cost": 7017569.98,
+     "new_users": 6711,
+     "revenue": 13304.0,
+     "days": 90
+    }
+   },
+   "post30_cost": 46239801.06,
+   "post30_new": 579067,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 9961241.3
+  },
+  {
+   "side": "domestic",
+   "papp_id": 355,
+   "project": "代号：盗墓笔记",
+   "launch": "2025-07-17",
+   "complete_post_window": true,
+   "first_fact": "2024-07-01",
+   "pre": {
+    "7d": {
+     "cost": 2196153.87,
+     "new_users": 1085,
+     "revenue": 1208.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 3110611.03,
+     "new_users": 15426,
+     "revenue": 63247.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 3791625.54,
+     "new_users": 15989,
+     "revenue": 65419.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 5600554.38,
+     "new_users": 63944,
+     "revenue": 472560.0,
+     "days": 60
+    },
+    "90d": {
+     "cost": 5852522.6,
+     "new_users": 78972,
+     "revenue": 542743.0,
+     "days": 90
+    }
+   },
+   "post30_cost": 39665682.2,
+   "post30_new": 1781150,
+   "pre_spend_only_cost": 184090.92,
+   "pre_with_installs_cost": 6647049.1
+  },
+  {
+   "side": "domestic",
+   "papp_id": 376,
+   "project": "代号：山海经",
+   "launch": "2025-10-14",
+   "complete_post_window": true,
+   "first_fact": "2025-07-16",
+   "pre": {
+    "7d": {
+     "cost": 1099847.45,
+     "new_users": 9946,
+     "revenue": 155260.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 2517217.04,
+     "new_users": 23730,
+     "revenue": 337720.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 3750449.3,
+     "new_users": 41561,
+     "revenue": 482038.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 4809070.88,
+     "new_users": 64138,
+     "revenue": 679972.0,
+     "days": 58
+    },
+    "90d": {
+     "cost": 4809070.88,
+     "new_users": 64196,
+     "revenue": 679978.0,
+     "days": 70
+    }
+   },
+   "post30_cost": 20260456.29,
+   "post30_new": 381423,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 4809070.88
+  },
+  {
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "launch": "2026-10-27",
+   "complete_post_window": false,
+   "first_fact": "2026-02-27",
+   "pre": {
+    "7d": {
+     "cost": 7478.89,
+     "new_users": 315,
+     "revenue": 120.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 8092.44,
+     "new_users": 363,
+     "revenue": 126.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 9478.84,
+     "new_users": 417,
+     "revenue": 174.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 306083.08,
+     "new_users": 11340,
+     "revenue": 68278.0,
+     "days": 60
+    },
+    "90d": {
+     "cost": 308592.58,
+     "new_users": 11403,
+     "revenue": 68284.0,
+     "days": 90
+    }
+   },
+   "post30_cost": 808612.54,
+   "post30_new": 54154,
+   "pre_spend_only_cost": 8290.46,
+   "pre_with_installs_cost": 572633.22
+  },
+  {
+   "side": "domestic",
+   "papp_id": 358,
+   "project": "冒险岛：枫之新篇",
+   "launch": "2026-03-25",
+   "complete_post_window": true,
+   "first_fact": "2024-12-19",
+   "pre": {
+    "7d": {
+     "cost": 261.4,
+     "new_users": 26,
+     "revenue": 6.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 533.32,
+     "new_users": 34,
+     "revenue": 6.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 1300.22,
+     "new_users": 110,
+     "revenue": 6.0,
+     "days": 29
+    },
+    "60d": {
+     "cost": 1300.22,
+     "new_users": 169,
+     "revenue": 6.0,
+     "days": 40
+    },
+    "90d": {
+     "cost": 1300.22,
+     "new_users": 238,
+     "revenue": 90.0,
+     "days": 64
+    }
+   },
+   "post30_cost": 8465380.89,
+   "post30_new": 288379,
+   "pre_spend_only_cost": 343.6,
+   "pre_with_installs_cost": 1142334.32
+  },
+  {
+   "side": "domestic",
+   "papp_id": 382,
+   "project": "三国：天命再临",
+   "launch": "2026-05-15",
+   "complete_post_window": true,
+   "first_fact": "2026-05-12",
+   "pre": {
+    "7d": {
+     "cost": 14.34,
+     "new_users": 25,
+     "revenue": 66.0,
+     "days": 3
+    },
+    "14d": {
+     "cost": 14.34,
+     "new_users": 25,
+     "revenue": 66.0,
+     "days": 3
+    },
+    "30d": {
+     "cost": 14.34,
+     "new_users": 25,
+     "revenue": 66.0,
+     "days": 3
+    },
+    "60d": {
+     "cost": 14.34,
+     "new_users": 25,
+     "revenue": 66.0,
+     "days": 3
+    },
+    "90d": {
+     "cost": 14.34,
+     "new_users": 25,
+     "revenue": 66.0,
+     "days": 3
+    }
+   },
+   "post30_cost": 10484507.95,
+   "post30_new": 459744,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 14.34
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1441,
+   "project": "策定九州韩国",
+   "launch": "2026-11-11",
+   "complete_post_window": false,
+   "first_fact": "2023-01-18",
+   "pre": {
+    "7d": {
+     "cost": 1232608.51,
+     "new_users": 75,
+     "revenue": 0.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 1822610.93,
+     "new_users": 253,
+     "revenue": 0.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 3622925.74,
+     "new_users": 313,
+     "revenue": 0.0,
+     "days": 30
+    },
+    "60d": {
+     "cost": 6041212.38,
+     "new_users": 3895,
+     "revenue": 45966.76,
+     "days": 58
+    },
+    "90d": {
+     "cost": 6041212.38,
+     "new_users": 3923,
+     "revenue": 45966.76,
+     "days": 71
+    }
+   },
+   "post30_cost": 2121407.4,
+   "post30_new": 13274,
+   "pre_spend_only_cost": 523530.56,
+   "pre_with_installs_cost": 5537189.7
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1837,
+   "project": "策定九州东南亚",
+   "launch": "2026-09-16",
+   "complete_post_window": false,
+   "first_fact": "2026-07-03",
+   "pre": {
+    "7d": {
+     "cost": 442789.69,
+     "new_users": 59,
+     "revenue": 41.23,
+     "days": 7
+    },
+    "14d": {
+     "cost": 752875.55,
+     "new_users": 115,
+     "revenue": 41.23,
+     "days": 14
+    },
+    "30d": {
+     "cost": 1317497.37,
+     "new_users": 134,
+     "revenue": 41.23,
+     "days": 30
+    },
+    "60d": {
+     "cost": 1713563.18,
+     "new_users": 152,
+     "revenue": 41.23,
+     "days": 55
+    },
+    "90d": {
+     "cost": 1713563.18,
+     "new_users": 154,
+     "revenue": 41.23,
+     "days": 57
+    }
+   },
+   "post30_cost": 5689187.24,
+   "post30_new": 163863,
+   "pre_spend_only_cost": 575600.13,
+   "pre_with_installs_cost": 1137963.05
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1801,
+   "project": "策定九州越南",
+   "launch": "2026-09-16",
+   "complete_post_window": false,
+   "first_fact": "2026-07-28",
+   "pre": {
+    "7d": {
+     "cost": 456868.93,
+     "new_users": 28,
+     "revenue": 0.0,
+     "days": 5
+    },
+    "14d": {
+     "cost": 456868.93,
+     "new_users": 33,
+     "revenue": 0.0,
+     "days": 8
+    },
+    "30d": {
+     "cost": 456868.93,
+     "new_users": 40,
+     "revenue": 2.66,
+     "days": 14
+    },
+    "60d": {
+     "cost": 456868.93,
+     "new_users": 45,
+     "revenue": 2.66,
+     "days": 16
+    },
+    "90d": {
+     "cost": 456868.93,
+     "new_users": 45,
+     "revenue": 2.66,
+     "days": 16
+    }
+   },
+   "post30_cost": 1780692.03,
+   "post30_new": 62632,
+   "pre_spend_only_cost": 132991.74,
+   "pre_with_installs_cost": 323877.19
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2341,
+   "project": "战地无疆-日本",
+   "launch": "2025-05-20",
+   "complete_post_window": true,
+   "first_fact": "2025-04-01",
+   "pre": {
+    "7d": {
+     "cost": 0.0,
+     "new_users": 73,
+     "revenue": 0.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 5875.73,
+     "new_users": 126,
+     "revenue": 0.0,
+     "days": 14
+    },
+    "30d": {
+     "cost": 250522.58,
+     "new_users": 4223,
+     "revenue": 0.0,
+     "days": 29
+    },
+    "60d": {
+     "cost": 250522.58,
+     "new_users": 4247,
+     "revenue": 0.0,
+     "days": 41
+    },
+    "90d": {
+     "cost": 250522.58,
+     "new_users": 4247,
+     "revenue": 0.0,
+     "days": 41
+    }
+   },
+   "post30_cost": 21325765.79,
+   "post30_new": 101017,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 250522.58
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1909,
+   "project": "战地无疆港澳台",
+   "launch": "2024-07-30",
+   "complete_post_window": true,
+   "first_fact": "2024-04-26",
+   "pre": {
+    "7d": {
+     "cost": 0.0,
+     "new_users": 98,
+     "revenue": 195.3,
+     "days": 7
+    },
+    "14d": {
+     "cost": 0.0,
+     "new_users": 116,
+     "revenue": 195.3,
+     "days": 13
+    },
+    "30d": {
+     "cost": 170193.1,
+     "new_users": 3226,
+     "revenue": 13601.49,
+     "days": 28
+    },
+    "60d": {
+     "cost": 170193.1,
+     "new_users": 3406,
+     "revenue": 13601.49,
+     "days": 41
+    },
+    "90d": {
+     "cost": 170193.1,
+     "new_users": 3406,
+     "revenue": 13601.49,
+     "days": 41
+    }
+   },
+   "post30_cost": 11142558.49,
+   "post30_new": 100588,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 170193.1
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2197,
+   "project": "战地无疆东南亚",
+   "launch": "2026-01-21",
+   "complete_post_window": true,
+   "first_fact": "2025-01-02",
+   "pre": {
+    "7d": {
+     "cost": 0.0,
+     "new_users": 44,
+     "revenue": 6.93,
+     "days": 5
+    },
+    "14d": {
+     "cost": 0.0,
+     "new_users": 240,
+     "revenue": 6.93,
+     "days": 9
+    },
+    "30d": {
+     "cost": 0.0,
+     "new_users": 264,
+     "revenue": 6.93,
+     "days": 18
+    },
+    "60d": {
+     "cost": 5474.77,
+     "new_users": 281,
+     "revenue": 6.93,
+     "days": 30
+    },
+    "90d": {
+     "cost": 11034.94,
+     "new_users": 286,
+     "revenue": 6.93,
+     "days": 34
+    }
+   },
+   "post30_cost": 2540258.69,
+   "post30_new": 90223,
+   "pre_spend_only_cost": 11034.94,
+   "pre_with_installs_cost": 0.0
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2233,
+   "project": "战地无疆越南",
+   "launch": "2026-01-21",
+   "complete_post_window": true,
+   "first_fact": "2025-01-09",
+   "pre": {
+    "7d": {
+     "cost": 0.0,
+     "new_users": 242,
+     "revenue": 34.93,
+     "days": 6
+    },
+    "14d": {
+     "cost": 0.0,
+     "new_users": 255,
+     "revenue": 34.93,
+     "days": 11
+    },
+    "30d": {
+     "cost": 0.0,
+     "new_users": 266,
+     "revenue": 34.93,
+     "days": 16
+    },
+    "60d": {
+     "cost": 0.0,
+     "new_users": 282,
+     "revenue": 34.93,
+     "days": 23
+    },
+    "90d": {
+     "cost": 0.0,
+     "new_users": 289,
+     "revenue": 34.93,
+     "days": 27
+    }
+   },
+   "post30_cost": 1270596.36,
+   "post30_new": 45047,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 0.0
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2161,
+   "project": "战地无疆韩国",
+   "launch": "2025-03-18",
+   "complete_post_window": true,
+   "first_fact": "2024-11-26",
+   "pre": {
+    "7d": {
+     "cost": 0.0,
+     "new_users": 83,
+     "revenue": 0.0,
+     "days": 7
+    },
+    "14d": {
+     "cost": 0.0,
+     "new_users": 179,
+     "revenue": 15.26,
+     "days": 14
+    },
+    "30d": {
+     "cost": 0.0,
+     "new_users": 231,
+     "revenue": 15.26,
+     "days": 28
+    },
+    "60d": {
+     "cost": 188354.81,
+     "new_users": 2665,
+     "revenue": 16973.18,
+     "days": 56
+    },
+    "90d": {
+     "cost": 439328.4,
+     "new_users": 4139,
+     "revenue": 22777.37,
+     "days": 77
+    }
+   },
+   "post30_cost": 10767481.81,
+   "post30_new": 56130,
+   "pre_spend_only_cost": 0.0,
+   "pre_with_installs_cost": 439328.4
+  }
+ ],
+ "complete_window_stats": {
+  "projects": 13,
+  "pre30_cost": 60689886.71,
+  "post30_cost": 282624879.47,
+  "pre30_share": 0.1768,
+  "avg_project_share": 0.0895,
+  "share_p50": 0.015,
+  "spend_only_pre_cost": 586503.75,
+  "pre_with_installs_cost": 81884205.83
+ },
+ "first_test_projects": [
+  {
+   "side": "domestic",
+   "papp_id": 203,
+   "project": "冒险岛",
+   "first_test": "2023-12-06",
+   "pre10_cost": 413640.91,
+   "pre30_cost": 2885136.17,
+   "pre_cost": 7132963.4,
+   "pre_new_users": 51007
+  },
+  {
+   "side": "domestic",
+   "papp_id": 325,
+   "project": "斗破苍穹：异火降世",
+   "first_test": "2024-09-20",
+   "pre10_cost": 2428.0,
+   "pre30_cost": 2428.0,
+   "pre_cost": 1025623.63,
+   "pre_new_users": 19941
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1441,
+   "project": "策定九州韩国",
+   "first_test": "2026-09-22",
+   "pre10_cost": 200802.7,
+   "pre30_cost": 200802.7,
+   "pre_cost": 220310.58,
+   "pre_new_users": 83
+  },
+  {
+   "side": "domestic",
+   "papp_id": 379,
+   "project": "庆余年：南庆大亨",
+   "first_test": "2026-11-05",
+   "pre10_cost": 0.0,
+   "pre30_cost": 0.0,
+   "pre_cost": 131571.3,
+   "pre_new_users": 10021
+  },
+  {
+   "side": "domestic",
+   "papp_id": 380,
+   "project": "代号：斗破",
+   "first_test": "2026-04-30",
+   "pre10_cost": 11632.14,
+   "pre30_cost": 12145.14,
+   "pre_cost": 12953.99,
+   "pre_new_users": 682
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2161,
+   "project": "战地无疆韩国",
+   "first_test": "2025-01-16",
+   "pre10_cost": 11401.81,
+   "pre30_cost": 11401.81,
+   "pre_cost": 11401.81,
+   "pre_new_users": 293
+  },
+  {
+   "side": "oversea",
+   "papp_id": 1909,
+   "project": "战地无疆港澳台",
+   "first_test": "2024-07-03",
+   "pre10_cost": 0.0,
+   "pre30_cost": 0.0,
+   "pre_cost": 0.0,
+   "pre_new_users": 208
+  },
+  {
+   "side": "oversea",
+   "papp_id": 2341,
+   "project": "战地无疆-日本",
+   "first_test": "2025-04-23",
+   "pre10_cost": 0.0,
+   "pre30_cost": 0.0,
+   "pre_cost": 0.0,
+   "pre_new_users": 33
+  }
+ ]
+}

@@ -1,0 +1,55 @@
+{
+ "note": "ad_type=2 reservation spend re-dated to configured launch day (light env, 2026-11-13)",
+ "cases": [
+  {
+   "window": "2026-09-16 : 2026-10-16",
+   "project": "策定九州东南亚",
+   "new": {
+    "cost": 7399545.47,
+    "new_users": 163863.0,
+    "day1_cost": 1762496.6079
+   },
+   "old": {
+    "cost": 5689187.24,
+    "new_users": 163863.0,
+    "day1_cost": 46101.9979
+   }
+  },
+  {
+   "window": "2026-10-01 : 2026-10-31",
+   "project": "策定九州东南亚",
+   "new": {
+    "cost": 3473331.75
+   },
+   "old": {
+    "cost": 3473331.75
+   }
+  },
+  {
+   "window": "2026-08-01 : 2026-09-16",
+   "project": "策定九州东南亚",
+   "new": {
+    "cost": 3204.95,
+    "new_users": 151.0
+   },
+   "old": {
+    "cost": 1555437.59,
+    "new_users": 151.0
+   }
+  },
+  {
+   "window": "2026-11-11 : 2026-11-21",
+   "project": "策定九州韩国",
+   "new": {
+    "cost": 7732704.42,
+    "new_users": 13329.0,
+    "day1_cost": 5929489.86
+   },
+   "old": {
+    "cost": 2141764.38,
+    "new_users": 13329.0,
+    "day1_cost": 338549.82
+   }
+  }
+ ]
+}

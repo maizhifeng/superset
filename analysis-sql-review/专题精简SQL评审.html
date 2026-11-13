@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>专题精简 SQL 评审稿</title>
+<style>
+  :root { --fg:#1f2328; --muted:#59636e; --border:#d1d9e0; --bg:#ffffff; --code:#f6f8fa; --accent:#0969da; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f5f7fa; color:var(--fg); font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; line-height:1.65; }
+  .layout { display:flex; max-width:1440px; margin:0 auto; }
+  nav { position:sticky; top:0; align-self:flex-start; width:300px; max-height:100vh; overflow:auto; padding:24px 16px; font-size:13px; border-right:1px solid var(--border); background:#fff; }
+  nav h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 10px; }
+  nav ul { list-style:none; margin:0; padding:0; }
+  nav li { margin:3px 0; }
+  nav li.lvl1 a { font-weight:600; }
+  nav a { color:#3b434b; text-decoration:none; display:block; padding:2px 6px; border-radius:4px; }
+  nav a:hover { background:#eef2f6; color:var(--accent); }
+  main { flex:1; min-width:0; background:var(--bg); padding:36px 48px 80px; }
+  h1 { font-size:28px; margin:0 0 12px; }
+  h2 { font-size:21px; margin:34px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  h3 { font-size:17px; margin:24px 0 8px; }
+  p { margin:10px 0; }
+  blockquote { margin:12px 0; padding:10px 16px; border-left:3px solid var(--accent); background:#f6f8fa; color:#3b434b; }
+  hr { border:0; border-top:1px solid var(--border); margin:30px 0; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size:12.5px; background:var(--code); padding:1px 5px; border-radius:4px; }
+  pre.code { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; margin:12px 0; }
+  pre.code code { background:none; padding:0; font-size:12.3px; line-height:1.55; }
+  table { border-collapse:collapse; width:100%; margin:14px 0; font-size:13.5px; }
+  th, td { border:1px solid var(--border); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#f0f3f6; font-weight:600; }
+  tr:nth-child(even) td { background:#fafbfc; }
+  ul, ol { margin:10px 0; padding-left:24px; }
+  li { margin:4px 0; }
+  strong { color:#111827; }
+  @media (max-width: 1080px) { nav { display:none; } main { padding:24px 20px 60px; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav><h2>目录</h2><ul><li class="lvl1"><a href="#analysis-五个专题-精简-SQL-改造-SQL-评审稿">/analysis 五个专题「精简 SQL」改造 · SQL 评审稿</a></li><li class="lvl2"><a href="#0-方案一句话">0. 方案一句话</a></li><li class="lvl2"><a href="#1-现状与裁剪空间">1. 现状与裁剪空间</a></li><li class="lvl2"><a href="#2-每个专题的字段与指标映射">2. 每个专题的字段与指标映射</a></li><li class="lvl2"><a href="#3-大陆侧精简-SQL-5-份">3. 大陆侧精简 SQL（5 份）</a></li><li class="lvl2"><a href="#4-海外侧精简-SQL-5-份">4. 海外侧精简 SQL（5 份）</a></li><li class="lvl2"><a href="#5-查询链路如何复用-前端逻辑不用改">5. 查询链路如何复用（前端逻辑不用改）</a></li><li class="lvl2"><a href="#6-数字一致性校验-实施前置门槛">6. 数字一致性校验（实施前置门槛）</a></li><li class="lvl2"><a href="#7-性能采样-共享测试库-绝对值波动较大">7. 性能采样（共享测试库，绝对值波动较大）</a></li><li class="lvl2"><a href="#8-实施步骤与改动清单-确认后执行">8. 实施步骤与改动清单（确认后执行）</a></li><li class="lvl2"><a href="#9-口径与风险清单-精简-SQL-必须保持">9. 口径与风险清单（精简 SQL 必须保持）</a></li><li class="lvl2"><a href="#10-待确认的问题">10. 待确认的问题</a></li><li class="lvl2"><a href="#附录-文件与证据">附录：文件与证据</a></li></ul></nav>
+<main>
+<h1 id="analysis-五个专题-精简-SQL-改造-SQL-评审稿">/analysis 五个专题「精简 SQL」改造 · SQL 评审稿</h1><blockquote>状态：<strong>待评审，尚未实施任何改动</strong>（未改源码、未改元数据库）。页面：http://localhost:9000/analysis（<code>superset-frontend-new/src/pages/Analysis</code>）评审重点：§3 大陆侧 5 段 SQL、§4 海外侧 5 段 SQL、§10 待确认问题<strong>实施更新（2026-11-09）</strong>：已采用<strong>方案 B</strong>（后端直接执行专题 SQL，不创建独立数据集），并在成本专题页提供「查看 SQL」按钮；实施细节见 <code>实施记录-成本分析.md</code>。生成日期：2026-11-09　数据源：Superset dataset 26（大陆）/ 38（海外 partner）</blockquote><hr /><h2 id="0-方案一句话">0. 方案一句话</h2><p>保留现有查询链路（前端 → <code>/api/v1/bi/chart/data</code> → 双侧执行 → 合并 → 比率重算 → 缓存/快照），只把「5 个专题共用一份 50 列大 SQL」换成「<strong>每个专题一份只含自身字段的精简 SQL</strong>」：大陆侧 1 份 + 海外 partner 侧 1 份，共 10 份（SQL 见 §3、§4）。</p><p><strong>落地形态二选一（请确认）</strong>：</p><table><thead><tr><th>方案</th><th>做法</th><th>改动量</th><th>备注</th></tr></thead><tbody><tr><td><strong>A（推荐）</strong></td><td>每个专题新建一个虚拟数据集（SQL 如下），海外侧新建 partner 数据集；前端只切数据集 id</td><td>小：仅元数据 + 前端 4 处常量</td><td>现有 Superset 查询引擎、缓存、快照、预热全部复用</td></tr><tr><td>B</td><td>后端新增专题 SQL 执行通道，按查询粒度（KPI/趋势/明细/下钻）直接执行并聚合</td><td>大：新增后端端点 + 前端改造</td><td>可把页面所选日期下推到 SQL，收益更大（§8.2）</td></tr></tbody></table><p>本稿的 SQL 是两套方案共用的「专题数据 SQL」；方案 A 原样落为数据集 SQL，方案 B 在此之上做粒度聚合。</p><hr /><h2 id="1-现状与裁剪空间">1. 现状与裁剪空间</h2><ul><li>数据集 26（<code>ad_combined_report</code>）：<strong>50 列、10,285 字符 SQL</strong>；每次查询都会在 <code>aliyun</code> 与 <code>aliyun-oversea</code> 两侧各跑一遍，大陆侧视图是「消耗视图（约 320 万行）+ 归因充值表（约 317 万行）」两个分支的 UNION，手游分支约 637 万行、小游戏分支约 570 万行。</li><li>前端每个专题首屏发 3 个 <code>/bi/chart/data</code> 请求（共 5 个 QueryObject）+ 5 个 filter-values 请求；每个 QueryObject 都按全量 50 列聚合，与专题真正需要的列无关。</li><li>五个专题实际只用到 <strong>29 / 50 列</strong>；按单专题拆分后每份 SQL 只需 <strong>10–18 列</strong>（见下表），另有 <strong>21 列五个专题完全不用</strong>（60/90 日充值、60/90 日付费留存、曝光、点击、下载、DAU、团队、商户充值、<code>[ID]</code> 列等）。</li></ul><table><thead><tr><th>专题</th><th>需要的列数</th><th>保留列</th><th>可从 dataset 26 移除</th></tr></thead><tbody><tr><td>成本分析</td><td>11</td><td>日期、平台、地区、媒体、渠道商、主游戏、消耗、返点后消耗、新增进入、1日充值、1日付费数</td><td>39 列</td></tr><tr><td>留存分析</td><td>18</td><td>日期、平台、地区、媒体、渠道商、主游戏、新增进入、1日付费数、2日留存数、2日付费留存数、3日付费留存数、4日付费留存数、5日付费留存数、6日付费留存数、7日付费留存数、14日付费留存数、21日付费留存数、30日付费留存数</td><td>32 列</td></tr><tr><td>LTV / ROI 分析</td><td>14</td><td>日期、平台、地区、媒体、渠道商、主游戏、新增进入、返点后消耗、1日充值、3日充值、7日充值、14日充值、30日充值、累计充值</td><td>36 列</td></tr><tr><td>付费分析</td><td>12</td><td>日期、平台、地区、媒体、渠道商、主游戏、充值流水、累计充值、新增进入、1日付费数、活跃付费、累计付费数</td><td>38 列</td></tr><tr><td>渠道 / 媒体分析</td><td>10</td><td>日期、平台、地区、媒体、渠道商、主游戏、消耗、返点后消耗、新增进入、充值流水</td><td>40 列</td></tr></tbody></table><blockquote>6 个维度列（日期 + 平台/地区/媒体/渠道商/主游戏）对所有专题都保留：筛选栏固定 5 列（主游戏/地区/媒体/渠道商/平台），拆解维度与趋势/下钻也依赖它们。</blockquote><hr /><h2 id="2-每个专题的字段与指标映射">2. 每个专题的字段与指标映射</h2><h3 id="成本分析-cost">成本分析（<code>cost</code>）</h3><table><thead><tr><th>响应字段</th><th>类型</th><th>定义（分子 ÷ 分母）</th><th>需要的原始列</th></tr></thead><tbody><tr><td>消耗</td><td>SUM</td><td>—</td><td>消耗</td></tr><tr><td>返点后消耗</td><td>SUM</td><td>—</td><td>返点后消耗</td></tr><tr><td>新增进入</td><td>SUM</td><td>—</td><td>新增进入</td></tr><tr><td>cpa</td><td>比率</td><td>返点后消耗 ÷ 新增进入</td><td>返点后消耗、新增进入</td></tr><tr><td>cpp</td><td>比率</td><td>返点后消耗 ÷ 1日付费数</td><td>返点后消耗、1日付费数</td></tr><tr><td>自然新增%</td><td>比率</td><td>媒体=自然量 的新增 ÷ 全部新增</td><td>媒体、新增进入</td></tr><tr><td>ltv_1</td><td>比率</td><td>1日充值 ÷ 新增进入</td><td>1日充值、新增进入</td></tr><tr><td>roi_1</td><td>比率</td><td>1日充值 ÷ 返点后消耗</td><td>1日充值、返点后消耗</td></tr></tbody></table><p>指标目录里的 revenue1 / roi7 / revenueRoi 三个条目从未进入该专题任何查询，因此 SQL 不需要 7日充值、流水ROI；需要 1日充值（来自 ltv_1 / roi_1 表达式）。</p><p><strong>该专题 SQL 暴露的字段（11）</strong>：日期、平台、地区、媒体、渠道商、主游戏、消耗、返点后消耗、新增进入、1日充值、1日付费数</p><h3 id="留存分析-retention">留存分析（<code>retention</code>）</h3><table><thead><tr><th>响应字段</th><th>类型</th><th>定义（分子 ÷ 分母）</th><th>需要的原始列</th></tr></thead><tbody><tr><td>新增进入</td><td>SUM</td><td>—</td><td>新增进入</td></tr><tr><td>1日付费数</td><td>SUM</td><td>—</td><td>1日付费数</td></tr><tr><td>2日留存率</td><td>比率</td><td>2日留存数 ÷ 新增进入</td><td>2日留存数、新增进入</td></tr><tr><td>1日付费率</td><td>比率</td><td>1日付费数 ÷ 新增进入</td><td>1日付费数、新增进入</td></tr><tr><td>N日付费留存率</td><td>比率</td><td>N日付费留存数 ÷ 1日付费数</td><td>N日付费留存数、1日付费数</td></tr></tbody></table><p>该专题所有指标都来自「归因/充值」明细分支，不依赖广告消耗分支；因此大陆侧 SQL 直接读 ad_data_sum_report / wxh5_data_sum_report，不再扫描约 320 万行的消耗视图（这是提升最大的一个专题）。</p><p><strong>该专题 SQL 暴露的字段（18）</strong>：日期、平台、地区、媒体、渠道商、主游戏、新增进入、1日付费数、2日留存数、2日付费留存数、3日付费留存数、4日付费留存数、5日付费留存数、6日付费留存数、7日付费留存数、14日付费留存数、21日付费留存数、30日付费留存数</p><h3 id="LTV-ROI-分析-ltv-roi">LTV / ROI 分析（<code>ltv-roi</code>）</h3><table><thead><tr><th>响应字段</th><th>类型</th><th>定义（分子 ÷ 分母）</th><th>需要的原始列</th></tr></thead><tbody><tr><td>ltv_1 / 3 / 7 / 14 / 30</td><td>比率</td><td>N日充值 ÷ 新增进入</td><td>N日充值、新增进入</td></tr><tr><td>roi_1 / 3 / 7 / 14 / 30</td><td>比率</td><td>N日充值 ÷ 返点后消耗</td><td>N日充值、返点后消耗</td></tr><tr><td>累计roi</td><td>比率</td><td>累计充值 ÷ 返点后消耗</td><td>累计充值、返点后消耗</td></tr></tbody></table><p>回收曲线（1/3/7/14/30 天）复用 KPI 行，不需要额外查询；该专题同时需要消耗与充值两个分支。</p><p><strong>该专题 SQL 暴露的字段（14）</strong>：日期、平台、地区、媒体、渠道商、主游戏、新增进入、返点后消耗、1日充值、3日充值、7日充值、14日充值、30日充值、累计充值</p><h3 id="付费分析-payment">付费分析（<code>payment</code>）</h3><table><thead><tr><th>响应字段</th><th>类型</th><th>定义（分子 ÷ 分母）</th><th>需要的原始列</th></tr></thead><tbody><tr><td>充值流水</td><td>SUM</td><td>—</td><td>充值流水（operate 侧，均摊后）</td></tr><tr><td>累计充值</td><td>SUM</td><td>—</td><td>累计充值</td></tr><tr><td>新增进入</td><td>SUM</td><td>—</td><td>新增进入</td></tr><tr><td>1日付费数</td><td>SUM</td><td>—</td><td>1日付费数</td></tr><tr><td>1日付费率</td><td>比率</td><td>1日付费数 ÷ 新增进入</td><td>1日付费数、新增进入</td></tr><tr><td>活跃付费</td><td>SUM</td><td>—</td><td>活跃付费（operate 侧，均摊后）</td></tr><tr><td>累计付费数</td><td>SUM</td><td>—</td><td>累计付费数</td></tr></tbody></table><p>充值流水 / 活跃付费 来自 operate 侧，保留原 SQL 的 COUNT(*) OVER 均摊写法，确保明细按维度拆分后的分配口径与现网完全一致。</p><p><strong>该专题 SQL 暴露的字段（12）</strong>：日期、平台、地区、媒体、渠道商、主游戏、充值流水、累计充值、新增进入、1日付费数、活跃付费、累计付费数</p><h3 id="渠道-媒体分析-channel">渠道 / 媒体分析（<code>channel</code>）</h3><table><thead><tr><th>响应字段</th><th>类型</th><th>定义（分子 ÷ 分母）</th><th>需要的原始列</th></tr></thead><tbody><tr><td>消耗</td><td>SUM</td><td>—</td><td>消耗</td></tr><tr><td>返点后消耗</td><td>SUM</td><td>—</td><td>返点后消耗</td></tr><tr><td>新增进入</td><td>SUM</td><td>—</td><td>新增进入</td></tr><tr><td>cpa</td><td>比率</td><td>返点后消耗 ÷ 新增进入</td><td>返点后消耗、新增进入</td></tr><tr><td>充值流水</td><td>SUM</td><td>—</td><td>充值流水（operate 侧，均摊后）</td></tr><tr><td>流水ROI</td><td>比率</td><td>充值流水 ÷ 返点后消耗</td><td>充值流水、返点后消耗</td></tr></tbody></table><p>默认拆解维度是「媒体」，筛选栏 5 列（含地区）仍全部可用，所以 6 个维度列都要保留。</p><p><strong>该专题 SQL 暴露的字段（10）</strong>：日期、平台、地区、媒体、渠道商、主游戏、消耗、返点后消耗、新增进入、充值流水</p><hr /><h2 id="3-大陆侧精简-SQL-5-份">3. 大陆侧精简 SQL（5 份）</h2><p>结构沿用现网 dataset 26 的「mobile / mini_game 两分支 → UNION ALL → 维表 join」，只保留本专题度量。三处按专题做了取舍：</p><ol><li><strong>成本 / LTV-ROI / 渠道</strong> 需要消耗与充值两侧，SQL 仍读 <code>report_sygame_ad_data_view</code>；</li><li><strong>留存</strong> 的指标全部来自归因充值分支，直接读 <code>ad_data_sum_report</code> / <code>wxh5_data_sum_report</code>，不再扫描约 320 万行的消耗视图；</li><li><strong>付费 / 渠道</strong> 需要 operate 侧的充值流水（含活跃付费），保留 <code>opreate_data_report</code> / <code>wxh5_opreate_data_report</code> 与原来的 <code>COUNT(*) OVER</code> 均摊写法。</li></ol><p>日期下限沿用 <code>report_date &gt;= 20250101</code>（数据集 SQL 无法拿到页面所选时间窗，静态 SQL 无法下推，见 §8.2）。</p><h3 id="3-1-成本分析">3.1 成本分析</h3><p><strong><code>final/mainland-cost.sql</code></strong>（58 行）</p><pre class="code"><code>with
+mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(ad_cost) as &quot;消耗&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(coalesce(n_unum, na_devnum)) as &quot;新增进入&quot;,
+    SUM(rt_paid_money_1) as &quot;1日充值&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;
+  from sj_report_data.report_sygame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(ad_cost) as &quot;消耗&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(act_num) as &quot;新增进入&quot;,
+    SUM(rt_paid_money_1) as &quot;1日充值&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;
+  from sj_report_data.report_minigame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+combined as (
+  select * from mobile
+  union all
+  select * from mini_game
+)
+select
+  case when combined.report_date &gt; 0
+    and LENGTH(cast(combined.report_date as TEXT)) = 8
+    then TO_DATE(cast(combined.report_date as TEXT), &#x27;YYYYMMDD&#x27;) end as &quot;日期&quot;,
+  combined.platform as &quot;平台&quot;,
+  &#x27;mainland&#x27;::varchar as &quot;地区&quot;,
+  case when combined.pad_id = 0 then &#x27;自然量&#x27; else ch.channel_name end as &quot;媒体&quot;,
+  pt.cch_name as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;,
+  COALESCE(combined.&quot;消耗&quot;, 0) as &quot;消耗&quot;,
+  COALESCE(combined.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(combined.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(combined.&quot;1日充值&quot;, 0) as &quot;1日充值&quot;,
+  COALESCE(combined.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;
+from combined
+left join ad_manager.ad_channel ch on combined.pad_id = ch.channel_id
+left join sj_platform.part_channel pt on combined.cch_id = pt.cch_id
+left join sj_platform.part_papp pp on combined.papp_id = pp.papp_id</code></pre><h3 id="3-2-留存分析">3.2 留存分析</h3><p><strong><code>final/mainland-retention.sql</code></strong>（79 行）</p><pre class="code"><code>with
+mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(coalesce(n_unum, na_devnum)) as &quot;新增进入&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;,
+    SUM(day2_dau) as &quot;2日留存数&quot;,
+    SUM(pay_retained_2) as &quot;2日付费留存数&quot;,
+    SUM(pay_retained_3) as &quot;3日付费留存数&quot;,
+    SUM(pay_retained_4) as &quot;4日付费留存数&quot;,
+    SUM(pay_retained_5) as &quot;5日付费留存数&quot;,
+    SUM(pay_retained_6) as &quot;6日付费留存数&quot;,
+    SUM(pay_retained_7) as &quot;7日付费留存数&quot;,
+    SUM(pay_retained_14) as &quot;14日付费留存数&quot;,
+    SUM(pay_retained_21) as &quot;21日付费留存数&quot;,
+    SUM(pay_retained_30) as &quot;30日付费留存数&quot;
+  from sj_report_data.ad_data_sum_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(act_num) as &quot;新增进入&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;,
+    SUM(day2_dau) as &quot;2日留存数&quot;,
+    SUM(pay_retained_2) as &quot;2日付费留存数&quot;,
+    SUM(pay_retained_3) as &quot;3日付费留存数&quot;,
+    SUM(pay_retained_4) as &quot;4日付费留存数&quot;,
+    SUM(pay_retained_5) as &quot;5日付费留存数&quot;,
+    SUM(pay_retained_6) as &quot;6日付费留存数&quot;,
+    SUM(pay_retained_7) as &quot;7日付费留存数&quot;,
+    SUM(pay_retained_14) as &quot;14日付费留存数&quot;,
+    SUM(pay_retained_21) as &quot;21日付费留存数&quot;,
+    SUM(pay_retained_30) as &quot;30日付费留存数&quot;
+  from sj_report_data.wxh5_data_sum_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+combined as (
+  select * from mobile
+  union all
+  select * from mini_game
+)
+select
+  case when combined.report_date &gt; 0
+    and LENGTH(cast(combined.report_date as TEXT)) = 8
+    then TO_DATE(cast(combined.report_date as TEXT), &#x27;YYYYMMDD&#x27;) end as &quot;日期&quot;,
+  combined.platform as &quot;平台&quot;,
+  &#x27;mainland&#x27;::varchar as &quot;地区&quot;,
+  case when combined.pad_id = 0 then &#x27;自然量&#x27; else ch.channel_name end as &quot;媒体&quot;,
+  pt.cch_name as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;,
+  COALESCE(combined.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(combined.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;,
+  COALESCE(combined.&quot;2日留存数&quot;, 0) as &quot;2日留存数&quot;,
+  COALESCE(combined.&quot;2日付费留存数&quot;, 0) as &quot;2日付费留存数&quot;,
+  COALESCE(combined.&quot;3日付费留存数&quot;, 0) as &quot;3日付费留存数&quot;,
+  COALESCE(combined.&quot;4日付费留存数&quot;, 0) as &quot;4日付费留存数&quot;,
+  COALESCE(combined.&quot;5日付费留存数&quot;, 0) as &quot;5日付费留存数&quot;,
+  COALESCE(combined.&quot;6日付费留存数&quot;, 0) as &quot;6日付费留存数&quot;,
+  COALESCE(combined.&quot;7日付费留存数&quot;, 0) as &quot;7日付费留存数&quot;,
+  COALESCE(combined.&quot;14日付费留存数&quot;, 0) as &quot;14日付费留存数&quot;,
+  COALESCE(combined.&quot;21日付费留存数&quot;, 0) as &quot;21日付费留存数&quot;,
+  COALESCE(combined.&quot;30日付费留存数&quot;, 0) as &quot;30日付费留存数&quot;
+from combined
+left join ad_manager.ad_channel ch on combined.pad_id = ch.channel_id
+left join sj_platform.part_channel pt on combined.cch_id = pt.cch_id
+left join sj_platform.part_papp pp on combined.papp_id = pp.papp_id</code></pre><h3 id="3-3-LTV-ROI-分析">3.3 LTV / ROI 分析</h3><p><strong><code>final/mainland-ltv-roi.sql</code></strong>（67 行）</p><pre class="code"><code>with
+mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(coalesce(n_unum, na_devnum)) as &quot;新增进入&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(rt_paid_money_1) as &quot;1日充值&quot;,
+    SUM(rt_paid_money_3) as &quot;3日充值&quot;,
+    SUM(rt_paid_money_7) as &quot;7日充值&quot;,
+    SUM(rt_paid_money_14) as &quot;14日充值&quot;,
+    SUM(rt_paid_money_30) as &quot;30日充值&quot;,
+    SUM(total_paid_money) as &quot;累计充值&quot;
+  from sj_report_data.report_sygame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(act_num) as &quot;新增进入&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(rt_paid_money_1) as &quot;1日充值&quot;,
+    SUM(rt_paid_money_3) as &quot;3日充值&quot;,
+    SUM(rt_paid_money_7) as &quot;7日充值&quot;,
+    SUM(rt_paid_money_14) as &quot;14日充值&quot;,
+    SUM(rt_paid_money_30) as &quot;30日充值&quot;,
+    SUM(total_paid_money) as &quot;累计充值&quot;
+  from sj_report_data.report_minigame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+combined as (
+  select * from mobile
+  union all
+  select * from mini_game
+)
+select
+  case when combined.report_date &gt; 0
+    and LENGTH(cast(combined.report_date as TEXT)) = 8
+    then TO_DATE(cast(combined.report_date as TEXT), &#x27;YYYYMMDD&#x27;) end as &quot;日期&quot;,
+  combined.platform as &quot;平台&quot;,
+  &#x27;mainland&#x27;::varchar as &quot;地区&quot;,
+  case when combined.pad_id = 0 then &#x27;自然量&#x27; else ch.channel_name end as &quot;媒体&quot;,
+  pt.cch_name as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;,
+  COALESCE(combined.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(combined.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(combined.&quot;1日充值&quot;, 0) as &quot;1日充值&quot;,
+  COALESCE(combined.&quot;3日充值&quot;, 0) as &quot;3日充值&quot;,
+  COALESCE(combined.&quot;7日充值&quot;, 0) as &quot;7日充值&quot;,
+  COALESCE(combined.&quot;14日充值&quot;, 0) as &quot;14日充值&quot;,
+  COALESCE(combined.&quot;30日充值&quot;, 0) as &quot;30日充值&quot;,
+  COALESCE(combined.&quot;累计充值&quot;, 0) as &quot;累计充值&quot;
+from combined
+left join ad_manager.ad_channel ch on combined.pad_id = ch.channel_id
+left join sj_platform.part_channel pt on combined.cch_id = pt.cch_id
+left join sj_platform.part_papp pp on combined.papp_id = pp.papp_id</code></pre><h3 id="3-4-付费分析">3.4 付费分析</h3><p><strong><code>final/mainland-payment.sql</code></strong>（121 行）</p><pre class="code"><code>with
+mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(coalesce(n_unum, na_devnum)) as &quot;新增进入&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;,
+    SUM(total_paid_unum) as &quot;累计付费数&quot;,
+    SUM(total_paid_money) as &quot;累计充值&quot;
+  from sj_report_data.report_sygame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(act_num) as &quot;新增进入&quot;,
+    SUM(paid_unum_1) as &quot;1日付费数&quot;,
+    SUM(total_paid_unum) as &quot;累计付费数&quot;,
+    SUM(total_paid_money) as &quot;累计充值&quot;
+  from sj_report_data.report_minigame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+operate_mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    SUM(p_money) as p_money
+    , SUM(p_unum) as pay_users
+  from sj_report_data.opreate_data_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id
+),
+operate_mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    SUM(p_money) as p_money
+    , SUM(p_num) as pay_users
+  from xh_report_data.wxh5_opreate_data_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id
+),
+mobile_full as (
+  select
+    COALESCE(a.platform, op.platform) as platform,
+    COALESCE(a.report_date, op.report_date) as report_date,
+    COALESCE(a.cch_id, op.cch_id) as cch_id,
+    COALESCE(a.papp_id, op.papp_id) as papp_id,
+    COALESCE(a.pad_id, 0) as pad_id,
+    COALESCE(a.ptid, &#x27;&#x27;) as ptid,
+    a.&quot;新增进入&quot;,
+    a.&quot;1日付费数&quot;,
+    a.&quot;累计付费数&quot;,
+    a.&quot;累计充值&quot;,
+    COALESCE(op.p_money, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;充值流水&quot;,
+    COALESCE(op.pay_users, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;活跃付费&quot;
+  from mobile a
+  full outer join operate_mobile op
+    on a.report_date = op.report_date
+    and a.cch_id = op.cch_id
+    and a.papp_id = op.papp_id
+),
+mini_game_full as (
+  select
+    COALESCE(a.platform, op.platform) as platform,
+    COALESCE(a.report_date, op.report_date) as report_date,
+    COALESCE(a.cch_id, op.cch_id) as cch_id,
+    COALESCE(a.papp_id, op.papp_id) as papp_id,
+    COALESCE(a.pad_id, 0) as pad_id,
+    COALESCE(a.ptid, &#x27;&#x27;) as ptid,
+    a.&quot;新增进入&quot;,
+    a.&quot;1日付费数&quot;,
+    a.&quot;累计付费数&quot;,
+    a.&quot;累计充值&quot;,
+    COALESCE(op.p_money, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;充值流水&quot;,
+    COALESCE(op.pay_users, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;活跃付费&quot;
+  from mini_game a
+  full outer join operate_mini_game op
+    on a.report_date = op.report_date
+    and a.cch_id = op.cch_id
+    and a.papp_id = op.papp_id
+),
+combined as (
+  select * from mobile_full
+  union all
+  select * from mini_game_full
+)
+select
+  case when combined.report_date &gt; 0
+    and LENGTH(cast(combined.report_date as TEXT)) = 8
+    then TO_DATE(cast(combined.report_date as TEXT), &#x27;YYYYMMDD&#x27;) end as &quot;日期&quot;,
+  combined.platform as &quot;平台&quot;,
+  &#x27;mainland&#x27;::varchar as &quot;地区&quot;,
+  case when combined.pad_id = 0 then &#x27;自然量&#x27; else ch.channel_name end as &quot;媒体&quot;,
+  pt.cch_name as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;,
+  COALESCE(combined.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(combined.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;,
+  COALESCE(combined.&quot;累计付费数&quot;, 0) as &quot;累计付费数&quot;,
+  COALESCE(combined.&quot;累计充值&quot;, 0) as &quot;累计充值&quot;,
+  COALESCE(combined.&quot;充值流水&quot;, 0) as &quot;充值流水&quot;,
+  COALESCE(combined.&quot;活跃付费&quot;, 0) as &quot;活跃付费&quot;
+from combined
+left join ad_manager.ad_channel ch on combined.pad_id = ch.channel_id
+left join sj_platform.part_channel pt on combined.cch_id = pt.cch_id
+left join sj_platform.part_papp pp on combined.papp_id = pp.papp_id</code></pre><h3 id="3-5-渠道-媒体分析">3.5 渠道 / 媒体分析</h3><p><strong><code>final/mainland-channel.sql</code></strong>（113 行）</p><pre class="code"><code>with
+mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(ad_cost) as &quot;消耗&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(coalesce(n_unum, na_devnum)) as &quot;新增进入&quot;
+  from sj_report_data.report_sygame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    pad_id,
+    ptid,
+    SUM(ad_cost) as &quot;消耗&quot;,
+    SUM(ad_real_cost) as &quot;返点后消耗&quot;,
+    SUM(act_num) as &quot;新增进入&quot;
+  from sj_report_data.report_minigame_ad_data_view
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id, pad_id, ptid
+),
+operate_mobile as (
+  select
+    &#x27;mobile&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    SUM(p_money) as p_money
+    , SUM(p_unum) as pay_users
+  from sj_report_data.opreate_data_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id
+),
+operate_mini_game as (
+  select
+    &#x27;mini_game&#x27; as platform,
+    report_date,
+    cch_id,
+    papp_id,
+    SUM(p_money) as p_money
+    , SUM(p_num) as pay_users
+  from xh_report_data.wxh5_opreate_data_report
+  where report_date &gt;= 20250101 and papp_id != 61
+  group by report_date, cch_id, papp_id
+),
+mobile_full as (
+  select
+    COALESCE(a.platform, op.platform) as platform,
+    COALESCE(a.report_date, op.report_date) as report_date,
+    COALESCE(a.cch_id, op.cch_id) as cch_id,
+    COALESCE(a.papp_id, op.papp_id) as papp_id,
+    COALESCE(a.pad_id, 0) as pad_id,
+    COALESCE(a.ptid, &#x27;&#x27;) as ptid,
+    a.&quot;消耗&quot;,
+    a.&quot;返点后消耗&quot;,
+    a.&quot;新增进入&quot;,
+    COALESCE(op.p_money, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;充值流水&quot;
+  from mobile a
+  full outer join operate_mobile op
+    on a.report_date = op.report_date
+    and a.cch_id = op.cch_id
+    and a.papp_id = op.papp_id
+),
+mini_game_full as (
+  select
+    COALESCE(a.platform, op.platform) as platform,
+    COALESCE(a.report_date, op.report_date) as report_date,
+    COALESCE(a.cch_id, op.cch_id) as cch_id,
+    COALESCE(a.papp_id, op.papp_id) as papp_id,
+    COALESCE(a.pad_id, 0) as pad_id,
+    COALESCE(a.ptid, &#x27;&#x27;) as ptid,
+    a.&quot;消耗&quot;,
+    a.&quot;返点后消耗&quot;,
+    a.&quot;新增进入&quot;,
+    COALESCE(op.p_money, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(a.report_date, op.report_date), COALESCE(a.cch_id, op.cch_id), COALESCE(a.papp_id, op.papp_id)), 0) as &quot;充值流水&quot;
+  from mini_game a
+  full outer join operate_mini_game op
+    on a.report_date = op.report_date
+    and a.cch_id = op.cch_id
+    and a.papp_id = op.papp_id
+),
+combined as (
+  select * from mobile_full
+  union all
+  select * from mini_game_full
+)
+select
+  case when combined.report_date &gt; 0
+    and LENGTH(cast(combined.report_date as TEXT)) = 8
+    then TO_DATE(cast(combined.report_date as TEXT), &#x27;YYYYMMDD&#x27;) end as &quot;日期&quot;,
+  combined.platform as &quot;平台&quot;,
+  &#x27;mainland&#x27;::varchar as &quot;地区&quot;,
+  case when combined.pad_id = 0 then &#x27;自然量&#x27; else ch.channel_name end as &quot;媒体&quot;,
+  pt.cch_name as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;,
+  COALESCE(combined.&quot;消耗&quot;, 0) as &quot;消耗&quot;,
+  COALESCE(combined.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(combined.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(combined.&quot;充值流水&quot;, 0) as &quot;充值流水&quot;
+from combined
+left join ad_manager.ad_channel ch on combined.pad_id = ch.channel_id
+left join sj_platform.part_channel pt on combined.cch_id = pt.cch_id
+left join sj_platform.part_papp pp on combined.papp_id = pp.papp_id</code></pre><hr /><h2 id="4-海外侧精简-SQL-5-份">4. 海外侧精简 SQL（5 份）</h2><p>海外侧沿用 dataset 38 的口径：</p><ul><li>金额列是「USD × 10000」，<code>* 7 / 10000.0</code> = 按固定汇率 7.0 换成人民币「元」，与大陆侧同量纲；</li><li>付费留存类指标海外没有数据，保留 <code>0</code> 占位列，保证两侧列名一致（联邦合并要求）；</li><li><code>平台</code> 固定 <code>oversea</code>、<code>渠道商</code> 实际是 <code>system</code>（android / ios / third）、<code>地区</code> 是 <code>region</code>；</li><li>支付流水表改为 <code>paid_date_s</code> / <code>corder_year</code> 过滤：现网 <code>TO_CHAR(TO_TIMESTAMP(paid_date_s))</code> 写法会让 33M 行分区表全分区扫描（实测 631ms），改成裸 epoch 后只扫 1 个分区（实测 62ms），性价比很高。</li></ul><h3 id="4-1-成本分析">4.1 成本分析</h3><p><strong><code>final/oversea-cost.sql</code></strong>（44 行）</p><pre class="code"><code>with
+agg as (
+  select
+    report_date,
+    ad_cch_id,
+    papp_id,
+    tid,
+    system,
+    region,
+  SUM(ad_menoy) * 7 / 10000.0 as &quot;消耗&quot;,
+  SUM(before_cost) * 7 / 10000.0 as &quot;返点后消耗&quot;,
+  SUM(rt_device_num) as &quot;新增进入&quot;,
+  SUM(paid_money) * 7 / 10000.0 as &quot;1日充值&quot;,
+  SUM(paid_money_7) * 7 / 10000.0 as &quot;7日充值&quot;,
+  SUM(paid_num) as &quot;1日付费数&quot;
+  from overseas_report_data.ad_operate_data_report
+  where report_date &gt;= 20240101
+    and ad_cch_id not in (59, 64)
+  group by report_date, ad_cch_id, papp_id, tid, system, region
+)
+select
+  &#x27;oversea&#x27;::varchar as &quot;平台&quot;,
+  agg.region as &quot;地区&quot;,
+  agg.ad_cch_id as pad_id,
+  agg.papp_id as papp_id,
+  case when agg.report_date &gt; 0
+    and LENGTH(cast(agg.report_date as TEXT)) = 8
+    then TO_DATE(cast(agg.report_date as TEXT), &#x27;YYYYMMDD&#x27;)::date
+  end as &quot;日期&quot;,
+  COALESCE(agg.&quot;消耗&quot;, 0) as &quot;消耗&quot;,
+  COALESCE(agg.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(agg.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(agg.&quot;1日充值&quot;, 0) as &quot;1日充值&quot;,
+  COALESCE(agg.&quot;7日充值&quot;, 0) as &quot;7日充值&quot;,
+  COALESCE(agg.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;,
+  CASE WHEN ch.ad_cch_name IS NULL THEN &#x27;未知&#x27;
+    WHEN ch.ad_cch_name = &#x27;Rastar自然量&#x27; THEN &#x27;自然量&#x27;
+    ELSE ch.ad_cch_name END as &quot;媒体&quot;,
+  agg.system as &quot;渠道商[ID]&quot;,
+  agg.system as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;
+from agg
+left join xh_osdata_manage.ad_channel ch on agg.ad_cch_id = ch.id
+left join xh_osdata_manage.part_papp pp on agg.papp_id = pp.papp_id</code></pre><h3 id="4-2-留存分析">4.2 留存分析</h3><p><strong><code>final/oversea-retention.sql</code></strong>（56 行）</p><pre class="code"><code>with
+agg as (
+  select
+    report_date,
+    ad_cch_id,
+    papp_id,
+    tid,
+    system,
+    region,
+  SUM(rt_device_num) as &quot;新增进入&quot;,
+  SUM(paid_num) as &quot;1日付费数&quot;,
+  SUM(rt_device_num_2) as &quot;2日留存数&quot;,
+  0::numeric as &quot;2日付费留存数&quot;,
+  0::numeric as &quot;3日付费留存数&quot;,
+  0::numeric as &quot;4日付费留存数&quot;,
+  0::numeric as &quot;5日付费留存数&quot;,
+  0::numeric as &quot;6日付费留存数&quot;,
+  0::numeric as &quot;7日付费留存数&quot;,
+  0::numeric as &quot;14日付费留存数&quot;,
+  0::numeric as &quot;21日付费留存数&quot;,
+  0::numeric as &quot;30日付费留存数&quot;
+  from overseas_report_data.ad_operate_data_report
+  where report_date &gt;= 20240101
+    and ad_cch_id not in (59, 64)
+  group by report_date, ad_cch_id, papp_id, tid, system, region
+)
+select
+  &#x27;oversea&#x27;::varchar as &quot;平台&quot;,
+  agg.region as &quot;地区&quot;,
+  agg.ad_cch_id as pad_id,
+  agg.papp_id as papp_id,
+  case when agg.report_date &gt; 0
+    and LENGTH(cast(agg.report_date as TEXT)) = 8
+    then TO_DATE(cast(agg.report_date as TEXT), &#x27;YYYYMMDD&#x27;)::date
+  end as &quot;日期&quot;,
+  COALESCE(agg.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(agg.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;,
+  COALESCE(agg.&quot;2日留存数&quot;, 0) as &quot;2日留存数&quot;,
+  COALESCE(agg.&quot;2日付费留存数&quot;, 0) as &quot;2日付费留存数&quot;,
+  COALESCE(agg.&quot;3日付费留存数&quot;, 0) as &quot;3日付费留存数&quot;,
+  COALESCE(agg.&quot;4日付费留存数&quot;, 0) as &quot;4日付费留存数&quot;,
+  COALESCE(agg.&quot;5日付费留存数&quot;, 0) as &quot;5日付费留存数&quot;,
+  COALESCE(agg.&quot;6日付费留存数&quot;, 0) as &quot;6日付费留存数&quot;,
+  COALESCE(agg.&quot;7日付费留存数&quot;, 0) as &quot;7日付费留存数&quot;,
+  COALESCE(agg.&quot;14日付费留存数&quot;, 0) as &quot;14日付费留存数&quot;,
+  COALESCE(agg.&quot;21日付费留存数&quot;, 0) as &quot;21日付费留存数&quot;,
+  COALESCE(agg.&quot;30日付费留存数&quot;, 0) as &quot;30日付费留存数&quot;,
+  CASE WHEN ch.ad_cch_name IS NULL THEN &#x27;未知&#x27;
+    WHEN ch.ad_cch_name = &#x27;Rastar自然量&#x27; THEN &#x27;自然量&#x27;
+    ELSE ch.ad_cch_name END as &quot;媒体&quot;,
+  agg.system as &quot;渠道商[ID]&quot;,
+  agg.system as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;
+from agg
+left join xh_osdata_manage.ad_channel ch on agg.ad_cch_id = ch.id
+left join xh_osdata_manage.part_papp pp on agg.papp_id = pp.papp_id</code></pre><h3 id="4-3-LTV-ROI-分析">4.3 LTV / ROI 分析</h3><p><strong><code>final/oversea-ltv-roi.sql</code></strong>（48 行）</p><pre class="code"><code>with
+agg as (
+  select
+    report_date,
+    ad_cch_id,
+    papp_id,
+    tid,
+    system,
+    region,
+  SUM(rt_device_num) as &quot;新增进入&quot;,
+  SUM(before_cost) * 7 / 10000.0 as &quot;返点后消耗&quot;,
+  SUM(paid_money) * 7 / 10000.0 as &quot;1日充值&quot;,
+  SUM(paid_money_3) * 7 / 10000.0 as &quot;3日充值&quot;,
+  SUM(paid_money_7) * 7 / 10000.0 as &quot;7日充值&quot;,
+  SUM(paid_money_14) * 7 / 10000.0 as &quot;14日充值&quot;,
+  SUM(paid_money_30) * 7 / 10000.0 as &quot;30日充值&quot;,
+  SUM(paid_money_total) * 7 / 10000.0 as &quot;累计充值&quot;
+  from overseas_report_data.ad_operate_data_report
+  where report_date &gt;= 20240101
+    and ad_cch_id not in (59, 64)
+  group by report_date, ad_cch_id, papp_id, tid, system, region
+)
+select
+  &#x27;oversea&#x27;::varchar as &quot;平台&quot;,
+  agg.region as &quot;地区&quot;,
+  agg.ad_cch_id as pad_id,
+  agg.papp_id as papp_id,
+  case when agg.report_date &gt; 0
+    and LENGTH(cast(agg.report_date as TEXT)) = 8
+    then TO_DATE(cast(agg.report_date as TEXT), &#x27;YYYYMMDD&#x27;)::date
+  end as &quot;日期&quot;,
+  COALESCE(agg.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(agg.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(agg.&quot;1日充值&quot;, 0) as &quot;1日充值&quot;,
+  COALESCE(agg.&quot;3日充值&quot;, 0) as &quot;3日充值&quot;,
+  COALESCE(agg.&quot;7日充值&quot;, 0) as &quot;7日充值&quot;,
+  COALESCE(agg.&quot;14日充值&quot;, 0) as &quot;14日充值&quot;,
+  COALESCE(agg.&quot;30日充值&quot;, 0) as &quot;30日充值&quot;,
+  COALESCE(agg.&quot;累计充值&quot;, 0) as &quot;累计充值&quot;,
+  CASE WHEN ch.ad_cch_name IS NULL THEN &#x27;未知&#x27;
+    WHEN ch.ad_cch_name = &#x27;Rastar自然量&#x27; THEN &#x27;自然量&#x27;
+    ELSE ch.ad_cch_name END as &quot;媒体&quot;,
+  agg.system as &quot;渠道商[ID]&quot;,
+  agg.system as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;
+from agg
+left join xh_osdata_manage.ad_channel ch on agg.ad_cch_id = ch.id
+left join xh_osdata_manage.part_papp pp on agg.papp_id = pp.papp_id</code></pre><h3 id="4-4-付费分析">4.4 付费分析</h3><p><strong><code>final/oversea-payment.sql</code></strong>（69 行）</p><pre class="code"><code>with
+agg as (
+  select
+    report_date,
+    ad_cch_id,
+    papp_id,
+    tid,
+    system,
+    region,
+  SUM(rt_device_num) as &quot;新增进入&quot;,
+  SUM(paid_num) as &quot;1日付费数&quot;,
+  SUM(paid_num_total) as &quot;累计付费数&quot;,
+  SUM(paid_money_total) * 7 / 10000.0 as &quot;累计充值&quot;
+  from overseas_report_data.ad_operate_data_report
+  where report_date &gt;= 20240101
+    and ad_cch_id not in (59, 64)
+  group by report_date, ad_cch_id, papp_id, tid, system, region
+),
+pay as (
+  select
+    TO_CHAR(TO_TIMESTAMP(paid_date_s), &#x27;YYYYMMDD&#x27;)::int as report_date,
+    papp_id,
+    ad_cch_id,
+    case
+      when cch_id = 101 then &#x27;android&#x27;
+      when cch_id = 102 then &#x27;ios&#x27;
+      else &#x27;third&#x27;
+    end as system,
+    location_region as region,
+    COUNT(distinct uid) as pay_users,
+    SUM(paid_usd) * 7 / 10000.0 as total_paid
+  from overseas_sdk_log.all_app_pay_log
+  where paid_status = 1
+    and paid_date_s &gt;= 1704038400
+    and corder_year &gt;= 2024
+  group by report_date, papp_id, ad_cch_id, system, region
+)
+select
+  &#x27;oversea&#x27;::varchar as &quot;平台&quot;,
+  COALESCE(agg.region, pay.region) as &quot;地区&quot;,
+  COALESCE(agg.ad_cch_id, pay.ad_cch_id) as pad_id,
+  COALESCE(agg.papp_id, pay.papp_id) as papp_id,
+  case when COALESCE(agg.report_date, pay.report_date) &gt; 0
+    and LENGTH(cast(COALESCE(agg.report_date, pay.report_date) as TEXT)) = 8
+    then TO_DATE(cast(COALESCE(agg.report_date, pay.report_date) as TEXT), &#x27;YYYYMMDD&#x27;)::date
+  end as &quot;日期&quot;,
+  COALESCE(agg.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(agg.&quot;1日付费数&quot;, 0) as &quot;1日付费数&quot;,
+  COALESCE(agg.&quot;累计付费数&quot;, 0) as &quot;累计付费数&quot;,
+  COALESCE(agg.&quot;累计充值&quot;, 0) as &quot;累计充值&quot;,
+  COALESCE(pay.total_paid, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(agg.report_date, pay.report_date), COALESCE(agg.papp_id, pay.papp_id), COALESCE(agg.ad_cch_id, pay.ad_cch_id), COALESCE(agg.system, pay.system), COALESCE(agg.region, pay.region)), 0) as &quot;充值流水&quot;,
+  COALESCE(pay.pay_users, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(agg.report_date, pay.report_date), COALESCE(agg.papp_id, pay.papp_id), COALESCE(agg.ad_cch_id, pay.ad_cch_id), COALESCE(agg.system, pay.system), COALESCE(agg.region, pay.region)), 0) as &quot;活跃付费&quot;,
+  CASE WHEN ch.ad_cch_name IS NULL THEN &#x27;未知&#x27;
+    WHEN ch.ad_cch_name = &#x27;Rastar自然量&#x27; THEN &#x27;自然量&#x27;
+    ELSE ch.ad_cch_name END as &quot;媒体&quot;,
+  COALESCE(agg.system, pay.system) as &quot;渠道商[ID]&quot;,
+  COALESCE(agg.system, pay.system) as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;
+from agg
+full outer join pay on
+  agg.report_date = pay.report_date
+  and agg.papp_id = pay.papp_id
+  and agg.ad_cch_id = pay.ad_cch_id
+  and agg.system = pay.system
+  and agg.region = pay.region
+left join xh_osdata_manage.ad_channel ch
+  on COALESCE(agg.ad_cch_id, pay.ad_cch_id) = ch.id
+left join xh_osdata_manage.part_papp pp
+  on COALESCE(agg.papp_id, pay.papp_id) = pp.papp_id</code></pre><h3 id="4-5-渠道-媒体分析">4.5 渠道 / 媒体分析</h3><p><strong><code>final/oversea-channel.sql</code></strong>（66 行）</p><pre class="code"><code>with
+agg as (
+  select
+    report_date,
+    ad_cch_id,
+    papp_id,
+    tid,
+    system,
+    region,
+  SUM(ad_menoy) * 7 / 10000.0 as &quot;消耗&quot;,
+  SUM(before_cost) * 7 / 10000.0 as &quot;返点后消耗&quot;,
+  SUM(rt_device_num) as &quot;新增进入&quot;
+  from overseas_report_data.ad_operate_data_report
+  where report_date &gt;= 20240101
+    and ad_cch_id not in (59, 64)
+  group by report_date, ad_cch_id, papp_id, tid, system, region
+),
+pay as (
+  select
+    TO_CHAR(TO_TIMESTAMP(paid_date_s), &#x27;YYYYMMDD&#x27;)::int as report_date,
+    papp_id,
+    ad_cch_id,
+    case
+      when cch_id = 101 then &#x27;android&#x27;
+      when cch_id = 102 then &#x27;ios&#x27;
+      else &#x27;third&#x27;
+    end as system,
+    location_region as region,
+    COUNT(distinct uid) as pay_users,
+    SUM(paid_usd) * 7 / 10000.0 as total_paid
+  from overseas_sdk_log.all_app_pay_log
+  where paid_status = 1
+    and paid_date_s &gt;= 1704038400
+    and corder_year &gt;= 2024
+  group by report_date, papp_id, ad_cch_id, system, region
+)
+select
+  &#x27;oversea&#x27;::varchar as &quot;平台&quot;,
+  COALESCE(agg.region, pay.region) as &quot;地区&quot;,
+  COALESCE(agg.ad_cch_id, pay.ad_cch_id) as pad_id,
+  COALESCE(agg.papp_id, pay.papp_id) as papp_id,
+  case when COALESCE(agg.report_date, pay.report_date) &gt; 0
+    and LENGTH(cast(COALESCE(agg.report_date, pay.report_date) as TEXT)) = 8
+    then TO_DATE(cast(COALESCE(agg.report_date, pay.report_date) as TEXT), &#x27;YYYYMMDD&#x27;)::date
+  end as &quot;日期&quot;,
+  COALESCE(agg.&quot;消耗&quot;, 0) as &quot;消耗&quot;,
+  COALESCE(agg.&quot;返点后消耗&quot;, 0) as &quot;返点后消耗&quot;,
+  COALESCE(agg.&quot;新增进入&quot;, 0) as &quot;新增进入&quot;,
+  COALESCE(pay.total_paid, 0) / NULLIF(COUNT(*) OVER (PARTITION BY COALESCE(agg.report_date, pay.report_date), COALESCE(agg.papp_id, pay.papp_id), COALESCE(agg.ad_cch_id, pay.ad_cch_id), COALESCE(agg.system, pay.system), COALESCE(agg.region, pay.region)), 0) as &quot;充值流水&quot;,
+  CASE WHEN ch.ad_cch_name IS NULL THEN &#x27;未知&#x27;
+    WHEN ch.ad_cch_name = &#x27;Rastar自然量&#x27; THEN &#x27;自然量&#x27;
+    ELSE ch.ad_cch_name END as &quot;媒体&quot;,
+  COALESCE(agg.system, pay.system) as &quot;渠道商[ID]&quot;,
+  COALESCE(agg.system, pay.system) as &quot;渠道商&quot;,
+  pp.papp_name as &quot;主游戏&quot;
+from agg
+full outer join pay on
+  agg.report_date = pay.report_date
+  and agg.papp_id = pay.papp_id
+  and agg.ad_cch_id = pay.ad_cch_id
+  and agg.system = pay.system
+  and agg.region = pay.region
+left join xh_osdata_manage.ad_channel ch
+  on COALESCE(agg.ad_cch_id, pay.ad_cch_id) = ch.id
+left join xh_osdata_manage.part_papp pp
+  on COALESCE(agg.papp_id, pay.papp_id) = pp.papp_id</code></pre><hr /><h2 id="5-查询链路如何复用-前端逻辑不用改">5. 查询链路如何复用（前端逻辑不用改）</h2><p>除方案 A 要切换数据集 id 外，<code>query.ts</code> / <code>useAnalysisData</code> / 联邦合并 / 缓存 / 快照 / 预热都不需要改：</p><ul><li><strong>KPI</strong>：<code>SELECT SUM(&lt;度量&gt;) … FROM (专题 SQL) WHERE 日期 …</code>（比率指标仍由 BI 层拆 <code>__num/__den</code> 并在合并后重算）；</li><li><strong>趋势</strong>：<code>GROUP BY 日期 ORDER BY 日期</code>；</li><li><strong>明细</strong>：<code>GROUP BY &lt;当前维度&gt; ORDER BY &lt;排序指标&gt; DESC LIMIT 500</code>；</li><li><strong>下钻</strong>：<code>GROUP BY &lt;维度&gt;, 日期</code>，30 天回溯、8000 行上限。</li></ul><p>以「成本分析 KPI」为例，改造后实际下发的 SQL 形态（与现网生成方式一致，只是子查询换成了精简 SQL）：</p><pre class="code"><code>SELECT sum(&quot;消耗&quot;) AS &quot;消耗&quot;, sum(&quot;返点后消耗&quot;) AS &quot;返点后消耗&quot;, sum(&quot;新增进入&quot;) AS &quot;新增进入&quot;,
+       SUM(&quot;返点后消耗&quot;) AS cpa__num, SUM(&quot;新增进入&quot;) AS cpa__den,
+       SUM(&quot;返点后消耗&quot;) AS cpp__num, SUM(&quot;1日付费数&quot;) AS cpp__den
+FROM (
+  -- 见 3.1 成本分析 SQL
+) AS virtual_table
+WHERE &quot;日期&quot; &gt;= TO_DATE(&#x27;2026-10-11&#x27;, &#x27;YYYY-MM-DD&#x27;)
+  AND &quot;日期&quot; &lt;  TO_DATE(&#x27;2026-11-09&#x27;, &#x27;YYYY-MM-DD&#x27;)
+LIMIT 1</code></pre><p>配套查询的处理建议：</p><ul><li><strong>大厅总览（近 30 天 4 张卡片）</strong>：需要的字段是 <code>消耗 / 返点后消耗 / 新增进入 / 充值流水</code>，与「渠道 / 媒体分析」的字段完全一致 → 直接指向渠道专题数据集，不需要再写一份 SQL。</li><li><strong>filter-values（5 个筛选列）</strong>：建议<strong>继续使用数据集 26</strong>，避免候选值集合发生变化；它只占首屏 5 个请求且有 5 分钟缓存，后续可单独做「维度字典」优化（不在本次范围）。</li><li><strong>快照 / 预热</strong>：逻辑不变；建议把快照 <code>version</code> 从 2 提到 3，使旧快照自动失效，避免用旧数据 seed 缓存。</li><li><strong><code>/bi/federated-datasets</code></strong>：后端按数据集 <code>extra.federated.enabled</code> 返回，新增数据集会自动纳入；前端 <code>config/federatedDatasets.ts</code> 里的硬编码集合需要确认是否要补 id。</li></ul><hr /><h2 id="6-数字一致性校验-实施前置门槛">6. 数字一致性校验（实施前置门槛）</h2><p><strong>方法</strong>：以现网 <code>/bi/chart/data</code> 同一时间窗的 KPI 返回值为基准（数据集 26 + 38 联邦结果），把精简 SQL 在两侧分别执行，再按联邦规则（同维度相加、比率按 <code>SUM(num)/SUM(den)</code> 重算）还原，逐指标比对。窗口：各专题默认「近 30 天」的当前期与对比期（含成熟窗口前移逻辑），共 <strong>68 个「指标 × 窗口」组合</strong>。</p><p><strong>结果：54 个完全一致，其余 14 个差异 ≤0.09%，且与「同一时刻重跑现网 dataset」的漂移逐位相同</strong>（例：成本/渠道的 <code>返点后消耗</code> 在两边都 +0.0707%，<code>累计付费数</code> 两边都 +0.09%），属源库实时补数，不是口径变化。</p><table><thead><tr><th>专题</th><th>校验项</th><th>结论</th></tr></thead><tbody><tr><td>成本</td><td>消耗/返点后消耗/新增进入/cpa/cpp（2 窗口共 10 项）</td><td>6 项完全一致；4 项为实时补数漂移（≤0.07%）</td></tr><tr><td>留存</td><td>新增进入/2日留存率/1日付费数/1日付费率/7日、30日付费留存率（12 项）</td><td>全部完全一致</td></tr><tr><td>LTV-ROI</td><td>ltv_1/3/7/14/30、roi_1/3/7/14/30、累计roi（22 项）</td><td>20 项完全一致；累计roi 差 0.005%</td></tr><tr><td>付费</td><td>充值流水/累计充值/1日付费数/1日付费率/活跃付费/累计付费数（12 项）</td><td>8 项完全一致；累计类 4 项差 ≤0.09%（实时补数）</td></tr><tr><td>渠道</td><td>消耗/返点后消耗/新增进入/cpa/充值流水/流水ROI（12 项）</td><td>8 项完全一致；4 项为实时补数漂移（≤0.07%）</td></tr></tbody></table><blockquote>说明：两个源库都在实时写入，同一 SQL 隔 30 分钟重跑，<code>返点后消耗 / 累计充值 / 累计付费数</code> 这类会被回补的字段有千分位级自然漂移，不属于口径差异。留存专题不再扫消耗分支，KPI / 趋势数值完全一致；明细里「只有消耗、没有任何充值/留存」的行会从结果中消失（这些行该专题指标全为 0）。</blockquote><hr /><h2 id="7-性能采样-共享测试库-绝对值波动较大">7. 性能采样（共享测试库，绝对值波动较大）</h2><p>每项为「单侧、单次 SQL、多次采样的中位数（秒）」，均为现网 KPI 窗口、相同时间范围；「裁剪+日期下推」是 §8.2 的二期能力，不具备数据集形态，仅供参考。</p><table><thead><tr><th>专题</th><th>现状·大陆</th><th>裁剪后·大陆</th><th>裁剪+日期下推·大陆</th><th>现状·海外</th><th>裁剪后·海外</th><th>裁剪+日期下推·海外</th></tr></thead><tbody><tr><td>成本分析</td><td>2.15</td><td>2.10</td><td>1.77</td><td>0.66</td><td>0.39</td><td>0.29</td></tr><tr><td>留存分析</td><td>1.68</td><td>0.53</td><td>0.41</td><td>0.62</td><td>0.35</td><td>0.28</td></tr><tr><td>LTV / ROI 分析</td><td>2.06</td><td>1.65</td><td>1.44</td><td>0.73</td><td>0.36</td><td>0.33</td></tr><tr><td>付费分析</td><td>2.24</td><td>1.64</td><td>1.75</td><td>0.67</td><td>0.83</td><td>0.44</td></tr><tr><td>渠道 / 媒体分析</td><td>2.41</td><td>1.75</td><td>1.43</td><td>0.82</td><td>0.66</td><td>0.38</td></tr></tbody></table><p>结论：</p><ol><li><strong>留存专题收益最大</strong>：不再扫描消耗分支，大陆 1.68s → 0.53s（-68%），海外 0.62s → 0.35s（-44%）；</li><li><strong>渠道 / LTV-ROI</strong> 大陆 -20%～-27%，海外 -20%～-51%（裁剪后 0.35–0.66s）；</li><li><strong>成本</strong>：大陆基本持平（2.15s → 2.10s，仍要扫两侧大表），海外 -41%（0.66s → 0.39s）；</li><li><strong>付费</strong>：大陆 -27%；海外静态版反而变慢（0.67s → 0.83s，聚合计划/共享库波动），加日期下推后为 0.44s——该专题建议直接走日期下推；</li><li>页面请求数不变（3 个 chart-data + 5 个 filter-values），首屏墙钟收益小于单 SQL 收益；若目标是首屏明显低于现状，建议选方案 B 或至少做 §8.2 的日期下推，并配合数据库侧索引/物化汇总。</li></ol><hr /><h2 id="8-实施步骤与改动清单-确认后执行">8. 实施步骤与改动清单（确认后执行）</h2><h3 id="8-1-方案-A-落地步骤">8.1 方案 A 落地步骤</h3><ol><li><strong>元数据</strong>：新建 5 个大陆虚拟数据集 + 5 个海外 partner 数据集；</li></ol><ul><li>列元数据与 26/38 同名同类型（SQL 里已按现网列名输出，不能改名）；</li><li>每个专题只复制自己用到的 saved metrics（见 §2，合计约 27 个表达式，不必搬 52 个）；海外 partner 数据集只需要列元数据 + SQL，<strong>不需要</strong>复制 saved metrics（BI 层拆比率后下发的是 <code>SUM(分子)/SUM(分母)</code> 的 adhoc 表达式）；</li><li><code>extra.federated</code> 按专题配置 <code>databases: [aliyun, aliyun-oversea]</code> 与 <code>partner_dataset_id</code>。</li></ul><ol><li><strong>前端 4 处</strong>：<code>topics.tsx</code> 加专题→数据集 id 映射；<code>useAnalysisOverview.ts</code> 指向渠道数据集；<code>filterValues.ts</code> 维持 26（建议）；<code>config/federatedDatasets.ts</code> 确认是否补 id。</li><li><strong>快照</strong>：<code>snapshot.ts</code> 的 <code>version</code> 提到 3，旧快照自动失效。</li><li><strong>回归</strong>：5 个专题 ×（首屏 / 切换专题 / 5 个筛选 / 维度拆解 / 行下钻 / 周视图 / 刷新）；对比改造前后 KPI 与明细前 N 行；确认 filter-values 候选值不变；确认快照 read/write 正常。</li><li><strong>回滚</strong>：保留数据集 26/38 不删，切回 id 即回滚。</li></ol><h3 id="8-2-可选二期-把页面时间窗下推进-SQL">8.2 可选二期：把页面时间窗下推进 SQL</h3><p>现状：Superset 2.3 的虚拟数据集 Jinja 上下文<strong>不含</strong> <code>from_dttm/to_dttm</code>（已核实 <code>get_sqla_query</code> 的 <code>template_kwargs</code>），所以数据集 SQL 只能写死 <code>report_date &gt;= 20250101</code>，每次查询都要扫全历史。</p><p>做法（方案 A 的增强）：在专题 SQL 的日期条件下加标记 <code>/*BI_DATE_FILTER*/</code>，由 BI 层在生成 primary/partner SQL 后按当前 QueryObject 的 <code>from_dttm/to_dttm</code> 替换为 <code>and report_date &gt;= YYYYMMDD and report_date &lt; YYYYMMDD</code>。</p><pre class="code"><code>-- 静态：where report_date &gt;= 20250101 and papp_id != 61
+-- 下推：where report_date &gt;= 20261011 and report_date &lt; 20261109 and papp_id != 61</code></pre><p>实测下推收益见 §7「裁剪+日期下推」列；另外大陆消耗视图里的归档分支（<code>ad_deplete</code>，约 206 万行）没有日期索引，下推也无法裁剪，若要进一步提速需要数据库侧加索引或物化日汇总表。</p><hr /><h2 id="9-口径与风险清单-精简-SQL-必须保持">9. 口径与风险清单（精简 SQL 必须保持）</h2><ol><li><strong>金额单位</strong>：大陆全部是「元」；海外是 USD×10000，<code>*7/10000.0</code> 后是人民币元（固定汇率 7.0），不要重复换算。</li><li><strong><code>papp_id != 61</code></strong>：三国群英传-霸王之业，其归因累计充值恒 0、但 op 表有充值，含入会严重拉低 ROI，必须保留过滤。</li><li><strong>不要选 <code>md_id</code></strong>：消耗视图里 14.1% 的 <code>md_traceid</code> 非数字，任何触达 <code>md_id</code> 的查询会直接报错；本方案 SQL 未选该列。</li><li><strong>时间窗是左闭右开</strong>：<code>近 N 天</code> 实际覆盖 N-1 个自然日（页面标签仍显示 N 天），下钻已 +1 天补偿；不要顺手改成闭区间。</li><li><strong>成熟窗口</strong>：留存 / LTV-ROI 的 KPI 与明细使用「整体前移 30 天」的成熟窗口，趋势不过滤、靠前端留空；SQL 本身不含该逻辑。</li><li><strong>充值流水 / 活跃付费</strong>：保留原 <code>COUNT(*) OVER</code> 均摊（大陆实测放大 5.85× / 5.93×，海外 1.109×），保证明细按媒体/游戏拆分后的分配与现网一致；若要改成「按消耗占比分摊」属于业务口径决策，需另行确认。</li><li><strong>海外映射与除法取整</strong>：<code>渠道商</code> 实际是 <code>system</code>；<code>媒体</code> 里 <code>ad_cch_id=0</code> 显示「未知」、id=7「Rastar自然量」映射「自然量」；<code>活跃付费</code> 是按行 <code>COUNT(DISTINCT uid)</code>、再除以 <code>COUNT(*)</code> 均摊，bigint 整除会截断——海外 agg 因此仍保留 <code>tid</code> 分组，与现网行为逐位一致；跨行相加会重复计数（现网如此，未改）。</li><li><strong>海外支付流水</strong>：必须 <code>paid_status = 1</code>（否则含 1178 万行 <code>paid_date_s=0</code> 的无效记录）；时区按 PRC 自然日。</li><li><strong>脏值</strong>：大陆视图有 <code>report_date=0</code>、4/7/9 位日期、<code>20261110</code> 未来日等，现网既有 SQL 已按 8 位长度过滤；精简 SQL 保持同样过滤。</li><li><strong>静态 SQL 的限制</strong>：方案 A 无法把页面时间窗下推（见 §8.2）；<code>ad_deplete</code> 归档分支无日期索引；海外支付表若继续用 <code>TO_CHAR(TO_TIMESTAMP(...))</code> 会全分区扫描——本方案已改用 epoch + <code>corder_year</code>。</li></ol><hr /><h2 id="10-待确认的问题">10. 待确认的问题</h2><ol><li><strong>落地形态</strong>：选方案 A（每专题一个数据集，改前端 4 处）还是方案 B（后端直接执行专题 SQL，可下推日期）？</li><li><strong>留存明细行集合</strong>：可以接受「只有消耗、无充值/留存」的全零行从明细中消失吗（KPI 数值不变）？若要 100% 行集一致，留存 SQL 需保留消耗分支（可提供附注版本）。</li><li><strong>filter-values</strong>：维持使用数据集 26（候选值完全不变）是否可接受？</li><li><strong>未用指标列</strong>：是否同意把 60/90 日、曝光/点击/下载、DAU、团队、商户充值、<code>[ID]</code> 列彻底从专题数据集移除（本次方案默认移除）？</li><li><strong>性能目标</strong>：首屏是否有明确目标？若要求明显低于现状，建议一并排期方案 B / 日期下推 / 数据库索引或物化汇总。</li></ol><hr /><h2 id="附录-文件与证据">附录：文件与证据</h2><table><thead><tr><th>文件</th><th>内容</th></tr></thead><tbody><tr><td><code>final/mainland-*.sql</code></td><td>大陆侧 5 份精简 SQL（§3）</td></tr><tr><td><code>final/oversea-*.sql</code></td><td>海外侧 5 份精简 SQL（§4）</td></tr><tr><td><code>build_trimmed.py</code></td><td>上述 SQL 的生成脚本（字段/分支/日期占位统一维护）</td></tr><tr><td><code>measure_trimmed.py</code>、<code>verify-report.json</code></td><td>数字一致性校验脚本与报告</td></tr><tr><td><code>bench.py</code>、<code>bench-run*.json</code></td><td>性能采样脚本与原始数据</td></tr><tr><td><code>capture_baseline.py</code>、<code>baseline/</code>、<code>sides/</code></td><td>现网查询与两侧生成的 SQL 快照</td></tr><tr><td><code>inventory.md</code></td><td>前端查询/字段清单（含每专题请求数矩阵）</td></tr><tr><td><code>source-schema.md</code></td><td>源表结构、粒度、索引、单位、放大因子核验</td></tr></tbody></table>
+</main>
+</div>
+</body>
+</html>
