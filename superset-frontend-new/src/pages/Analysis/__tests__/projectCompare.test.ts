@@ -681,3 +681,85 @@ test("expands a project window into per-bucket detail rows", () => {
   expect(sparse[0].totals["消耗"]).toBeNull();
   expect(sparse[2].totals["消耗"]).toBe(7);
 });
+
+test("vendor-scoped queries group by 渠道商 and widen the row limit", () => {
+  const { sections } = planProjectCompareSections(
+    [PROJECT_A],
+    ["上线时间"],
+    START_MAPS,
+    30,
+  );
+  const filters = filtersWith({ channels: ["渠道甲", "渠道乙"] });
+
+  const query = buildProjectCompareQuery(topic, filters, sections[0]);
+  // The table splits rows per vendor, so the vendor becomes part of the
+  // grouping instead of being folded into the project total.
+  expect(query.groupby).toEqual(["日期", "渠道商"]);
+  expect(query.orderby).toEqual([["日期", true]]);
+  // One row per day and vendor: the post-merge truncation must not drop days.
+  expect(query.row_limit).toBe(1600);
+  expect(query.filters).toContainEqual({
+    col: "渠道商",
+    op: "IN",
+    val: ["渠道甲", "渠道乙"],
+  });
+
+  // Without a vendor selection the comparison keeps daily-only rows.
+  expect(
+    buildProjectCompareQuery(topic, filtersWith(), sections[0]).groupby,
+  ).toEqual(["日期"]);
+});
+
+test("splits every project into 渠道商 rows when the query groups by it", () => {
+  const { sections } = planProjectCompareSections(
+    [PROJECT_A, PROJECT_B],
+    ["上线时间"],
+    START_MAPS,
+    30,
+  );
+  const spendKey = topicMetric(topic, "spend").key;
+  const rowsA = [
+    { 日期: "2024-01-01", 渠道商: "渠道甲", 消耗: 60 },
+    { 日期: "2024-01-02", 渠道商: "渠道甲", 消耗: 40 },
+    { 日期: "2024-01-01", 渠道商: "渠道乙", 消耗: 30 },
+    { 日期: "2024-01-02", 渠道商: "渠道乙", 消耗: 20 },
+  ];
+  const rowsB = [{ 日期: "2024-05-01", 渠道商: "渠道乙", 消耗: 500 }];
+
+  const rows = projectCompareRowsForAnchor(
+    topic,
+    sections,
+    [rowsA, rowsB],
+    "上线时间",
+    spendKey,
+  );
+  // Projects stay ordered by total spend; within a project the vendors follow
+  // the table-wide spend order (乙 outspent 甲 across the table).
+  expect(
+    rows.map((row) => `${row.section.project.papp_name}|${row.channel}`),
+  ).toEqual(["项目B|渠道乙", "项目A|渠道乙", "项目A|渠道甲"]);
+  expect(rows.map((row) => row.totals["消耗"])).toEqual([500, 50, 100]);
+  // Each row keeps only its vendor's daily rows for the bucket expansion.
+  expect(rows.find((row) => row.channel === "渠道甲")?.rows).toHaveLength(2);
+  // Row identity is unique per project × vendor for the expansion state.
+  expect(new Set(rows.map((row) => row.key)).size).toBe(rows.length);
+});
+
+test("rows without a vendor column stay one per project", () => {
+  const { sections } = planProjectCompareSections(
+    [PROJECT_A],
+    ["上线时间"],
+    START_MAPS,
+    30,
+  );
+  const rows = projectCompareRowsForAnchor(
+    topic,
+    sections,
+    [[{ 日期: "2024-01-01", 消耗: 100 }]],
+    "上线时间",
+    topicMetric(topic, "spend").key,
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0].channel).toBeNull();
+  expect(rows[0].key).toBe(sections[0].key);
+});

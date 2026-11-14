@@ -160,12 +160,15 @@ const ProjectCompareDetailRows = memo(function ProjectCompareDetailRows({
   rows,
   grain,
   metricDefs,
+  channel,
 }: {
   topic: AnalysisTopic;
   section: ProjectCompareSection;
   rows: ProjectCompareSectionRows;
   grain: ProjectCompareGrain;
   metricDefs: AnalysisMetric[];
+  /** Vendor the parent row is scoped to; the cell keeps the columns aligned. */
+  channel?: string | null;
 }) {
   const detailRows = projectCompareBucketRows(
     topic,
@@ -179,6 +182,9 @@ const ProjectCompareDetailRows = memo(function ProjectCompareDetailRows({
       {detailRows.map((detail) => (
         <TableRow key={detail.index} sx={DETAIL_ROW_SX}>
           <TableCell sx={DETAIL_LABEL_SX}>{detail.label}</TableCell>
+          {channel !== undefined && (
+            <TableCell sx={DETAIL_WINDOW_SX}>{channel ?? ""}</TableCell>
+          )}
           <TableCell sx={DETAIL_WINDOW_SX}>{detail.windowLabel}</TableCell>
           {metricDefs.map((metric) => (
             <TableCell key={metric.key} align="center" sx={DETAIL_CELL_SX}>
@@ -228,6 +234,25 @@ function ProjectCompareAnchorTable({
 }) {
   const theme = useTheme();
   const hasData = hasProjectCompareTableData(rows);
+  // Vendor-scoped tables carry one row per project × 渠道商; the extra column
+  // and the per-vendor row keys only exist in that mode.
+  const splitByChannel = useMemo(
+    () => rows.some((item) => item.channel !== null),
+    [rows],
+  );
+  const projectCount = useMemo(
+    () => new Set(rows.map((item) => projectKey(item.section.project))).size,
+    [rows],
+  );
+  const channelCount = useMemo(
+    () =>
+      new Set(
+        rows
+          .map((item) => item.channel)
+          .filter((channel): channel is string => channel !== null),
+      ).size,
+    [rows],
+  );
   const bestValues = useMemo(
     () =>
       bestProjectCompareValues(
@@ -236,14 +261,11 @@ function ProjectCompareAnchorTable({
       ),
     [metricDefs, rows],
   );
-  // Per-project expansion of the window's time buckets (day/week/month, the
-  // same grain as the chart above the table).  The state lives in the parent so
-  // the chart can give up vertical space while detail rows are open.
+  // Per-row expansion of the window's time buckets (day/week/month, the same
+  // grain as the chart above the table).  The state lives in the parent so the
+  // chart can give up vertical space while detail rows are open.
   const expandableKeys = useMemo(
-    () =>
-      rows
-        .filter((item) => item.rows.length > 0)
-        .map((item) => item.section.key),
+    () => rows.filter((item) => item.rows.length > 0).map((item) => item.key),
     [rows],
   );
   const allExpanded =
@@ -379,7 +401,11 @@ function ProjectCompareAnchorTable({
           />
         )}
         <Typography variant="caption" color="text.secondary">
-          {rows.length} 个项目 · 横向滚动查看更多指标
+          {projectCount} 个项目
+          {splitByChannel && channelCount > 0
+            ? ` · ${channelCount} 个渠道商`
+            : ""}
+          {" · 横向滚动查看更多指标"}
         </Typography>
         {hasData && (
           <Button
@@ -428,7 +454,7 @@ function ProjectCompareAnchorTable({
             size="small"
             aria-label={`${ANCHOR_LABELS[anchor]}基准项目对比表`}
             sx={{
-              minWidth: 1120,
+              minWidth: splitByChannel ? 1180 : 1120,
               // Compact mode: tighter rows so more projects/metrics fit on
               // screen while keeping tabular numbers readable.
               "& .MuiTableCell-root": {
@@ -447,6 +473,9 @@ function ProjectCompareAnchorTable({
             <TableHead>
               <TableRow>
                 <TableCell sx={HEAD_LABEL_SX}>项目</TableCell>
+                {splitByChannel && (
+                  <TableCell sx={HEADER_CELL_SX}>渠道商</TableCell>
+                )}
                 <TableCell sx={HEADER_CELL_SX}>窗口</TableCell>
                 {metricDefs.map((metric) => (
                   <TableCell
@@ -468,94 +497,111 @@ function ProjectCompareAnchorTable({
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.map(({ section, totals, rows: sectionRows }) => {
-                const isExpanded = expandedKeys.has(section.key);
-                return (
-                  <Fragment key={section.key}>
-                    <TableRow hover>
-                      <TableCell
-                        sx={ROW_LABEL_SX}
-                        title={section.project.papp_name}
-                      >
-                        <Box
-                          sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 0.25,
-                          }}
+              {rows.map(
+                ({ key, channel, section, totals, rows: sectionRows }) => {
+                  const isExpanded = expandedKeys.has(key);
+                  const rowLabel = channel
+                    ? `${section.project.papp_name}·${channel}`
+                    : section.project.papp_name;
+                  return (
+                    <Fragment key={key}>
+                      <TableRow hover>
+                        <TableCell
+                          sx={ROW_LABEL_SX}
+                          title={section.project.papp_name}
                         >
-                          <IconButton
-                            size="small"
-                            aria-label={
-                              isExpanded
-                                ? `收起${section.project.papp_name}明细`
-                                : `展开${section.project.papp_name}明细`
-                            }
-                            onClick={() => onToggleRow(section.key)}
-                            sx={{ p: 0.25, ml: -0.5 }}
-                          >
-                            {isExpanded ? (
-                              <ExpandLessIcon sx={{ fontSize: 16 }} />
-                            ) : (
-                              <ExpandMoreIcon sx={{ fontSize: 16 }} />
-                            )}
-                          </IconButton>
-                          {section.project.papp_name}
-                        </Box>
-                      </TableCell>
-                      <TableCell
-                        sx={{
-                          whiteSpace: "nowrap",
-                          color: "text.secondary",
-                          fontVariantNumeric: "tabular-nums",
-                          textAlign: "center",
-                        }}
-                      >
-                        {section.windowLabel}
-                      </TableCell>
-                      {metricDefs.map((metric) => {
-                        const value = totals[metric.key] ?? null;
-                        const best = bestValues[metric.key];
-                        const isBest =
-                          value !== null && best !== null && value === best;
-                        return (
-                          <TableCell
-                            key={metric.key}
-                            align="center"
-                            data-best={isBest ? "true" : undefined}
+                          <Box
                             sx={{
-                              whiteSpace: "nowrap",
-                              fontVariantNumeric: "tabular-nums",
-                              ...(isBest
-                                ? {
-                                    fontWeight: 700,
-                                    color: "primary.main",
-                                    bgcolor: alpha(
-                                      theme.palette.primary.main,
-                                      0.08,
-                                    ),
-                                  }
-                                : {}),
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 0.25,
                             }}
                           >
-                            {formatMetricValue(metric, value)}
+                            <IconButton
+                              size="small"
+                              aria-label={
+                                isExpanded
+                                  ? `收起${rowLabel}明细`
+                                  : `展开${rowLabel}明细`
+                              }
+                              onClick={() => onToggleRow(key)}
+                              sx={{ p: 0.25, ml: -0.5 }}
+                            >
+                              {isExpanded ? (
+                                <ExpandLessIcon sx={{ fontSize: 16 }} />
+                              ) : (
+                                <ExpandMoreIcon sx={{ fontSize: 16 }} />
+                              )}
+                            </IconButton>
+                            {section.project.papp_name}
+                          </Box>
+                        </TableCell>
+                        {splitByChannel && (
+                          <TableCell
+                            sx={{
+                              whiteSpace: "nowrap",
+                              color: "text.secondary",
+                              textAlign: "center",
+                            }}
+                          >
+                            {channel ?? "–"}
                           </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                    {isExpanded && (
-                      <ProjectCompareDetailRows
-                        topic={topic}
-                        section={section}
-                        rows={sectionRows}
-                        grain={grain}
-                        metricDefs={metricDefs}
-                      />
-                    )}
-                  </Fragment>
-                );
-              })}
+                        )}
+                        <TableCell
+                          sx={{
+                            whiteSpace: "nowrap",
+                            color: "text.secondary",
+                            fontVariantNumeric: "tabular-nums",
+                            textAlign: "center",
+                          }}
+                        >
+                          {section.windowLabel}
+                        </TableCell>
+                        {metricDefs.map((metric) => {
+                          const value = totals[metric.key] ?? null;
+                          const best = bestValues[metric.key];
+                          const isBest =
+                            value !== null && best !== null && value === best;
+                          return (
+                            <TableCell
+                              key={metric.key}
+                              align="center"
+                              data-best={isBest ? "true" : undefined}
+                              sx={{
+                                whiteSpace: "nowrap",
+                                fontVariantNumeric: "tabular-nums",
+                                ...(isBest
+                                  ? {
+                                      fontWeight: 700,
+                                      color: "primary.main",
+                                      bgcolor: alpha(
+                                        theme.palette.primary.main,
+                                        0.08,
+                                      ),
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              {formatMetricValue(metric, value)}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                      {isExpanded && (
+                        <ProjectCompareDetailRows
+                          topic={topic}
+                          section={section}
+                          rows={sectionRows}
+                          grain={grain}
+                          metricDefs={metricDefs}
+                          channel={splitByChannel ? channel : undefined}
+                        />
+                      )}
+                    </Fragment>
+                  );
+                },
+              )}
             </TableBody>
           </Table>
         </TableContainer>

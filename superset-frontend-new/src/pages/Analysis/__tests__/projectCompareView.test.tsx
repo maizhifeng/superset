@@ -117,19 +117,48 @@ function queryProjectName(query: QueryObject): string {
   return Array.isArray(value) ? String(value[0] ?? "") : String(value ?? "");
 }
 
+/** Additive metrics split proportionally so the vendor rows sum to the day. */
+const VENDOR_SHARES = [
+  { 渠道商: "渠道甲", ratio: 0.6 },
+  { 渠道商: "渠道乙", ratio: 0.4 },
+] as const;
+
+const SPLIT_METRICS = [
+  "消耗",
+  "返点后消耗",
+  "新增进入",
+  "1日充值",
+  "累计充值",
+  "1日付费数",
+  "累计付费数",
+] as const;
+
+function splitRowByVendor(row: ChartDataRow): ChartDataRow[] {
+  return VENDOR_SHARES.map(({ 渠道商, ratio }) => {
+    const split: ChartDataRow = { ...row, 渠道商 };
+    for (const key of SPLIT_METRICS) {
+      const value = Number(row[key]);
+      if (Number.isFinite(value)) split[key] = Math.round(value * ratio);
+    }
+    return split;
+  });
+}
+
 /**
  * Daily rows for one comparison query. 游戏A spends 100/day and 游戏B 200/day,
- * and their CPA differs so the best-value highlight is deterministic.
+ * and their CPA differs so the best-value highlight is deterministic.  Queries
+ * grouped by 渠道商 return one row per vendor and day.
  */
 function dailyRowsForQuery(query: QueryObject): ChartDataRow[] {
   const [start, end] = String(query.time_range ?? "").split(" : ");
   const projectName = queryProjectName(query);
   const isProjectA = projectName === "游戏A";
+  const vendorScoped = (query.groupby ?? []).includes("渠道商");
   const rows: ChartDataRow[] = [];
   let day = dayjs(start);
   const endDay = dayjs(end);
   while (day.isBefore(endDay)) {
-    rows.push({
+    const row: ChartDataRow = {
       日期: day.format("YYYY-MM-DD"),
       消耗: isProjectA ? 100 : 200,
       返点后消耗: 80,
@@ -145,7 +174,8 @@ function dailyRowsForQuery(query: QueryObject): ChartDataRow[] {
       ltv_cum: 3,
       累计roi: 0.6,
       "自然新增%": 0.2,
-    });
+    };
+    rows.push(...(vendorScoped ? splitRowByVendor(row) : [row]));
     day = day.add(1, "day");
   }
   return rows;
@@ -318,6 +348,64 @@ test("expands a project row into the window's time buckets", async () => {
   expect(within(table).queryByText("第1天")).not.toBeInTheDocument();
   expect(chartWrap()).toHaveAttribute("data-folded", "false");
   expect(captured.height).toBe(260);
+});
+
+test("splits each project into 渠道商 rows when vendors are selected", async () => {
+  renderView({ channels: ["渠道甲", "渠道乙"] });
+
+  const table = await screen.findByRole("table", {
+    name: "上线基准项目对比表",
+  });
+  await waitFor(() => expect(lastPayload().queries).toHaveLength(2));
+  // The comparison query groups by the vendor, not only by the day.
+  expect(lastPayload().queries[0].groupby).toEqual(["日期", "渠道商"]);
+
+  // A vendor column appears and both projects keep their own vendor rows.
+  expect(within(table).getByText("渠道商")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(within(table).getAllByRole("row")).toHaveLength(5),
+  );
+  expect(within(table).getAllByText("渠道甲")).toHaveLength(2);
+  expect(within(table).getAllByText("渠道乙")).toHaveLength(2);
+  expect(screen.getByText(/2 个渠道商/)).toBeInTheDocument();
+
+  // Vendors follow their spend order inside every project (甲 spends more).
+  const vendorCells = within(table)
+    .getAllByText(/^渠道[甲乙]$/)
+    .map((cell) => cell.textContent);
+  expect(vendorCells).toEqual(["渠道甲", "渠道乙", "渠道甲", "渠道乙"]);
+
+  // Expansion is per project × vendor row and only shows that vendor's days.
+  fireEvent.click(screen.getByRole("button", { name: "展开游戏A·渠道甲明细" }));
+  expect(within(table).getByText("第1天")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "收起游戏A·渠道甲明细" }),
+  ).toBeInTheDocument();
+  // The sibling vendor row stays collapsed.
+  expect(
+    screen.getByRole("button", { name: "展开游戏A·渠道乙明细" }),
+  ).toBeInTheDocument();
+
+  // The chart still draws one line per project with the vendors summed.
+  const series = capturedOption()?.series as {
+    name?: string;
+    data?: unknown[];
+  }[];
+  expect(series.map((item) => item.name)).toEqual(["游戏A", "游戏B"]);
+  expect(series[0]?.data?.[0]).toBe(100);
+  expect(series[1]?.data?.[0]).toBe(200);
+});
+
+test("keeps one row per project when no vendor is selected", async () => {
+  renderView();
+  const table = await screen.findByRole("table", {
+    name: "上线基准项目对比表",
+  });
+  await waitFor(() =>
+    expect(within(table).getAllByRole("row")).toHaveLength(3),
+  );
+  expect(within(table).queryByText("渠道商")).not.toBeInTheDocument();
+  expect(screen.queryByText(/个渠道商/)).not.toBeInTheDocument();
 });
 
 test("switching the chart grain recomputes buckets locally without a request", async () => {

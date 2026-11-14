@@ -49,6 +49,12 @@ export const PROJECT_COMPARE_QUERY_DEBOUNCE_MS = 250;
 /** One daily row per day of the window; 800 covers the 360-day window. */
 export const PROJECT_COMPARE_DAILY_ROW_LIMIT = 800;
 
+/**
+ * Vendor column.  Queries group by it only when the page filters to specific
+ * vendors, so the comparison table can split each project into vendor rows.
+ */
+export const PROJECT_COMPARE_CHANNEL_COLUMN = "渠道商";
+
 /** Dataset/project-config column holding a project's display name. */
 const PROJECT_NAME_COLUMN = "主游戏";
 
@@ -154,6 +160,10 @@ export interface ProjectCompareChartModel {
 
 /** A comparison-table row: the planned window plus its aggregated totals. */
 export interface ProjectCompareTableRow {
+  /** Unique row identity: section key plus the vendor when rows are split. */
+  key: string;
+  /** Vendor this row is scoped to; ``null`` when the page is not vendor-scoped. */
+  channel: string | null;
   section: ProjectCompareSection;
   rows: ProjectCompareSectionRows;
   totals: ProjectCompareTotals;
@@ -341,10 +351,17 @@ export function buildProjectCompareQuery(
   filters: AnalysisFilters,
   section: ProjectCompareSection,
 ): QueryObject {
+  // Selecting specific vendors makes the vendor part of the grouping: the
+  // comparison table then splits every project into one row per vendor instead
+  // of folding the selection into a single total.
+  const vendorScoped = filters.channels.length > 0;
+  const groupby = vendorScoped
+    ? [ANALYSIS_TIME_COLUMN, PROJECT_COMPARE_CHANNEL_COLUMN]
+    : [ANALYSIS_TIME_COLUMN];
   return {
     result_type: "full",
     metrics: projectCompareQueryMetrics(topic).map((metric) => metric.metric),
-    groupby: [ANALYSIS_TIME_COLUMN],
+    groupby,
     columns: [],
     filters: [
       ...projectComparePageFilters(filters),
@@ -358,7 +375,11 @@ export function buildProjectCompareQuery(
     granularity: ANALYSIS_TIME_COLUMN,
     orderby: [[ANALYSIS_TIME_COLUMN, true]],
     time_range: `${section.start} : ${section.end}`,
-    row_limit: PROJECT_COMPARE_DAILY_ROW_LIMIT,
+    // One row per day and vendor: the per-side SQL is truncated to this limit
+    // after the date sort, so a vendor split must widen it or a long window
+    // loses its tail days.
+    row_limit:
+      PROJECT_COMPARE_DAILY_ROW_LIMIT * Math.max(1, filters.channels.length),
   };
 }
 
@@ -466,12 +487,95 @@ export function projectCompareRowsForAnchor(
     if (section.anchor !== anchor) return;
     const sectionRows = results[index] ?? [];
     rows.push({
+      key: section.key,
+      channel: null,
       section,
       rows: sectionRows,
       totals: aggregateProjectCompareTotals(topic, sectionRows, metricDefs),
     });
   });
-  return sortProjectCompareRows(rows, spendKey);
+  const ordered = sortProjectCompareRows(rows, spendKey);
+  // Vendor-scoped queries group by 渠道商; keep the project ordering above and
+  // split each project into its vendors below.
+  if (!ordered.some((row) => channelRowGroups(row.rows) !== null)) {
+    return ordered;
+  }
+  const rank = channelSpendRank(ordered, spendKey);
+  const split: ProjectCompareTableRow[] = [];
+  for (const row of ordered) {
+    const groups = channelRowGroups(row.rows);
+    if (!groups) {
+      // Windows the vendor filter left without rows still render as `–`.
+      split.push(row);
+      continue;
+    }
+    const channels = [...groups.keys()].sort(
+      (left, right) =>
+        (rank.get(left) ?? Number.MAX_SAFE_INTEGER) -
+          (rank.get(right) ?? Number.MAX_SAFE_INTEGER) ||
+        left.localeCompare(right, "zh-CN"),
+    );
+    for (const channel of channels) {
+      const channelRows = groups.get(channel) ?? [];
+      split.push({
+        key: `${row.section.key}|${channel}`,
+        channel,
+        section: row.section,
+        rows: channelRows,
+        totals: aggregateProjectCompareTotals(topic, channelRows, metricDefs),
+      });
+    }
+  }
+  return split;
+}
+
+/**
+ * Daily rows grouped by 渠道商, or ``null`` when the query did not group by it.
+ * The same vendor order is used by every project row so the table reads as
+ * project groups with an aligned vendor column.
+ */
+function channelRowGroups(
+  rows: ProjectCompareSectionRows,
+): Map<string, ProjectCompareSectionRows> | null {
+  if (!rows.some((row) => row[PROJECT_COMPARE_CHANNEL_COLUMN] !== undefined)) {
+    return null;
+  }
+  const groups = new Map<string, ProjectCompareSectionRows>();
+  for (const row of rows) {
+    const raw = row[PROJECT_COMPARE_CHANNEL_COLUMN];
+    const channel =
+      raw === null || raw === undefined || String(raw).trim() === ""
+        ? "–"
+        : String(raw).trim();
+    const bucket = groups.get(channel);
+    if (bucket) bucket.push(row);
+    else groups.set(channel, [row]);
+  }
+  return groups;
+}
+
+/** Vendors ranked by their window spend across every project in the table. */
+function channelSpendRank(
+  rows: ProjectCompareTableRow[],
+  spendKey: string,
+): Map<string, number> {
+  const spend = new Map<string, number>();
+  for (const row of rows) {
+    const groups = channelRowGroups(row.rows);
+    if (!groups) continue;
+    for (const [channel, channelRows] of groups) {
+      const total = channelRows.reduce(
+        (sum, item) => sum + (toNumber(item[spendKey]) ?? 0),
+        0,
+      );
+      spend.set(channel, (spend.get(channel) ?? 0) + total);
+    }
+  }
+  return new Map(
+    [...spend.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .map(([channel], index) => [channel, index]),
+  );
 }
 
 /** Whether a table has any daily rows at all (missing rows render as `–`). */
