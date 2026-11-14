@@ -249,14 +249,16 @@ function dateSortValue(value: unknown): number | null {
 
 /**
  * Order the row/column combos: date dimensions (listed in ``dateColumns``)
- * sort ascending chronologically, all other dimensions keep their
- * appearance order.  The hierarchy (dim 0 first, then dim 1, ...) is
- * preserved so consecutive rows share the same ancestor values.
+ * sort by ``dateOrder`` inside each parent group (rows use newest-first,
+ * columns stay chronological), all other dimensions keep their appearance
+ * order.  The hierarchy (dim 0 first, then dim 1, ...) is preserved so
+ * consecutive rows share the same ancestor values.
  */
 function sortTuples(
   tuples: string[][],
   dims: string[],
   dateColumns: string[] = [],
+  dateOrder: "asc" | "desc" = "asc",
 ): string[][] {
   const appearance = dims.map((_d, di) => {
     const idx = new Map<string, number>();
@@ -278,7 +280,7 @@ function sortTuples(
         const av = dk.get(a[i]) ?? null;
         const bv = dk.get(b[i]) ?? null;
         if (av !== null && bv !== null) {
-          if (av !== bv) return av - bv;
+          if (av !== bv) return dateOrder === "desc" ? bv - av : av - bv;
         } else if (av !== null) return -1;
         else if (bv !== null) return 1;
       }
@@ -585,7 +587,7 @@ interface BuildGridArgs {
   aggregateFunction: string;
   metricsLayout: "ROWS" | "COLUMNS";
   pct95?: PivotPct95;
-  /** Date dimension columns: their combos sort ascending chronologically. */
+  /** Date dimensions: row combos newest-first, column combos chronological. */
   dateColumns: string[];
   /** Compute totals/subtotals from the wide rows (vs. backend-provided). */
   computeTotals: boolean;
@@ -624,7 +626,14 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
     computeTotals,
   );
 
-  let rowCombos = sortTuples([...rowTuples.values()], rowDims, dateColumns);
+  // Pivot rows read newest-first inside each parent group; column headers keep
+  // their left-to-right chronological order.
+  let rowCombos = sortTuples(
+    [...rowTuples.values()],
+    rowDims,
+    dateColumns,
+    "desc",
+  );
   if (pct95?.enabled && pct95.metric) {
     const metricValue = (combo: string[]) =>
       rowComboValue(acc, combo, pct95.metric, components[pct95.metric]);
@@ -634,8 +643,8 @@ function buildPivotGridCore(args: BuildGridArgs): PivotGrid {
     if (hasDateRowDim) {
       // Date dimensions take priority over the metric sort: the 95% filter
       // still keeps the top row groups, but retained detail rows stay in
-      // chronological ascending order instead of being re-sorted by metric.
-      rowCombos = sortTuples(rowCombos, rowDims, dateColumns);
+      // newest-first order instead of being re-sorted by metric.
+      rowCombos = sortTuples(rowCombos, rowDims, dateColumns, "desc");
     } else {
       // The 95% split metric is also the display sort: descending, so the
       // retained rows are ordered from largest to smallest contribution.

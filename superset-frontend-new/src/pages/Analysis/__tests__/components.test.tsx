@@ -50,7 +50,7 @@ test("formats KPI values with the metric's formatter", () => {
     />,
   );
 
-  expect(screen.getByText("1.23K")).toBeInTheDocument();
+  expect(screen.getByText("1,234")).toBeInTheDocument();
   expect(screen.getByText("10")).toBeInTheDocument();
   expect(screen.getByText("20")).toBeInTheDocument();
 });

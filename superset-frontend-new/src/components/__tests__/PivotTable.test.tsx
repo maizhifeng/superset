@@ -2,9 +2,7 @@ import { test, expect } from "vitest";
 import { createRef } from "react";
 import { screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders } from "../../../spec/helpers/testing-library";
-import PivotTable, {
-  type PivotTableHandle,
-} from "@/components/PivotTable";
+import PivotTable, { type PivotTableHandle } from "@/components/PivotTable";
 import { formatDateValue } from "@/utils/dateHeuristics";
 
 // 3-level row hierarchy: 平台 > 主游戏 > 渠道商
@@ -292,7 +290,36 @@ test("fraction mode scales backend totals consistently with the fractioned cells
   expect(cells.some((td) => td.textContent === "1")).toBe(true);
 });
 
-test("pct95 with a date row dimension renders groups in chronological order", () => {
+test("pivot date row dimensions sort newest-first inside each parent group", () => {
+  const rows = [
+    { 平台: "iOS", 日期: "2024-06-03", "SUM(消耗)": 300 },
+    { 平台: "iOS", 日期: "2024-06-05", "SUM(消耗)": 600 },
+    { 平台: "iOS", 日期: "2024-06-04", "SUM(消耗)": 100 },
+    { 平台: "Android", 日期: "2024-06-01", "SUM(消耗)": 400 },
+    { 平台: "Android", 日期: "2024-06-02", "SUM(消耗)": 600 },
+  ];
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["平台", "日期"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+      dateColumns={["日期"]}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
+  const dateRows = Array.from(container.querySelectorAll("tbody tr"))
+    .map((tr) => tr.textContent ?? "")
+    .filter((t) => t.includes("2024-06"));
+  // iOS groups first (appearance order), newest date first inside each group.
+  expect(dateRows[0]).toContain("2024-06-05");
+  expect(dateRows[1]).toContain("2024-06-04");
+  expect(dateRows[2]).toContain("2024-06-03");
+  expect(dateRows[3]).toContain("2024-06-02");
+  expect(dateRows[4]).toContain("2024-06-01");
+});
+
+test("pct95 with a date row dimension keeps newest-first detail rows", () => {
   const rows = [
     { 平台: "iOS", 日期: "2024-06-05", "SUM(消耗)": 600 },
     { 平台: "iOS", 日期: "2024-06-03", "SUM(消耗)": 300 },
@@ -309,14 +336,40 @@ test("pct95 with a date row dimension renders groups in chronological order", ()
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
-  // detail rows follow date ascending (2024-06-03 → 06-05), not the metric
+  // detail rows follow newest-first (2024-06-05 → 06-03), not the metric
   // descending order (600, 300, 100) the 95% mode would otherwise apply
   const dateRows = Array.from(container.querySelectorAll("tbody tr"))
     .map((tr) => tr.textContent ?? "")
     .filter((t) => t.includes("2024-06"));
-  expect(dateRows[0]).toContain("2024-06-03");
+  expect(dateRows[0]).toContain("2024-06-05");
   expect(dateRows[1]).toContain("2024-06-04");
-  expect(dateRows[2]).toContain("2024-06-05");
+  expect(dateRows[2]).toContain("2024-06-03");
+});
+
+test("pct95 keeps collapsed date groups newest-first", () => {
+  const rows = [
+    { 日期: "2024-06-03", "SUM(消耗)": 300 },
+    { 日期: "2024-06-04", "SUM(消耗)": 250 },
+    { 日期: "2024-06-05", "SUM(消耗)": 400 },
+  ];
+  const { container } = renderWithProviders(
+    <PivotTable
+      data={rows}
+      groupbyRows={["日期"]}
+      metrics={["SUM(消耗)"]}
+      aggregateFunction="Sum"
+      dateColumns={["日期"]}
+      pct95={{ enabled: true, metric: "SUM(消耗)", threshold: 0.95 }}
+    />,
+  );
+  const dateRows = Array.from(container.querySelectorAll("tbody tr"))
+    .map((tr) => tr.textContent ?? "")
+    .filter((t) => t.includes("2024-06"));
+  // 95% mode still ranks non-date levels by the metric, but date levels keep
+  // the grid's newest-first order (metric order would be 05, 03, 04).
+  expect(dateRows[0]).toContain("2024-06-05");
+  expect(dateRows[1]).toContain("2024-06-04");
+  expect(dateRows[2]).toContain("2024-06-03");
 });
 
 test("pct95 with a date row dimension sorts collapsed groups by the split metric", () => {
@@ -341,15 +394,16 @@ test("pct95 with a date row dimension sorts collapsed groups by the split metric
   const firstRow = container.querySelector("tbody tr") as HTMLElement;
   expect(firstRow.textContent).toContain("Android");
 
-  // expanding all keeps the chronological detail order inside each group
+  // expanding all keeps the newest-first detail order inside each group;
+  // Android (higher split metric) stays first.
   fireEvent.click(screen.getByRole("button", { name: "展开全部下级维度" }));
   const dateRows = Array.from(container.querySelectorAll("tbody tr"))
     .map((tr) => tr.textContent ?? "")
     .filter((t) => t.includes("2024-06"));
-  expect(dateRows[0]).toContain("2024-06-01");
-  expect(dateRows[1]).toContain("2024-06-02");
-  expect(dateRows[2]).toContain("2024-06-03");
-  expect(dateRows[3]).toContain("2024-06-04");
+  expect(dateRows[0]).toContain("2024-06-02");
+  expect(dateRows[1]).toContain("2024-06-01");
+  expect(dateRows[2]).toContain("2024-06-04");
+  expect(dateRows[3]).toContain("2024-06-03");
 });
 
 test("dragging a header resize handle changes the column width", () => {
@@ -448,9 +502,7 @@ test("detail rows use a smaller font than headers and subtotal rows", () => {
   expect(headerCell.style.fontSize).toBe("0.7rem");
 
   // subtotal row cells: base size
-  const subtotalRow = screen
-    .getByText("iOS 汇总")
-    .closest("tr") as HTMLElement;
+  const subtotalRow = screen.getByText("iOS 汇总").closest("tr") as HTMLElement;
   const subtotalFonts = Array.from(subtotalRow.querySelectorAll("td")).map(
     (td) => td.style.fontSize,
   );

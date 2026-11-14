@@ -187,7 +187,7 @@ export default function DataPreviewTable({
   const handleExportCsv = () => {
     if (keys.length === 0) return;
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    downloadCsv(keys, dataRows, `data-preview-${ts}.csv`);
+    downloadCsv(keys, dataRows, `data-preview-${ts}.csv`, formatter);
   };
 
   /** 把当前预览行复制为 JSON 数组，便于粘贴到脚本或接口调试。 */

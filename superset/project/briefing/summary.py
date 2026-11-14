@@ -27,12 +27,20 @@ from __future__ import annotations
 from typing import Any
 
 
+def _format_number(value: int | float) -> str:
+    """Render a number with thousands separators and at most one decimal."""
+    number = float(value)
+    return f"{number:,.0f}" if number.is_integer() else f"{number:,.1f}"
+
+
 def _fmt(value: Any) -> str:
     """Render one metric value, tolerating missing/None values."""
     if value is None:
         return "-"
-    if isinstance(value, float):
-        return f"{value:,.2f}"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return _format_number(value)
     return str(value)
 
 
@@ -47,7 +55,7 @@ def build_briefing_summary(result: dict[str, Any]) -> list[str]:
             return ""
         diff = cur - prev
         sign = "+" if diff >= 0 else ""
-        return f"（环比 {sign}{diff:,.2f}{unit}）"
+        return f"（环比 {sign}{_format_number(diff)}{unit}）"
 
     date_line = f"报告日期: {result.get('report_date') or '-'}"
     if result.get("period_start"):

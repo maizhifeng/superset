@@ -269,8 +269,8 @@ test("renders the comparison view with window totals and best highlights", async
   // Window totals aggregate the daily rows: 100/day vs 200/day over 30 days.
   const rowA = within(table).getByText("游戏A").closest("tr") as HTMLElement;
   const rowB = within(table).getByText("游戏B").closest("tr") as HTMLElement;
-  expect(within(rowA).getAllByText("3K").length).toBeGreaterThan(0);
-  expect(within(rowB).getAllByText("6K").length).toBeGreaterThan(0);
+  expect(within(rowA).getAllByText("3,000").length).toBeGreaterThan(0);
+  expect(within(rowB).getAllByText("6,000").length).toBeGreaterThan(0);
   expect(within(rowA).getByText("2024-01-01 ~ 2024-01-30")).toBeInTheDocument();
   expect(within(rowB).getByText("2024-03-01 ~ 2024-03-30")).toBeInTheDocument();
 
@@ -405,7 +405,7 @@ test("shows a comparison error with a retry that refetches", async () => {
   const table = await screen.findByRole("table", {
     name: "上线基准项目对比表",
   });
-  expect(within(table).getAllByText("3K").length).toBeGreaterThan(0);
+  expect(within(table).getAllByText("3,000").length).toBeGreaterThan(0);
 });
 
 test("uses the window length from the filter state", async () => {

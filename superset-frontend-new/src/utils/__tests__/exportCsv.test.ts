@@ -10,9 +10,7 @@ test("downloads a CSV with header and escaped cells", () => {
   const appendChild = vi
     .spyOn(document.body, "appendChild")
     .mockImplementation((node: Node) => node);
-  const revoke = vi
-    .spyOn(URL, "revokeObjectURL")
-    .mockImplementation(() => {});
+  const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   const create = vi
     .spyOn(URL, "createObjectURL")
     .mockImplementation(() => "blob:fake");
@@ -33,17 +31,66 @@ test("downloads a CSV with header and escaped cells", () => {
   const blob = create.mock.calls[0][0] as Blob;
   expect(blob.type).toContain("text/csv");
 
-  return blob.arrayBuffer().then((buf) => {
-    const bytes = new Uint8Array(buf);
-    // 前三个字节应为 UTF-8 BOM (EF BB BF)
-    expect(bytes[0]).toBe(0xef);
-    expect(bytes[1]).toBe(0xbb);
-    expect(bytes[2]).toBe(0xbf);
-    const csv = new TextDecoder().decode(buf);
-    expect(csv).toContain("name,region,value");
-    expect(csv).toContain('"A,B","x""y",10');
-    expect(csv).toContain("Bob,west,");
-  }).then(() => new Promise((r) => setTimeout(r, 0))).then(() => {
-    expect(revoke).toHaveBeenCalled();
-  });
+  return blob
+    .arrayBuffer()
+    .then((buf) => {
+      const bytes = new Uint8Array(buf);
+      // 前三个字节应为 UTF-8 BOM (EF BB BF)
+      expect(bytes[0]).toBe(0xef);
+      expect(bytes[1]).toBe(0xbb);
+      expect(bytes[2]).toBe(0xbf);
+      const csv = new TextDecoder().decode(buf);
+      expect(csv).toContain("name,region,value");
+      expect(csv).toContain('"A,B","x""y",10');
+      expect(csv).toContain("Bob,west,");
+    })
+    .then(() => new Promise((r) => setTimeout(r, 0)))
+    .then(() => {
+      expect(revoke).toHaveBeenCalled();
+    });
+});
+
+test("rounds CSV numbers to one decimal and keeps them numeric", async () => {
+  const appendChild = vi
+    .spyOn(document.body, "appendChild")
+    .mockImplementation((node: Node) => node);
+  const create = vi
+    .spyOn(URL, "createObjectURL")
+    .mockImplementation(() => "blob:fake");
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+  downloadCsv(
+    ["integer", "float", "ratio"],
+    [
+      { integer: 1234, float: 1234.5678, ratio: 0.853 },
+      { integer: 1000, float: 0.05, ratio: null },
+    ],
+    "numbers.csv",
+  );
+
+  const blob = create.mock.calls[0][0] as Blob;
+  const csv = new TextDecoder().decode(await blob.arrayBuffer());
+  expect(csv).toContain("integer,float,ratio");
+  expect(csv).toContain("1234,1234.6,0.9");
+  expect(csv).toContain("1000,0.1,");
+  expect(appendChild).toHaveBeenCalled();
+});
+
+test("removes group separators and keeps formatted percent strings", async () => {
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+  const create = vi
+    .spyOn(URL, "createObjectURL")
+    .mockImplementation(() => "blob:fake");
+
+  downloadCsv(
+    ["spend", "roi"],
+    [{ spend: 1234.56, roi: 0.853 }],
+    "formatted.csv",
+    (key, value) =>
+      key === "spend" ? "1,234.6" : value == null ? "" : "85.3%",
+  );
+
+  const blob = create.mock.calls[0][0] as Blob;
+  const csv = new TextDecoder().decode(await blob.arrayBuffer());
+  expect(csv).toContain("1234.6,85.3%");
 });

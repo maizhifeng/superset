@@ -76,7 +76,7 @@ test("renders the 30-day overview and every analysis topic", async () => {
   }
 
   // Current-period values are formatted with the shared metric formatters.
-  expect(await screen.findByText("1.23K")).toBeInTheDocument();
+  expect(await screen.findByText("1,234")).toBeInTheDocument();
   expect(screen.getByText("150.0%")).toBeInTheDocument();
   expect(screen.getByText("100")).toBeInTheDocument();
 
@@ -182,5 +182,5 @@ test("keeps the hall usable when the overview request fails and retries", async 
   expect(screen.getByText("成本分析")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  expect(await screen.findByText("1.23K")).toBeInTheDocument();
+  expect(await screen.findByText("1,234")).toBeInTheDocument();
 });

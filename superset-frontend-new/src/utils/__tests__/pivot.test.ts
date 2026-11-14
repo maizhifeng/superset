@@ -519,7 +519,7 @@ test("wide path re-aggregates with Average and Min aggregations", () => {
   expect(grid.values).toEqual([[20]]);
 });
 
-test("date row dimensions sort detail rows chronologically ascending", () => {
+test("date row dimensions sort detail rows newest-first", () => {
   const grid = buildPivotGrid({
     data: [
       { 平台: "iOS", 日期: 20240605, "SUM(消耗)": 10 },
@@ -531,11 +531,11 @@ test("date row dimensions sort detail rows chronologically ascending", () => {
     dateColumns: ["日期"],
   });
   expect(grid.rowLabels).toEqual([
-    "iOS · 20240603",
-    "iOS · 20240604",
     "iOS · 20240605",
+    "iOS · 20240604",
+    "iOS · 20240603",
   ]);
-  expect(grid.values).toEqual([[30], [20], [10]]);
+  expect(grid.values).toEqual([[10], [20], [30]]);
 });
 
 test("date row dimensions accept ISO strings and unix timestamps", () => {
@@ -549,9 +549,11 @@ test("date row dimensions accept ISO strings and unix timestamps", () => {
     metrics: ["SUM(消耗)"],
     dateColumns: ["日期"],
   });
-  // 1717365600000 ms = 2024-06-03 06:00 UTC → order: 06-02, ISO 06-03, 06-03
-  expect(grid.rowLabels[0]).toBe("2024-06-02T00:00:00.000Z");
-  expect(grid.values[0]).toEqual([2]);
+  // 1717365600000 ms = 2024-06-03 06:00 UTC → newest-first: 06-03 ISO,
+  // 06-03 timestamp (appearance order), then 06-02
+  expect(grid.rowLabels[0]).toBe("2024-06-03T00:00:00.000Z");
+  expect(grid.values[0]).toEqual([1]);
+  expect(grid.rowLabels[2]).toBe("2024-06-02T00:00:00.000Z");
 });
 
 test("date column dimensions order chronologically too", () => {
@@ -566,7 +568,11 @@ test("date column dimensions order chronologically too", () => {
     metrics: ["SUM(消耗)"],
     dateColumns: ["日期"],
   });
-  expect(grid.colHeaders[0]).toEqual(["2024-06-03", "2024-06-04", "2024-06-05"]);
+  expect(grid.colHeaders[0]).toEqual([
+    "2024-06-03",
+    "2024-06-04",
+    "2024-06-05",
+  ]);
   expect(grid.values[0]).toEqual([2, 1, 3]);
 });
 
@@ -593,15 +599,15 @@ test("date sorting preserves hierarchy grouping under a non-date ancestor", () =
     metrics: ["SUM(消耗)"],
     dateColumns: ["日期"],
   });
-  // 平台 keeps appearance order, dates sort ascending within each group
+  // 平台 keeps appearance order, dates sort newest-first within each group
   expect(grid.rowLabels).toEqual([
-    "iOS · 20240603",
     "iOS · 20240605",
+    "iOS · 20240603",
     "Android · 20240601",
   ]);
 });
 
-test("pct95 keeps the filter but sorts date rows chronologically, not by metric", () => {
+test("pct95 keeps the filter and sorts date rows newest-first, not by metric", () => {
   const grid = buildPivotGrid({
     data: [
       { 日期: 20240603, "SUM(消耗)": 300 },
@@ -615,10 +621,10 @@ test("pct95 keeps the filter but sorts date rows chronologically, not by metric"
     pct95: { enabled: true, metric: "SUM(消耗)", threshold: 0.95 },
   });
   // the 95% filter still drops the trailing low-value row (06-06) …
-  expect(grid.rowLabels).toEqual(["20240603", "20240604", "20240605"]);
-  // … but the retained rows stay in chronological ascending order
-  // (metric-descending would be 06-05, 06-03, 06-04)
-  expect(grid.values).toEqual([[300], [250], [400]]);
+  expect(grid.rowLabels).toEqual(["20240605", "20240604", "20240603"]);
+  // … but the retained rows stay newest-first
+  // (metric-descending would be 06-05, 06-03, 06-04; note 06-04 has 250)
+  expect(grid.values).toEqual([[400], [250], [300]]);
 });
 
 test("pct95 without date dimensions still sorts by the split metric descending", () => {

@@ -1,21 +1,19 @@
-function trimZeros(s: string): string {
-  if (!s.includes(".")) return s;
-  return s.replace(/\.?0+$/, "");
-}
+/**
+ * Metric values are shown at their original magnitude: no K/M/B/T scaling.
+ * Whole numbers keep their integer form, fractional values round to one
+ * decimal, and thousands separators keep long values readable.
+ */
+const DISPLAY_NUMBER_FORMAT = new Intl.NumberFormat("zh-CN", {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+});
 
 export function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return String(value);
 
-  const abs = Math.abs(value);
-
-  if (abs >= 1e12) return trimZeros((value / 1e12).toFixed(2)) + "T";
-  if (abs >= 1e9) return trimZeros((value / 1e9).toFixed(2)) + "B";
-  if (abs >= 1e6) return trimZeros((value / 1e6).toFixed(2)) + "M";
-  if (abs >= 1e3) return trimZeros((value / 1e3).toFixed(2)) + "K";
-
-  if (value === 0) return "0";
-
-  return trimZeros(value.toFixed(2));
+  // `Intl` renders negative zero as "-0"; normalise it so the UI never shows a
+  // signed zero.
+  return DISPLAY_NUMBER_FORMAT.format(Object.is(value, -0) ? 0 : value);
 }
 
 export function formatPercentage(value: number, decimals = 1): string {
@@ -56,6 +54,5 @@ export function formatMetricValue(
 }
 
 export function formatBigInt(value: number): string {
-  if (!Number.isFinite(value)) return String(value);
-  return value.toLocaleString();
+  return formatNumber(value);
 }

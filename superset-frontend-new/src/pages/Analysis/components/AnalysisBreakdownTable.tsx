@@ -22,6 +22,7 @@ import DataGridTable from "@/components/DataGridTable";
 import { useNotificationStore } from "@/store/notificationStore";
 import type { ChartDataRow } from "@/types/api";
 import { downloadCsv } from "@/utils/exportCsv";
+import { formatNumber } from "@/utils/formatNumber";
 import type { DrillAnomaly } from "../anomalies";
 import { formatFullDay, formatMetricValue, toNumber } from "../format";
 import { ANALYSIS_TIME_COLUMN, topicMetric } from "../topics";
@@ -356,9 +357,7 @@ export default function AnalysisBreakdownTable({
                 if (value === null || value === undefined) return "–";
                 const numeric = Number(value);
                 return Number.isFinite(numeric)
-                  ? numeric.toLocaleString("zh-CN", {
-                      maximumFractionDigits: 2,
-                    })
+                  ? formatNumber(numeric)
                   : String(value);
               };
               const tooltip = `${
@@ -551,9 +550,13 @@ export default function AnalysisBreakdownTable({
         [dimensionLabel]: row.__dimension,
       };
       for (const metricDef of metricDefs) {
-        // Export raw values, not the display-formatted K/M/percent strings,
-        // so the CSV stays usable for pivoting and further analysis.
-        output[metricDef.label] = row[metricDef.key] ?? "";
+        const value = row[metricDef.key];
+        // Mirror the on-screen value: integers stay whole, floats keep one
+        // decimal, and ratio metrics keep their percent sign.
+        output[metricDef.label] =
+          value === null || value === undefined
+            ? ""
+            : formatMetricValue(metricDef, value);
       }
       return output;
     });

@@ -25,6 +25,22 @@ SQLALCHEMY_DATABASE_URI = (
     f"{DATABASE_HOST}:{DATABASE_PORT}/{DATABASE_DB}"
 )
 
+# Metadata database pool.  The web process runs one gunicorn worker with 20
+# threads, and a single chart-data request can fan out to a few internal
+# threads that each read dataset metadata.  The SQLAlchemy default (5 + 10)
+# saturates well before the web tier does: during a 14-chart dashboard load it
+# produced `QueuePool limit of size 5 overflow 10 reached` and 500s for
+# concurrent users.  20 + 20 leaves headroom for the 20 request threads plus
+# their short metadata queries; Postgres `max_connections` is 100, and the
+# Celery worker/beat processes stay far below this ceiling in practice.
+SQLALCHEMY_ENGINE_OPTIONS = {
+    "pool_size": 20,
+    "max_overflow": 20,
+    "pool_timeout": 30,
+    "pool_recycle": 1800,
+    "pool_pre_ping": True,
+}
+
 SQLALCHEMY_EXAMPLES_URI = os.getenv(
     "SUPERSET__SQLALCHEMY_EXAMPLES_URI",
     (

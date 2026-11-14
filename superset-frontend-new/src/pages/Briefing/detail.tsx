@@ -52,6 +52,7 @@ import useReducedMotion, {
 import type { EChartsOption } from "echarts";
 import { duration as durationTokens, ease as easeTokens } from "@/theme/tokens";
 import api from "@/api";
+import { formatNumber as formatRawNumber } from "@/utils/formatNumber";
 import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
 import {
@@ -491,13 +492,11 @@ const LOG_LEVEL_COLOR: Record<string, string> = {
   success: BRIEFING_CSS_COLORS.statusSuccess,
 };
 
-function formatNumber(value: number | null | undefined, digits = 1): string {
+function formatNumber(value: number | null | undefined): string {
   // ``null`` is the payload's "undefined ratio" (no cost / no users); an em
   // dash keeps it from reading as a real zero.
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
-  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(1)}K`;
-  return value.toFixed(digits);
+  return formatRawNumber(value);
 }
 
 function formatPercent(value: number | null | undefined): string {
@@ -702,10 +701,10 @@ function metricCellsText(
     { key: "naturalRate", text: formatPercent(values.naturalRate) },
     { key: "payRate", text: formatPercent(values.payRate) },
     { key: "retentionRate", text: formatPercent(values.retentionRate) },
-    { key: "cpa", text: formatNumber(values.cpa, 1) },
+    { key: "cpa", text: formatNumber(values.cpa) },
     ...ltvDays.map((d) => ({
       key: `ltv${d}`,
-      text: formatNumber(values.ltv[d], 2),
+      text: formatNumber(values.ltv[d]),
     })),
     { key: "roi1", text: formatPercent(values.roi1) },
     { key: "roi1Delta", ...delta(values.roi1Delta) },
@@ -1152,7 +1151,7 @@ function CoreStatBand({
     },
     {
       label: USERS_LABEL,
-      value: formatNumber(values.new_users, 0),
+      value: formatNumber(values.new_users),
       delta: pct(values.new_users, previous?.new_users),
     },
     {
@@ -1164,13 +1163,13 @@ function CoreStatBand({
     },
     {
       label: "CPA",
-      value: formatNumber(values.cpa, 1),
+      value: formatNumber(values.cpa),
       delta: pct(values.cpa, previous?.cpa),
       higherIsBetter: false,
     },
     {
       label: "LTV1",
-      value: formatNumber(values.ltv1, 2),
+      value: formatNumber(values.ltv1),
       delta: pct(values.ltv1, previous?.ltv1),
     },
     {
@@ -1359,24 +1358,17 @@ function fluctuationValue(
   value: number | null | undefined,
 ): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  switch (metric.key) {
-    case "roi1":
-    case "natural_rate":
-      return formatPercent(value);
-    case "new_users":
-      return formatNumber(value, 0);
-    case "ltv1":
-      return formatNumber(value, 2);
-    default:
-      return formatNumber(value);
+  if (metric.key === "roi1" || metric.key === "natural_rate") {
+    return formatPercent(value);
   }
+  return formatNumber(value);
 }
 
 /**
  * A factor's contribution in the metric's own unit.
  *
  * 百分比指标（ROI1、自然新增%）按指标自身的 x% 口径给出绝对变化（如 +2.63%）；
- * LTV1、CPA 是「每用户数值」，保留原单位（LTV1 两位小数）；增量型指标给出
+ * LTV1、CPA 是「每用户数值」，保留原单位（小数保留 1 位）；增量型指标给出
  * 金额/人数。
  */
 function fluctuationContribution(
@@ -1385,17 +1377,10 @@ function fluctuationContribution(
 ): string {
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
   const abs = Math.abs(value);
-  switch (metric.key) {
-    case "roi1":
-    case "natural_rate":
-      return `${sign}${(abs * 100).toFixed(2)}%`;
-    case "new_users":
-      return `${sign}${formatNumber(abs, 0)}`;
-    case "ltv1":
-      return `${sign}${abs.toFixed(2)}`;
-    default:
-      return `${sign}${formatNumber(abs)}`;
+  if (metric.key === "roi1" || metric.key === "natural_rate") {
+    return `${sign}${(abs * 100).toFixed(2)}%`;
   }
+  return `${sign}${formatNumber(abs)}`;
 }
 
 /** The factor colour: the effect's direction under the metric's semantics. */
@@ -2693,7 +2678,7 @@ function TrendChart({
     const ltv1s = ordered.map((r) => r.ltv1);
     const users = ordered.map((r) => r.new_users);
     return {
-      grid: { left: 152, right: 108, top: 48, bottom: 28 },
+      grid: { left: 168, right: 108, top: 48, bottom: 28 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -2703,11 +2688,11 @@ function TrendChart({
             if (p.seriesName === "返点后消耗")
               return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
             if (p.seriesName === "新增进入")
-              return `${p.marker}${p.seriesName}: ${formatNumber(p.value, 0)}`;
+              return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
             if (p.seriesName === "ROI1")
               return `${p.marker}${p.seriesName}: ${formatPercent(p.value)}`;
             // LTV 是金额小数，不按百分比展示
-            return `${p.marker}${p.seriesName}: ${formatNumber(p.value, 2)}`;
+            return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
           });
           return `${list[0]?.axisValue ?? ""}<br/>${lines.join("<br/>")}`;
         },
@@ -2751,11 +2736,11 @@ function TrendChart({
           name: "新增",
           nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "left",
-          offset: 56,
+          offset: 88,
           axisLabel: {
             color: colors.axisLabel,
             fontSize: 12,
-            formatter: (v: number) => formatNumber(v, 0),
+            formatter: (v: number) => formatNumber(v),
           },
           splitLine: { show: false },
         },
@@ -2780,7 +2765,7 @@ function TrendChart({
           axisLabel: {
             color: colors.axisLabel,
             fontSize: 12,
-            formatter: (v: number) => formatNumber(v, 1),
+            formatter: (v: number) => formatNumber(v),
           },
           splitLine: { show: false },
         },
@@ -3005,7 +2990,7 @@ function MetricsComboChart({
         : `${d >= 0 ? "▲" : "▼"} ${Math.abs(d * 100).toFixed(1)}%`;
 
     return {
-      grid: { left: 152, right: 108, top: 48, bottom: 56 },
+      grid: { left: 168, right: 108, top: 48, bottom: 56 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -3017,11 +3002,11 @@ function MetricsComboChart({
             if (s.seriesName === "返点后消耗")
               return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.spend, p.prev?.spend))}）`;
             if (s.seriesName === "新增进入")
-              return `${s.marker}${s.seriesName}: ${formatNumber(s.value, 0)}（${fmtDelta(pct(p.new_users, p.prev?.new_users))}）`;
+              return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.new_users, p.prev?.new_users))}）`;
             if (s.seriesName === "ROI1")
               return `${s.marker}${s.seriesName}: ${formatPercent(s.value)}（${fmtDelta(pct(p.roi1, p.prev?.roi1))}）`;
             // LTV 是金额小数，不按百分比展示
-            return `${s.marker}${s.seriesName}: ${formatNumber(s.value, 2)}（${fmtDelta(pct(p.ltv1, p.prev?.ltv1))}）`;
+            return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.ltv1, p.prev?.ltv1))}）`;
           });
           return `${p.label}<br/>${lines.join("<br/>")}`;
         },
@@ -3061,10 +3046,10 @@ function MetricsComboChart({
           name: "新增",
           nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
           position: "left",
-          offset: 56,
+          offset: 88,
           axisLabel: {
             color: colors.axisLabel,
-            formatter: (v: number) => formatNumber(v, 0),
+            formatter: (v: number) => formatNumber(v),
           },
           splitLine: { show: false },
         },
@@ -3087,7 +3072,7 @@ function MetricsComboChart({
           offset: 56,
           axisLabel: {
             color: colors.axisLabel,
-            formatter: (v: number) => formatNumber(v, 1),
+            formatter: (v: number) => formatNumber(v),
           },
           splitLine: { show: false },
         },
@@ -3373,7 +3358,7 @@ function MediaSpendChart({
     const pct = (cur?: number | null, base?: number | null) =>
       base ? ((cur ?? 0) - base) / base : null;
     return {
-      grid: { left: grouped ? 150 : 96, right: 96, top: 8, bottom: 24 },
+      grid: { left: grouped ? 190 : 96, right: 96, top: 8, bottom: 24 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -3404,18 +3389,14 @@ function MediaSpendChart({
       xAxis: {
         type: "value",
         // A handful of round ticks: the default density overlaps itself once
-        // the card is as narrow as a phone, and axis labels carry no decimals
-        // where the bar labels keep the table's precision.
+        // the card is as narrow as a phone. Raw amounts keep the table's
+        // precision instead of switching to a K/M abbreviation.
         splitNumber: 4,
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 12,
           hideOverlap: true,
-          formatter: (v: number) => {
-            if (Math.abs(v) >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
-            if (Math.abs(v) >= 1000) return `${Math.round(v / 1000)}K`;
-            return `${v}`;
-          },
+          formatter: (v: number) => formatNumber(v),
         },
         splitLine: { lineStyle: { color: colors.gridLine } },
       },
@@ -3668,7 +3649,7 @@ function MediaBreakdownTable({
     return (
       <>
         <td style={cell}>{formatNumber(row.spend)}</td>
-        <td style={cell}>{formatNumber(row.new_users, 0)}</td>
+        <td style={cell}>{formatNumber(row.new_users)}</td>
         <td style={cell}>{formatNumber(row.cpa)}</td>
         <td style={cell}>
           <Box
@@ -3683,7 +3664,7 @@ function MediaBreakdownTable({
             <DeltaBadge value={pct(row.roi1, row.prev?.roi1)} />
           </Box>
         </td>
-        <td style={cell}>{formatNumber(row.ltv1, 2)}</td>
+        <td style={cell}>{formatNumber(row.ltv1)}</td>
         <td style={cell}>
           <StatusDot
             achieved={(row.roi1 ?? 0) >= breakevenLine}

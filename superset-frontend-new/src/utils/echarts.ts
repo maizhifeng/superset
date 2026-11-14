@@ -206,7 +206,9 @@ export function buildEChartsOption(
       .map(Math.abs),
   );
   const yMax = allYValues.length > 0 ? Math.max(...allYValues) : 0;
-  const yLabelChars = Math.max(String(Math.round(yMax)).length, 1);
+  // Width is measured on the rendered label (thousands separators included),
+  // not on the bare number, so raw values do not collide with the plot.
+  const yLabelChars = Math.max(formatNumber(yMax).length, 1);
   const yLabelWidth = yLabelChars * 7;
 
   const palette =

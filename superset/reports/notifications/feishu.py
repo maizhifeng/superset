@@ -237,9 +237,15 @@ def _as_float(value: Any) -> float | None:
 
 
 def format_amount(value: Any) -> str:
-    """Money-style amount: thousands separators, two decimals."""
+    """Money-style amount: thousands separators, one decimal at most.
+
+    Whole values keep their integer form; fractional values round to one
+    decimal, mirroring the briefing UI's number formatting.
+    """
     number = _as_float(value)
-    return "-" if number is None else f"{number:,.2f}"
+    if number is None:
+        return "-"
+    return f"{number:,.0f}" if number.is_integer() else f"{number:,.1f}"
 
 
 def format_count(value: Any) -> str:

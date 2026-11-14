@@ -216,14 +216,43 @@ function ChartCard({
   const setForceLandscape = useFullscreenStore((st) => st.setForceLandscape);
   const isActiveFullscreen = fullscreen.activeChartId === chartId;
 
-  const getTextContent = (source: ChartDataPayload | undefined) => {
+  const tableFormatCell: CellFormatter | undefined = useMemo(() => {
+    if (!data) return undefined;
+    const colnames = data.colnames;
+    const coltypes = data.coltypes;
+    if (!colnames || !coltypes) return undefined;
+    const dateCols = new Set(colnames.filter((_, i) => coltypes[i] === 2));
+    return (key: string, value: unknown) => {
+      if (value === null || value === undefined) return "";
+      if (dateCols.has(key)) {
+        const formatted = formatDateValue(value);
+        if (formatted !== null) return formatted;
+      }
+      return formatMetricValue(key, value, metricFormatMap);
+    };
+  }, [data, metricFormatMap]);
+
+  const getTextContent = (
+    source: ChartDataPayload | undefined,
+    formatCell?: CellFormatter,
+  ) => {
     const raw = source || data;
     const colnames = raw?.colnames ?? [];
     const rows = Array.isArray(raw?.data) ? raw.data : [];
     if (colnames.length === 0) return null;
     const header = colnames.join("\t");
     const body = rows
-      .map((r) => colnames.map((c) => String(r[c] ?? "")).join("\t"))
+      .map((r) =>
+        colnames
+          .map((c) => {
+            const value = r[c];
+            if (formatCell && value !== null && value !== undefined) {
+              return formatCell(c, value);
+            }
+            return String(value ?? "");
+          })
+          .join("\t"),
+      )
       .join("\n");
     return `${header}\n${body}`;
   };
@@ -305,7 +334,7 @@ function ChartCard({
         vizType === "pivot_table_v2"
           ? (pivotRef.current?.getLayoutText() ?? null)
           : null;
-      const text = pivotText ?? getTextContent(processedData);
+      const text = pivotText ?? getTextContent(processedData, tableFormatCell);
       if (!text) {
         notify({ severity: "warning", message: "暂无数据可复制" });
         return;
@@ -316,22 +345,6 @@ function ChartCard({
       notify({ severity: "error", message: "复制失败" });
     }
   };
-
-  const tableFormatCell: CellFormatter | undefined = useMemo(() => {
-    if (!data) return undefined;
-    const colnames = data.colnames;
-    const coltypes = data.coltypes;
-    if (!colnames || !coltypes) return undefined;
-    const dateCols = new Set(colnames.filter((_, i) => coltypes[i] === 2));
-    return (key: string, value: unknown) => {
-      if (value === null || value === undefined) return "";
-      if (dateCols.has(key)) {
-        const formatted = formatDateValue(value);
-        if (formatted !== null) return formatted;
-      }
-      return formatMetricValue(key, value, metricFormatMap);
-    };
-  }, [data, metricFormatMap]);
 
   const { dimCols, metricCandidates, effectiveSortMetric } = useMemo(() => {
     if (!data)
@@ -378,6 +391,28 @@ function ChartCard({
     [data?.data],
   );
 
+  // A date x-axis is ordered chronologically by the query.  The pct95 split
+  // still chooses which rows to keep, but it must not reorder the bars by the
+  // split metric: a daily series reads left-to-right oldest to newest.
+  const axisDateColumn = useMemo(() => {
+    if (!data?.colnames || !data?.coltypes) return null;
+    if (!["bar", "line", "echarts_timeseries_line"].includes(vizType)) {
+      return null;
+    }
+    const firstDim = dimCols[0];
+    const idx = data.colnames.indexOf(firstDim);
+    return idx >= 0 && data.coltypes[idx] === 2 ? firstDim : null;
+  }, [data?.colnames, data?.coltypes, dimCols, vizType]);
+
+  const chronologicalRows = useMemo(() => {
+    if (!axisDateColumn) return rows;
+    const dateValue = (row: ChartDataRow): string => {
+      const raw = row[axisDateColumn];
+      return formatDateValue(raw) ?? String(raw ?? "");
+    };
+    return [...rows].sort((a, b) => dateValue(a).localeCompare(dateValue(b)));
+  }, [rows, axisDateColumn]);
+
   const sorted = useMemo(
     () =>
       pct95Active && effectiveSortMetric
@@ -409,7 +444,13 @@ function ChartCard({
       splitIdx < rows.length &&
       vizType !== "pivot_table_v2"
     ) {
-      resultRows = sorted.slice(0, splitIdx);
+      if (axisDateColumn) {
+        // Keep the pct95 selection but restore chronological order.
+        const kept = new Set(sorted.slice(0, splitIdx));
+        resultRows = chronologicalRows.filter((row) => kept.has(row));
+      } else {
+        resultRows = sorted.slice(0, splitIdx);
+      }
       hasMods = true;
     } else {
       resultRows = [...rows];
@@ -436,6 +477,8 @@ function ChartCard({
     pct95Active,
     effectiveSortMetric,
     splitIdx,
+    chronologicalRows,
+    axisDateColumn,
     totalRow,
     dimCols,
     vizType,

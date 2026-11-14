@@ -494,13 +494,10 @@ const PivotTable = forwardRef<PivotTableHandle, PivotTableProps>(
       return any ? sum : null;
     };
 
-    // In 95% mode the split metric is also the display sort: groups at every
-    // level are ordered by their aggregated value descending, so collapsed
-    // subtotal rows and expanded children both read largest-to-smallest.
-    // Date dimensions soften this per collapse state: collapsed date groups
-    // keep the metric ordering (top rows first), while expanded date groups
-    // keep the chronological grid order from `buildPivotGrid`, so their
-    // detail rows read oldest-to-newest.
+    // In 95% mode the split metric is the display sort for non-date levels,
+    // so those groups read largest-to-smallest.  Date dimensions keep the
+    // newest-first order from `buildPivotGrid` at every level, collapsed or
+    // expanded.
     const dateLevels = rowDimLabels.map(
       (d) => dateColumns?.includes(d) ?? false,
     );
@@ -538,21 +535,9 @@ const PivotTable = forwardRef<PivotTableHandle, PivotTableProps>(
       });
       const sortRec = (list: PivotGroup[], level: number): void => {
         if (dateLevels[level]) {
-          // Date level: collapsed groups rank by the split metric descending
-          // (top contributions first); expanded groups keep their chronological
-          // order from the grid, grouped after the collapsed ones.
-          const originalIdx = new Map(list.map((g, i) => [g, i]));
-          list.sort((a, b) => {
-            const aCollapsed = collapsedGroups.has(a.collapseKey);
-            const bCollapsed = collapsedGroups.has(b.collapseKey);
-            const aIdx = originalIdx.get(a) ?? 0;
-            const bIdx = originalIdx.get(b) ?? 0;
-            if (aCollapsed && bCollapsed)
-              return groupValue(b) - groupValue(a) || aIdx - bIdx;
-            if (aCollapsed) return -1;
-            if (bCollapsed) return 1;
-            return aIdx - bIdx;
-          });
+          // Date levels keep the newest-first order from `buildPivotGrid`
+          // whether the groups are collapsed or expanded; the split metric
+          // only ranks non-date levels.
         } else {
           list.sort((a, b) => groupValue(b) - groupValue(a));
         }
@@ -692,7 +677,7 @@ const PivotTable = forwardRef<PivotTableHandle, PivotTableProps>(
 
     // --- Flattened visible rows + windowed body rendering ---
     // Row order comes from `buildPivotGrid` (smart ordering: 95% mode metric
-    // ranking, chronological date dimensions), so no manual column sort.
+    // ranking, newest-first date dimensions), so no manual column sort.
     // Each row carries its full dimension tuple (`dims`) so consecutive rows
     // with identical ancestor values can merge their header cells (rowSpan).
     const visibleRows = useMemo(() => {

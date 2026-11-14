@@ -130,9 +130,11 @@ test("summarises the view as overview + one paragraph per dimension", () => {
   ]);
   const summary = paragraphText(paragraphs);
   expect(summary).toContain("过去 30 天（9 月 28 日至 10 月 27 日）");
-  expect(summary).toContain("累计消耗 1,198 万，平均每天约 39.9 万");
+  expect(summary).toContain("累计消耗 11,980,000，平均每天约 399,333.3");
   expect(summary).not.toContain("返点后消耗");
-  expect(summary).toContain("其中 10 月 9 日的 CPA 为 13.85，比 7 日移动平均高出 36.2%");
+  expect(summary).toContain(
+    "其中 10 月 9 日的 CPA 为 13.9，比 7 日移动平均高出 36.2%",
+  );
   expect(summary).toContain("从主游戏来看，主要来自「策定九州东南亚」");
   expect(summary).toContain("从渠道商来看，主要来自「android」");
   expect(summary).toContain("「ios」次之");
@@ -144,7 +146,10 @@ test("summarises the view as overview + one paragraph per dimension", () => {
     text: "36.2%",
     tone: "negative",
   });
-  expect(paragraphs[0].tokens).toContainEqual({ text: "1,198 万", tone: "value" });
+  expect(paragraphs[0].tokens).toContainEqual({
+    text: "11,980,000",
+    tone: "value",
+  });
   expect(paragraphs[2].tokens).toContainEqual({
     text: "87.3%",
     tone: "negative",

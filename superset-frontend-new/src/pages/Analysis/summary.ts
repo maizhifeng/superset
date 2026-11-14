@@ -46,28 +46,6 @@ export interface SummaryParagraph {
 const plain = (text: string): SummaryToken => ({ text });
 const value = (text: string): SummaryToken => ({ text, tone: "value" });
 
-/** Large counts read more naturally in 万/亿 than in scientific notation. */
-function readableValue(metric: AnalysisMetric, input: unknown): string {
-  const numeric = Number(input);
-  if (!Number.isFinite(numeric)) return formatMetricValue(metric, input);
-  if (metric.format === "percent") {
-    return formatMetricValue(metric, numeric);
-  }
-  const abs = Math.abs(numeric);
-  const trim = (scaled: number) => {
-    const scaledAbs = Math.abs(scaled);
-    const digits = scaledAbs >= 1000 ? 0 : scaledAbs >= 10 ? 1 : 2;
-    return scaled.toLocaleString("zh-CN", { maximumFractionDigits: digits });
-  };
-  if (abs >= 1e8) return `${trim(numeric / 1e8)} 亿`;
-  if (abs >= 1e4) return `${trim(numeric / 1e4)} 万`;
-  // Large plain numbers read better rounded to whole units.
-  if (metric.format === "decimal" && abs >= 1000) {
-    return numeric.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
-  }
-  return formatMetricValue(metric, numeric);
-}
-
 function humanDate(input: string): string {
   const parsed = dayjs(input);
   if (parsed.isValid()) {
@@ -101,9 +79,9 @@ function describeMetrics(
   const { detail } = contributor;
   return [
     plain(`当天 ${metric.label} `),
-    value(readableValue(metric, detail.value)),
+    value(formatMetricValue(metric, detail.value)),
     plain("，7 日移动平均约 "),
-    value(readableValue(metric, detail.baselineMean)),
+    value(formatMetricValue(metric, detail.baselineMean)),
     plain("，"),
     ...deltaTokens(detail.direction, detail.deltaText, detail.severity),
   ];
@@ -162,12 +140,12 @@ export function buildViewSummary(input: ViewSummaryInput): SummaryParagraph[] {
       ...(itemIndex === 0 ? [plain("累计")] : []),
       plain(item.label),
       plain(" "),
-      value(readableValue(item, numeric)),
+      value(formatMetricValue(item, numeric)),
     ];
     if (Number.isFinite(numeric) && windowDays > 0) {
       part.push(
         plain("，平均每天约 "),
-        value(readableValue(item, numeric / windowDays)),
+        value(formatMetricValue(item, numeric / windowDays)),
       );
     }
     totalsParts.push(part);
@@ -192,7 +170,7 @@ export function buildViewSummary(input: ViewSummaryInput): SummaryParagraph[] {
       plain("的 "),
       plain(metric.label),
       plain(" 为 "),
-      value(readableValue(metric, anomaly.value)),
+      value(formatMetricValue(metric, anomaly.value)),
       plain("，比 7 日移动平均"),
       ...deltaTokens(anomaly.direction, anomaly.deltaText, anomaly.severity),
       plain("。"),

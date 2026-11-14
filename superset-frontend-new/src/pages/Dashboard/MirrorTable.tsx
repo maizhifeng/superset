@@ -49,7 +49,7 @@ export default function MirrorTable({
     const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
     if (rows.length === 0) return;
     const cols = Object.keys(rows[0]).filter((k) => k !== "__isSummary");
-    downloadCsv(cols, rows, "compare-data.csv");
+    downloadCsv(cols, rows, "compare-data.csv", formatCell);
   };
 
   const notify = useNotificationStore((s) => s.notify);
@@ -59,11 +59,19 @@ export default function MirrorTable({
     if (rows.length === 0) return;
     const cols = Object.keys(rows[0]).filter((k) => k !== "__isSummary");
     const esc = (v: unknown): string =>
-      String(v ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+      String(v ?? "")
+        .replace(/\r?\n/g, " ")
+        .replace(/\|/g, "\\|");
+    const cellText = (key: string, value: unknown): string => {
+      if (formatCell) return formatCell(key, value);
+      return value === null || value === undefined ? "" : String(value);
+    };
     const text = [
       `| ${cols.join(" | ")} |`,
       `| ${cols.map(() => "---").join(" | ")} |`,
-      ...rows.map((r) => `| ${cols.map((c) => esc(r[c])).join(" | ")} |`),
+      ...rows.map(
+        (r) => `| ${cols.map((c) => esc(cellText(c, r[c]))).join(" | ")} |`,
+      ),
     ].join("\n");
     try {
       await navigator.clipboard.writeText(text);
