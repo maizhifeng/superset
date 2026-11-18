@@ -85,7 +85,7 @@ function fmtMd(d: Date): string {
  * Human-readable preview of which period a scheduled run will report on.
  * Mirrors the backend semantics: daily runs report the previous calendar day
  * in the schedule's timezone; weekly runs report the last complete
- * Sunday–Saturday week. Schedules are intentionally not allowed to pin an
+ * Monday–Sunday week. Schedules are intentionally not allowed to pin an
  * explicit date — that is what a manual run with override_date is for.
  */
 function reportDatePreview(
@@ -93,12 +93,12 @@ function reportDatePreview(
   now: Date = new Date(),
 ): string {
   if (reportType === "weekly") {
-    // Sunday-based week start, matching the backend's _week_start().
-    const weekStart = addDays(now, -now.getDay());
+    // Monday-based week start, matching the backend's _week_start().
+    const weekStart = addDays(now, -((now.getDay() + 6) % 7));
     const prevStart = addDays(weekStart, -7);
     const prevEnd = addDays(weekStart, -1);
     return (
-      `将生成「上一完整自然周（周日~周六）」报告 — 例：报告 ` +
+      `将生成「上一完整自然周（周一~周日）」报告 — 例：报告 ` +
       `${fmtMd(prevStart)} ~ ${fmtMd(prevEnd)}（按任务时区）`
     );
   }

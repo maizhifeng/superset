@@ -35,8 +35,10 @@ from datetime import datetime
 from typing import Any, Callable
 
 from superset.reports.notifications.feishu import (
+    _as_float,
     _chapter_labels,
     _core_value,
+    _roi_thresholds,
     build_daily_table,
     build_media_chart,
     build_media_platform_table,
@@ -45,6 +47,7 @@ from superset.reports.notifications.feishu import (
     build_platform_table,
     build_project_chart,
     build_project_daily_table,
+    build_project_region_table,
     build_project_table,
     build_trend_chart,
     delta_color,
@@ -133,9 +136,8 @@ nav.chapters a.active { background: var(--accent-soft); color: var(--accent); fo
 }
 .ghost-btn:hover { background: #fff; border-color: #ccd5e3; color: var(--ink); }
 
-/* ---- page shell: full width by default, optional centred view ---- */
+/* ---- page shell: the report always fills the viewport ---- */
 .shell { width: 100%; margin: 0 auto; padding: 20px clamp(16px, 2.2vw, 36px) 48px; }
-body.centred .shell { max-width: 1480px; }
 
 /* ---- hero header ---- */
 .hero {
@@ -183,7 +185,7 @@ body.centred .shell { max-width: 1480px; }
 
 /* ---- headline metrics ---- */
 .metrics {
-  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 14px 18px; padding: 16px 18px;
   background: #f8fafd; border: 1px solid var(--line-soft); border-radius: 12px;
 }
@@ -202,6 +204,27 @@ body.centred .shell { max-width: 1480px; }
 .metric .delta.up { color: var(--bad); background: var(--bad-soft); }
 .metric .delta.down { color: var(--good); background: var(--good-soft); }
 .metric .delta.muted { color: var(--ink-3); }
+
+/* ---- fold card: a surface whose detail hangs from a bottom strip ---- */
+.fold-card { overflow: hidden; background: #fff; border: 1px solid var(--line-soft); border-radius: 12px; }
+.fold-card .metrics { border: 0; border-radius: 0; }
+.fold-card .chart-body { padding: 14px 16px 0; }
+details.fold-more { border-top: 1px solid var(--line-soft); }
+details.fold-more > summary.fold-strip {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 16px; background: #f3f6fc; color: var(--ink-2);
+  font-size: 13px; font-weight: 600; cursor: pointer; list-style: none;
+  transition: background-color .15s, color .15s;
+}
+details.fold-more > summary.fold-strip::-webkit-details-marker { display: none; }
+details.fold-more > summary.fold-strip::marker { content: ""; }
+details.fold-more > summary.fold-strip:hover { background: var(--accent-soft); }
+details.fold-more[open] > summary.fold-strip { background: var(--accent-soft); color: var(--accent); }
+.fold-icon { font-size: 12px; }
+details.fold-more > summary.fold-strip .chev::before { content: "▾"; }
+details.fold-more[open] > summary.fold-strip .chev::before { content: "▴"; }
+.fold-body { padding: 10px 16px 16px; }
+.fold-body .table-block { margin-top: 0; }
 
 /* ---- alerts ---- */
 .alerts {
@@ -238,11 +261,82 @@ tbody tr:nth-child(even) td.dim { background: #fbfcfe; }
 tbody tr:hover td { background: #f1f5ff; }
 tbody tr:hover td.dim { background: #f1f5ff; }
 tbody tr:last-child td { border-bottom: 0; }
+tr.table-group-sep td {
+  height: 8px; padding: 0; background: var(--line);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
 .tier { display: inline-block; padding: 1px 7px; border-radius: 999px; font-weight: 600; }
 .tier-good { background: var(--good-soft); color: var(--good); }
 .tier-mid { background: var(--warn-soft); color: var(--warn); }
 .tier-low { background: var(--bad-soft); color: var(--bad); }
 .tier-unknown { background: var(--line-soft); color: var(--ink-3); }
+
+/* ---- fluctuation block (关键指标波动) ---- */
+.delta-good { color: var(--good); font-weight: 600; }
+.delta-bad { color: var(--bad); font-weight: 600; }
+.delta-flat { color: var(--ink-3); }
+
+/* Each metric is its own collapsible row, exactly like the report page. */
+.fluct-panel {
+  margin-top: 16px; overflow: hidden; background: #fff;
+  border: 1px solid var(--line-soft); border-radius: 12px;
+}
+.fluct-head { padding: 12px 16px 10px; border-bottom: 1px solid var(--line-soft); }
+.fluct-head h3 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
+.fluct-head .caption { margin: 4px 0 0; color: var(--ink-3); font-size: 12.5px; }
+details.fluct-item { border-bottom: 1px solid var(--line-soft); }
+details.fluct-item:last-child { border-bottom: 0; }
+.fluct-row {
+  display: grid;
+  /* Fixed tracks keep 对比期 / 本期 / 环比 / 主因 aligned across rows; the
+     pair is one nested grid so its arrow sits between the two numbers. */
+  grid-template-columns:
+    minmax(96px, 1.1fr) minmax(0, 2.2fr) minmax(0, .8fr)
+    minmax(0, 1.8fr) 24px;
+  align-items: center; gap: 10px;
+  padding: 10px 16px; font-size: 12.5px;
+}
+details.fluct-item > summary.fluct-row {
+  cursor: pointer; list-style: none; transition: background-color .15s;
+}
+details.fluct-item > summary.fluct-row::-webkit-details-marker { display: none; }
+details.fluct-item > summary.fluct-row::marker { content: ""; }
+details.fluct-item > summary.fluct-row:hover { background: #f8fafd; }
+details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
+.fluct-row .metric { font-weight: 600; }
+.fluct-row .values {
+  display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  align-items: baseline; gap: 8px; font-variant-numeric: tabular-nums;
+}
+.fluct-row .prev {
+  color: var(--ink-3); text-align: right; white-space: nowrap;
+}
+.fluct-row .arrow { color: var(--ink-3); text-align: center; }
+.fluct-row .cur { font-weight: 600; white-space: nowrap; }
+.fluct-row .primary {
+  color: var(--ink-3); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fluct-row .chev { justify-self: end; color: var(--ink-3); transition: transform .15s; }
+.fluct-row .chev::before { content: "▸"; }
+details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
+.fluct-body { padding: 2px 16px 14px; }
+.fluct-dims { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 22px; }
+.fluct-dim-label { margin-bottom: 4px; color: var(--ink-3); font-size: 12px; }
+.fluct-factor {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 2px 0; font-size: 12.5px;
+}
+.fluct-factor .rank {
+  flex: none; padding: 0 6px; border-radius: 4px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-weight: 600;
+}
+.fluct-factor .name {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.fluct-factor .contrib { flex: none; font-variant-numeric: tabular-nums; }
 
 /* ---- collapsible detail tables ---- */
 details.breakdown { margin-top: 16px; overflow: hidden; background: #fbfcfe; border: 1px solid var(--line-soft); border-radius: 12px; }
@@ -258,6 +352,16 @@ details.breakdown[open] > summary { border-bottom: 1px solid var(--line-soft); }
 details.breakdown > .body { padding: 0 16px 16px; }
 
 .legend { margin-top: 12px; color: var(--ink-3); font-size: 12px; }
+.table-note { margin: -2px 2px 8px; color: var(--ink-3); font-size: 12px; }
+
+/* ---- media quality chips (最佳 / 需关注) ---- */
+.quality-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.quality-chip {
+  padding: 4px 10px; border-radius: 999px; font-size: 12.5px;
+  font-weight: 600; border: 1px solid transparent;
+}
+.quality-chip.good { color: var(--good); background: var(--good-soft); border-color: #cbe9da; }
+.quality-chip.warn { color: var(--warn); background: var(--warn-soft); border-color: #f3ddbd; }
 .legend .tier { margin-right: 8px; }
 footer.page-foot { padding: 10px 0 24px; color: var(--ink-3); font-size: 12px; text-align: center; }
 
@@ -271,12 +375,18 @@ footer.page-foot { padding: 10px 0 24px; color: var(--ink-3); font-size: 12px; t
 .to-top.show { opacity: 1; pointer-events: auto; }
 .to-top:hover { color: var(--accent); border-color: #ccd5e3; }
 
-@media (max-width: 1180px) {
+@media (max-width: 1199px) {
+  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 899px) {
   .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 1024px) {
   .brand { display: none; }
   .chart { height: 340px; }
+}
+@media (max-width: 900px) {
+  .fluct-dims { grid-template-columns: 1fr; gap: 10px; }
 }
 @media (max-width: 720px) {
   .shell { padding: 14px 12px 40px; }
@@ -320,28 +430,114 @@ def _metric_html(label: str, value: str, delta: str, tone: str | None) -> str:
 
 
 def _headline_html(result: dict[str, Any]) -> str:
+    """The seven headline figures, in the report page's order and wording.
+
+    ``None`` as the last tuple item means the delta is neutral (grey): 消耗 is
+    neither good nor bad when it moves, exactly as the page renders it.
+    """
     core = result.get("core") or {}
     previous = result.get("core_previous") or {}
-    metrics: list[tuple[str, str, Callable[[Any], str], bool]] = [
-        ("消耗", "spend", format_amount, False),
-        ("新增", "new_users", format_count, True),
-        ("流水", "recharge", format_amount, True),
-        ("ROI1", "roi1", format_roi, True),
+    metrics: list[tuple[str, str, Callable[[Any], str], bool | None]] = [
+        ("返点后消耗", "spend", format_amount, None),
+        ("充值流水", "recharge", format_amount, True),
+        ("新增进入", "new_users", format_count, True),
+        ("自然新增%", "natural_rate", format_roi, True),
         ("CPA", "cpa", format_amount, False),
+        ("广告ROI", "ad_roi", format_roi, True),
+        ("ROI1", "roi1", format_roi, True),
+        ("LTV1", "ltv1", format_amount, True),
     ]
     cells = []
     for label, key, formatter, higher_is_better in metrics:
         # The payload's ROI fields are capitalised (ROI1), hence the resolver.
         current, prev = _core_value(core, key), _core_value(previous, key)
+        tone = (
+            None
+            if higher_is_better is None
+            else delta_color(current, prev, higher_is_better=higher_is_better)
+        )
         cells.append(
             _metric_html(
                 label,
                 formatter(current),
                 format_delta(current, prev),
-                delta_color(current, prev, higher_is_better=higher_is_better),
+                tone,
             )
         )
     return f'<div class="metrics">{"".join(cells)}</div>'
+
+
+def _core_card_html(result: dict[str, Any]) -> str:
+    """核心指标速览 as one card, with 平台拆分 embedded under the band.
+
+    Mirrors the report page: the platform split is a disclosure welded to the
+    bottom edge of the KPI surface (a 分业务板块 strip), not a separate table
+    block below the chapter.  Without platform rows the card is just the band.
+    """
+    metrics = _headline_html(result)
+    table = _table_html(
+        build_platform_table(result, limit=MAX_HTML_TABLE_ROWS, raw_money=True)
+    )
+    if not table:
+        return f'<div class="fold-card">{metrics}</div>'
+    return (
+        '<div class="fold-card">'
+        f"{metrics}"
+        '<details class="fold-more">'
+        '<summary class="fold-strip">'
+        '<span class="fold-icon" aria-hidden="true">▦</span>分业务板块'
+        '<span class="chev" aria-hidden="true"></span>'
+        "</summary>"
+        f'<div class="fold-body">{table}</div>'
+        "</details></div>"
+    )
+
+
+def _chart_card_html(chart_html: str, table_html: str, *, strip_label: str) -> str:
+    """A chart surface whose detail table hangs from a bottom strip.
+
+    Mirrors §2 on the report page: the chart is the card, and the 分天/分周
+    detail is a 分天明细/分周明细 disclosure welded to its bottom edge instead
+    of a table always sitting open below it.
+    """
+    if not chart_html:
+        return table_html
+    if not table_html:
+        return chart_html
+    return (
+        '<div class="fold-card">'
+        f'<div class="chart-body">{chart_html}</div>'
+        '<details class="fold-more">'
+        '<summary class="fold-strip">'
+        f'<span class="fold-icon" aria-hidden="true">▦</span>{_escape(strip_label)}'
+        '<span class="chev" aria-hidden="true"></span>'
+        "</summary>"
+        f'<div class="fold-body">{table_html}</div>'
+        "</details></div>"
+    )
+
+
+def _core_caption(result: dict[str, Any], weekly: bool) -> str:
+    """§1's caption carries the reported/compared windows, as on the page."""
+    start = result.get("period_start") or result.get("report_date") or ""
+    end = result.get("period_end") or result.get("report_date") or ""
+    previous_start = result.get("previous_period_start") or result.get("previous_date")
+    previous_end = result.get("previous_period_end") or result.get("previous_date")
+    period = (
+        f"{start} ~ {end}"
+        if start and end and start != end
+        else str(result.get("report_date") or start)
+    )
+    previous = (
+        f"{previous_start} ~ {previous_end}"
+        if previous_start and previous_end and previous_start != previous_end
+        else str(previous_start or "")
+    )
+    label = "报告周期" if weekly else "简报日期"
+    parts = [f"{label}：{period}"]
+    if previous:
+        parts.append(f"对比周期：{previous}")
+    return " ｜ ".join(parts)
 
 
 def _alerts_html(result: dict[str, Any]) -> str:
@@ -356,7 +552,211 @@ def _alerts_html(result: dict[str, Any]) -> str:
     return f'<ul class="alerts">{items}</ul>'
 
 
+# 波动指标 in the metric's own unit: ROI1 / 自然新增% are ratios, everything
+# else is an amount or a count (the report page formats them the same way).
+RATE_METRIC_KEYS = {"roi1", "natural_rate"}
+# Metrics whose growth is not an improvement, so the delta is not coloured up.
+FLUCTUATION_TONE = {"spend": "neutral", "cpa": "lower"}
+
+
+def _fluctuation_value(metric_key: str, value: Any) -> str:
+    """A 波动 metric value in its own unit (percent for ratios)."""
+    number = _as_float(value)
+    if number is None:
+        return "—"
+    if metric_key in RATE_METRIC_KEYS:
+        return f"{number * 100:.1f}%"
+    return format_amount(number)
+
+
+def _fluctuation_contribution(metric_key: str, value: Any) -> str:
+    """A factor's signed contribution in the metric's own unit."""
+    number = _as_float(value)
+    if number is None:
+        return "—"
+    sign = "+" if number > 0 else "−" if number < 0 else ""
+    if metric_key in RATE_METRIC_KEYS:
+        return f"{sign}{abs(number) * 100:.2f}%"
+    # The report page's number formatter drops a trailing ``.0``; match it so a
+    # whole-yuan contribution reads "3,863,322" rather than "3,863,322.0".
+    text = format_amount(abs(number))
+    if text.endswith(".0"):
+        text = text[:-2]
+    return f"{sign}{text}"
+
+
+def _fluctuation_delta_html(metric: dict[str, Any]) -> str:
+    """The 环比 cell: a toned arrow + percentage, or 新增 for a new metric.
+
+    The change is read from the payload's ``delta_pct`` so the export and the
+    report page quote the same figure (recomputing it from the rounded values
+    would drift by a tenth of a percent).
+    """
+    if metric.get("new"):
+        return '<span class="delta-flat">新增</span>'
+    change = _as_float(metric.get("delta_pct"))
+    if change is None:
+        delta = format_delta(metric.get("current"), metric.get("previous"))
+        if not delta:
+            return "—"
+        return f'<span class="delta-flat">{_escape(delta)}</span>'
+    delta = f"{'▲' if change >= 0 else '▼'} {abs(change) * 100:.1f}%"
+    tone = FLUCTUATION_TONE.get(str(metric.get("key") or ""), "higher")
+    improved = change >= 0 if tone == "higher" else change <= 0
+    if tone == "neutral":
+        return f'<span class="delta-flat">{_escape(delta)}</span>'
+    css = "delta-good" if improved else "delta-bad"
+    return f'<span class="{css}">{_escape(delta)}</span>'
+
+
+def _fluctuation_primary(metric: dict[str, Any]) -> str:
+    """The headline factor: the strongest named change of the first dimension."""
+    dimensions = [
+        dimension
+        for dimension in (metric.get("dimensions") or [])
+        if isinstance(dimension, dict)
+    ]
+    items = [
+        item
+        for item in ((dimensions[0].get("items") if dimensions else None) or [])
+        if isinstance(item, dict)
+    ]
+    primary = next(
+        (
+            item
+            for item in items
+            if (_as_float(item.get("contribution")) or 0.0) != 0
+            and item.get("name") != "其他"
+        ),
+        items[0] if items else None,
+    )
+    if not primary:
+        return ""
+    return (
+        f"主因：{primary.get('name')} "
+        f"{_fluctuation_contribution(str(metric.get('key') or ''), primary.get('contribution'))}"
+    )
+
+
+def _fluctuation_factor_html(
+    metric_key: str, item: dict[str, Any], rank_index: int
+) -> str:
+    """One 主因/次因 row: rank chip → factor name → signed contribution.
+
+    The order is the report page's: the chip sits before the name and the
+    contribution is right-aligned, so the export and the page read alike.
+    """
+    contribution = _as_float(item.get("contribution"))
+    tone = FLUCTUATION_TONE.get(metric_key, "higher")
+    if contribution is None or tone == "neutral":
+        css = "delta-flat"
+    else:
+        improved = contribution >= 0 if tone == "higher" else contribution <= 0
+        css = "delta-good" if improved else "delta-bad"
+    return (
+        '<div class="fluct-factor">'
+        f'<span class="rank">{"主因" if rank_index == 0 else "次因"}</span>'
+        f'<span class="name">{_escape(item.get("name"))}</span>'
+        f'<span class="contrib {css}">'
+        f"{_escape(_fluctuation_contribution(metric_key, contribution))}</span>"
+        "</div>"
+    )
+
+
+def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
+    """One metric's factors, split into the 平台 / 媒体 / 主游戏 columns."""
+    key = str(metric.get("key") or "")
+    columns: list[str] = []
+    for dimension in metric.get("dimensions") or []:
+        if not isinstance(dimension, dict):
+            continue
+        ranked = [
+            item
+            for item in dimension.get("items") or []
+            if isinstance(item, dict) and item.get("name") != "其他"
+        ][:2]
+        if not ranked:
+            continue
+        factors = "".join(
+            _fluctuation_factor_html(key, item, index)
+            for index, item in enumerate(ranked)
+        )
+        columns.append(
+            '<div class="fluct-dim">'
+            f'<div class="fluct-dim-label">'
+            f"{_escape(dimension.get('label') or dimension.get('key'))}</div>"
+            f"{factors}</div>"
+        )
+    if not columns:
+        return ""
+    return f'<div class="fluct-dims">{"".join(columns)}</div>'
+
+
+def _fluctuation_html(result: dict[str, Any]) -> str:
+    """§1「关键指标波动」: the material moves and the factors behind them.
+
+    Mirrors the report page's block: one summary row per metric and a
+    collapsible breakdown that repeats the page's expanded row — per metric,
+    the 平台 / 媒体 / 主游戏 columns with 主因/次因 chips placed before each
+    factor's name and its contribution right-aligned.
+    """
+    metrics = [
+        metric
+        for metric in (result.get("fluctuations") or [])
+        if isinstance(metric, dict)
+    ]
+    if not metrics:
+        return ""
+    min_pct = _as_float((result.get("thresholds") or {}).get("fluctuation_min_pct"))
+    gate = 10 if min_pct is None else round(min_pct * 100)
+
+    items: list[str] = []
+    for metric in metrics:
+        key = str(metric.get("key") or "")
+        label = str(metric.get("label") or key)
+        cells = (
+            f'<span class="metric">{_escape(label)}</span>'
+            '<span class="values">'
+            f'<span class="prev">'
+            f"{_escape(_fluctuation_value(key, metric.get('previous')))}</span>"
+            '<span class="arrow" aria-hidden="true">→</span>'
+            f'<span class="cur">'
+            f"{_escape(_fluctuation_value(key, metric.get('current')))}</span>"
+            "</span>"
+            f'<span class="delta-cell">{_fluctuation_delta_html(metric)}</span>'
+            f'<span class="primary">{_escape(_fluctuation_primary(metric))}</span>'
+        )
+        detail = _fluctuation_detail_html(metric)
+        # A metric without factors stays a plain row: no chevron, nothing to
+        # expand, so the disclosure never promises content it cannot show.
+        if detail:
+            items.append(
+                '<details class="fluct-item">'
+                f'<summary class="fluct-row">{cells}'
+                '<span class="chev" aria-hidden="true"></span></summary>'
+                f'<div class="fluct-body">{detail}</div>'
+                "</details>"
+            )
+        else:
+            items.append(f'<div class="fluct-row">{cells}</div>')
+    return (
+        '<div class="fluct-panel">'
+        '<div class="fluct-head">'
+        "<h3>关键指标波动</h3>"
+        '<p class="caption">'
+        f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
+        "展开可查看平台 / 媒体 / 主游戏的主次因素"
+        "</p></div>"
+        f"{''.join(items)}"
+        "</div>"
+    )
+
+
 RATE_COLUMNS = {"pr", "rr", "nr"}
+
+# Money columns hold raw 元 on the exported page, so they need thousands
+# separators the 万元 card values never did.
+MONEY_COLUMNS = {"spend", "recharge"}
 
 
 DIMENSION_COLUMNS = {"project", "channel", "platform", "date", "label", "region"}
@@ -380,8 +780,14 @@ def _cell_html(cell: Any, column: str = "") -> str:
     if column in RATE_COLUMNS and isinstance(cell, (int, float)):
         # The table rows already carry these as percentages.
         return f"{cell:.1f}%"
-    if isinstance(cell, float) and cell.is_integer():
-        return str(int(cell))
+    if column in MONEY_COLUMNS and isinstance(cell, (int, float)):
+        number = float(cell)
+        return f"{int(number):,}" if number.is_integer() else f"{number:,.1f}"
+    if isinstance(cell, (int, float)) and not isinstance(cell, bool):
+        number = float(cell)
+        # Counts and per-user figures read with thousands separators, like the
+        # report page's number formatter.
+        return f"{int(number):,}" if number.is_integer() else f"{number:,}"
     return _escape(cell)
 
 
@@ -407,7 +813,9 @@ def _legend_html() -> str:
     return f'<div class="legend">ROI1 / 累计ROI 颜色：{tiers}</div>'
 
 
-def _table_html(table: dict[str, Any] | None, *, title: str = "") -> str:
+def _table_html(
+    table: dict[str, Any] | None, *, title: str = "", note: str = ""
+) -> str:
     """Render one table as a scrollable block, optionally under a caption."""
     if not table:
         return ""
@@ -422,16 +830,28 @@ def _table_html(table: dict[str, Any] | None, *, title: str = "") -> str:
         f'<th class="{kind(column)}">{_escape(column.get("display_name"))}</th>'
         for column in table["columns"]
     )
-    body = "".join(
-        "<tr>"
-        + "".join(
-            f'<td class="{kind(column)}">'
-            f"{_cell_html(row.get(column['name']), column['name'])}</td>"
-            for column in table["columns"]
+    rows_html: list[str] = []
+    previous_project: object = None
+    separates_groups = table["columns"][0].get("name") == "project"
+    for row in rows:
+        if separates_groups:
+            project = row.get("project")
+            if previous_project is not None and project != previous_project:
+                rows_html.append(
+                    '<tr class="table-group-sep">'
+                    f'<td colspan="{len(table["columns"])}"></td></tr>'
+                )
+            previous_project = project
+        rows_html.append(
+            "<tr>"
+            + "".join(
+                f'<td class="{kind(column)}">'
+                f"{_cell_html(row.get(column['name']), column['name'])}</td>"
+                for column in table["columns"]
+            )
+            + "</tr>"
         )
-        + "</tr>"
-        for row in rows
-    )
+    body = "".join(rows_html)
     caption = ""
     if title:
         count = f"{len(rows)} 行"
@@ -441,6 +861,8 @@ def _table_html(table: dict[str, Any] | None, *, title: str = "") -> str:
             f'<span class="table-count">{count}</span>'
             "</div>"
         )
+    if note:
+        caption += f'<p class="table-note">{_escape(note)}</p>'
     # The wrapper scrolls both ways; the header and the dimension column stay
     # pinned, so even a 19-column table stays readable at full width.
     return (
@@ -458,25 +880,12 @@ def _previous_period(result: dict[str, Any]) -> str:
     return str(result.get("previous_date") or "")
 
 
-# Progressive enhancements of the exported page: full-width/centred view
-# toggle, expand-all for the detail tables, chapter scroll-spy and back-to-top.
-# The report is fully readable without it, so a failure here is cosmetic.
+# Progressive enhancements of the exported page: expand-all for the detail
+# tables, chapter scroll-spy and back-to-top.  The report is fully readable
+# without it, so a failure here is cosmetic.
 _PAGE_SCRIPT = """
 <script>
 (function () {
-  var body = document.body;
-  var widthBtn = document.getElementById("btn-width");
-  function setWidth(mode) {
-    var centred = mode === "centred";
-    body.classList.toggle("centred", centred);
-    if (widthBtn) { widthBtn.textContent = centred ? "全宽视图" : "居中视图"; }
-    try { localStorage.setItem("briefing-width", centred ? "centred" : "full"); } catch (e) {}
-  }
-  var savedWidth = "full";
-  try { savedWidth = localStorage.getItem("briefing-width") || "full"; } catch (e) {}
-  setWidth(savedWidth);
-  if (widthBtn) { widthBtn.addEventListener("click", function () { setWidth(body.classList.contains("centred") ? "full" : "centred"); }); }
-
   var detailBtn = document.getElementById("btn-details");
   var details = Array.prototype.slice.call(document.querySelectorAll("details.breakdown"));
   function allOpen() {
@@ -563,10 +972,9 @@ def build_briefing_html(
 ) -> str:
     """Render the whole briefing as one self-contained, full-width HTML page.
 
-    The page is laid out for a desktop screen first: the report fills the
-    viewport (a top-bar button switches to a centred column and remembers the
-    choice), chapters are panels with a sticky chapter navigation, and the wide
-    detail tables scroll in place with their header and dimension column
+    The page is laid out for a desktop screen first: the report always fills
+    the viewport, chapters are panels with a sticky chapter navigation, and the
+    wide detail tables scroll in place with their header and dimension column
     pinned.  Charts keep their VChart runtime, so they stay interactive.
     """
     weekly = report_type == "weekly"
@@ -600,21 +1008,37 @@ def build_briefing_html(
     extra = [
         builder
         for builder in (build_media_project_table, build_media_platform_table)
-        if builder(result)
+        if builder(result, raw_money=True)
     ]
     breakdown_tables = "".join(
         _breakdown_html(
             f"展开：{title}",
-            _table_html(builder(result, limit=MAX_HTML_TABLE_ROWS)),
+            _table_html(builder(result, limit=MAX_HTML_TABLE_ROWS, raw_money=True)),
         )
         for title, builder in zip(
             ("媒体 × 主游戏", "媒体 × 客户端"), extra, strict=False
         )
     )
     project_daily = _table_html(
-        build_project_daily_table(result, limit=MAX_HTML_TABLE_ROWS)
+        build_project_daily_table(result, limit=MAX_HTML_TABLE_ROWS, raw_money=True)
     )
+    project_regions = _table_html(
+        build_project_region_table(result, limit=MAX_HTML_TABLE_ROWS, raw_money=True)
+    )
+    # The cut applies to the channel rows: the listed games are the Top-N the
+    # page's 「当周消耗 Top N」 tag counts (``project_summary`` also carries the
+    # games the cut dropped).
+    project_games = {
+        str(row.get("project") or "")
+        for row in (result.get("projects") or [])
+        if isinstance(row, dict)
+    } or {
+        str(row.get("project") or "")
+        for row in (result.get("project_summary") or [])
+        if isinstance(row, dict)
+    }
     trend_grain = "分周" if weekly else "分天"
+    period_word = "当周" if weekly else "当日"
 
     def panel(index: int, key: str, caption: str, body: str) -> str:
         return (
@@ -631,32 +1055,39 @@ def build_briefing_html(
         panel(
             1,
             "core",
-            "核心经营指标、预警提示与平台拆分",
-            f"{_headline_html(result)}{_alerts_html(result)}"
-            f"{_table_html(tables[0](result, limit=MAX_HTML_TABLE_ROWS), title='平台拆分')}",
+            _core_caption(result, weekly),
+            f"{_alerts_html(result)}{_core_card_html(result)}"
+            f"{_fluctuation_html(result)}",
         ),
         panel(
             2,
             "trend",
-            "柱=消耗/流水（万元），折线=ROI1（%）；悬停图表可查看具体数值",
-            f"{chart(0)}"
-            f"{_table_html(tables[1](result, limit=MAX_HTML_TABLE_ROWS), title=f'{trend_grain}明细')}",
+            "柱=消耗/流水（元），折线=ROI1 / 广告ROI（%）；悬停图表可查看具体数值",
+            _chart_card_html(
+                chart(0),
+                _table_html(
+                    tables[1](result, limit=MAX_HTML_TABLE_ROWS, raw_money=True)
+                ),
+                strip_label=f"{trend_grain}明细",
+            ),
         ),
         panel(
             3,
             "projects",
-            "柱=消耗（万元，颜色=ROI 质量），折线=ROI1（%）；展开可查看主游戏 × 渠道 × 日期",
+            "柱=消耗（颜色=ROI 质量），折线=ROI1（%）；"
+            f"展开可查看主游戏 × 渠道 × {trend_grain}与分地区",
             f"{chart(1)}"
-            f"{_table_html(tables[2](result, limit=MAX_HTML_TABLE_ROWS), title='主游戏 × 渠道')}"
+            f"{_table_html(tables[2](result, limit=MAX_HTML_TABLE_ROWS, raw_money=True), title='主游戏 × 渠道商 明细（含环比）', note=f'{period_word}消耗 Top {len(project_games)} 主游戏；按主游戏汇总消耗排名，入选主游戏的渠道全部列出，不按渠道维度截断')}"
             f"{_legend_html()}"
-            f"{_breakdown_html('展开：主游戏 × 渠道 × 日期', project_daily)}",
+            f"{_breakdown_html(f'展开：主游戏 × 渠道 × {trend_grain}', project_daily)}"
+            f"{_breakdown_html('展开：主游戏 × 渠道 × 地区', project_regions)}",
         ),
         panel(
             4,
             "media",
-            "柱=消耗（万元，颜色=ROI 质量），折线=ROI1（%）；展开可查看媒体 × 主游戏与客户端",
-            f"{chart(2)}"
-            f"{_table_html(tables[3](result, limit=MAX_HTML_TABLE_ROWS), title='媒体明细')}"
+            "柱=消耗（颜色=ROI 质量），折线=ROI1（%）；展开可查看媒体 × 主游戏与客户端",
+            f"{_media_quality_html(result)}{chart(2)}"
+            f"{_table_html(tables[3](result, limit=MAX_HTML_TABLE_ROWS, raw_money=True), title='媒体 明细（含环比）')}"
             f"{breakdown_tables}",
         ),
     ]
@@ -688,9 +1119,27 @@ def build_briefing_html(
 window.addEventListener('load', function () {{
   var Cls = window.VChart && (window.VChart.VChart || window.VChart);
   if (!Cls) {{ return; }}
+  // Raw 元 axis values run to seven digits; VChart has no JSON number format,
+  // so the page installs the thousands-separator formatter the report page's
+  // ECharts axis uses.
+  function moneyTick(value) {{
+    var number = Number(value);
+    if (!isFinite(number)) {{ return String(value); }}
+    return number.toLocaleString('zh-CN', {{ maximumFractionDigits: 1 }});
+  }}
+  function isMoneyAxis(axis) {{
+    var text = axis && axis.title && axis.title.text;
+    return text === '消耗' || (typeof text === 'string' && text.indexOf('金额') >= 0);
+  }}
   (window.__SPECS || []).forEach(function (entry) {{
+    var spec = entry[1];
+    (spec.axes || []).forEach(function (axis) {{
+      if (!isMoneyAxis(axis)) {{ return; }}
+      axis.label = axis.label || {{}};
+      axis.label.formatMethod = function (value) {{ return moneyTick(value); }};
+    }});
     try {{
-      new Cls(entry[1], {{ dom: entry[0], autoFit: true, animation: false }})
+      new Cls(spec, {{ dom: entry[0], autoFit: true, animation: false }})
         .renderSync();
     }} catch (err) {{
       console.error('chart failed', entry[0], err);
@@ -724,7 +1173,6 @@ window.addEventListener('load', function () {{
 <span class="brand">Superset 简报</span>
 <nav class="chapters" aria-label="章节导航">{nav_links}</nav>
 <div class="topbar-actions">
-<button class="ghost-btn" id="btn-width" type="button">居中视图</button>
 <button class="ghost-btn" id="btn-details" type="button">展开明细</button>
 </div>
 </header>
@@ -737,7 +1185,7 @@ window.addEventListener('load', function () {{
 <div class="hero-facts">{facts_html}</div>
 </header>
 {"".join(sections)}
-<footer class="page-foot">由 Superset 简报推送生成 · 图表为交互式，可悬停查看数值 · 右上角可切换全宽/居中视图</footer>
+<footer class="page-foot">由 Superset 简报推送生成 · 图表为交互式，可悬停查看数值</footer>
 </main>
 <a class="to-top" href="#top" aria-label="返回顶部">↑</a>
 {render}
@@ -781,15 +1229,64 @@ def _generated(result: dict[str, Any]) -> str:
     return "" if value is None else str(value)
 
 
+def _quality_delta_html(row: dict[str, Any]) -> str:
+    """The chip's 环比 phrase, or "" when the previous ROI1 is unknown."""
+    previous = row.get("prev") if isinstance(row.get("prev"), dict) else {}
+    current, base = _as_float(row.get("roi1")), _as_float(previous.get("roi1"))
+    if current is None or not base:
+        return ""
+    change = (current - base) / abs(base)
+    return f"环比 {'▲' if change >= 0 else '▼'} {abs(change) * 100:.1f}%"
+
+
+def _media_quality_html(result: dict[str, Any]) -> str:
+    """最佳媒体 / 需关注 chips above the media chart, as the page shows them."""
+    media = [
+        row
+        for row in (result.get("media") or [])
+        if isinstance(row, dict) and (_as_float(row.get("roi1")) or 0.0) > 0
+    ]
+    if not media:
+        return ""
+    best = max(media, key=lambda row: _as_float(row.get("roi1")) or 0.0)
+    worst = min(media, key=lambda row: _as_float(row.get("roi1")) or 0.0)
+    breakeven, _ = _roi_thresholds(result)
+
+    def chip(tone: str, prefix: str, row: dict[str, Any]) -> str:
+        parts = [
+            f"{prefix}：{row.get('channel')}",
+            f"ROI1 {format_roi(row.get('roi1'))}",
+        ]
+        if delta := _quality_delta_html(row):
+            parts.append(delta)
+        return f'<span class="quality-chip {tone}">{_escape(" · ".join(parts))}</span>'
+
+    chips = [chip("good", "最佳媒体", best)]
+    if (_as_float(worst.get("roi1")) or 0.0) < breakeven:
+        chips.append(chip("warn", "需关注", worst))
+    return f'<div class="quality-chips">{"".join(chips)}</div>'
+
+
 def _chart_specs(
     result: dict[str, Any], *, weekly: bool
 ) -> list[tuple[str, dict[str, Any]]]:
     """The card's chart specs, in chapter order."""
     specs: list[tuple[str, dict[str, Any]]] = []
     for element_id, builder, kwargs in (
-        ("chart-trend", build_trend_chart, {"weekly": weekly}),
-        ("chart-project", build_project_chart, {}),
-        ("chart-media", build_media_chart, {}),
+        (
+            "chart-trend",
+            build_trend_chart,
+            # The page has room for the whole week range on the axis.
+            {
+                "weekly": weekly,
+                "full_labels": True,
+                "raw_money": True,
+                # 广告ROI replaces LTV1 on this chart and shares ROI1's axis.
+                "with_ad_roi": True,
+            },
+        ),
+        ("chart-project", build_project_chart, {"raw_money": True}),
+        ("chart-media", build_media_chart, {"raw_money": True}),
     ):
         chart = builder(result, **kwargs)
         if chart:

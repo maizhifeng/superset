@@ -206,6 +206,8 @@ export interface DailyTotals {
   retention_rate: number | null;
   /** 自然新增%：自然量新增 / 新增进入，同样按新增人数加权。 */
   natural_rate: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi: number | null;
   /** LTV 各成熟度：按新增人数加权的窗口均值。 */
   ltv: Record<number, number | null>;
   roi1: number | null;
@@ -221,6 +223,7 @@ export type DailyLike = {
   pay_rate?: number | null;
   retention_rate?: number | null;
   natural_rate?: number | null;
+  ad_roi?: number | null;
   ltv1?: number | null;
   ltv2?: number | null;
   ltv3?: number | null;
@@ -259,6 +262,7 @@ export function summarizeDailyRows(
   let payWeighted = 0;
   let retentionWeighted = 0;
   let naturalWeighted = 0;
+  let adRoiWeighted = 0;
   let roiWeighted = 0;
   let roiCumWeighted = 0;
   let roiFlowWeighted = 0;
@@ -272,6 +276,7 @@ export function summarizeDailyRows(
     payWeighted += (row.pay_rate ?? 0) * rowUsers;
     retentionWeighted += (row.retention_rate ?? 0) * rowUsers;
     naturalWeighted += (row.natural_rate ?? 0) * rowUsers;
+    adRoiWeighted += (row.ad_roi ?? 0) * rowSpend;
     roiWeighted += (row.roi1 ?? 0) * rowSpend;
     roiCumWeighted += (row.roi_cum ?? 0) * rowSpend;
     roiFlowWeighted += (row.roi_flow ?? 0) * rowSpend;
@@ -293,6 +298,7 @@ export function summarizeDailyRows(
     retention_rate: users ? retentionWeighted / users : null,
     natural_rate: users ? naturalWeighted / users : null,
     ltv,
+    ad_roi: spend ? adRoiWeighted / spend : null,
     roi1: spend ? roiWeighted / spend : null,
     roi_cum: spend ? roiCumWeighted / spend : null,
     roi_flow: spend ? roiFlowWeighted / spend : null,
@@ -313,6 +319,7 @@ export interface MediaRollupRow {
   pay_rate: number | null;
   retention_rate: number | null;
   natural_rate: number | null;
+  ad_roi: number | null;
   ltv1: number | null;
   roi1: number | null;
   prev: {
@@ -321,6 +328,7 @@ export interface MediaRollupRow {
     cpa: number | null;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi: number | null;
     recharge: number;
   };
 }
@@ -348,6 +356,7 @@ export function rollupMediaRows(
   let prevRecharge = 0;
   let prevLtvWeighted = 0;
   let prevRoiWeighted = 0;
+  let prevAdRoiWeighted = 0;
   for (const row of rows ?? []) {
     const prev = row.prev;
     if (!prev) continue;
@@ -358,6 +367,7 @@ export function rollupMediaRows(
     prevRecharge += prev.recharge ?? 0;
     prevLtvWeighted += (prev.ltv1 ?? 0) * users;
     prevRoiWeighted += (prev.roi1 ?? 0) * spend;
+    prevAdRoiWeighted += (prev.ad_roi ?? 0) * spend;
   }
   return {
     spend: totals.spend,
@@ -367,6 +377,7 @@ export function rollupMediaRows(
     pay_rate: totals.pay_rate,
     retention_rate: totals.retention_rate,
     natural_rate: totals.natural_rate,
+    ad_roi: totals.ad_roi,
     ltv1: totals.ltv[1] ?? null,
     roi1: totals.roi1,
     prev: {
@@ -375,6 +386,7 @@ export function rollupMediaRows(
       cpa: prevUsers ? prevSpend / prevUsers : null,
       ltv1: prevUsers ? prevLtvWeighted / prevUsers : null,
       roi1: prevSpend ? prevRoiWeighted / prevSpend : null,
+      ad_roi: prevSpend ? prevAdRoiWeighted / prevSpend : null,
       recharge: prevRecharge,
     },
   };

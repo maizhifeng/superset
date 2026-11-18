@@ -10,7 +10,7 @@
 export type ReportType = "daily" | "weekly";
 
 export interface ReportParamValues {
-  /** "daily" reports on one day; "weekly" aggregates a natural week (Sunday–Saturday). */
+  /** "daily" reports on one day; "weekly" aggregates a natural week (Monday–Sunday). */
   report_type: ReportType;
   name: string;
   description: string;

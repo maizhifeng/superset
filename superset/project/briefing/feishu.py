@@ -156,8 +156,7 @@ def resolve_doc_folder_token(
     value = str(raw or "").strip()
     if not value:
         return ""
-    match = _DOC_FOLDER_LINK.search(value)
-    if match:
+    if match := _DOC_FOLDER_LINK.search(value):
         return match.group(1)
     if "://" in value or "/" in value or "?" in value:
         # Some other URL (a document, a wiki page): not a folder reference.
@@ -945,7 +944,8 @@ def push_result(
     report_type = normalize_report_type((result or {}).get("report_type"))
     if report_type == "weekly" and not dry:
         # Weekly pushes own the interactive HTML report and announce it with one
-        # card; daily pushes keep the metric-card pipeline below unchanged.
+        # native file share (no metric cards); daily pushes keep the card
+        # pipeline below unchanged.
         return _push_weekly_doc(
             config_id,
             result,

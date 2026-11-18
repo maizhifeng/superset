@@ -78,34 +78,34 @@ def _freeze_today(d: date):
 
 
 def test_weekly_default_is_last_complete_natural_week() -> None:
-    """Without an override, weekly reports cover the last completed Sun–Sat."""
-    # Wednesday 2026-08-19: the current week (started Sunday 08-16) is
-    # incomplete, so the reported week must be 08-09 (Sun) ~ 08-15 (Sat).
+    """Without an override, weekly reports cover the last completed Mon–Sun."""
+    # Wednesday 2026-08-19: the current week (started Monday 08-17) is
+    # incomplete, so the reported week must be 08-10 (Mon) ~ 08-16 (Sun).
     with _freeze_today(date(2026, 8, 19)):
         current, previous, history = _reference_periods(
             DailyReportContext(), _weekly_config()
         )
 
     assert (current.start, current.end) == (
-        date(2026, 8, 9),
-        date(2026, 8, 15),
+        date(2026, 8, 10),
+        date(2026, 8, 16),
     )
     assert (previous.start, previous.end) == (
-        date(2026, 8, 2),
-        date(2026, 8, 8),
+        date(2026, 8, 3),
+        date(2026, 8, 9),
     )
     assert history[0].label == current.label
 
 
 def test_weekly_default_lands_on_complete_week_for_every_weekday() -> None:
-    """The default window ends on a Saturday regardless of today's weekday."""
+    """The default window ends on a Sunday regardless of today's weekday."""
     for day in range(17, 24):  # Mon 17th .. Sun 23rd of August 2026
         with _freeze_today(date(2026, 8, day)):
             current, previous, history = _reference_periods(
                 DailyReportContext(), _weekly_config()
             )
-        assert current.start.weekday() == 6  # Sunday
-        assert current.end.weekday() == 5  # Saturday
+        assert current.start.weekday() == 0  # Monday
+        assert current.end.weekday() == 6  # Sunday
         # The compared week sits directly before the reported week.
         assert (current.start - previous.end).days == 1
         assert history[0].label == current.label
@@ -118,19 +118,19 @@ def test_weekly_override_selects_containing_week() -> None:
     )
 
     assert (current.start, current.end) == (
-        date(2026, 8, 9),
-        date(2026, 8, 15),
+        date(2026, 8, 10),
+        date(2026, 8, 16),
     )
     assert (previous.start, previous.end) == (
-        date(2026, 8, 2),
-        date(2026, 8, 8),
+        date(2026, 8, 3),
+        date(2026, 8, 9),
     )
     # Buckets are aligned weeks ending at the reported one, newest first.
     assert [b.label for b in history] == [
-        "2026-08-09",
-        "2026-08-02",
-        "2026-07-26",
-        "2026-07-19",
+        "2026-08-10",
+        "2026-08-03",
+        "2026-07-27",
+        "2026-07-20",
     ]
 
 
@@ -141,13 +141,13 @@ def test_weekly_buckets_cover_year_boundary() -> None:
     )
 
     assert (current.start, current.end) == (
-        date(2025, 12, 28),
-        date(2026, 1, 3),
+        date(2025, 12, 29),
+        date(2026, 1, 4),
     )
     # A bucket spanning two years renders full ISO dates; a same-year one
     # stays compact.
-    assert current.range_label == "2025-12-28 ~ 2026-01-03"
-    assert previous.range_label == "12-21 ~ 12-27"
+    assert current.range_label == "2025-12-29 ~ 2026-01-04"
+    assert previous.range_label == "12-22 ~ 12-28"
 
 
 def test_weekly_range_labels_and_compat_keys() -> None:
@@ -160,7 +160,7 @@ def test_weekly_range_labels_and_compat_keys() -> None:
     )
 
     assert daily_current.range_label == "2026-08-18"
-    assert weekly_current.label == "2026-08-16"
-    assert weekly_current.range_label == "08-16 ~ 08-22"
-    assert weekly_previous.range_label == "08-09 ~ 08-15"
-    assert weekly_history[1].range_label == "08-09 ~ 08-15"
+    assert weekly_current.label == "2026-08-17"
+    assert weekly_current.range_label == "08-17 ~ 08-23"
+    assert weekly_previous.range_label == "08-10 ~ 08-16"
+    assert weekly_history[1].range_label == "08-10 ~ 08-16"

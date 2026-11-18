@@ -15,7 +15,7 @@ import type { ReportParamValues, ReportType } from "./params";
 
 const REPORT_TYPE_OPTIONS: { value: ReportType; label: string }[] = [
   { value: "daily", label: "日报（按天）" },
-  { value: "weekly", label: "周报（自然周 周日~周六）" },
+  { value: "weekly", label: "周报（自然周 周一~周日）" },
 ];
 
 interface DatasetOption {

@@ -418,6 +418,11 @@ ROI_TIER_TABLE_COLORS = {
 ROI_MARKER_COLOR = "#1f2329"
 ROI_SERIES_ID = "roi"
 ROI_SERIES_NAME = "ROI1（%）"
+# 广告ROI rides the same right-hand axis as ROI1 (both are 0~1 ratios); the
+# dashed violet line keeps the two separable by more than hue alone.
+AD_ROI_SERIES_ID = "adroi"
+AD_ROI_SERIES_NAME = "广告ROI（%）"
+AD_ROI_MARKER_COLOR = "#7a5af8"
 # One constant field per money series, so the legend and the tooltip rows read
 # ``消耗（万元）`` / ``流水（万元）`` / ``ROI1（%）`` instead of the raw field name
 # (VChart labels a seriesField-less series with the dimension value).
@@ -693,14 +698,42 @@ def _trend_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 # ---- charts ---------------------------------------------------------------- #
 
+# Raw-money charts print seven-digit values; the value labels are dropped and
+# the axis carries the scale instead (the report page labels no bars either).
+AMOUNT_LABEL_RAW = {"visible": False}
 
-def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any] | None:
+
+def _chart_money(value: Any, raw_money: bool) -> float | None:
+    """A money value for a chart series: 元 when raw, 万元 otherwise."""
+    if raw_money:
+        return _round(value, CHART_WAN_DIGITS)
+    return _wan(value, CHART_WAN_DIGITS)
+
+
+def build_trend_chart(
+    result: dict[str, Any],
+    *,
+    weekly: bool,
+    full_labels: bool = False,
+    raw_money: bool = False,
+    with_ad_roi: bool = False,
+) -> dict[str, Any] | None:
     """Trend chapter: 消耗 / 流水 as paired bars plus the ROI1 line.
 
-    The two money series share one 万元 axis and are drawn side by side: VChart
-    only splits a dimension's bars when ``xField`` is an **array** whose extra
-    entry names the grouping field — with a single ``xField`` the two series are
+    The two money series share one axis and are drawn side by side: VChart only
+    splits a dimension's bars when ``xField`` is an **array** whose extra entry
+    names the grouping field — with a single ``xField`` the two series are
     painted into the same slot and the second one is hidden.
+
+    ``full_labels`` keeps a weekly bucket's whole range (``MM-DD ~ MM-DD``) on
+    the axis instead of the compact start date; the exported page has room for
+    it, while the chat card keeps the compact form.
+
+    ``raw_money`` keeps the money axis in 元 (the page's convention) instead of
+    万元, and drops the bar value labels that would otherwise print seven-digit
+    numbers.  ``with_ad_roi`` adds 广告ROI as a second ratio line on ROI1's
+    axis (the exported report replaces LTV1 with it); the chat card keeps its
+    two-series chart.
     """
     rows = _trend_rows(result)
     if not rows:
@@ -710,14 +743,38 @@ def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any]
     chart_rows = rows[-MAX_TREND_CHART_BUCKETS:]
     amount_values: list[dict[str, Any]] = []
     roi_values: list[dict[str, Any]] = []
+    ad_roi_values: list[dict[str, Any]] = []
     for row in chart_rows:
-        label = _axis_label(row)
+        label = (
+            str(row.get("label") or row.get("date") or "")
+            if full_labels
+            else _axis_label(row)
+        )
+        spend_label = "消耗" if raw_money else SPEND_LABEL
+        recharge_label = "流水" if raw_money else RECHARGE_LABEL
         amount_values.append(
-            {"周期": label, "指标": SPEND_LABEL, "金额": _wan(row.get("spend"))}
+            {
+                "周期": label,
+                "指标": spend_label,
+                "金额": _chart_money(row.get("spend"), raw_money),
+            }
         )
         amount_values.append(
-            {"周期": label, "指标": RECHARGE_LABEL, "金额": _wan(row.get("recharge"))}
+            {
+                "周期": label,
+                "指标": recharge_label,
+                "金额": _chart_money(row.get("recharge"), raw_money),
+            }
         )
+        ad_roi = _as_float(row.get("ad_roi"))
+        if with_ad_roi and ad_roi is not None:
+            ad_roi_values.append(
+                {
+                    "周期": label,
+                    ROI_METRIC_FIELD: AD_ROI_SERIES_NAME,
+                    "广告ROI": round(ad_roi * 100, 1),
+                }
+            )
         roi = _as_float(row.get("roi1"))
         if roi is not None:
             # The constant field is what names this series in the legend and in
@@ -741,6 +798,11 @@ def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any]
             "data": [
                 {"id": "amount", "values": amount_values},
                 {"id": ROI_SERIES_ID, "values": roi_values},
+                *(
+                    [{"id": AD_ROI_SERIES_ID, "values": ad_roi_values}]
+                    if ad_roi_values
+                    else []
+                ),
             ],
             "series": [
                 {
@@ -752,7 +814,7 @@ def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any]
                     "dataId": "amount",
                     "seriesField": "指标",
                     "stack": False,
-                    "label": VALUE_LABEL,
+                    "label": AMOUNT_LABEL_RAW if raw_money else VALUE_LABEL,
                 },
                 {
                     "id": ROI_SERIES_ID,
@@ -768,19 +830,55 @@ def build_trend_chart(result: dict[str, Any], *, weekly: bool) -> dict[str, Any]
                     # Percentage values; the unit rides in the series name.
                     "label": VALUE_LABEL,
                 },
+                *(
+                    [
+                        {
+                            "id": AD_ROI_SERIES_ID,
+                            "type": "line",
+                            "dataId": AD_ROI_SERIES_ID,
+                            "xField": "周期",
+                            "yField": "广告ROI",
+                            "seriesField": ROI_METRIC_FIELD,
+                            "line": {
+                                "style": {
+                                    "stroke": AD_ROI_MARKER_COLOR,
+                                    "lineWidth": 2,
+                                    "lineDash": [4, 4],
+                                }
+                            },
+                            "point": {
+                                "visible": True,
+                                "style": {"fill": AD_ROI_MARKER_COLOR},
+                            },
+                            "label": VALUE_LABEL,
+                        }
+                    ]
+                    if ad_roi_values
+                    else []
+                ),
             ],
             "axes": [
                 {"orient": "bottom", "type": "band", "label": CATEGORY_LABEL},
                 {
                     "orient": "left",
                     "seriesId": ["amount"],
-                    "title": {"visible": True, "text": f"{grain}金额（万元）"},
+                    "title": {
+                        "visible": True,
+                        "text": f"{grain}金额" if raw_money else f"{grain}金额（万元）",
+                    },
                 },
                 {
                     "orient": "right",
-                    "seriesId": [ROI_SERIES_ID],
+                    "seriesId": (
+                        [ROI_SERIES_ID, AD_ROI_SERIES_ID]
+                        if ad_roi_values
+                        else [ROI_SERIES_ID]
+                    ),
                     "grid": {"visible": False},
-                    "title": {"visible": True, "text": "ROI1（%）"},
+                    "title": {
+                        "visible": True,
+                        "text": "ROI（%）" if ad_roi_values else "ROI1（%）",
+                    },
                 },
             ],
             "legends": {"visible": True, "orient": "bottom"},
@@ -803,6 +901,7 @@ def _quality_bar_chart(
     values: list[dict[str, Any]],
     roi_values: list[dict[str, Any]],
     height: str,
+    raw_money: bool = False,
 ) -> dict[str, Any]:
     """Spend bars (coloured by ROI tier) plus an ROI line, category axis below.
 
@@ -826,7 +925,11 @@ def _quality_bar_chart(
                 {
                     "id": "amount",
                     "values": [
-                        {**value, ROI_METRIC_FIELD: SPEND_LABEL} for value in values
+                        {
+                            **value,
+                            ROI_METRIC_FIELD: "消耗" if raw_money else SPEND_LABEL,
+                        }
+                        for value in values
                     ],
                 },
                 {
@@ -851,7 +954,7 @@ def _quality_bar_chart(
                     # available through that same split.
                     "seriesField": ROI_METRIC_FIELD,
                     "stack": False,
-                    "label": VALUE_LABEL,
+                    "label": AMOUNT_LABEL_RAW if raw_money else VALUE_LABEL,
                 },
                 {
                     "id": ROI_SERIES_ID,
@@ -873,7 +976,10 @@ def _quality_bar_chart(
                 {
                     "orient": "left",
                     "seriesId": ["amount"],
-                    "title": {"visible": True, "text": "消耗（万元）"},
+                    "title": {
+                        "visible": True,
+                        "text": "消耗" if raw_money else "消耗（万元）",
+                    },
                 },
                 {
                     "orient": "right",
@@ -893,7 +999,9 @@ def _quality_bar_chart(
     }
 
 
-def build_project_chart(result: dict[str, Any]) -> dict[str, Any] | None:
+def build_project_chart(
+    result: dict[str, Any], *, raw_money: bool = False
+) -> dict[str, Any] | None:
     """Top 主游戏 by spend, coloured by ROI quality."""
     rows = sorted(
         _rows_of(result, "project_summary") or _rows_of(result, "projects"),
@@ -907,7 +1015,7 @@ def build_project_chart(result: dict[str, Any]) -> dict[str, Any] | None:
         values.append(
             {
                 "主游戏": name,
-                "消耗": _wan(row.get("spend")),
+                "消耗": _chart_money(row.get("spend"), raw_money),
             }
         )
         roi = _as_float(row.get("roi1"))
@@ -917,15 +1025,22 @@ def build_project_chart(result: dict[str, Any]) -> dict[str, Any] | None:
         return None
     return _quality_bar_chart(
         element_id="chart-project",
-        title=f"主游戏消耗 Top {len(values)}（万元，颜色=ROI 质量）",
+        title=(
+            f"主游戏消耗 Top {len(values)}（颜色=ROI 质量）"
+            if raw_money
+            else f"主游戏消耗 Top {len(values)}（万元，颜色=ROI 质量）"
+        ),
         category_field="主游戏",
         values=values,
         roi_values=roi_values,
         height=BAR_CHART_HEIGHT,
+        raw_money=raw_money,
     )
 
 
-def build_media_chart(result: dict[str, Any]) -> dict[str, Any] | None:
+def build_media_chart(
+    result: dict[str, Any], *, raw_money: bool = False
+) -> dict[str, Any] | None:
     """Top 媒体 by spend, coloured by ROI quality (same read as the report page)."""
     rows = _rows_of(result, "media")[:MAX_MEDIA_BARS]
     values: list[dict[str, Any]] = []
@@ -935,7 +1050,7 @@ def build_media_chart(result: dict[str, Any]) -> dict[str, Any] | None:
         values.append(
             {
                 "媒体": name,
-                "消耗": _wan(row.get("spend")),
+                "消耗": _chart_money(row.get("spend"), raw_money),
             }
         )
         roi = _as_float(row.get("roi1"))
@@ -945,11 +1060,16 @@ def build_media_chart(result: dict[str, Any]) -> dict[str, Any] | None:
         return None
     return _quality_bar_chart(
         element_id="chart-media",
-        title=f"媒体消耗 Top {len(values)}（万元，颜色=ROI 质量）",
+        title=(
+            f"媒体消耗 Top {len(values)}（颜色=ROI 质量）"
+            if raw_money
+            else f"媒体消耗 Top {len(values)}（万元，颜色=ROI 质量）"
+        ),
         category_field="媒体",
         values=values,
         roi_values=roi_values,
         height=BAR_CHART_HEIGHT,
+        raw_money=raw_money,
     )
 
 
@@ -966,40 +1086,49 @@ LTV_DAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 # later horizons are still incomplete (yesterday's report has one elapsed day).
 LTV_DAYS_SINGLE: tuple[int, ...] = (1,)
 
-_METRIC_COLUMNS: list[dict[str, Any]] = [
-    _num_column("spend", "消耗(万元)", TABLE_WAN_DIGITS),
-    _text_column("sd", "消耗环比"),
-    _num_column("recharge", "流水(万元)", TABLE_WAN_DIGITS),
-    _num_column("new_users", "新增", 0),
-    _pct_column("nr", "自然新增%"),
-    _pct_column("pr", "1日付费率"),
-    _pct_column("rr", "2日留存率"),
-    _num_column("cpa", "CPA", 2),
-]
 
+def _metric_columns(
+    ltv_days: tuple[int, ...], *, raw_money: bool = False
+) -> list[dict[str, Any]]:
+    """The metric columns, with one LTV column per elapsed day.
 
-def _metric_columns(ltv_days: tuple[int, ...]) -> list[dict[str, Any]]:
-    """The metric columns, with one LTV column per elapsed day."""
+    ROI-type columns (广告ROI / ROI1 / 累计ROI / 流水ROI) come before the LTV
+    and retention columns; ``raw_money`` prints 消耗/流水 in 元 with their own
+    values (the exported page's convention), while the chat card keeps 万元 so
+    its narrow columns stay readable.
+    """
+    money_suffix = "" if raw_money else "(万元)"
     return [
-        *_METRIC_COLUMNS,
-        *[_num_column(f"l{day}", f"LTV{day}", 2) for day in ltv_days],
+        _num_column("spend", f"消耗{money_suffix}", TABLE_WAN_DIGITS),
+        _text_column("sd", "消耗环比"),
+        _num_column("recharge", f"流水{money_suffix}", TABLE_WAN_DIGITS),
+        _num_column("new_users", "新增", 0),
+        _pct_column("nr", "自然新增%"),
+        _num_column("cpa", "CPA", 2),
         *_ROI_COLUMNS,
+        *[_num_column(f"l{day}", f"LTV{day}", 2) for day in ltv_days],
+        _pct_column("pr", "1日付费率"),
+        _pct_column("rr", "2日留存率"),
     ]
 
 
 _ROI_COLUMNS: list[dict[str, Any]] = [
+    _options_column("adr", "广告ROI"),
     _options_column("roi1", "ROI1"),
     _text_column("rd", "ROI1环比"),
     _options_column("rcc", "累计ROI"),
+    _options_column("rfl", "流水ROI"),
 ]
 
 
 def _columns(
     dimension: list[dict[str, Any]],
     ltv_days: tuple[int, ...] = LTV_DAYS_SINGLE,
+    *,
+    raw_money: bool = False,
 ) -> list[dict[str, Any]]:
     """Dimension columns + the report page's metric columns."""
-    return [*dimension, *_metric_columns(ltv_days)]
+    return [*dimension, *_metric_columns(ltv_days, raw_money=raw_money)]
 
 
 def _delta_cell(
@@ -1017,8 +1146,13 @@ def _metric_cells(
     breakeven: float,
     critical: float,
     ltv_days: tuple[int, ...] = LTV_DAYS_SINGLE,
+    *,
+    raw_money: bool = False,
 ) -> dict[str, Any]:
-    """Every metric cell of one row, keyed by column name."""
+    """Every metric cell of one row, keyed by column name.
+
+    ``raw_money`` keeps 消耗/流水 in their original 元 instead of 万元.
+    """
     raw_previous = row.get("prev")
     previous: dict[str, Any] = raw_previous if isinstance(raw_previous, dict) else {}
 
@@ -1026,26 +1160,36 @@ def _metric_cells(
         value = _as_pct(row.get(key))
         return "—" if value is None else f"{value:.1f}%"
 
+    def money(value: Any) -> float | None:
+        if raw_money:
+            return _round(value, TABLE_WAN_DIGITS)
+        return _wan(value, TABLE_WAN_DIGITS)
+
     return {
-        "spend": _wan(row.get("spend"), TABLE_WAN_DIGITS),
+        "spend": money(row.get("spend")),
         "sd": _delta_cell(
             row.get("spend"), previous.get("spend"), higher_is_better=False
         ),
-        "recharge": _wan(row.get("recharge"), TABLE_WAN_DIGITS),
+        "recharge": money(row.get("recharge")),
         "new_users": _round(row.get("new_users"), 0),
         "nr": rate("natural_rate"),
         "pr": rate("pay_rate"),
         "rr": rate("retention_rate"),
         "cpa": _round(row.get("cpa"), 2),
         **{f"l{day}": _round(row.get(f"ltv{day}"), 2) for day in ltv_days},
+        "adr": _roi_cell(row.get("ad_roi"), breakeven, critical),
         "roi1": _roi_cell(row.get("roi1"), breakeven, critical),
         "rd": _delta_cell(row.get("roi1"), previous.get("roi1")),
         "rcc": _roi_cell(row.get("roi_cum"), breakeven, critical),
+        "rfl": _roi_cell(row.get("roi_flow"), breakeven, critical),
     }
 
 
 def build_platform_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """分业务板块 split of the headline figures."""
     breakeven, critical = _roi_thresholds(result)
@@ -1055,11 +1199,13 @@ def build_platform_table(
         return None
     ltv_days = LTV_DAYS_SINGLE
     return _table(
-        _columns([_text_column("platform", "平台")], ltv_days),
+        _columns([_text_column("platform", "平台")], ltv_days, raw_money=raw_money),
         [
             {
                 "platform": str(row.get("platform") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in rows
         ],
@@ -1068,7 +1214,10 @@ def build_platform_table(
 
 
 def build_daily_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """分天/分周 detail behind the trend chart."""
     breakeven, critical = _roi_thresholds(result)
@@ -1085,11 +1234,13 @@ def build_daily_table(
     # 分天表 is the only multi-day view, so it keeps the full LTV week.
     ltv_days = LTV_DAYS
     return _table(
-        _columns([_text_column("label", "周期")], ltv_days),
+        _columns([_text_column("label", "周期")], ltv_days, raw_money=raw_money),
         [
             {
                 "label": str(row.get("label") or row.get("date") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in enriched
         ],
@@ -1098,7 +1249,10 @@ def build_daily_table(
 
 
 def build_project_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """主游戏 × 渠道 detail behind the project chart.
 
@@ -1141,7 +1295,9 @@ def build_project_table(
                 {
                     "project": project or "-",
                     "channel": str(row.get("channel") or "-"),
-                    **_metric_cells(row, breakeven, critical, ltv_days),
+                    **_metric_cells(
+                        row, breakeven, critical, ltv_days, raw_money=raw_money
+                    ),
                 }
             )
         summary = summaries.get(project)
@@ -1151,7 +1307,9 @@ def build_project_table(
             {
                 "project": project or "-",
                 "channel": "小计",
-                **_metric_cells(summary, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    summary, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
         )
     return _table(
@@ -1161,16 +1319,72 @@ def build_project_table(
                 _text_column("channel", "渠道"),
             ],
             ltv_days,
+            raw_money=raw_money,
         ),
         rows,
         page_size=len(rows),
     )
 
 
-def build_project_daily_table(
-    result: dict[str, Any], *, limit: int | None = None
+def build_project_region_table(
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
-    """主游戏 × 分天 — the project chapter's daily expansion."""
+    """主游戏 × 渠道 × 地区 — the project chapter's 分地区 expansion.
+
+    The payload's ``project_regions`` subdivides exactly the combos the
+    channel view already lists (the backend only splits the pairs that
+    survived its Top-N cut), so the row order is kept as delivered: 主游戏 by
+    whole-game spend, 渠道 inside a game, 地区 by spend.  No 小计 row is added
+    here — a region row is already a leaf of the channel table above it.
+    """
+    breakeven, critical = _roi_thresholds(result)
+    cap = limit if limit is not None else TABLE_ROW_CAPS["breakdown"]
+    ltv_days = LTV_DAYS_SINGLE
+    rows = _rows_of(result, "project_regions")[:cap]
+    if not rows:
+        return None
+    return _table(
+        _columns(
+            [
+                _text_column("project", "主游戏"),
+                _text_column("channel", "渠道"),
+                _text_column("region", "地区"),
+            ],
+            ltv_days,
+            raw_money=raw_money,
+        ),
+        [
+            {
+                "project": str(row.get("project") or "-"),
+                "channel": str(row.get("channel") or "-"),
+                "region": str(row.get("region") or "-"),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
+            }
+            for row in rows
+        ],
+        page_size=len(rows),
+    )
+
+
+def build_project_daily_table(
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
+) -> dict[str, Any] | None:
+    """主游戏 × 分天/分周 — the project chapter's period expansion.
+
+    A weekly briefing buckets by complete weeks, so its rows are week ranges
+    (``11-09 ~ 11-15``), not single days; the first cell prints the bucket's
+    ``label`` rather than its ISO start date so a week never reads as its
+    Monday.
+    """
+    weekly = str(result.get("report_type") or "daily") == "weekly"
     breakeven, critical = _roi_thresholds(result)
     cap = limit if limit is not None else TABLE_ROW_CAPS["breakdown"]
     rows: list[dict[str, Any]] = []
@@ -1211,16 +1425,19 @@ def build_project_daily_table(
             [
                 _text_column("project", "主游戏"),
                 _text_column("channel", "渠道"),
-                _text_column("date", "日期"),
+                _text_column("date", "周期" if weekly else "日期"),
             ],
             ltv_days,
+            raw_money=raw_money,
         ),
         [
             {
                 "project": str(row.get("project") or "-"),
                 "channel": str(row.get("channel") or "-"),
-                "date": str(row.get("date") or row.get("label") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                "date": str(row.get("label") or row.get("date") or "-"),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in rows
         ],
@@ -1229,7 +1446,10 @@ def build_project_daily_table(
 
 
 def build_media_project_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """媒体 × 主游戏 — the media chapter's combination dimension."""
     breakeven, critical = _roi_thresholds(result)
@@ -1252,12 +1472,15 @@ def build_media_project_table(
                 _text_column("channel", "媒体"),
             ],
             ltv_days,
+            raw_money=raw_money,
         ),
         [
             {
                 "project": str(row.get("project") or "-"),
                 "channel": str(row.get("channel") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in rows
         ],
@@ -1267,7 +1490,10 @@ def build_media_project_table(
 
 
 def build_media_platform_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """媒体 × 客户端 — the other media combination dimension."""
     breakeven, critical = _roi_thresholds(result)
@@ -1289,12 +1515,15 @@ def build_media_platform_table(
                 _text_column("channel", "媒体"),
             ],
             ltv_days,
+            raw_money=raw_money,
         ),
         [
             {
                 "platform": str(row.get("platform") or "-"),
                 "channel": str(row.get("channel") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in rows
         ],
@@ -1304,7 +1533,10 @@ def build_media_platform_table(
 
 
 def build_media_table(
-    result: dict[str, Any], *, limit: int | None = None
+    result: dict[str, Any],
+    *,
+    limit: int | None = None,
+    raw_money: bool = False,
 ) -> dict[str, Any] | None:
     """媒体 detail behind the media chart."""
     breakeven, critical = _roi_thresholds(result)
@@ -1314,11 +1546,13 @@ def build_media_table(
         return None
     ltv_days = LTV_DAYS_SINGLE
     return _table(
-        _columns([_text_column("channel", "媒体")], ltv_days),
+        _columns([_text_column("channel", "媒体")], ltv_days, raw_money=raw_money),
         [
             {
                 "channel": str(row.get("channel") or "-"),
-                **_metric_cells(row, breakeven, critical, ltv_days),
+                **_metric_cells(
+                    row, breakeven, critical, ltv_days, raw_money=raw_money
+                ),
             }
             for row in rows
         ],
@@ -1425,8 +1659,9 @@ def _headline_cells(result: dict[str, Any], background: str) -> list[dict[str, A
         _metric_cell(core, previous, "spend", "消耗", format_amount),
         _metric_cell(core, previous, "new_users", "新增", format_count),
         _metric_cell(core, previous, "recharge", "流水", format_amount),
-        _metric_cell(core, previous, "roi1", "ROI1", format_roi),
         _metric_cell(core, previous, "cpa", "CPA", format_amount),
+        _metric_cell(core, previous, "ad_roi", "广告ROI", format_roi),
+        _metric_cell(core, previous, "roi1", "ROI1", format_roi),
     ]
 
 

@@ -179,6 +179,8 @@ interface CoreMetrics {
   recharge?: number;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   ROI1?: number | null;
   LTV1?: number | null;
   [key: string]: number | null | undefined;
@@ -200,6 +202,8 @@ interface ProjectRow {
   retention_rate?: number | null;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -219,6 +223,7 @@ interface ProjectRow {
     cpa: number | null;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi?: number | null;
     recharge?: number;
   };
   daily?: DailyTrendRow[];
@@ -232,6 +237,8 @@ interface ProjectSummaryRow {
   retention_rate?: number | null;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -253,6 +260,7 @@ interface ProjectSummaryRow {
     cpa: number | null;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi?: number | null;
     recharge?: number;
   };
 }
@@ -265,6 +273,8 @@ interface MediaRow {
   retention_rate?: number | null;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   cpa: number | null;
   recharge?: number;
   ltv1?: number | null;
@@ -275,6 +285,7 @@ interface MediaRow {
     cpa: number | null;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi?: number | null;
     recharge?: number;
   };
 }
@@ -309,6 +320,8 @@ interface DailyProjectRow {
   retention_rate?: number | null;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   cpa: number | null;
   /** 充值流水（周期内充值合计）。 */
   recharge?: number;
@@ -328,6 +341,7 @@ interface DailyProjectRow {
     cpa: number | null;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi?: number | null;
     recharge?: number;
   };
 }
@@ -391,6 +405,8 @@ interface MetricRow {
   retention_rate?: number | null;
   /** 自然新增%：自然量新增占新增进入的比例（0~1）。 */
   natural_rate?: number | null;
+  /** 广告ROI：广告（非自然量）1日充值 / 返点后消耗。 */
+  ad_roi?: number | null;
   ltv1: number | null;
   ltv2?: number | null;
   ltv3?: number | null;
@@ -629,18 +645,20 @@ function metricColumnDefs(ltvDays: number[]) {
     { key: "recharge", label: RECHARGE_LABEL, numeric: true },
     { key: "newUsers", label: USERS_LABEL, numeric: true },
     { key: "naturalRate", label: NATURAL_RATE_LABEL, numeric: true },
-    { key: "payRate", label: PAY_RATE_LABEL, numeric: true },
-    { key: "retentionRate", label: RETENTION_LABEL, numeric: true },
     { key: "cpa", label: "CPA", numeric: true },
+    // ROI-type columns sit before the LTV and retention columns.
+    { key: "adRoi", label: "广告ROI", numeric: true },
+    { key: "roi1", label: "ROI1", numeric: true },
+    { key: "roi1Delta", label: "ROI1环比", numeric: true },
+    { key: "roiCum", label: "累计ROI", numeric: true },
+    { key: "roiFlow", label: "流水ROI", numeric: true },
     ...ltvDays.map((d) => ({
       key: `ltv${d}`,
       label: `LTV${d}`,
       numeric: true,
     })),
-    { key: "roi1", label: "ROI1", numeric: true },
-    { key: "roi1Delta", label: "ROI1环比", numeric: true },
-    { key: "roiCum", label: "累计ROI", numeric: true },
-    { key: "roiFlow", label: "流水ROI", numeric: true },
+    { key: "payRate", label: PAY_RATE_LABEL, numeric: true },
+    { key: "retentionRate", label: RETENTION_LABEL, numeric: true },
   ];
 }
 
@@ -655,6 +673,7 @@ interface MetricValues {
   retentionRate: number | null | undefined;
   naturalRate: number | null | undefined;
   cpa: number | null | undefined;
+  adRoi: number | null | undefined;
   ltv: Record<number, number | null | undefined>;
   roi1: number | null | undefined;
   roi1Delta: number | null;
@@ -699,17 +718,18 @@ function metricCellsText(
     { key: "recharge", text: formatNumber(values.recharge) },
     { key: "newUsers", text: String(values.newUsers) },
     { key: "naturalRate", text: formatPercent(values.naturalRate) },
-    { key: "payRate", text: formatPercent(values.payRate) },
-    { key: "retentionRate", text: formatPercent(values.retentionRate) },
     { key: "cpa", text: formatNumber(values.cpa) },
-    ...ltvDays.map((d) => ({
-      key: `ltv${d}`,
-      text: formatNumber(values.ltv[d]),
-    })),
+    { key: "adRoi", text: formatPercent(values.adRoi) },
     { key: "roi1", text: formatPercent(values.roi1) },
     { key: "roi1Delta", ...delta(values.roi1Delta) },
     { key: "roiCum", text: formatPercent(values.roiCum) },
     { key: "roiFlow", text: formatPercent(values.roiFlow) },
+    ...ltvDays.map((d) => ({
+      key: `ltv${d}`,
+      text: formatNumber(values.ltv[d]),
+    })),
+    { key: "payRate", text: formatPercent(values.payRate) },
+    { key: "retentionRate", text: formatPercent(values.retentionRate) },
   ];
 }
 
@@ -854,6 +874,7 @@ function metricRowValues(
     retentionRate: row.retention_rate,
     naturalRate: row.natural_rate,
     cpa: row.cpa,
+    adRoi: row.ad_roi,
     ltv: {
       1: row.ltv1,
       2: row.ltv2,
@@ -890,6 +911,7 @@ function totalsMetricValues(
     retentionRate: totals.retention_rate,
     naturalRate: totals.natural_rate,
     cpa: totals.cpa,
+    adRoi: totals.ad_roi,
     ltv: Object.fromEntries(ltvDays.map((d) => [d, totals.ltv[d]])),
     roi1: totals.roi1,
     roi1Delta: null,
@@ -916,6 +938,7 @@ function projectMetricValues(p: ProjectRow): MetricValues {
     retentionRate: p.retention_rate,
     naturalRate: p.natural_rate,
     cpa: p.cpa,
+    adRoi: p.ad_roi,
     ltv: {
       1: p.ltv1,
       2: p.ltv2,
@@ -948,6 +971,7 @@ function summaryToProjectRow(p: ProjectSummaryRow): ProjectRow {
     pay_rate: p.pay_rate,
     retention_rate: p.retention_rate,
     natural_rate: p.natural_rate,
+    ad_roi: p.ad_roi,
     cpa: p.cpa,
     recharge: p.recharge,
     ltv1: p.ltv1,
@@ -1077,6 +1101,7 @@ function TrendOverview({
       <TrendChart
         rows={rows}
         title=""
+        weekly={weekly}
         onSelect={onSelect}
         footer={
           <ExpandStrip
@@ -1114,6 +1139,7 @@ interface CoreBandValues {
   new_users?: number;
   natural_rate?: number | null;
   cpa?: number | null;
+  ad_roi?: number | null;
   ltv1?: number | null;
   roi1?: number | null;
 }
@@ -1168,14 +1194,19 @@ function CoreStatBand({
       higherIsBetter: false,
     },
     {
-      label: "LTV1",
-      value: formatNumber(values.ltv1),
-      delta: pct(values.ltv1, previous?.ltv1),
+      label: "广告ROI",
+      value: formatPercent(values.ad_roi),
+      delta: pct(values.ad_roi, previous?.ad_roi),
     },
     {
       label: "ROI1",
       value: formatPercent(values.roi1),
       delta: pct(values.roi1, previous?.roi1),
+    },
+    {
+      label: "LTV1",
+      value: formatNumber(values.ltv1),
+      delta: pct(values.ltv1, previous?.ltv1),
     },
   ];
   return (
@@ -1190,7 +1221,7 @@ function CoreStatBand({
             xs: "repeat(2, 1fr)",
             sm: "repeat(3, 1fr)",
             md: "repeat(4, 1fr)",
-            lg: "repeat(7, 1fr)",
+            lg: "repeat(8, 1fr)",
           },
           "& > *:not(:first-of-type)": {
             borderLeft: `1px solid ${DIVIDER}`,
@@ -1277,6 +1308,88 @@ function ExpandStrip({
  * platform's cards line up with the total's — which is what makes the
  * breakdown readable at a glance.
  */
+/**
+ * §1「分业务板块」: the per-platform split as the report's standard metric
+ * table.
+ *
+ * Uses the same column definitions and cell renderer as §2's 分天明细 and the
+ * 主游戏/媒体 tables, so the split is a real sub-table instead of a stack of
+ * repeated KPI bands.  LTV stays at LTV1: a platform row is a period subtotal,
+ * so the deeper milestones are not day-grain values the way §3's daily rows
+ * are — the exported report's 平台拆分 table uses the same column set.
+ */
+function PlatformSplitTable({ rows }: { rows: PlatformRow[] }) {
+  const ltvDays = [1];
+  const columns = metricColumnDefs(ltvDays);
+  return (
+    <Box
+      sx={{
+        p: 1,
+        border: "1px solid",
+        borderColor: "divider",
+        borderTop: 0,
+        borderRadius: "0 0 4px 4px",
+      }}
+    >
+      <Box sx={{ overflowX: "auto" }}>
+        <table
+          className={BRIEFING_TABLE_CLASS}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: "12px",
+            textAlign: "left",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={briefingTable.headCell("5px 8px")}>平台</th>
+              {columns.map((c) => (
+                <th
+                  key={c.key}
+                  style={briefingTable.headCell("5px 8px", {
+                    numeric: c.numeric,
+                  })}
+                >
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.platform} style={briefingTable.zebraRow(i)}>
+                <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
+                  {row.platform || "-"}
+                </td>
+                {metricCellsText(
+                  metricRowValues(row, row.prev),
+                  ltvDays,
+                ).map((cell) => (
+                  <td
+                    key={cell.key}
+                    title={cell.title}
+                    style={briefingTable.bodyCell({
+                      numeric: true,
+                      padding: "5px 8px",
+                    })}
+                  >
+                    <span
+                      style={cell.color ? { color: cell.color } : undefined}
+                    >
+                      {cell.text}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+    </Box>
+  );
+}
+
 function CoreOverview({
   core,
   previous,
@@ -1323,21 +1436,7 @@ function CoreOverview({
           exit: durationTokens.exit,
         }}
       >
-        <Box
-          sx={{ pt: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}
-        >
-          {rows.map((row) => (
-            <Box key={row.platform}>
-              <Typography
-                variant="subtitle2"
-                sx={{ mb: 0.5, color: TEXT_MUTED }}
-              >
-                {row.platform || "-"}
-              </Typography>
-              <CoreStatBand values={row} previous={row.prev} />
-            </Box>
-          ))}
-        </Box>
+        <PlatformSplitTable rows={rows} />
       </Collapse>
     </>
   );
@@ -1550,8 +1649,12 @@ function FluctuationList({
               onClick={() => toggle(metric.key)}
               sx={{
                 display: "grid",
+                // Fixed column tracks keep 对比期 / 本期 / 环比 / 主因 aligned
+                // across rows; auto-sized columns drift with each row's text.
+                // The 对比期 → 本期 pair is one nested grid so the arrow stays
+                // between the two numbers instead of drifting to the right.
                 gridTemplateColumns:
-                  "minmax(84px, 0.7fr) auto auto minmax(0, 1.6fr) 24px",
+                  "minmax(96px, 1.1fr) minmax(0, 2.2fr) minmax(0, 0.8fr) minmax(0, 1.8fr) 24px",
                 alignItems: "center",
                 gap: 1,
                 width: "100%",
@@ -1572,32 +1675,43 @@ function FluctuationList({
               </Typography>
               <Box
                 sx={{
-                  display: "flex",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) 16px minmax(0, 1fr)",
                   alignItems: "baseline",
-                  gap: 0.5,
-                  whiteSpace: "nowrap",
+                  gap: 1,
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: TEXT_MUTED, textAlign: "right", whiteSpace: "nowrap" }}
+                >
                   {fluctuationValue(metric, metric.previous)}
                 </Typography>
-                <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
+                <Typography
+                  variant="body2"
+                  sx={{ color: TEXT_MUTED, textAlign: "center" }}
+                >
                   →
                 </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600, whiteSpace: "nowrap" }}
+                >
                   {fluctuationValue(metric, metric.current)}
                 </Typography>
               </Box>
-              {metric.new ? (
-                <NewTag />
-              ) : (
-                <DeltaBadge
-                  value={metric.delta_pct}
-                  higherIsBetter={tone.higherIsBetter ?? true}
-                  neutral={tone.neutral}
-                />
-              )}
+              <Box>
+                {metric.new ? (
+                  <NewTag />
+                ) : (
+                  <DeltaBadge
+                    value={metric.delta_pct}
+                    higherIsBetter={tone.higherIsBetter ?? true}
+                    neutral={tone.neutral}
+                  />
+                )}
+              </Box>
               <Typography
                 variant="caption"
                 title={
@@ -2243,9 +2357,6 @@ function ProjectComboTable({
           </thead>
           <tbody>
             {groupedRows.map(({ project: game, members }, groupIndex) => {
-              // Every block but the first opens with a divider above its first
-              // row, so a 小计 always reads as closing the group above it.
-              const opensWithDivider = groupIndex > 0;
               // The 小计 quotes the whole-game summary — the same figures the
               // chart above and the merged view show — so a channel hidden by
               // the Top-N cut never makes the subtotal disagree with the bar.
@@ -2278,7 +2389,25 @@ function ProjectComboTable({
                 : [];
               return (
                 <Fragment key={game}>
-                  {members.map(({ row: p, idx }, memberIndex) => {
+                  {/*
+                   * 分组之间的镶边行：一条横跨整表的浅色带。上一组以「小计」
+                   * 收尾，这条带把下一组的表头和上一组隔开；首组不需要。
+                   */}
+                  {groupIndex > 0 && (
+                    <tr key="group-separator" aria-hidden="true">
+                      <td
+                        colSpan={columnCount}
+                        style={{
+                          padding: 0,
+                          height: 10,
+                          backgroundColor: BRIEFING_CSS_COLORS.surfaceVariant,
+                          borderTop: `1px solid ${BRIEFING_CSS_COLORS.borderMedium}`,
+                          borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
+                        }}
+                      />
+                    </tr>
+                  )}
+                  {members.map(({ row: p, idx }) => {
                     // Expanded, the parent row becomes the subtotal of the
                     // daily rows it discloses — same metric fields, computed
                     // over the window.
@@ -2324,11 +2453,7 @@ function ProjectComboTable({
                           className={
                             showDaily ? BRIEFING_BLOCK_HEADER_CLASS : undefined
                           }
-                          style={
-                            opensWithDivider && memberIndex === 0
-                              ? briefingTable.groupStartRow(idx)
-                              : briefingTable.zebraRow(idx)
-                          }
+                          style={briefingTable.zebraRow(idx)}
                         >
                           {[
                             <Box
@@ -2415,22 +2540,7 @@ function ProjectComboTable({
                       </Fragment>
                     );
                   })}
-                  {showSubtotal && subtotalValues && summary && (
-                    <Fragment key="subtotal-days">
-                      {subtotalDays.map((day, dayIndex) =>
-                        renderDayRow(
-                          summary,
-                          day,
-                          dayIndex,
-                          {
-                            backgroundColor: BRIEFING_CSS_COLORS.actionHover,
-                            borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
-                          },
-                          BRIEFING_CSS_COLORS.actionHover,
-                        ),
-                      )}
-                    </Fragment>
-                  )}
+                  {/* 与渠道块一致：小计行在前，它汇总的明细行紧随其后。 */}
                   {showSubtotal && subtotalValues && (
                     <tr key="subtotal">
                       <td
@@ -2477,6 +2587,22 @@ function ProjectComboTable({
                         />
                       </td>
                     </tr>
+                  )}
+                  {showSubtotal && subtotalValues && summary && (
+                    <Fragment key="subtotal-days">
+                      {subtotalDays.map((day, dayIndex) =>
+                        renderDayRow(
+                          summary,
+                          day,
+                          dayIndex,
+                          {
+                            backgroundColor: BRIEFING_CSS_COLORS.actionHover,
+                            borderBottom: `1px solid ${BRIEFING_CSS_COLORS.borderLight}`,
+                          },
+                          BRIEFING_CSS_COLORS.actionHover,
+                        ),
+                      )}
+                    </Fragment>
                   )}
                 </Fragment>
               );
@@ -2631,11 +2757,14 @@ function DeltaBadge({
 function TrendChart({
   rows,
   title = "分天对比",
+  weekly = false,
   onSelect,
   footer,
 }: {
   rows: DailyTrendRow[];
   title?: string;
+  /** Weekly briefings bucket by week, so the drill-down copy follows suit. */
+  weekly?: boolean;
   onSelect?: (label: string) => void;
   /** Attached strip below the plot, inside the same surface. */
   footer?: ReactNode;
@@ -2675,7 +2804,9 @@ function TrendChart({
     const dates = ordered.map((r) => r.label ?? r.date);
     const spends = ordered.map((r) => r.spend);
     const roi1s = ordered.map((r) => r.roi1);
-    const ltv1s = ordered.map((r) => r.ltv1);
+    // 广告ROI replaces LTV1 on this chart and rides the ROI axis (both are
+    // 0~1 ratios), so the right-hand scale carries the two lines together.
+    const adRois = ordered.map((r) => r.ad_roi);
     const users = ordered.map((r) => r.new_users);
     return {
       grid: { left: 168, right: 108, top: 48, bottom: 28 },
@@ -2689,16 +2820,15 @@ function TrendChart({
               return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
             if (p.seriesName === "新增进入")
               return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
-            if (p.seriesName === "ROI1")
+            if (p.seriesName === "ROI1" || p.seriesName === "广告ROI")
               return `${p.marker}${p.seriesName}: ${formatPercent(p.value)}`;
-            // LTV 是金额小数，不按百分比展示
             return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
           });
           return `${list[0]?.axisValue ?? ""}<br/>${lines.join("<br/>")}`;
         },
       },
       legend: {
-        data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
+        data: ["返点后消耗", "ROI1", "广告ROI", "新增进入"],
         type: "scroll",
         top: 8,
         textStyle: { color: colors.axisLabel, fontSize: 12 },
@@ -2756,19 +2886,6 @@ function TrendChart({
           },
           splitLine: { show: false },
         },
-        {
-          type: "value",
-          name: "LTV",
-          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
-          position: "right",
-          offset: 56,
-          axisLabel: {
-            color: colors.axisLabel,
-            fontSize: 12,
-            formatter: (v: number) => formatNumber(v),
-          },
-          splitLine: { show: false },
-        },
       ],
       series: [
         {
@@ -2810,11 +2927,12 @@ function TrendChart({
           lineStyle: { width: 2 },
         },
         {
-          // Dashed so the two lines stay separable by more than hue alone.
-          name: "LTV1",
+          // Dashed so the two ROI lines stay separable by more than hue alone.
+          // Shares yAxisIndex 2 with ROI1: both are 0~1 ratios on one scale.
+          name: "广告ROI",
           type: "line",
-          yAxisIndex: 3,
-          data: ltv1s,
+          yAxisIndex: 2,
+          data: adRois,
           smooth: true,
           symbol: "circle",
           symbolSize: 6,
@@ -2854,7 +2972,7 @@ function TrendChart({
           option={option}
           height={360}
           onEvents={onEvents}
-          ariaLabel={`${title}：按时间对比返点后消耗、新增进入、ROI1 与 LTV1，点击柱可下钻查看当天的分游戏明细`}
+          ariaLabel={`${title}：按时间对比返点后消耗、充值流水、新增进入、ROI1 与 广告ROI，点击柱可下钻查看${weekly ? "当周" : "当天"}的分游戏明细`}
         />
       </Box>
       {footer}
@@ -2868,6 +2986,7 @@ interface ComboRow {
   new_users: number;
   ltv1: number | null;
   roi1: number | null;
+  ad_roi?: number | null;
   roi_cum?: number | null;
   roi_flow?: number | null;
   prev?: {
@@ -2875,6 +2994,7 @@ interface ComboRow {
     new_users: number;
     ltv1: number | null;
     roi1: number | null;
+    ad_roi?: number | null;
   };
 }
 
@@ -2887,10 +3007,12 @@ function aggregateByChannel(projects: ProjectRow[], game: string): ComboRow[] {
       users: number;
       ltv1w: number;
       roi1w: number;
+      adRoiw: number;
       pSpend: number;
       pUsers: number;
       pLtv1w: number;
       pRoi1w: number;
+      pAdRoiw: number;
     }
   >();
   for (const p of rows) {
@@ -2900,29 +3022,35 @@ function aggregateByChannel(projects: ProjectRow[], game: string): ComboRow[] {
       users: number;
       ltv1w: number;
       roi1w: number;
+      adRoiw: number;
       pSpend: number;
       pUsers: number;
       pLtv1w: number;
       pRoi1w: number;
+      pAdRoiw: number;
     } = map.get(ch) ?? {
       spend: 0,
       users: 0,
       ltv1w: 0,
       roi1w: 0,
+      adRoiw: 0,
       pSpend: 0,
       pUsers: 0,
       pLtv1w: 0,
       pRoi1w: 0,
+      pAdRoiw: 0,
     };
     g.spend += p.spend;
     g.users += p.new_users;
     g.ltv1w += (p.ltv1 ?? 0) * (p.new_users || 0);
     g.roi1w += (p.roi1 ?? 0) * (p.spend || 0);
-    const pv = p.prev ?? { spend: 0, new_users: 0, ltv1: 0, roi1: 0 };
+    g.adRoiw += (p.ad_roi ?? 0) * (p.spend || 0);
+    const pv = p.prev ?? { spend: 0, new_users: 0, ltv1: 0, roi1: 0, ad_roi: 0 };
     g.pSpend += pv.spend ?? 0;
     g.pUsers += pv.new_users ?? 0;
     g.pLtv1w += (pv.ltv1 ?? 0) * (pv.new_users ?? 0);
     g.pRoi1w += (pv.roi1 ?? 0) * (pv.spend ?? 0);
+    g.pAdRoiw += (pv.ad_roi ?? 0) * (pv.spend ?? 0);
     map.set(ch, g);
   }
   return [...map.entries()]
@@ -2932,11 +3060,13 @@ function aggregateByChannel(projects: ProjectRow[], game: string): ComboRow[] {
       new_users: g.users,
       ltv1: g.users ? g.ltv1w / g.users : null,
       roi1: g.spend ? g.roi1w / g.spend : null,
+      ad_roi: g.spend ? g.adRoiw / g.spend : null,
       prev: {
         spend: g.pSpend,
         new_users: g.pUsers,
         ltv1: g.pUsers ? g.pLtv1w / g.pUsers : null,
         roi1: g.pSpend ? g.pRoi1w / g.pSpend : null,
+        ad_roi: g.pSpend ? g.pAdRoiw / g.pSpend : null,
       },
     }))
     .sort((a, b) => b.spend - a.spend)
@@ -2981,7 +3111,8 @@ function MetricsComboChart({
     const spends = rows.map((r) => r.spend);
     const users = rows.map((r) => r.new_users);
     const roi1s = rows.map((r) => r.roi1);
-    const ltv1s = rows.map((r) => r.ltv1);
+    // 广告ROI replaces LTV1 here too and shares ROI1's right-hand axis.
+    const adRois = rows.map((r) => r.ad_roi);
     const pct = (cur?: number | null, base?: number | null) =>
       base ? ((cur ?? 0) - base) / base : null;
     const fmtDelta = (d: number | null) =>
@@ -3005,14 +3136,15 @@ function MetricsComboChart({
               return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.new_users, p.prev?.new_users))}）`;
             if (s.seriesName === "ROI1")
               return `${s.marker}${s.seriesName}: ${formatPercent(s.value)}（${fmtDelta(pct(p.roi1, p.prev?.roi1))}）`;
-            // LTV 是金额小数，不按百分比展示
+            if (s.seriesName === "广告ROI")
+              return `${s.marker}${s.seriesName}: ${formatPercent(s.value)}（${fmtDelta(pct(p.ad_roi, p.prev?.ad_roi))}）`;
             return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.ltv1, p.prev?.ltv1))}）`;
           });
           return `${p.label}<br/>${lines.join("<br/>")}`;
         },
       },
       legend: {
-        data: ["返点后消耗", "ROI1", "LTV1", "新增进入"],
+        data: ["返点后消耗", "ROI1", "广告ROI", "新增进入"],
         type: "scroll",
         top: 8,
         textStyle: { color: colors.axisLabel, fontSize: 12 },
@@ -3064,18 +3196,6 @@ function MetricsComboChart({
           },
           splitLine: { show: false },
         },
-        {
-          type: "value",
-          name: "LTV",
-          nameTextStyle: { color: colors.axisLabel, fontSize: 12 },
-          position: "right",
-          offset: 56,
-          axisLabel: {
-            color: colors.axisLabel,
-            formatter: (v: number) => formatNumber(v),
-          },
-          splitLine: { show: false },
-        },
       ],
       series: [
         {
@@ -3117,11 +3237,12 @@ function MetricsComboChart({
           lineStyle: { width: 2 },
         },
         {
-          // Dashed so the two lines stay separable by more than hue alone.
-          name: "LTV1",
+          // Dashed so the two ROI lines stay separable by more than hue alone.
+          // Shares yAxisIndex 2 with ROI1: both are 0~1 ratios on one scale.
+          name: "广告ROI",
           type: "line",
-          yAxisIndex: 3,
-          data: ltv1s,
+          yAxisIndex: 2,
+          data: adRois,
           smooth: true,
           symbol: "circle",
           symbolSize: 6,
@@ -3166,7 +3287,7 @@ function MetricsComboChart({
         option={option}
         height={Math.max(300, rows.length * 30)}
         onEvents={onEvents}
-        ariaLabel={`${title}：按维度对比返点后消耗、新增进入、ROI1 与 LTV1${
+        ariaLabel={`${title}：按维度对比返点后消耗、新增进入、ROI1 与 广告ROI${
           onSelect ? "，点击柱可下钻查看渠道明细" : ""
         }`}
       />
@@ -3634,6 +3755,7 @@ function MediaBreakdownTable({
     { label: SPEND_LABEL, numeric: true },
     { label: USERS_LABEL, numeric: true },
     { label: "CPA", numeric: true },
+    { label: "广告ROI", numeric: true },
     { label: "ROI1", numeric: true },
     { label: "LTV1", numeric: true },
     { label: "状态", numeric: true },
@@ -3651,6 +3773,7 @@ function MediaBreakdownTable({
         <td style={cell}>{formatNumber(row.spend)}</td>
         <td style={cell}>{formatNumber(row.new_users)}</td>
         <td style={cell}>{formatNumber(row.cpa)}</td>
+        <td style={cell}>{formatPercent(row.ad_roi)}</td>
         <td style={cell}>
           <Box
             sx={{
@@ -4563,7 +4686,7 @@ export default function DailyReportDetail() {
         // The picker holds the report date the user wants to see.  Daily runs
         // treat `override_date` as the "as-of" date and report on the day
         // before it, so shift by one day to make the picked date the report
-        // date; weekly runs select the natural (Sunday–Saturday) week
+        // date; weekly runs select the natural (Monday–Sunday) week
         // containing the picked date, so it is passed through unchanged.
         const params: { override_date?: string } = {};
         if (override) {
@@ -4688,12 +4811,14 @@ export default function DailyReportDetail() {
           new_users: p.new_users,
           ltv1: p.ltv1,
           roi1: p.roi1,
+          ad_roi: p.ad_roi,
           prev: p.prev
             ? {
                 spend: p.prev.spend,
                 new_users: p.prev.new_users,
                 ltv1: p.prev.ltv1,
                 roi1: p.prev.roi1,
+                ad_roi: p.prev.ad_roi,
               }
             : undefined,
         })),
@@ -4762,12 +4887,14 @@ export default function DailyReportDetail() {
               new_users: r.new_users,
               ltv1: r.ltv1,
               roi1: r.roi1,
+              ad_roi: r.ad_roi,
               prev: r.prev
                 ? {
                     spend: r.prev.spend,
                     new_users: r.prev.new_users,
                     ltv1: r.prev.ltv1,
                     roi1: r.prev.roi1,
+                    ad_roi: r.prev.ad_roi,
                   }
                 : undefined,
             }))
@@ -5049,7 +5176,7 @@ export default function DailyReportDetail() {
                 <Tooltip
                   title={
                     resultIsWeekly
-                      ? "展示所选日期所在自然周（周日~周六）"
+                      ? "展示所选日期所在自然周（周一~周日）"
                       : "展示所选日期的简报"
                   }
                 >
@@ -5214,7 +5341,11 @@ export default function DailyReportDetail() {
                   <ReportSectionHeader
                     index={2}
                     title={resultIsWeekly ? "分周对比" : "分天对比"}
-                    caption="逐日（周报为逐周）对比消耗、充值流水、新增与 ROI/LTV，点击柱可下钻到当天的主游戏明细"
+                    caption={
+                      resultIsWeekly
+                        ? "逐周对比消耗、充值流水、新增与 ROI1 / 广告ROI，点击柱可下钻到当周的主游戏明细"
+                        : "逐日对比消耗、充值流水、新增与 ROI1 / 广告ROI，点击柱可下钻到当天的主游戏明细"
+                    }
                   />
                   {/*
                    * Drill-down transition: keying the fade by the drill target

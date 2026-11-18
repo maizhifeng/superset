@@ -22,6 +22,7 @@ import re
 from typing import Any
 
 from superset.project.briefing.html_export import (
+    _chart_specs,
     build_briefing_doc_title,
     build_briefing_html,
 )
@@ -37,8 +38,18 @@ RESULT: dict[str, Any] = {
         "recharge": 1367042.7,
         "ROI1": 0.152,
         "cpa": 14.6,
+        "natural_rate": 0.637,
+        "ad_roi": 0.11,
+        "ltv1": 3.1,
     },
-    "core_previous": {"spend": 400000.0, "new_users": 39000, "ROI1": 0.2},
+    "core_previous": {
+        "spend": 400000.0,
+        "new_users": 39000,
+        "ROI1": 0.2,
+        "natural_rate": 0.68,
+        "ad_roi": 0.09,
+        "ltv1": 3.9,
+    },
     "thresholds": {"default_breakeven_line": 0.1, "roi_critical_line": 0.05},
     "daily": [
         {
@@ -49,6 +60,7 @@ RESULT: dict[str, Any] = {
             "recharge": 1627000,
             "roi1": 0.355,
             "roi_cum": 0.61,
+            "ad_roi": 0.31,
         },
         {
             "date": "2026-09-27",
@@ -58,6 +70,7 @@ RESULT: dict[str, Any] = {
             "recharge": 1367042.7,
             "roi1": 0.152,
             "roi_cum": 0.18,
+            "ad_roi": 0.11,
         },
     ],
     "platforms": [
@@ -136,6 +149,45 @@ def test_export_renders_full_tables_and_rates() -> None:
     assert "0.068" not in page
 
 
+def test_export_uses_raw_yuan_without_the_wan_suffix() -> None:
+    """Money columns carry the payload's 元 values, not 万元."""
+    page = build_briefing_html(RESULT, name="111")
+    assert "万元" not in page
+    assert "消耗(万元)" not in page
+    assert "流水(万元)" not in page
+    # 游戏A's 106,100 元 stays 106,100 rather than becoming 10.6 万元.
+    assert "106,100" in page
+    assert ">10.6<" not in page
+
+
+def test_export_trend_chart_plots_ad_roi_on_the_roi_axis() -> None:
+    """广告ROI replaces LTV1 and rides ROI1's right-hand axis."""
+    specs = dict(_chart_specs(RESULT, weekly=False))
+    spec = specs["chart-trend"]
+    series = {item["id"]: item for item in spec["series"]}
+    assert series["adroi"]["yField"] == "广告ROI"
+    assert series["adroi"]["type"] == "line"
+    axis = next(a for a in spec["axes"] if a.get("orient") == "right")
+    assert axis["seriesId"] == ["roi", "adroi"]
+    assert axis["title"]["text"] == "ROI（%）"
+    # The chart no longer carries an LTV series.
+    assert not any("LTV" in str(item.get("yField")) for item in spec["series"])
+
+
+def test_export_charts_plot_raw_yuan() -> None:
+    specs = dict(_chart_specs(RESULT, weekly=False))
+    trend = specs["chart-trend"]
+    amount_values = trend["data"][0]["values"]
+    assert {row["指标"] for row in amount_values} == {"消耗", "流水"}
+    assert 42400.0 in {row["金额"] for row in amount_values}
+
+
+def test_export_separates_project_groups() -> None:
+    """Each 主游戏 group is fenced off from the next by a separator row."""
+    page = build_briefing_html(RESULT, name="111")
+    assert page.count('<tr class="table-group-sep">') >= 1
+
+
 def test_export_carries_the_project_channel_daily_expansion() -> None:
     """主游戏 × 渠道 × 日期 is the project chapter's daily expansion."""
     expanded = json.loads(json.dumps(RESULT))
@@ -187,6 +239,329 @@ def test_export_is_valid_json_inline() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# §1 关键指标波动 and the 分地区 expansion (the page's remaining features)
+# --------------------------------------------------------------------------- #
+
+
+def _with_fluctuations() -> dict[str, Any]:
+    result = json.loads(json.dumps(RESULT))
+    result["thresholds"]["fluctuation_min_pct"] = 0.1
+    result["fluctuations"] = [
+        {
+            "key": "roi1",
+            "label": "ROI1",
+            "kind": "ratio",
+            "new": False,
+            "previous": 0.098,
+            "current": 0.155,
+            "delta": 0.057,
+            "delta_pct": 0.574,
+            "dimensions": [
+                {
+                    "key": "platform",
+                    "label": "平台",
+                    "items": [
+                        {
+                            "name": "oversea",
+                            "previous": 0.05,
+                            "current": 0.11,
+                            "contribution": 0.06,
+                            "share": 0.7,
+                            "rank": "primary",
+                        },
+                        {
+                            "name": "mobile",
+                            "previous": 0.06,
+                            "current": 0.08,
+                            "contribution": 0.02,
+                            "share": 0.3,
+                            "rank": "secondary",
+                        },
+                        {
+                            "name": "其他",
+                            "previous": 0.01,
+                            "current": 0.01,
+                            "contribution": 0.001,
+                            "share": 0.01,
+                            "rank": "secondary",
+                        },
+                    ],
+                },
+                {
+                    "key": "project",
+                    "label": "主游戏",
+                    "items": [
+                        {
+                            "name": "游戏A",
+                            "previous": 0.08,
+                            "current": 0.12,
+                            "contribution": 0.02,
+                            "share": 0.4,
+                            "rank": "primary",
+                        }
+                    ],
+                },
+            ],
+        },
+        {
+            "key": "cpa",
+            "label": "CPA",
+            "kind": "ratio",
+            "new": False,
+            "previous": 32.3,
+            "current": 39.0,
+            "delta": 6.7,
+            "delta_pct": 0.208,
+            "dimensions": [],
+        },
+        {
+            "key": "spend",
+            "label": "返点后消耗",
+            "kind": "sum",
+            "new": False,
+            "previous": 400000.0,
+            "current": 591567.48,
+            "delta": 191567.48,
+            "delta_pct": 0.479,
+            "dimensions": [],
+        },
+    ]
+    return result
+
+
+def test_export_carries_the_fluctuation_block() -> None:
+    """§1 shows the material moves and the factors behind them."""
+    page = build_briefing_html(_with_fluctuations(), name="111")
+    assert "<h3>关键指标波动</h3>" in page
+    # The gate comes from the payload so the wording matches the page.
+    assert "环比变化 ≥10%" in page
+    # Ratio metrics keep the metric's own unit, the amount keeps 元 formatting.
+    assert "9.8%" in page
+    assert "15.5%" in page
+    assert "400,000" in page
+    assert "591,567.5" in page
+    # The headline factor is the first dimension's strongest named change, and
+    # 「其他」 never becomes the cited factor.
+    assert "主因：oversea +6.00%" in page
+    assert "主因：其他" not in page
+    # Each metric row is its own inline disclosure, like the page — not one
+    # table at the bottom listing every metric's factors.
+    assert '<details class="fluct-item">' in page
+    assert '<summary class="fluct-row">' in page
+    assert '<span class="metric">ROI1</span>' in page
+    # 对比期 / 本期 / 环比 / 主因 sit in their own fixed columns so the rows
+    # line up under each other.
+    assert '<span class="prev">9.8%</span>' in page
+    assert '<span class="arrow" aria-hidden="true">→</span>' in page
+    assert '<span class="cur">15.5%</span>' in page
+    # The factors sit in the row's body, in the page's order: rank chip →
+    # factor name → signed contribution, grouped by dimension.
+    assert '<div class="fluct-dim-label">平台</div>' in page
+    assert '<div class="fluct-dim-label">主游戏</div>' in page
+    assert '<span class="rank">主因</span><span class="name">oversea</span>' in page
+    assert '<span class="rank">次因</span><span class="name">mobile</span>' in page
+    assert 'class="contrib delta-good">+6.00%' in page
+    # The old "排名" column is gone; the chip carries the rank instead.
+    assert "<th>排名</th>" not in page
+    # A metric without factors is a plain row: no chevron, nothing to open.
+    assert '<div class="fluct-row"><span class="metric">返点后消耗</span>' in page
+    assert page.count('<details class="fluct-item">') == 1
+    # Colour follows the metric's own semantics: a ROI1 rise is good, a CPA
+    # rise is bad, and 消耗 is neutral (grey) either way.
+    assert 'class="delta-good">▲ 57.4%' in page
+    assert 'class="delta-bad">▲ 20.8%' in page
+    assert 'class="delta-flat">▲ 47.9%' in page
+
+
+def test_export_omits_the_fluctuation_block_without_rows() -> None:
+    page = build_briefing_html(RESULT, name="111")
+    assert "<h3>关键指标波动</h3>" not in page
+    assert "展开：关键指标波动的主次因素" not in page
+
+
+def test_export_embeds_the_platform_split_in_the_core_card() -> None:
+    """平台拆分 is the KPI card's bottom disclosure, as on the report page."""
+    page = build_briefing_html(_with_fluctuations(), name="111")
+    assert '<div class="fold-card">' in page
+    assert '<details class="fold-more">' in page
+    assert "▦</span>分业务板块" in page
+    # The platform table lives inside that disclosure, before 关键指标波动.
+    core_at = page.index('<details class="fold-more">')
+    fluct_at = page.index("<h3>关键指标波动</h3>")
+    platform_at = page.index("mobile", core_at)
+    assert core_at < fluct_at
+    assert core_at < platform_at < fluct_at
+    # No standalone 平台拆分 table block is left in the chapter.
+    assert 'title="平台拆分"' not in page
+
+
+def test_export_headline_matches_the_page_tiles() -> None:
+    """§1 opens with the page's seven tiles, in the page's order and wording."""
+    page = build_briefing_html(RESULT, name="111")
+    metrics = page.split('<div class="metrics">', 1)[1]
+    labels = re.findall(r'<div class="label">([^<]+)', metrics.split("<h3>", 1)[0])
+    assert [label.split()[0] for label in labels] == [
+        "返点后消耗",
+        "充值流水",
+        "新增进入",
+        "自然新增%",
+        "CPA",
+        "广告ROI",
+        "ROI1",
+        "LTV1",
+    ]
+    assert metrics.count('<div class="metric">') == 8
+    # Share and per-user figures keep their units.
+    assert "63.7%" in metrics
+    assert "11.0%" in metrics
+    assert "15.2%" in metrics
+    # 消耗 moves are neutral: the delta is muted rather than green/red.
+    assert '<span class="delta muted">' in metrics
+
+
+def test_export_trend_table_hangs_from_a_strip() -> None:
+    """§2's detail table is the chart card's bottom disclosure, as on the page."""
+    daily = build_briefing_html(RESULT, name="111")
+    weekly = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
+    # Two disclosures in §1/§2: 分业务板块 under the KPI band, 分天/分周明细
+    # under the trend chart.
+    assert daily.count('<details class="fold-more">') == 2
+    assert "▦</span>分天明细" in daily
+    assert "▦</span>分周明细" in weekly
+    # The table no longer sits open with its own title block.
+    assert 'title="分天明细"' not in daily
+    assert 'title="分周明细"' not in weekly
+
+
+def test_export_tables_carry_the_page_metric_columns() -> None:
+    """The detail tables end with the page's 流水ROI column."""
+    page = build_briefing_html(RESULT, name="111")
+    headers = re.findall(r"<th[^>]*>(流水ROI)</th>", page)
+    assert headers
+
+
+def test_export_weekly_project_expansion_uses_week_ranges() -> None:
+    """A weekly bucket reads as its range, never as the week's Monday."""
+    weekly = json.loads(json.dumps(WEEKLY_RESULT))
+    weekly["projects"][0]["daily"] = [
+        {
+            "date": "2026-08-23",
+            "label": "2026-08-23 ~ 2026-08-29",
+            "spend": 100000.0,
+            "new_users": 100,
+            "roi1": 0.1,
+        }
+    ]
+    page = build_briefing_html(weekly, name="111", report_type="weekly")
+    assert "展开：主游戏 × 渠道 × 分周" in page
+    # The expansion's leading column is 周期 in a weekly report, and the cell
+    # carries the whole range rather than the bucket's ISO start date.
+    assert '<th class="dim">周期</th>' in page
+    assert ">2026-08-23 ~ 2026-08-29<" in page
+
+
+def test_export_media_quality_chips_match_the_page() -> None:
+    """§4 opens with the page's 最佳媒体 / 需关注 chips."""
+    result = json.loads(json.dumps(RESULT))
+    result["media"][0]["prev"] = {"roi1": 0.1}
+    result["media"].append(
+        {
+            "channel": "低效媒体",
+            "spend": 1000.0,
+            "new_users": 10,
+            "recharge": 10.0,
+            "roi1": 0.03,
+            "prev": {"roi1": 0.05},
+        }
+    )
+    page = build_briefing_html(result, name="111")
+    assert '<div class="quality-chips">' in page
+    assert "最佳媒体：今日头条 · ROI1 12.7% · 环比 ▲ 27.0%" in page
+    # The worst media is only flagged when it sits below the breakeven line.
+    assert "需关注：低效媒体 · ROI1 3.0% · 环比 ▼ 40.0%" in page
+
+
+def test_export_omits_the_worst_chip_when_every_media_clears_the_line() -> None:
+    result = json.loads(json.dumps(RESULT))
+    page = build_briefing_html(result, name="111")
+    assert "最佳媒体：今日头条" in page
+    assert "需关注：" not in page
+
+
+def test_export_project_table_carries_the_top_n_note() -> None:
+    """§3 states the same Top-N rule the page puts beside the table title."""
+    daily = build_briefing_html(RESULT, name="111")
+    weekly = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
+    assert "当日消耗 Top 2 主游戏" in daily
+    assert "当周消耗 Top 2 主游戏" in weekly
+    assert "入选主游戏的渠道全部列出" in daily
+
+
+def test_export_carries_the_region_expansion() -> None:
+    """主游戏 × 渠道 × 地区 is the project chapter's 分地区 expansion."""
+    expanded = json.loads(json.dumps(RESULT))
+    expanded["project_regions"] = [
+        {
+            "project": "游戏A",
+            "channel": "android",
+            "region": "KR",
+            "spend": 50000.0,
+            "recharge": 12000.0,
+            "new_users": 900,
+            "roi1": 0.2,
+            "roi_cum": 0.35,
+        }
+    ]
+    page = build_briefing_html(expanded, name="111")
+    assert "展开：主游戏 × 渠道 × 地区" in page
+    headers = [
+        " ".join(re.findall(r"<th[^>]*>([^<]*)</th>", row))
+        for row in page.split("<thead><tr>")[1:]
+    ]
+    assert any(h.startswith("主游戏 渠道 地区") for h in headers), headers
+    assert "KR" in page
+
+
+def test_weekly_and_daily_exports_share_every_chapter_and_feature() -> None:
+    """The two report types differ in the period wording only, never the结构."""
+    result = _with_fluctuations()
+    result["project_regions"] = [
+        {
+            "project": "游戏A",
+            "channel": "android",
+            "region": "KR",
+            "spend": 50000.0,
+            "recharge": 12000.0,
+            "new_users": 900,
+            "roi1": 0.2,
+        }
+    ]
+    daily = build_briefing_html({**result, "report_type": "daily"}, name="111")
+    weekly = build_briefing_html(
+        {**result, "report_type": "weekly"}, name="111", report_type="weekly"
+    )
+
+    def chapters(page: str) -> list[str]:
+        return [
+            text.replace("分天对比", "分X对比").replace("分周对比", "分X对比")
+            for text in re.findall(r"<h2>(.*?)</h2>", page)
+        ]
+
+    assert chapters(daily) == chapters(weekly)
+    assert daily.count("<table>") == weekly.count("<table>")
+    # The 波动 rows are per-metric disclosures in both types.
+    assert daily.count('<details class="fluct-item">') == weekly.count(
+        '<details class="fluct-item">'
+    )
+    assert re.findall(r"<summary>(.*?)</summary>", daily) == re.findall(
+        r"<summary>(.*?)</summary>", weekly
+    )
+    # The weekly export names its trend chapter after the week grain.
+    assert "分周对比" in weekly
+    assert "分天对比" in daily
+
+
+# --------------------------------------------------------------------------- #
 # Exported file title (used as the uploaded HTML's Drive name)
 # --------------------------------------------------------------------------- #
 
@@ -207,6 +582,7 @@ WEEKLY_RESULT: dict[str, Any] = {
             "recharge": 1627000,
             "roi1": 0.355,
             "roi_cum": 0.61,
+            "ad_roi": 0.31,
         },
     ],
 }
@@ -222,19 +598,27 @@ def test_export_title_names_the_weekly_file() -> None:
     )
 
 
-def test_export_defaults_to_a_full_width_page() -> None:
-    """The exported page fills the viewport and offers a centred toggle."""
+def test_export_is_always_full_width() -> None:
+    """The exported page fills the viewport; there is no centred mode at all."""
     page = build_briefing_html(WEEKLY_RESULT, name="111", report_type="weekly")
-    # The old fixed 1080px column is gone: the shell is fluid, with an opt-in
-    # centred mode remembered through localStorage.
+    # The old fixed 1080px column is gone and the shell stays fluid.
     assert "max-width: 1080px" not in page
     assert ".shell { width: 100%" in page
-    assert "body.centred .shell { max-width: 1480px; }" in page
-    assert 'id="btn-width"' in page
-    assert 'getItem("briefing-width")' in page
+    # The centred view was removed: no toggle, no body class, no persisted mode.
+    assert "centred" not in page
+    assert "居中视图" not in page
+    assert 'id="btn-width"' not in page
+    assert "briefing-width" not in page
     # Charts follow the container instead of a fixed pixel height.
     assert ".chart { width: 100%; height: clamp(" in page
     assert "autoFit: true" in page
+
+
+def test_export_weekly_trend_axis_keeps_the_whole_range() -> None:
+    """The page has room for the week range, so the export axis keeps it too."""
+    specs = dict(_chart_specs(WEEKLY_RESULT, weekly=True))
+    labels = {row["周期"] for row in specs["chart-trend"]["data"][0]["values"]}
+    assert "2026-08-23 ~ 2026-08-29" in labels
 
 
 def test_export_chapters_are_panels_with_tables_and_nav() -> None:
@@ -244,7 +628,7 @@ def test_export_chapters_are_panels_with_tables_and_nav() -> None:
     assert '<a href="#trend">分周对比</a>' in page
     assert "分天对比" not in page
     # Every chapter's detail table is captioned and counted.
-    for caption in ("平台拆分", "分周明细", "主游戏 × 渠道", "媒体明细"):
+    for caption in ("分周明细", "主游戏 × 渠道商", "媒体 明细"):
         assert caption in page
     assert 'class="table-count"' in page
     # Expand-all + back-to-top round out the page structure.

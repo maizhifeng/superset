@@ -28,8 +28,8 @@ class DailyReportConfig:
 
     # ---- Briefing type ----
     # "daily" reports on a single day (yesterday); "weekly" aggregates a
-    # complete natural week (Sunday–Saturday) and compares it with the week
-    # before.
+    # complete natural week (Monday–Sunday) and compares it with the week
+    # before.  Both types carry the same indicators and chapters.
     report_type: str = "daily"
 
     # ---- Superset datasource ----

@@ -7,8 +7,9 @@ This mirrors the logic of ``AI/daily_report_workflow`` but sources its data
 from Superset's own datasources instead of Power BI.
 
 Daily briefings aggregate a single day (yesterday) and compare it with the day
-before; weekly briefings aggregate a complete natural week (Sunday–Saturday)
-and compare it with the preceding week.
+before; weekly briefings aggregate a complete natural week (Monday–Sunday) and
+compare it with the preceding week.  Weekly briefings carry the same indicators,
+breakdowns and detail tables as daily ones — only the bucketing changes.
 
 The source dataset is assumed to hold *segment-level* rows: one row per
 project/channel/region (optionally per day) carrying additive spend / new-user
@@ -394,7 +395,7 @@ class PeriodBucket:
     """One comparison bucket of the briefing series.
 
     A daily briefing buckets by single days; a weekly briefing buckets by
-    complete natural weeks (Sunday–Saturday).  ``label`` is the ISO start date
+    complete natural weeks (Monday–Sunday).  ``label`` is the ISO start date
     — the stable key used across payloads — while ``range_label`` renders the
     covered range for chart/table display.
     """
@@ -413,12 +414,12 @@ class PeriodBucket:
 
 
 def _week_start(d: date) -> date:
-    """Return the Sunday that starts the week containing ``d``."""
-    return d - timedelta(days=(d.weekday() + 1) % 7)
+    """Return the Monday that starts the week containing ``d``."""
+    return d - timedelta(days=d.weekday())
 
 
 def _week_containing(d: date) -> tuple[date, date]:
-    """Return the (Sunday, Saturday) bounds of the natural week containing ``d``."""
+    """Return the (Monday, Sunday) bounds of the natural week containing ``d``."""
     start = _week_start(d)
     return start, start + timedelta(days=6)
 
@@ -551,6 +552,33 @@ def _natural_rate(df: pd.DataFrame, config: DailyReportConfig) -> float | None:
     return float(organic.sum()) / total
 
 
+def _ad_roi(df: pd.DataFrame, config: DailyReportConfig) -> float | None:
+    """广告ROI — the ad traffic's 1日充值 over rebate-adjusted spend.
+
+    Mirrors the dataset's saved ``广告ROI`` metric:
+    ``SUM(CASE WHEN 媒体 = '自然量' THEN 0 ELSE 1日充值 END) / SUM(返点后消耗)``
+    — i.e. ROI1 restricted to the non-organic media rows.  ``None`` when the
+    segment spent nothing or the media/ROI columns are unmapped.
+    """
+    ad_channel_col = config.ad_channel_column
+    spend_col = config.spend_column
+    if not ad_channel_col or not config.roi_columns:
+        return None
+    if ad_channel_col not in df.columns or spend_col not in df.columns:
+        return None
+    roi_col = config.roi_columns[0]
+    if roi_col not in df.columns:
+        return None
+    spend = float(pd.to_numeric(df[spend_col], errors="coerce").fillna(0.0).sum())
+    if not spend:
+        return None
+    paid = df[df[ad_channel_col].astype(str) != config.natural_media_label]
+    if paid.empty:
+        return 0.0
+    numerator = float(pd.to_numeric(paid[roi_col], errors="coerce").fillna(0.0).sum())
+    return numerator / spend
+
+
 def _range_subset(
     df: pd.DataFrame, date_col: str, start: date, end: date
 ) -> pd.DataFrame:
@@ -617,6 +645,7 @@ def _build_core_metrics(
             core[f"LTV{key}"] = None
             core[f"ROI{key}"] = None
         core["natural_rate"] = None
+        core["ad_roi"] = None
         return core
     total_spend = float(pd.to_numeric(day_df[spend_col], errors="coerce").sum())
     total_users = float(pd.to_numeric(day_df[users_col], errors="coerce").sum())
@@ -632,7 +661,14 @@ def _build_core_metrics(
             key: value
             for key, value in _ratio_fields(day_df, config).items()
             if key
-            in ("pay_rate", "retention_rate", "natural_rate", "roi_cum", "roi_flow")
+            in (
+                "pay_rate",
+                "retention_rate",
+                "natural_rate",
+                "ad_roi",
+                "roi_cum",
+                "roi_flow",
+            )
         }
     )
     for key, col in zip(_METRIC_KEYS, config.ltv_columns, strict=False):
@@ -682,6 +718,7 @@ def _build_daily_series(
                 "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
+                "ad_roi": cm.get("ad_roi"),
                 "roi_cum": cm.get("roi_cum"),
                 "roi_flow": cm.get("roi_flow"),
                 **ltv_extra,
@@ -803,6 +840,9 @@ def _ratio_fields(
             config.spend_column,
             weighted=config.roi_weighted_average,
         )
+    # 广告ROI keeps its own numerator (paid media's 1日充值) but the same spend
+    # denominator as ROI1, so it travels with every row like the other ratios.
+    fields["ad_roi"] = _ad_roi(sub, config)
     # 累计ROI / 流水ROI share ROI1's spend denominator but swap the numerator:
     # the account's lifetime recharge, and the period's own recharge flow.
     # Both numerators are additive columns, so they use SUM(col)/SUM(spend).
@@ -957,6 +997,7 @@ def _combo_bucket_series(
                 "natural_rate": cm.get("natural_rate"),
                 "ltv1": cm.get("LTV1"),
                 "roi1": cm.get("ROI1"),
+                "ad_roi": cm.get("ad_roi"),
                 "roi_cum": cm.get("roi_cum"),
                 "roi_flow": cm.get("roi_flow"),
                 **{f"ltv{key}": cm.get(f"LTV{key}") for key in (2, 3, 4, 5, 6, 7)},

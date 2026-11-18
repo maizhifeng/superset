@@ -70,6 +70,7 @@ def build_briefing_summary(result: dict[str, Any]) -> list[str]:
         f"  新增: {_fmt(core.get('new_users'))}",
         f"  CPA: {_fmt(core.get('cpa'))}",
         f"  流水: {_fmt(core.get('recharge'))}",
+        f"  广告ROI: {_fmt(core.get('ad_roi'))}",
         f"  ROI1: {_fmt(core.get('ROI1'))}",
         f"  LTV1: {_fmt(core.get('LTV1'))}",
         f"  1日付费率: {_fmt(core.get('pay_rate'))}",
