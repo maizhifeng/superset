@@ -324,6 +324,7 @@ details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
 .fluct-sev.watch { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
 .fluct-sev.normal { color: var(--good); border-color: var(--good); background: var(--good-soft); }
 .fluct-sev.insufficient, .fluct-sev.new { color: var(--ink-3); border-color: var(--line); background: var(--line-soft); }
+.fluct-sev.event { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .fluct-row .primary {
   color: var(--ink-3); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
@@ -346,6 +347,7 @@ details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
 .fluct-dot.watch { background: var(--warn); }
 .fluct-dot.normal { background: var(--good); }
 .fluct-dot.insufficient, .fluct-dot.new { background: var(--ink-3); }
+.fluct-dot.event { background: var(--accent); }
 .fluct-factor .rank {
   flex: none; padding: 0 6px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent);
@@ -725,6 +727,7 @@ FLUCTUATION_SEVERITY_LABELS = {
     "normal": "正常",
     "insufficient": "历史不足",
     "new": "新增",
+    "event": "计划内",
 }
 
 
@@ -810,7 +813,7 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         "<h3>关键指标波动</h3>"
         '<p class="caption">'
         f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
-        "标签（异常 / 关注 / 正常 / 历史不足）按历史环比自动判定；"
+        "标签（异常 / 关注 / 正常 / 计划内 / 历史不足）按历史环比自动判定；"
         "展开可查看平台 / 媒体 / 主游戏的主次因素"
         "</p></div>"
         f"{''.join(items)}"

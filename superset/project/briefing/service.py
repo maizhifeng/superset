@@ -34,6 +34,13 @@ from superset.project.briefing.config import (
     DailyReportContext,
     normalize_report_type,
 )
+from superset.project.briefing.events import (
+    describe_events,
+    events_by_bucket,
+    events_for_projects,
+    load_events,
+    ProjectEvent,
+)
 from superset.utils.core import GenericDataType
 
 logger = logging.getLogger(__name__)
@@ -77,6 +84,9 @@ FLUCTUATION_MIN_PCT = 0.10
 FLUCTUATION_MIN_HISTORY = 6
 FLUCTUATION_Z_ABNORMAL = 3.0
 FLUCTUATION_Z_WATCH = 2.0
+# Only launches/tests of projects that make up a meaningful share of spend can
+# move the aggregate; a tiny test game must not wipe a week out of the baseline.
+FLUCTUATION_EVENT_MIN_SHARE = 0.01
 
 # 每个维度保留的因素数，其余并入「其他」一行，保证贡献仍可加总。
 FLUCTUATION_TOP_FACTORS = 8
@@ -1889,8 +1899,18 @@ def _baseline_zscore(delta: float | None, baseline: dict[str, Any]) -> float | N
     return None
 
 
+def _mark_planned(entry: dict[str, Any], events: list[ProjectEvent]) -> None:
+    """Override the verdict for a bucket containing a launch/test event."""
+    description = describe_events(events)
+    entry["severity"] = "event"
+    entry["event_reason"] = description
+    entry["reason"] = f"计划内事件：{description}"
+
+
 def _attach_fluctuation_baseline(
-    entry: dict[str, Any], baseline: dict[str, Any] | None
+    entry: dict[str, Any],
+    baseline: dict[str, Any] | None,
+    period_events: list[ProjectEvent] | None = None,
 ) -> None:
     """Stamp a fluctuation with its historical band, z-score and severity.
 
@@ -1919,11 +1939,15 @@ def _attach_fluctuation_baseline(
     z = _baseline_zscore(delta, baseline)
     entry["zscore"] = z
     samples = baseline.get("samples") or 0
+    planned = bool(period_events)
     if baseline.get("method") == "insufficient" or z is None:
-        entry["severity"] = "insufficient"
-        entry["reason"] = (
-            f"历史样本不足（{samples}/{FLUCTUATION_MIN_HISTORY}），暂按业务阈值判断"
-        )
+        if planned:
+            _mark_planned(entry, period_events or [])
+        else:
+            entry["severity"] = "insufficient"
+            entry["reason"] = (
+                f"历史样本不足（{samples}/{FLUCTUATION_MIN_HISTORY}），暂按业务阈值判断"
+            )
         return
     direction = "高于" if (delta or 0) >= 0 else "低于"
     if abs(z) == float("inf"):
@@ -1938,24 +1962,58 @@ def _attach_fluctuation_baseline(
     else:
         entry["severity"] = "normal"
         entry["reason"] = f"在近 {samples} 期正常波动范围内（z={z:.1f}）"
+    if planned:
+        _mark_planned(entry, period_events or [])
 
 
 def _fluctuation_baselines(
-    daily: list[dict[str, Any]], config: DailyReportConfig
+    daily: list[dict[str, Any]],
+    config: DailyReportConfig,
+    event_labels: frozenset[str] = frozenset(),
 ) -> dict[str, dict[str, Any]]:
     """Per-metric historical bands from the bucket series in ``daily``.
 
     ``daily`` is newest-first; the last delta (current vs previous) is the move
-    being judged, so it is excluded from its own baseline.
+    being judged, so it is excluded from its own baseline.  Deltas that touch a
+    bucket carrying a project launch/test are skipped too — planned spikes must
+    not inflate the normal band used for the other weeks.
     """
     ordered = list(reversed(daily))
+    labels = [str(row.get("date") or "") for row in ordered]
     baselines: dict[str, dict[str, Any]] = {}
     for metric in _fluctuation_metrics(config):
         values = [row.get(metric.key) for row in ordered]
-        deltas = _delta_series(values)
-        if deltas:
-            deltas = deltas[:-1]
-        baselines[metric.key] = _robust_baseline(deltas)
+        # (delta, touches_event) for every adjacent pair; the final pair is the
+        # move being judged and is dropped before building the band.
+        pairs: list[tuple[float, bool]] = []
+        for index in range(1, len(values)):
+            previous, current = values[index - 1], values[index]
+            if previous is None or current is None or not float(previous):
+                continue
+            is_event = (
+                labels[index - 1] in event_labels or labels[index] in event_labels
+            )
+            pairs.append(
+                (
+                    (float(current) - float(previous)) / abs(float(previous)),
+                    is_event,
+                )
+            )
+        pairs = pairs[:-1]
+        plain = [delta for delta, is_event in pairs if not is_event]
+        event_samples = sum(1 for _delta, is_event in pairs if is_event)
+        # Event-free history is the cleanest band, but a launch-heavy window can
+        # leave too few deltas; fall back to the full history rather than losing
+        # the ability to judge every other week.
+        if len(plain) >= FLUCTUATION_MIN_HISTORY:
+            deltas, includes_events = plain, False
+        else:
+            deltas = [delta for delta, _is_event in pairs]
+            includes_events = event_samples > 0
+        baseline = _robust_baseline(deltas)
+        baseline["event_samples"] = event_samples
+        baseline["includes_events"] = includes_events
+        baselines[metric.key] = baseline
     return baselines
 
 
@@ -1995,6 +2053,8 @@ def _metric_deltas_by_factor(
     bucket_sums: list[pd.DataFrame],
     items: set[str],
     metric: _FluctuationMetric,
+    labels: list[str],
+    event_labels: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, list[float]], list[float]]:
     """Each factor's chronological 环比 list, plus the pooled baseline deltas."""
     deltas_by_item: dict[str, list[float]] = {}
@@ -2006,11 +2066,14 @@ def _metric_deltas_by_factor(
                 values.append(None)
                 continue
             values.append(_metric_value_from_sums(sums.loc[item], metric))
-        deltas = [
-            (current - previous) / abs(previous)
-            for previous, current in zip(values, values[1:], strict=False)
-            if previous is not None and current is not None and previous != 0
-        ]
+        deltas: list[float] = []
+        for index in range(1, len(values)):
+            previous, current = values[index - 1], values[index]
+            if labels[index - 1] in event_labels or labels[index] in event_labels:
+                continue
+            if previous is None or current is None or not previous:
+                continue
+            deltas.append((current - previous) / abs(previous))
         if not deltas:
             continue
         # The newest delta is the factor's move being judged.
@@ -2100,6 +2163,7 @@ def _dimension_factor_baselines(
     date_col: str,
     history: list[PeriodBucket],
     config: DailyReportConfig,
+    event_labels: frozenset[str] = frozenset(),
 ) -> dict[tuple[str, str, str], dict[str, Any]]:
     """Pooled per-factor bands for the 波动 attribution rows.
 
@@ -2111,7 +2175,9 @@ def _dimension_factor_baselines(
     dimensions = _fluctuation_dimensions(config)
     if not history or not dimensions:
         return {}
-    frames = [_bucket_subset(df, date_col, bucket) for bucket in reversed(history)]
+    ordered_history = list(reversed(history))
+    frames = [_bucket_subset(df, date_col, bucket) for bucket in ordered_history]
+    labels = [bucket.label for bucket in ordered_history]
     base_columns = sorted(
         {
             column
@@ -2131,7 +2197,7 @@ def _dimension_factor_baselines(
         bucket_sums, items = _dimension_bucket_sums(frames, column, base_columns)
         for metric in metrics:
             deltas_by_item, pooled = _metric_deltas_by_factor(
-                bucket_sums, items, metric
+                bucket_sums, items, metric, labels, event_labels
             )
             if not deltas_by_item or not pooled:
                 continue
@@ -2146,6 +2212,7 @@ def _build_fluctuations(
     config: DailyReportConfig,
     baselines: dict[str, dict[str, Any]] | None = None,
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    period_events: list[ProjectEvent] | None = None,
 ) -> list[dict[str, Any]]:
     """§1「关键指标波动」: the headline metrics worth explaining, each with the
     平台 / 媒体 / 主游戏 factors that moved it.
@@ -2178,7 +2245,11 @@ def _build_fluctuations(
             factor_baselines=factor_baselines,
         )
         if entry is not None:
-            _attach_fluctuation_baseline(entry, (baselines or {}).get(metric.key))
+            _attach_fluctuation_baseline(
+                entry,
+                (baselines or {}).get(metric.key),
+                period_events=period_events,
+            )
             entries.append(entry)
     # Biggest relative move first; a 新增 (no percentage) leads the list.
     entries.sort(
@@ -2189,6 +2260,38 @@ def _build_fluctuations(
         )
     )
     return entries
+
+
+def _report_event_buckets(
+    df: pd.DataFrame,
+    config: DailyReportConfig,
+    current: PeriodBucket,
+    previous: PeriodBucket,
+    history: list[PeriodBucket],
+) -> dict[str, list[ProjectEvent]]:
+    """Launch/test events that fall inside the reported buckets.
+
+    Only projects present in the report's rows count: a launch of a game the
+    briefing does not track must not suppress its verdicts.
+    """
+    if df.empty or not config.project_column or config.project_column not in df:
+        return {}
+    projects = set(df[config.project_column].astype(str).unique())
+    spend_col = config.spend_column
+    if spend_col and spend_col in df.columns:
+        totals = df.groupby(config.project_column)[spend_col].sum()
+        total = float(totals.sum())
+        if total > 0:
+            material = {
+                str(project)
+                for project, value in totals.items()
+                if float(value) / total >= FLUCTUATION_EVENT_MIN_SHARE
+            }
+            projects &= material
+    events = events_for_projects(load_events(), projects)
+    if not events:
+        return {}
+    return events_by_bucket(events, [*history, previous, current])
 
 
 def _build_report(
@@ -2249,12 +2352,21 @@ def _build_report(
     media_platforms = _build_media_platform_rows(current_df, prev_df, config, media)
     platforms = _build_platform_rows(current_df, prev_df, config)
 
+    event_buckets = _report_event_buckets(df, config, current, previous, history)
+    event_labels = frozenset(event_buckets)
+    period_events = [
+        *event_buckets.get(current.label, []),
+        *event_buckets.get(previous.label, []),
+    ]
     fluctuations = _build_fluctuations(
         current_df,
         prev_df,
         config,
-        baselines=_fluctuation_baselines(daily, config),
-        factor_baselines=_dimension_factor_baselines(df, date_col, history, config),
+        baselines=_fluctuation_baselines(daily, config, event_labels),
+        factor_baselines=_dimension_factor_baselines(
+            df, date_col, history, config, event_labels
+        ),
+        period_events=period_events,
     )
 
     alerts = _detect_alerts(core, config)

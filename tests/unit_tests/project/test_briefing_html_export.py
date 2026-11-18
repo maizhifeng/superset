@@ -377,6 +377,31 @@ def _with_fluctuations() -> dict[str, Any]:
             },
             "dimensions": [],
         },
+        {
+            "key": "new_users",
+            "label": "新增进入",
+            "kind": "additive",
+            "new": False,
+            "previous": 232756,
+            "current": 349759,
+            "delta": 117003,
+            "delta_pct": 0.5027,
+            "severity": "event",
+            "reason": "计划内事件：策定九州韩国 上线 2026-11-11",
+            "baseline": {
+                "samples": 6,
+                "method": "robust",
+                "median": 0.05,
+                "mad": 0.08,
+                "p10": -0.1,
+                "p90": 0.2,
+                "low": -0.3,
+                "high": 0.4,
+                "includes_events": True,
+                "event_samples": 2,
+            },
+            "dimensions": [],
+        },
     ]
     return result
 
@@ -426,6 +451,9 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert ">历史不足</span>" in page
     assert ">正常</span>" in page
     assert "近 8 期正常范围" in page
+    # Launch/test weeks are marked as planned instead of abnormal.
+    assert '<span class="fluct-sev event"' in page
+    assert ">计划内</span>" in page
     # Factor rows carry their own pooled verdict as a coloured dot.
     assert '<span class="fluct-dot abnormal"' in page
     assert "同层 8 个分组样本" in page

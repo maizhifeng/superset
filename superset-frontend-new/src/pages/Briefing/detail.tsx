@@ -472,7 +472,8 @@ type FluctuationSeverity =
   | "watch"
   | "normal"
   | "insufficient"
-  | "new";
+  | "new"
+  | "event";
 
 /** Robust historical band behind a fluctuation's severity label. */
 interface FluctuationBaseline {
@@ -1641,6 +1642,7 @@ const FLUCTUATION_SEVERITY: Record<string, { label: string; color: string }> = {
   normal: { label: "正常", color: BRIEFING_CSS_COLORS.statusSuccess },
   insufficient: { label: "历史不足", color: BRIEFING_CSS_COLORS.textDisabled },
   new: { label: "新增", color: BRIEFING_CSS_COLORS.textDisabled },
+  event: { label: "计划内", color: BRIEFING_CSS_COLORS.statusInfo },
 };
 
 /** Tooltip copy: the reason plus the historical band the verdict came from. */
@@ -1754,7 +1756,7 @@ function FluctuationList({
         <Typography variant="subtitle1">关键指标波动</Typography>
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
           环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
-          对比期 → 本期 ；标签（异常 / 关注 / 正常 / 历史不足）按历史环比自动判定；
+          对比期 → 本期 ；标签（异常 / 关注 / 正常 / 计划内 / 历史不足）按历史环比自动判定；
           点击查看平台 / 媒体 / 主游戏的主次因素
         </Typography>
       </Box>
