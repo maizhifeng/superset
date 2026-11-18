@@ -281,6 +281,20 @@ def _with_fluctuations() -> dict[str, Any]:
                             "contribution": 0.06,
                             "share": 0.7,
                             "rank": "primary",
+                            "severity": "abnormal",
+                            "zscore": 2.4,
+                            "reason": "高于同层 8 个分组样本的正常范围（z=2.4）",
+                            "baseline": {
+                                "samples": 7,
+                                "pooled_samples": 8,
+                                "method": "pooled",
+                                "median": 0.04,
+                                "mad": 0.02,
+                                "p10": -0.01,
+                                "p90": 0.09,
+                                "low": -0.049,
+                                "high": 0.129,
+                            },
                         },
                         {
                             "name": "mobile",
@@ -396,8 +410,10 @@ def test_export_carries_the_fluctuation_block() -> None:
     # factor name → signed contribution, grouped by dimension.
     assert '<div class="fluct-dim-label">平台</div>' in page
     assert '<div class="fluct-dim-label">主游戏</div>' in page
-    assert '<span class="rank">主因</span><span class="name">oversea</span>' in page
-    assert '<span class="rank">次因</span><span class="name">mobile</span>' in page
+    assert '<span class="rank">主因</span>' in page
+    assert '<span class="name">oversea</span>' in page
+    assert '<span class="rank">次因</span>' in page
+    assert '<span class="name">mobile</span>' in page
     assert 'class="contrib delta-good">+6.00%' in page
     # The old "排名" column is gone; the chip carries the rank instead.
     assert "<th>排名</th>" not in page
@@ -410,6 +426,9 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert ">历史不足</span>" in page
     assert ">正常</span>" in page
     assert "近 8 期正常范围" in page
+    # Factor rows carry their own pooled verdict as a coloured dot.
+    assert '<span class="fluct-dot abnormal"' in page
+    assert "同层 8 个分组样本" in page
     # Colour follows the metric's own semantics: a ROI1 rise is good, a CPA
     # rise is bad, and 消耗 is neutral (grey) either way.
     assert 'class="delta-good">▲ 57.4%' in page

@@ -409,3 +409,42 @@ def test_severity_reports_insufficient_history() -> None:
     )
     assert entry["severity"] == "insufficient"
     assert "历史样本不足（3/6）" in entry["reason"]
+
+
+def test_dimension_factor_baselines_pool_scale_across_factors() -> None:
+    from datetime import date
+
+    from superset.project.briefing.service import (
+        _dimension_factor_baselines,
+        PeriodBucket,
+    )
+
+    days = [date(2026, 9, day) for day in range(10, 18)]
+    spend_a = [100.0, 105.0, 102.0, 108.0, 110.0, 107.0, 104.0, 300.0]
+    spend_b = [50.0, 51.0, 49.0, 52.0, 50.0, 51.0, 50.0, 52.0]
+    rows: list[dict[str, Any]] = []
+    for offset, day in enumerate(days):
+        for platform, spend in (("A", spend_a[offset]), ("B", spend_b[offset])):
+            rows.append(
+                {
+                    "report_date": day.isoformat(),
+                    "平台": platform,
+                    "媒体": f"m-{platform}",
+                    "主游戏": f"g-{platform}",
+                    "返点后消耗": spend,
+                    "新增进入": 10,
+                    "1日充值": spend * 0.2,
+                    "充值流水": spend * 0.3,
+                }
+            )
+    frame = pd.DataFrame(rows)
+    history = [PeriodBucket(day.isoformat(), day, day) for day in reversed(days)]
+
+    stats = _dimension_factor_baselines(frame, "report_date", history, _config())
+
+    factor = stats[("spend", "platform", "A")]
+    assert factor["severity"] == "abnormal"
+    assert factor["baseline"]["method"] == "pooled"
+    assert factor["baseline"]["pooled_samples"] >= 6
+    # B only moved 4%, inside the pooled band.
+    assert stats[("spend", "platform", "B")]["severity"] != "abnormal"

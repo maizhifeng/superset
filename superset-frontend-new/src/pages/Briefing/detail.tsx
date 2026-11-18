@@ -452,6 +452,11 @@ interface FluctuationFactor {
   rate_effect?: number;
   mix_effect?: number;
   rank?: "primary" | "secondary";
+  /** Pooled verdict: this factor's own move against its dimension's history. */
+  severity?: FluctuationSeverity;
+  zscore?: number | null;
+  reason?: string;
+  baseline?: FluctuationBaseline | null;
 }
 
 /** One dimension's ranked factors for a metric. */
@@ -472,7 +477,9 @@ type FluctuationSeverity =
 /** Robust historical band behind a fluctuation's severity label. */
 interface FluctuationBaseline {
   samples: number;
-  method: "robust" | "stable" | "insufficient";
+  /** Factor bands pool the scale across the dimension's historical samples. */
+  pooled_samples?: number;
+  method: "robust" | "stable" | "insufficient" | "pooled";
   median: number | null;
   mad: number | null;
   p10: number | null;
@@ -1581,6 +1588,22 @@ function FluctuationDimensionColumn({
           >
             {index === 0 ? "主因" : "次因"}
           </Box>
+          {fluctuationFactorColor(item) && (
+            <Tooltip title={fluctuationFactorTitle(item)} describeChild>
+              <Box
+                component="span"
+                sx={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  bgcolor: fluctuationFactorColor(item),
+                  flexShrink: 0,
+                  alignSelf: "center",
+                  cursor: "help",
+                }}
+              />
+            </Tooltip>
+          )}
           <Typography
             variant="body2"
             noWrap
@@ -1639,6 +1662,30 @@ function fluctuationBaselineTitle(metric: FluctuationMetric): string {
     parts.push(`中位环比：${formatPercent(baseline.median)}`);
   }
   return parts.filter(Boolean).join("；");
+}
+
+/** Tooltip for a factor's pooled verdict (same shape as the metric chip). */
+function fluctuationFactorTitle(factor: FluctuationFactor): string {
+  const baseline = factor.baseline;
+  const reason = factor.reason ?? "";
+  if (!baseline || baseline.method === "insufficient") {
+    return reason || "历史样本不足";
+  }
+  const parts = [reason];
+  if (baseline.low !== null && baseline.high !== null) {
+    const pooled = baseline.pooled_samples ?? baseline.samples;
+    parts.push(
+      `同层正常范围：${formatPercent(baseline.low)} ~ ${formatPercent(
+        baseline.high,
+      )}（池化 ${pooled} 个样本）`,
+    );
+  }
+  return parts.filter(Boolean).join("；");
+}
+
+function fluctuationFactorColor(factor: FluctuationFactor): string | undefined {
+  if (!factor.severity) return undefined;
+  return FLUCTUATION_SEVERITY[factor.severity]?.color;
 }
 
 function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {

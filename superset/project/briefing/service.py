@@ -981,13 +981,19 @@ def _combo_bucket_series(
     config: DailyReportConfig,
     ctx: DailyReportContext,
 ) -> list[dict[str, Any]]:
-    """Per-bucket headline metrics for one combo across the history window."""
+    """Per-bucket headline metrics for one combo across the history window.
+
+    The combo is filtered out of the frame **once**, then each bucket is cut
+    from that small slice.  Filtering per bucket used to scan the full frame
+    once per bucket, which dominated the report's runtime as the history
+    window grew.
+    """
+    base = df
+    for c, v in zip(group_cols, key_vals, strict=True):
+        base = base[base[c].astype(str) == v]
     series: list[dict[str, Any]] = []
     for bucket in history:
-        day_df = _bucket_subset(df, date_col, bucket)
-        sub = day_df
-        for c, v in zip(group_cols, key_vals, strict=True):
-            sub = sub[sub[c].astype(str) == v]
+        sub = _bucket_subset(base, date_col, bucket)
         cm = _build_core_metrics(sub, config, ctx)
         series.append(
             {
@@ -1685,6 +1691,10 @@ def _dimension_block(
     metric: _FluctuationMetric,
     config: DailyReportConfig,
     delta: float,
+    *,
+    factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    metric_key: str = "",
+    dimension_key: str = "",
 ) -> list[dict[str, Any]] | None:
     """One dimension's ranked factor list for a metric (None when empty)."""
     if column not in current_df.columns and column not in prev_df.columns:
@@ -1713,13 +1723,27 @@ def _dimension_block(
         delta,
         ratio=metric.kind == "ratio",
     )
+    return _annotate_factors(factors, factor_baselines, metric_key, dimension_key)
+
+
+def _annotate_factors(
+    factors: list[dict[str, Any]],
+    factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None,
+    metric_key: str,
+    dimension_key: str,
+) -> list[dict[str, Any]]:
+    """Rank the factors and attach their pooled baseline verdicts."""
     for rank, factor in enumerate(factors):
-        if factor["name"] == "其他":
-            continue
         if rank == 0:
             factor["rank"] = "primary"
         elif rank <= 2:
             factor["rank"] = "secondary"
+        if factor["name"] == "其他" or not factor_baselines:
+            continue
+        if stats := factor_baselines.get(
+            (metric_key, dimension_key, str(factor["name"]))
+        ):
+            factor.update(stats)
     return factors
 
 
@@ -1729,6 +1753,7 @@ def _fluctuation_entry(
     metric: _FluctuationMetric,
     dimensions: list[tuple[str, str, str]],
     config: DailyReportConfig,
+    factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """One metric's entry, or None when it is not a material fluctuation."""
     if metric.kind == "additive":
@@ -1763,7 +1788,17 @@ def _fluctuation_entry(
     delta = current - previous
     blocks: list[dict[str, Any]] = []
     for key, column, label in dimensions:
-        block = _dimension_block(current_df, prev_df, column, metric, config, delta)
+        block = _dimension_block(
+            current_df,
+            prev_df,
+            column,
+            metric,
+            config,
+            delta,
+            factor_baselines=factor_baselines,
+            metric_key=metric.key,
+            dimension_key=key,
+        )
         if block:
             blocks.append({"key": key, "label": label, "items": block})
     if not blocks:
@@ -1924,11 +1959,193 @@ def _fluctuation_baselines(
     return baselines
 
 
+def _fluctuation_dimensions(
+    config: DailyReportConfig,
+) -> list[tuple[str, str, str]]:
+    """The attribution dimensions, in display order."""
+    return [
+        (key, column, label)
+        for key, column, label in (
+            ("platform", config.platform_column, "平台"),
+            ("media", config.ad_channel_column, "媒体"),
+            ("project", config.project_column, "主游戏"),
+        )
+        if column
+    ]
+
+
+def _dimension_bucket_sums(
+    frames: list[pd.DataFrame], column: str, base_columns: list[str]
+) -> tuple[list[pd.DataFrame], set[str]]:
+    """Per-bucket, per-factor sums of the columns the metrics are built from."""
+    bucket_sums: list[pd.DataFrame] = []
+    items: set[str] = set()
+    for frame in frames:
+        if frame.empty or column not in frame.columns:
+            bucket_sums.append(pd.DataFrame(columns=base_columns))
+            continue
+        sums = frame.groupby(column, dropna=False)[base_columns].sum()
+        sums.index = sums.index.astype(str)
+        bucket_sums.append(sums)
+        items.update(sums.index)
+    return bucket_sums, items
+
+
+def _metric_deltas_by_factor(
+    bucket_sums: list[pd.DataFrame],
+    items: set[str],
+    metric: _FluctuationMetric,
+) -> tuple[dict[str, list[float]], list[float]]:
+    """Each factor's chronological 环比 list, plus the pooled baseline deltas."""
+    deltas_by_item: dict[str, list[float]] = {}
+    pooled: list[float] = []
+    for item in items:
+        values: list[float | None] = []
+        for sums in bucket_sums:
+            if sums.empty or item not in sums.index:
+                values.append(None)
+                continue
+            values.append(_metric_value_from_sums(sums.loc[item], metric))
+        deltas = [
+            (current - previous) / abs(previous)
+            for previous, current in zip(values, values[1:], strict=False)
+            if previous is not None and current is not None and previous != 0
+        ]
+        if not deltas:
+            continue
+        # The newest delta is the factor's move being judged.
+        deltas_by_item[item] = deltas
+        pooled.extend(deltas[:-1])
+    return deltas_by_item, pooled
+
+
+def _metric_value_from_sums(row: Any, metric: _FluctuationMetric) -> float | None:
+    """Recompute one metric for a factor from its bucket sums."""
+    try:
+        numerator = float(row.get(metric.numerator))
+    except (TypeError, ValueError):
+        return None
+    if metric.kind == "additive":
+        return numerator
+    try:
+        denominator = float(row.get(metric.denominator))
+    except (TypeError, ValueError):
+        return None
+    return numerator / denominator if denominator else None
+
+
+def _factor_baseline_stats(
+    deltas_by_item: dict[str, list[float]], pooled: list[float]
+) -> dict[str, dict[str, Any]]:
+    """Own median + pooled MAD per factor, plus its severity verdict."""
+    pooled_baseline = _robust_baseline(pooled)
+    if pooled_baseline["method"] == "insufficient":
+        return {}
+    pooled_mad = float(pooled_baseline.get("mad") or 0.0)
+    stats: dict[str, dict[str, Any]] = {}
+    for item, deltas in deltas_by_item.items():
+        baseline_deltas = deltas[:-1]
+        own_median = (
+            float(pd.Series(baseline_deltas).median())
+            if len(baseline_deltas) >= 2
+            else float(pooled_baseline["median"])
+        )
+        if pooled_mad > 0:
+            z = 0.6745 * (deltas[-1] - own_median) / pooled_mad
+        elif deltas[-1] == own_median:
+            z = 0.0
+        else:
+            z = float("inf") if deltas[-1] > own_median else float("-inf")
+        band = {
+            "samples": len(baseline_deltas),
+            "pooled_samples": pooled_baseline["samples"],
+            "method": "pooled",
+            "median": own_median,
+            "mad": pooled_mad,
+            "p10": pooled_baseline["p10"],
+            "p90": pooled_baseline["p90"],
+            "low": own_median - 3 * 1.4826 * pooled_mad,
+            "high": own_median + 3 * 1.4826 * pooled_mad,
+        }
+        stats[item] = {
+            "baseline": band,
+            "zscore": z,
+            "severity": _pooled_severity(z),
+            "reason": _pooled_reason(z, deltas[-1], pooled_baseline["samples"]),
+        }
+    return stats
+
+
+def _pooled_severity(z: float) -> str:
+    if abs(z) == float("inf") or abs(z) >= FLUCTUATION_Z_ABNORMAL:
+        return "abnormal"
+    if abs(z) >= FLUCTUATION_Z_WATCH:
+        return "watch"
+    return "normal"
+
+
+def _pooled_reason(z: float, delta: float, samples: int) -> str:
+    if abs(z) == float("inf"):
+        return "超出同层池化的全部历史波动"
+    direction = "高于" if delta >= 0 else "低于"
+    if abs(z) >= FLUCTUATION_Z_ABNORMAL:
+        return f"{direction}同层 {samples} 个分组样本的正常范围（z={z:.1f}）"
+    if abs(z) >= FLUCTUATION_Z_WATCH:
+        return f"接近同层池化的常见波动（z={z:.1f}）"
+    return f"在同层池化的正常波动范围内（z={z:.1f}）"
+
+
+def _dimension_factor_baselines(
+    df: pd.DataFrame,
+    date_col: str,
+    history: list[PeriodBucket],
+    config: DailyReportConfig,
+) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Pooled per-factor bands for the 波动 attribution rows.
+
+    Each factor gets its own median 环比, but the **scale** is pooled across
+    every factor in the same dimension: a segment that only appears in a
+    handful of buckets still gets a stable normal range.
+    """
+    metrics = _fluctuation_metrics(config)
+    dimensions = _fluctuation_dimensions(config)
+    if not history or not dimensions:
+        return {}
+    frames = [_bucket_subset(df, date_col, bucket) for bucket in reversed(history)]
+    base_columns = sorted(
+        {
+            column
+            for metric in metrics
+            for column in (metric.numerator, metric.denominator)
+            if column
+        }
+    )
+    base_columns = [column for column in base_columns if column in df.columns]
+    if not base_columns:
+        return {}
+
+    result: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for dimension_key, column, _label in dimensions:
+        if column not in df.columns:
+            continue
+        bucket_sums, items = _dimension_bucket_sums(frames, column, base_columns)
+        for metric in metrics:
+            deltas_by_item, pooled = _metric_deltas_by_factor(
+                bucket_sums, items, metric
+            )
+            if not deltas_by_item or not pooled:
+                continue
+            for item, stats in _factor_baseline_stats(deltas_by_item, pooled).items():
+                result[(metric.key, dimension_key, item)] = stats
+    return result
+
+
 def _build_fluctuations(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
     config: DailyReportConfig,
     baselines: dict[str, dict[str, Any]] | None = None,
+    factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """§1「关键指标波动」: the headline metrics worth explaining, each with the
     平台 / 媒体 / 主游戏 factors that moved it.
@@ -1942,15 +2159,7 @@ def _build_fluctuations(
     filter the display views apply: attribution has to add up to the total, and
     a game outside the Top-N is often exactly what moved it.
     """
-    dimensions = [
-        (key, column, label)
-        for key, column, label in (
-            ("platform", config.platform_column, "平台"),
-            ("media", config.ad_channel_column, "媒体"),
-            ("project", config.project_column, "主游戏"),
-        )
-        if column
-    ]
+    dimensions = _fluctuation_dimensions(config)
     if not dimensions:
         return []
     entries: list[dict[str, Any]] = []
@@ -1960,7 +2169,14 @@ def _build_fluctuations(
             and metric.numerator not in prev_df.columns
         ):
             continue
-        entry = _fluctuation_entry(current_df, prev_df, metric, dimensions, config)
+        entry = _fluctuation_entry(
+            current_df,
+            prev_df,
+            metric,
+            dimensions,
+            config,
+            factor_baselines=factor_baselines,
+        )
         if entry is not None:
             _attach_fluctuation_baseline(entry, (baselines or {}).get(metric.key))
             entries.append(entry)
@@ -2038,6 +2254,7 @@ def _build_report(
         prev_df,
         config,
         baselines=_fluctuation_baselines(daily, config),
+        factor_baselines=_dimension_factor_baselines(df, date_col, history, config),
     )
 
     alerts = _detect_alerts(core, config)

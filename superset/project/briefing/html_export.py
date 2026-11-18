@@ -338,6 +338,14 @@ details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
   display: flex; align-items: baseline; gap: 8px;
   padding: 2px 0; font-size: 12.5px;
 }
+.fluct-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  display: inline-block; flex: none; align-self: center;
+}
+.fluct-dot.abnormal { background: var(--bad); }
+.fluct-dot.watch { background: var(--warn); }
+.fluct-dot.normal { background: var(--good); }
+.fluct-dot.insufficient, .fluct-dot.new { background: var(--ink-3); }
 .fluct-factor .rank {
   flex: none; padding: 0 6px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent);
@@ -664,9 +672,17 @@ def _fluctuation_factor_html(
     else:
         improved = contribution >= 0 if tone == "higher" else contribution <= 0
         css = "delta-good" if improved else "delta-bad"
+    severity = str(item.get("severity") or "")
+    dot = (
+        f'<span class="fluct-dot {severity}" '
+        f'title="{_escape(_fluctuation_baseline_title(item))}"></span>'
+        if severity in FLUCTUATION_SEVERITY_LABELS
+        else ""
+    )
     return (
         '<div class="fluct-factor">'
         f'<span class="rank">{"主因" if rank_index == 0 else "次因"}</span>'
+        f"{dot}"
         f'<span class="name">{_escape(item.get("name"))}</span>'
         f'<span class="contrib {css}">'
         f"{_escape(_fluctuation_contribution(metric_key, contribution))}</span>"
