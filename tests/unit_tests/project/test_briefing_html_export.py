@@ -256,6 +256,19 @@ def _with_fluctuations() -> dict[str, Any]:
             "current": 0.155,
             "delta": 0.057,
             "delta_pct": 0.574,
+            "severity": "abnormal",
+            "zscore": 3.2,
+            "reason": "高于近 8 期正常范围（z=3.2）",
+            "baseline": {
+                "samples": 8,
+                "method": "robust",
+                "median": 0.10,
+                "mad": 0.02,
+                "p10": 0.02,
+                "p90": 0.17,
+                "low": 0.011,
+                "high": 0.189,
+            },
             "dimensions": [
                 {
                     "key": "platform",
@@ -312,6 +325,18 @@ def _with_fluctuations() -> dict[str, Any]:
             "current": 39.0,
             "delta": 6.7,
             "delta_pct": 0.208,
+            "severity": "insufficient",
+            "reason": "历史样本不足（3/6），暂按业务阈值判断",
+            "baseline": {
+                "samples": 3,
+                "method": "insufficient",
+                "median": None,
+                "mad": None,
+                "p10": None,
+                "p90": None,
+                "low": None,
+                "high": None,
+            },
             "dimensions": [],
         },
         {
@@ -323,6 +348,19 @@ def _with_fluctuations() -> dict[str, Any]:
             "current": 591567.48,
             "delta": 191567.48,
             "delta_pct": 0.479,
+            "severity": "normal",
+            "zscore": 0.4,
+            "reason": "在近 8 期正常波动范围内（z=0.4）",
+            "baseline": {
+                "samples": 8,
+                "method": "robust",
+                "median": 0.20,
+                "mad": 0.15,
+                "p10": -0.05,
+                "p90": 0.45,
+                "low": -0.47,
+                "high": 0.87,
+            },
             "dimensions": [],
         },
     ]
@@ -366,6 +404,12 @@ def test_export_carries_the_fluctuation_block() -> None:
     # A metric without factors is a plain row: no chevron, nothing to open.
     assert '<div class="fluct-row"><span class="metric">返点后消耗</span>' in page
     assert page.count('<details class="fluct-item">') == 1
+    # The historical-band verdict rides on the row as a chip.
+    assert '<span class="fluct-sev abnormal"' in page
+    assert ">异常</span>" in page
+    assert ">历史不足</span>" in page
+    assert ">正常</span>" in page
+    assert "近 8 期正常范围" in page
     # Colour follows the metric's own semantics: a ROI1 rise is good, a CPA
     # rise is bad, and 消耗 is neutral (grey) either way.
     assert 'class="delta-good">▲ 57.4%' in page

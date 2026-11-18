@@ -72,6 +72,11 @@ SCATTERED_PROJECT_LABELS: set[str] = {
 # 波动门槛：|环比| 低于该比例的核心指标不进入 §1「关键指标波动」小节。
 # 先设 10%（业务口径）；如需按报告调整，可提为配置项而不是改代码。
 FLUCTUATION_MIN_PCT = 0.10
+# 统计基线：用核心指标自身的历史环比分布判断“这次波动是否正常”。
+# 少于该期数只给「历史不足」，不硬套统计带；±3σ 为异常、±2σ 为关注。
+FLUCTUATION_MIN_HISTORY = 6
+FLUCTUATION_Z_ABNORMAL = 3.0
+FLUCTUATION_Z_WATCH = 2.0
 
 # 每个维度保留的因素数，其余并入「其他」一行，保证贡献仍可加总。
 FLUCTUATION_TOP_FACTORS = 8
@@ -1776,10 +1781,154 @@ def _fluctuation_entry(
     }
 
 
+def _delta_series(values: list[Any]) -> list[float]:
+    """Adjacent relative changes, skipping missing or zero bases."""
+    deltas: list[float] = []
+    for previous, current in zip(values, values[1:], strict=False):
+        if previous is None or current is None:
+            continue
+        previous = float(previous)
+        current = float(current)
+        if not previous:
+            continue
+        deltas.append((current - previous) / abs(previous))
+    return deltas
+
+
+def _robust_baseline(deltas: list[float]) -> dict[str, Any]:
+    """A robust normal band for a metric's historical 环比 moves.
+
+    Median ± 3·1.4826·MAD (a 3σ-equivalent band that resists one-off spikes);
+    when the history is perfectly flat the observed P10/P90 range is used
+    instead of dividing by a zero MAD.  Too few samples never produce a band —
+    the caller reports 「历史不足」 rather than a made-up threshold.
+    """
+    samples = len(deltas)
+    if samples < FLUCTUATION_MIN_HISTORY:
+        return {
+            "samples": samples,
+            "method": "insufficient",
+            "median": None,
+            "mad": None,
+            "p10": None,
+            "p90": None,
+            "low": None,
+            "high": None,
+        }
+    series = pd.Series(deltas, dtype="float64")
+    median = float(series.median())
+    mad = float((series - median).abs().median())
+    p10 = float(series.quantile(0.10))
+    p90 = float(series.quantile(0.90))
+    if mad > 0:
+        scale = 1.4826 * mad
+        low, high, method = median - 3 * scale, median + 3 * scale, "robust"
+    else:
+        low, high, method = p10, p90, "stable"
+    return {
+        "samples": samples,
+        "method": method,
+        "median": median,
+        "mad": mad,
+        "p10": p10,
+        "p90": p90,
+        "low": low,
+        "high": high,
+    }
+
+
+def _baseline_zscore(delta: float | None, baseline: dict[str, Any]) -> float | None:
+    """Robust z-score of this move against the baseline (0.6745·(x−med)/MAD)."""
+    if delta is None or baseline.get("method") == "insufficient":
+        return None
+    median = baseline.get("median")
+    mad = baseline.get("mad") or 0.0
+    if median is None:
+        return None
+    if mad > 0:
+        return 0.6745 * (delta - float(median)) / float(mad)
+    if baseline.get("method") == "stable":
+        if delta == float(median):
+            return 0.0
+        return float("inf") if delta > float(median) else float("-inf")
+    return None
+
+
+def _attach_fluctuation_baseline(
+    entry: dict[str, Any], baseline: dict[str, Any] | None
+) -> None:
+    """Stamp a fluctuation with its historical band, z-score and severity.
+
+    Severity combines the existing business gate (the entry only exists when
+    |环比| ≥ 10%) with the statistical band: ``abnormal`` outside ±3σ,
+    ``watch`` outside ±2σ, ``normal`` inside, ``insufficient`` when the
+    configured history cannot support a band.
+    """
+    baseline = baseline or {
+        "samples": 0,
+        "method": "insufficient",
+        "median": None,
+        "mad": None,
+        "p10": None,
+        "p90": None,
+        "low": None,
+        "high": None,
+    }
+    entry["baseline"] = baseline
+    if entry.get("new"):
+        entry["zscore"] = None
+        entry["severity"] = "new"
+        entry["reason"] = "新增指标，无可比的上一期"
+        return
+    delta = entry.get("delta_pct")
+    z = _baseline_zscore(delta, baseline)
+    entry["zscore"] = z
+    samples = baseline.get("samples") or 0
+    if baseline.get("method") == "insufficient" or z is None:
+        entry["severity"] = "insufficient"
+        entry["reason"] = (
+            f"历史样本不足（{samples}/{FLUCTUATION_MIN_HISTORY}），暂按业务阈值判断"
+        )
+        return
+    direction = "高于" if (delta or 0) >= 0 else "低于"
+    if abs(z) == float("inf"):
+        entry["severity"] = "abnormal"
+        entry["reason"] = f"{direction}近 {samples} 期的全部历史波动"
+    elif abs(z) >= FLUCTUATION_Z_ABNORMAL:
+        entry["severity"] = "abnormal"
+        entry["reason"] = f"{direction}近 {samples} 期正常范围（z={z:.1f}）"
+    elif abs(z) >= FLUCTUATION_Z_WATCH:
+        entry["severity"] = "watch"
+        entry["reason"] = f"{direction}近 {samples} 期常见波动（z={z:.1f}）"
+    else:
+        entry["severity"] = "normal"
+        entry["reason"] = f"在近 {samples} 期正常波动范围内（z={z:.1f}）"
+
+
+def _fluctuation_baselines(
+    daily: list[dict[str, Any]], config: DailyReportConfig
+) -> dict[str, dict[str, Any]]:
+    """Per-metric historical bands from the bucket series in ``daily``.
+
+    ``daily`` is newest-first; the last delta (current vs previous) is the move
+    being judged, so it is excluded from its own baseline.
+    """
+    ordered = list(reversed(daily))
+    baselines: dict[str, dict[str, Any]] = {}
+    for metric in _fluctuation_metrics(config):
+        values = [row.get(metric.key) for row in ordered]
+        deltas = _delta_series(values)
+        if deltas:
+            deltas = deltas[:-1]
+        baselines[metric.key] = _robust_baseline(deltas)
+    return baselines
+
+
 def _build_fluctuations(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
     config: DailyReportConfig,
+    baselines: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """§1「关键指标波动」: the headline metrics worth explaining, each with the
     平台 / 媒体 / 主游戏 factors that moved it.
@@ -1813,6 +1962,7 @@ def _build_fluctuations(
             continue
         entry = _fluctuation_entry(current_df, prev_df, metric, dimensions, config)
         if entry is not None:
+            _attach_fluctuation_baseline(entry, (baselines or {}).get(metric.key))
             entries.append(entry)
     # Biggest relative move first; a 新增 (no percentage) leads the list.
     entries.sort(
@@ -1883,7 +2033,12 @@ def _build_report(
     media_platforms = _build_media_platform_rows(current_df, prev_df, config, media)
     platforms = _build_platform_rows(current_df, prev_df, config)
 
-    fluctuations = _build_fluctuations(current_df, prev_df, config)
+    fluctuations = _build_fluctuations(
+        current_df,
+        prev_df,
+        config,
+        baselines=_fluctuation_baselines(daily, config),
+    )
 
     alerts = _detect_alerts(core, config)
 
@@ -1917,6 +2072,9 @@ def _build_report(
             "default_breakeven_line": config.default_breakeven_line,
             # §1「关键指标波动」的入选门槛，让前端文案与后端判定保持一致。
             "fluctuation_min_pct": FLUCTUATION_MIN_PCT,
+            "fluctuation_z": FLUCTUATION_Z_ABNORMAL,
+            "fluctuation_watch_z": FLUCTUATION_Z_WATCH,
+            "fluctuation_min_history": FLUCTUATION_MIN_HISTORY,
         },
         "empty": False,
     }
@@ -2429,6 +2587,10 @@ def run_briefing(
             "roi_critical_line": config.roi_critical_line,
             "roi_warning_line": config.roi_warning_line,
             "default_breakeven_line": config.default_breakeven_line,
+            "fluctuation_min_pct": FLUCTUATION_MIN_PCT,
+            "fluctuation_z": FLUCTUATION_Z_ABNORMAL,
+            "fluctuation_watch_z": FLUCTUATION_Z_WATCH,
+            "fluctuation_min_history": FLUCTUATION_MIN_HISTORY,
         }
         return payload
 

@@ -462,6 +462,25 @@ interface FluctuationDimension {
 }
 
 /** A headline metric whose 环比 move is material, with its factor columns. */
+type FluctuationSeverity =
+  | "abnormal"
+  | "watch"
+  | "normal"
+  | "insufficient"
+  | "new";
+
+/** Robust historical band behind a fluctuation's severity label. */
+interface FluctuationBaseline {
+  samples: number;
+  method: "robust" | "stable" | "insufficient";
+  median: number | null;
+  mad: number | null;
+  p10: number | null;
+  p90: number | null;
+  low: number | null;
+  high: number | null;
+}
+
 interface FluctuationMetric {
   key: string;
   label: string;
@@ -473,6 +492,11 @@ interface FluctuationMetric {
   delta_pct: number | null;
   new: boolean;
   dimensions: FluctuationDimension[];
+  /** Statistical verdict against the metric's own 环比 history. */
+  severity?: FluctuationSeverity;
+  zscore?: number | null;
+  reason?: string;
+  baseline?: FluctuationBaseline | null;
 }
 
 interface JobLog {
@@ -1587,6 +1611,66 @@ function FluctuationDimensionColumn({
   );
 }
 
+/** Severity chip colours: red/orange/green/grey, matching the alerts. */
+const FLUCTUATION_SEVERITY: Record<string, { label: string; color: string }> = {
+  abnormal: { label: "异常", color: BRIEFING_CSS_COLORS.statusError },
+  watch: { label: "关注", color: BRIEFING_CSS_COLORS.statusWarning },
+  normal: { label: "正常", color: BRIEFING_CSS_COLORS.statusSuccess },
+  insufficient: { label: "历史不足", color: BRIEFING_CSS_COLORS.textDisabled },
+  new: { label: "新增", color: BRIEFING_CSS_COLORS.textDisabled },
+};
+
+/** Tooltip copy: the reason plus the historical band the verdict came from. */
+function fluctuationBaselineTitle(metric: FluctuationMetric): string {
+  const baseline = metric.baseline;
+  const reason = metric.reason ?? "";
+  if (!baseline || baseline.method === "insufficient") {
+    return reason || "历史样本不足，暂按业务阈值判断";
+  }
+  const parts = [reason];
+  if (baseline.low !== null && baseline.high !== null) {
+    parts.push(
+      `近 ${baseline.samples} 期正常范围：${formatPercent(
+        baseline.low,
+      )} ~ ${formatPercent(baseline.high)}`,
+    );
+  }
+  if (baseline.median !== null) {
+    parts.push(`中位环比：${formatPercent(baseline.median)}`);
+  }
+  return parts.filter(Boolean).join("；");
+}
+
+function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
+  const severity = metric.severity;
+  if (!severity) return null;
+  const meta = FLUCTUATION_SEVERITY[severity];
+  if (!meta) return null;
+  return (
+    <Tooltip title={fluctuationBaselineTitle(metric)} describeChild>
+      <Box
+        component="span"
+        sx={{
+          flexShrink: 0,
+          px: 0.6,
+          py: "1px",
+          borderRadius: 0.5,
+          border: "1px solid",
+          borderColor: meta.color,
+          color: meta.color,
+          fontSize: "0.6875rem",
+          fontWeight: 600,
+          lineHeight: 1.5,
+          whiteSpace: "nowrap",
+          cursor: "help",
+        }}
+      >
+        {meta.label}
+      </Box>
+    </Tooltip>
+  );
+}
+
 /**
  * §1「关键指标波动」: the headline metrics whose 环比 move is material, each
  * opening into the 平台 / 媒体 / 主游戏 factors behind it.
@@ -1623,7 +1707,8 @@ function FluctuationList({
         <Typography variant="subtitle1">关键指标波动</Typography>
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
           环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
-          对比期 → 本期 ；点击查看平台 / 媒体 / 主游戏的主次因素
+          对比期 → 本期 ；标签（异常 / 关注 / 正常 / 历史不足）按历史环比自动判定；
+          点击查看平台 / 媒体 / 主游戏的主次因素
         </Typography>
       </Box>
       {rows.map((metric) => {
@@ -1712,24 +1797,35 @@ function FluctuationList({
                   />
                 )}
               </Box>
-              <Typography
-                variant="caption"
-                title={
-                  primary
-                    ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
-                    : undefined
-                }
+              <Box
                 sx={{
-                  color: TEXT_MUTED,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.75,
+                  minWidth: 0,
                 }}
               >
-                {primary
-                  ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
-                  : ""}
-              </Typography>
+                <FluctuationSeverityChip metric={metric} />
+                <Typography
+                  variant="caption"
+                  title={
+                    primary
+                      ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
+                      : undefined
+                  }
+                  sx={{
+                    color: TEXT_MUTED,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  {primary
+                    ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
+                    : ""}
+                </Typography>
+              </Box>
               {open ? (
                 <ExpandLessIcon sx={{ fontSize: 18, color: TEXT_MUTED }} />
               ) : (

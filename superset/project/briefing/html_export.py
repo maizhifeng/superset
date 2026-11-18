@@ -313,6 +313,17 @@ details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
 }
 .fluct-row .arrow { color: var(--ink-3); text-align: center; }
 .fluct-row .cur { font-weight: 600; white-space: nowrap; }
+
+/* ---- fluctuation severity (异常 / 关注 / 正常 / 历史不足) ---- */
+.fluct-sev {
+  display: inline-block; margin-right: 6px; padding: 0 5px;
+  border: 1px solid; border-radius: 4px;
+  font-size: 11px; font-weight: 600; line-height: 1.5;
+}
+.fluct-sev.abnormal { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+.fluct-sev.watch { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.fluct-sev.normal { color: var(--good); border-color: var(--good); background: var(--good-soft); }
+.fluct-sev.insufficient, .fluct-sev.new { color: var(--ink-3); border-color: var(--line); background: var(--line-soft); }
 .fluct-row .primary {
   color: var(--ink-3); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
@@ -692,6 +703,34 @@ def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
     return f'<div class="fluct-dims">{"".join(columns)}</div>'
 
 
+FLUCTUATION_SEVERITY_LABELS = {
+    "abnormal": "异常",
+    "watch": "关注",
+    "normal": "正常",
+    "insufficient": "历史不足",
+    "new": "新增",
+}
+
+
+def _fluctuation_baseline_title(metric: dict[str, Any]) -> str:
+    """Tooltip copy: the verdict's reason plus the historical band behind it."""
+    reason = str(metric.get("reason") or "")
+    baseline = metric.get("baseline") or {}
+    if not baseline or baseline.get("method") == "insufficient":
+        return reason or "历史样本不足，暂按业务阈值判断"
+    parts = [reason] if reason else []
+    low, high = baseline.get("low"), baseline.get("high")
+    if low is not None and high is not None:
+        parts.append(
+            f"近 {baseline.get('samples')} 期正常范围："
+            f"{format_roi(low)} ~ {format_roi(high)}"
+        )
+    median = baseline.get("median")
+    if median is not None:
+        parts.append(f"中位环比：{format_roi(median)}")
+    return "；".join(part for part in parts if part)
+
+
 def _fluctuation_html(result: dict[str, Any]) -> str:
     """§1「关键指标波动」: the material moves and the factors behind them.
 
@@ -714,6 +753,15 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
     for metric in metrics:
         key = str(metric.get("key") or "")
         label = str(metric.get("label") or key)
+        severity = str(metric.get("severity") or "")
+        severity_label = FLUCTUATION_SEVERITY_LABELS.get(severity, "")
+        severity_html = (
+            f'<span class="fluct-sev {severity}" '
+            f'title="{_escape(_fluctuation_baseline_title(metric))}">'
+            f"{severity_label}</span>"
+            if severity_label
+            else ""
+        )
         cells = (
             f'<span class="metric">{_escape(label)}</span>'
             '<span class="values">'
@@ -724,7 +772,8 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
             f"{_escape(_fluctuation_value(key, metric.get('current')))}</span>"
             "</span>"
             f'<span class="delta-cell">{_fluctuation_delta_html(metric)}</span>'
-            f'<span class="primary">{_escape(_fluctuation_primary(metric))}</span>'
+            f'<span class="primary">{severity_html}'
+            f"{_escape(_fluctuation_primary(metric))}</span>"
         )
         detail = _fluctuation_detail_html(metric)
         # A metric without factors stays a plain row: no chevron, nothing to
@@ -745,6 +794,7 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         "<h3>关键指标波动</h3>"
         '<p class="caption">'
         f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
+        "标签（异常 / 关注 / 正常 / 历史不足）按历史环比自动判定；"
         "展开可查看平台 / 媒体 / 主游戏的主次因素"
         "</p></div>"
         f"{''.join(items)}"

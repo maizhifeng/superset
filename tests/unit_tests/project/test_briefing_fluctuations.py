@@ -320,3 +320,92 @@ def test_decomposition_is_deterministic() -> None:
     second = _build_fluctuations(_frame(RATIO_CUR), _frame(RATIO_PREV), _config())
 
     assert first == second
+
+
+# ---- 历史基线（核心指标自动异常检测） ------------------------------------- #
+
+
+def test_robust_baseline_uses_median_and_mad() -> None:
+    from superset.project.briefing.service import _robust_baseline
+
+    baseline = _robust_baseline([0.01, 0.02, 0.03, 0.04, 0.05, 0.06])
+
+    assert baseline["method"] == "robust"
+    assert baseline["samples"] == 6
+    assert baseline["median"] == pytest.approx(0.035)
+    assert baseline["mad"] == pytest.approx(0.015)
+    assert baseline["low"] == pytest.approx(0.035 - 3 * 1.4826 * 0.015)
+    assert baseline["high"] == pytest.approx(0.035 + 3 * 1.4826 * 0.015)
+
+
+def test_robust_baseline_needs_enough_history() -> None:
+    from superset.project.briefing.service import _robust_baseline
+
+    baseline = _robust_baseline([0.01, 0.02])
+
+    assert baseline["method"] == "insufficient"
+    assert baseline["samples"] == 2
+    assert baseline["low"] is None
+    assert baseline["high"] is None
+
+
+def test_fluctuation_baselines_exclude_the_judged_move() -> None:
+    from superset.project.briefing.service import _fluctuation_baselines
+
+    # Newest first: the current bucket leads, then seven older ones.
+    daily = [{"spend": value} for value in (100, 105, 110, 120, 130, 140, 150, 160)]
+
+    baseline = _fluctuation_baselines(daily, _config())["spend"]
+
+    # 8 buckets -> 7 adjacent deltas; the newest one is the move under test.
+    assert baseline["samples"] == 6
+    assert baseline["method"] == "robust"
+
+
+def test_severity_combines_business_and_statistical_gates() -> None:
+    from superset.project.briefing.service import _attach_fluctuation_baseline
+
+    baseline = {
+        "samples": 6,
+        "method": "robust",
+        "median": 0.0,
+        "mad": 0.01,
+        "p10": -0.01,
+        "p90": 0.01,
+        "low": -0.044,
+        "high": 0.044,
+    }
+    entry = {"key": "spend", "delta_pct": 0.20, "new": False}
+    _attach_fluctuation_baseline(entry, baseline)
+    assert entry["severity"] == "abnormal"
+    assert entry["zscore"] == pytest.approx(0.6745 * 0.20 / 0.01)
+    assert "高于" in entry["reason"]
+
+    watch = {"key": "spend", "delta_pct": 0.037, "new": False}
+    _attach_fluctuation_baseline(watch, baseline)
+    assert watch["severity"] == "watch"
+
+    normal = {"key": "spend", "delta_pct": 0.005, "new": False}
+    _attach_fluctuation_baseline(normal, baseline)
+    assert normal["severity"] == "normal"
+
+
+def test_severity_reports_insufficient_history() -> None:
+    from superset.project.briefing.service import _attach_fluctuation_baseline
+
+    entry = {"key": "spend", "delta_pct": 0.20, "new": False}
+    _attach_fluctuation_baseline(
+        entry,
+        {
+            "samples": 3,
+            "method": "insufficient",
+            "median": None,
+            "mad": None,
+            "p10": None,
+            "p90": None,
+            "low": None,
+            "high": None,
+        },
+    )
+    assert entry["severity"] == "insufficient"
+    assert "历史样本不足（3/6）" in entry["reason"]
