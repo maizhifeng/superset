@@ -2939,7 +2939,9 @@ function TrendChart({
     const adRois = ordered.map((r) => r.ad_roi);
     const users = ordered.map((r) => r.new_users);
     return {
-      grid: { left: 168, right: 108, top: 48, bottom: 28 },
+      // Weekly labels read "MM-DD ~ MM-DD"; tilted 45° they need more room
+      // below the plot or the last characters get clipped.
+      grid: { left: 168, right: 108, top: 48, bottom: weekly ? 56 : 28 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -2971,11 +2973,12 @@ function TrendChart({
         axisLabel: {
           color: colors.axisLabel,
           fontSize: 12,
-          // Long histories crowd the axis; let ECharts thin labels out and
-          // tilt them once buckets get numerous.
-          interval: "auto",
-          rotate: dates.length > 8 ? 30 : 0,
-          hideOverlap: true,
+          // Week ranges are roughly twice as wide as a daily "MM-DD", so they
+          // are always tilted and every bucket keeps its label; daily labels
+          // only tilt once the series gets long.
+          interval: weekly ? 0 : "auto",
+          rotate: weekly ? 45 : dates.length > 8 ? 30 : 0,
+          hideOverlap: !weekly,
         },
         axisLine: { lineStyle: { color: colors.gridLine } },
       },
@@ -3072,7 +3075,7 @@ function TrendChart({
         },
       ],
     };
-  }, [ordered, onSelect, colors]);
+  }, [ordered, onSelect, colors, weekly]);
 
   return (
     // The padding lives on an inner box so ``footer`` can run full-bleed to the

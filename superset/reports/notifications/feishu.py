@@ -858,7 +858,17 @@ def build_trend_chart(
                 ),
             ],
             "axes": [
-                {"orient": "bottom", "type": "band", "label": CATEGORY_LABEL},
+                {
+                    "orient": "bottom",
+                    "type": "band",
+                    # Weekly x labels are "MM-DD ~ MM-DD"; let VChart tilt them
+                    # instead of truncating, and keep every label.
+                    "label": {
+                        **CATEGORY_LABEL,
+                        "autoRotate": True,
+                        "autoRotateAngle": [45],
+                    },
+                },
                 {
                     "orient": "left",
                     "seriesId": ["amount"],
