@@ -457,6 +457,7 @@ interface FluctuationFactor {
   zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
+  events?: { project: string; date: string; kind: string }[];
 }
 
 /** One dimension's ranked factors for a metric. */
@@ -1891,7 +1892,13 @@ function FluctuationList({
                   因素判级
                 </Typography>
                 {(
-                  ["abnormal", "watch", "normal", "insufficient"] as const
+                  [
+                    "abnormal",
+                    "watch",
+                    "normal",
+                    "insufficient",
+                    "event",
+                  ] as const
                 ).map((severity) => (
                   <Box
                     key={severity}

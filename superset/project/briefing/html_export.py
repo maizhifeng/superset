@@ -735,6 +735,8 @@ def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
         '<span class="fluct-dot normal"></span>正常</span>'
         '<span class="fluct-legend-item">'
         '<span class="fluct-dot insufficient"></span>历史不足</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot event"></span>事件</span>'
         "</div>"
     )
     return f'{legend}<div class="fluct-dims">{"".join(columns)}</div>'

@@ -1705,6 +1705,7 @@ def _dimension_block(
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
     metric_key: str = "",
     dimension_key: str = "",
+    period_events: list[ProjectEvent] | None = None,
 ) -> list[dict[str, Any]] | None:
     """One dimension's ranked factor list for a metric (None when empty)."""
     if column not in current_df.columns and column not in prev_df.columns:
@@ -1733,7 +1734,13 @@ def _dimension_block(
         delta,
         ratio=metric.kind == "ratio",
     )
-    return _annotate_factors(factors, factor_baselines, metric_key, dimension_key)
+    return _annotate_factors(
+        factors,
+        factor_baselines,
+        metric_key,
+        dimension_key,
+        period_events=period_events,
+    )
 
 
 def _annotate_factors(
@@ -1741,19 +1748,43 @@ def _annotate_factors(
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None,
     metric_key: str,
     dimension_key: str,
+    *,
+    period_events: list[ProjectEvent] | None = None,
 ) -> list[dict[str, Any]]:
-    """Rank the factors and attach their pooled baseline verdicts."""
+    """Rank the factors and attach their pooled baseline verdicts.
+
+    A 主游戏 factor whose project launched/tested in the reported window is
+    marked as an event (「上线」) instead of being judged normal/abnormal: its
+    move is planned and should read the same way as the core metric's chip.
+    """
     for rank, factor in enumerate(factors):
         if rank == 0:
             factor["rank"] = "primary"
         elif rank <= 2:
             factor["rank"] = "secondary"
-        if factor["name"] == "其他" or not factor_baselines:
+        if factor["name"] == "其他":
             continue
-        if stats := factor_baselines.get(
-            (metric_key, dimension_key, str(factor["name"]))
-        ):
-            factor.update(stats)
+        if factor_baselines:
+            if stats := factor_baselines.get(
+                (metric_key, dimension_key, str(factor["name"]))
+            ):
+                factor.update(stats)
+        if dimension_key != "project" or not period_events:
+            continue
+        matched = [
+            event for event in period_events if event.project == str(factor["name"])
+        ]
+        if matched:
+            factor["severity"] = "event"
+            factor["events"] = [
+                {
+                    "project": event.project,
+                    "date": event.date.isoformat(),
+                    "kind": event.kind,
+                }
+                for event in matched
+            ]
+            factor["reason"] = f"事件：{describe_events(matched)}"
     return factors
 
 
@@ -1764,6 +1795,7 @@ def _fluctuation_entry(
     dimensions: list[tuple[str, str, str]],
     config: DailyReportConfig,
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    period_events: list[ProjectEvent] | None = None,
 ) -> dict[str, Any] | None:
     """One metric's entry, or None when it is not a material fluctuation."""
     if metric.kind == "additive":
@@ -1808,6 +1840,7 @@ def _fluctuation_entry(
             factor_baselines=factor_baselines,
             metric_key=metric.key,
             dimension_key=key,
+            period_events=period_events,
         )
         if block:
             blocks.append({"key": key, "label": label, "items": block})
@@ -2288,6 +2321,7 @@ def _build_fluctuations(
             dimensions,
             config,
             factor_baselines=factor_baselines,
+            period_events=period_events,
         )
         if entry is not None:
             _attach_fluctuation_baseline(

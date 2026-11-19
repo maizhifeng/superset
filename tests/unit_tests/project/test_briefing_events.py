@@ -145,3 +145,24 @@ def test_event_buckets_are_excluded_from_the_baseline() -> None:
     assert with_event["samples"] == 6
     assert with_event["includes_events"] is True
     assert with_event["event_samples"] == 2
+
+
+def test_project_factor_inherits_the_event_verdict() -> None:
+    from superset.project.briefing.service import _annotate_factors
+
+    factors: list[dict[str, Any]] = [
+        {"name": "策定九州韩国", "contribution": 1_767_511.1}
+    ]
+    _annotate_factors(
+        factors,
+        None,
+        "recharge",
+        "project",
+        period_events=[ProjectEvent("策定九州韩国", date(2026, 11, 11), "上线")],
+    )
+
+    assert factors[0]["severity"] == "event"
+    assert factors[0]["reason"] == "事件：策定九州韩国 上线 2026-11-11"
+    assert factors[0]["events"] == [
+        {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
+    ]
