@@ -324,7 +324,6 @@ details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
 .fluct-sev.watch { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
 .fluct-sev.normal { color: var(--good); border-color: var(--good); background: var(--good-soft); }
 .fluct-sev.insufficient, .fluct-sev.new { color: var(--ink-3); border-color: var(--line); background: var(--line-soft); }
-.fluct-sev.event { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 .fluct-row .primary {
   color: var(--ink-3); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
@@ -353,7 +352,6 @@ details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
 .fluct-dot.watch { background: var(--warn); }
 .fluct-dot.normal { background: var(--good); }
 .fluct-dot.insufficient, .fluct-dot.new { background: var(--ink-3); }
-.fluct-dot.event { background: var(--accent); }
 .fluct-factor .rank {
   flex: none; padding: 0 6px; border-radius: 4px;
   background: var(--accent-soft); color: var(--accent);
@@ -731,24 +729,12 @@ FLUCTUATION_SEVERITY_LABELS = {
     "abnormal": "异常",
     "watch": "关注",
     "normal": "正常",
-    "insufficient": "历史不足",
-    "new": "新增",
-    "event": "计划内",
 }
 
 
 def _fluctuation_severity_label(metric: dict[str, Any]) -> str:
-    """Event verdicts read as the event itself (上线 / 首测 …)."""
-    severity = str(metric.get("severity") or "")
-    if severity == "event":
-        kinds: list[str] = []
-        for event in metric.get("events") or []:
-            kind = str(event.get("kind") or "")
-            if kind and kind not in kinds:
-                kinds.append(kind)
-        if kinds:
-            return kinds[0] if len(kinds) == 1 else f"{kinds[0]}等{len(kinds)}项"
-    return FLUCTUATION_SEVERITY_LABELS.get(severity, "")
+    """Only the three statistical verdicts are surfaced."""
+    return FLUCTUATION_SEVERITY_LABELS.get(str(metric.get("severity") or ""), "")
 
 
 def _fluctuation_baseline_title(metric: dict[str, Any]) -> str:
@@ -819,8 +805,7 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         "<h3>关键指标波动</h3>"
         '<p class="caption">'
         f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
-        "标签为判级（异常 / 关注 / 正常）或事件名（上线 / 首测 / 二测 / 三测），"
-        "历史不足单独标注；"
+        "标签为判级（异常 / 关注 / 正常），历史数据不足时不显示标签；"
         "展开可查看平台 / 媒体 / 主游戏的主次因素"
         "</p>"
         '<div class="fluct-legend">'
@@ -831,10 +816,6 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         '<span class="fluct-dot watch"></span>关注</span>'
         '<span class="fluct-legend-item">'
         '<span class="fluct-dot normal"></span>正常</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot insufficient"></span>历史不足</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot event"></span>事件</span>'
         "</div></div>"
         f"{''.join(items)}"
         "</div>"

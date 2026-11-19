@@ -407,7 +407,7 @@ def test_severity_reports_insufficient_history() -> None:
             "high": None,
         },
     )
-    assert entry["severity"] == "insufficient"
+    assert entry["severity"] is None
     assert "历史数据不足" in entry["reason"]
     assert "10% 业务阈值" in entry["reason"]
 

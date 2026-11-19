@@ -377,34 +377,6 @@ def _with_fluctuations() -> dict[str, Any]:
             },
             "dimensions": [],
         },
-        {
-            "key": "new_users",
-            "label": "新增进入",
-            "kind": "additive",
-            "new": False,
-            "previous": 232756,
-            "current": 349759,
-            "delta": 117003,
-            "delta_pct": 0.5027,
-            "severity": "event",
-            "reason": "事件：策定九州韩国 上线 2026-11-11",
-            "events": [
-                {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
-            ],
-            "baseline": {
-                "samples": 6,
-                "method": "robust",
-                "median": 0.05,
-                "mad": 0.08,
-                "p10": -0.1,
-                "p90": 0.2,
-                "low": -0.3,
-                "high": 0.4,
-                "includes_events": True,
-                "event_samples": 2,
-            },
-            "dimensions": [],
-        },
     ]
     return result
 
@@ -451,15 +423,10 @@ def test_export_carries_the_fluctuation_block() -> None:
     # The historical-band verdict rides on the row as a chip.
     assert '<span class="fluct-sev abnormal"' in page
     assert ">异常</span>" in page
-    assert ">历史不足</span>" in page
     assert ">正常</span>" in page
     assert "明显高于过去 8 期的正常波动" in page
     assert "中位环比" not in page
     assert "z=" not in page
-    # Launch/test weeks are marked as planned instead of abnormal.
-    assert '<span class="fluct-sev event"' in page
-    assert ">上线</span>" in page
-    assert "策定九州韩国 上线 2026-11-11" in page
     # Factor rows carry their own pooled verdict as a coloured dot.
     assert '<span class="fluct-dot abnormal"' in page
     assert "明显高于同类项目的历史波动" in page

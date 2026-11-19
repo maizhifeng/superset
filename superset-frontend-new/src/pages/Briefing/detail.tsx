@@ -457,12 +457,6 @@ interface FluctuationFactor {
   zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
-  events?: {
-    project: string;
-    date: string;
-    kind: string;
-    channel?: string;
-  }[];
 }
 
 /** One dimension's ranked factors for a metric. */
@@ -473,13 +467,7 @@ interface FluctuationDimension {
 }
 
 /** A headline metric whose 环比 move is material, with its factor columns. */
-type FluctuationSeverity =
-  | "abnormal"
-  | "watch"
-  | "normal"
-  | "insufficient"
-  | "new"
-  | "event";
+type FluctuationSeverity = "abnormal" | "watch" | "normal";
 
 /** Robust historical band behind a fluctuation's severity label. */
 interface FluctuationBaseline {
@@ -511,13 +499,6 @@ interface FluctuationMetric {
   zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
-  /** Launch/test events that explain a "event" verdict. */
-  events?: {
-    project: string;
-    date: string;
-    kind: string;
-    channel?: string;
-  }[];
 }
 
 interface JobLog {
@@ -1653,22 +1634,7 @@ const FLUCTUATION_SEVERITY: Record<string, { label: string; color: string }> = {
   abnormal: { label: "异常", color: BRIEFING_CSS_COLORS.statusError },
   watch: { label: "关注", color: BRIEFING_CSS_COLORS.statusWarning },
   normal: { label: "正常", color: BRIEFING_CSS_COLORS.statusSuccess },
-  insufficient: { label: "历史不足", color: BRIEFING_CSS_COLORS.textDisabled },
-  new: { label: "新增", color: BRIEFING_CSS_COLORS.textDisabled },
-  event: { label: "事件", color: BRIEFING_CSS_COLORS.statusInfo },
 };
-
-/** Event verdicts read as the event itself (上线 / 首测 / 二测 …). */
-function fluctuationSeverityLabel(metric: FluctuationMetric): string {
-  const severity = metric.severity;
-  if (!severity) return "";
-  if (severity === "event") {
-    const kinds = [...new Set((metric.events ?? []).map((event) => event.kind))];
-    if (kinds.length === 0) return FLUCTUATION_SEVERITY.event.label;
-    return kinds.length === 1 ? kinds[0] : `${kinds[0]}等${kinds.length}项`;
-  }
-  return FLUCTUATION_SEVERITY[severity]?.label ?? "";
-}
 
 /** Tooltip copy: one plain-language sentence, no statistics jargon. */
 function fluctuationBaselineTitle(metric: FluctuationMetric): string {
@@ -1709,7 +1675,7 @@ function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
           cursor: "help",
         }}
       >
-        {fluctuationSeverityLabel(metric)}
+        {FLUCTUATION_SEVERITY[severity]?.label}
       </Box>
     </Tooltip>
   );
@@ -1731,7 +1697,7 @@ function FluctuationLegend() {
         因素判级
       </Typography>
       {(
-        ["abnormal", "watch", "normal", "insufficient", "event"] as const
+        ["abnormal", "watch", "normal"] as const
       ).map((severity) => (
         <Box
           key={severity}
@@ -1790,8 +1756,7 @@ function FluctuationList({
         <Typography variant="subtitle1">关键指标波动</Typography>
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
           环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
-          对比期 → 本期 ；标签为判级（异常 / 关注 / 正常）或事件名（上线 / 首测 / 二测 / 三测），
-          历史不足单独标注；
+          对比期 → 本期 ；标签为判级（异常 / 关注 / 正常），历史数据不足时不显示标签；
           点击查看平台 / 媒体 / 主游戏的主次因素
         </Typography>
         <FluctuationLegend />
