@@ -2941,7 +2941,7 @@ function TrendChart({
     return {
       // Weekly labels read "MM-DD ~ MM-DD"; tilted 45° they need more room
       // below the plot or the last characters get clipped.
-      grid: { left: 168, right: 108, top: 48, bottom: weekly ? 56 : 28 },
+      grid: { left: 168, right: 108, top: 48, bottom: weekly ? 120 : 28 },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -2977,7 +2977,7 @@ function TrendChart({
           // are always tilted and every bucket keeps its label; daily labels
           // only tilt once the series gets long.
           interval: weekly ? 0 : "auto",
-          rotate: weekly ? 45 : dates.length > 8 ? 30 : 0,
+          rotate: weekly ? 55 : dates.length > 8 ? 30 : 0,
           hideOverlap: !weekly,
         },
         axisLine: { lineStyle: { color: colors.gridLine } },
@@ -3103,7 +3103,7 @@ function TrendChart({
         </Box>
         <EChart
           option={option}
-          height={360}
+          height={weekly ? 440 : 360}
           onEvents={onEvents}
           ariaLabel={`${title}：按时间对比返点后消耗、充值流水、新增进入、ROI1 与 广告ROI，点击柱可下钻查看${weekly ? "当周" : "当天"}的分游戏明细`}
         />

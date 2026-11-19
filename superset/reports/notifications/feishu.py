@@ -865,8 +865,18 @@ def build_trend_chart(
                     # instead of truncating, and keep every label.
                     "label": {
                         **CATEGORY_LABEL,
-                        "autoRotate": True,
-                        "autoRotateAngle": [45],
+                        # Rotate through the text style instead of autoRotate:
+                        # the auto path samples labels (every other week) once
+                        # the axis gets tight, which hides half the ranges.
+                        "autoRotate": False,
+                        "autoHide": False,
+                        "autoLimit": False,
+                        "style": {
+                            **CATEGORY_LABEL["style"],
+                            "angle": -45,
+                            "textAlign": "right",
+                            "textBaseline": "middle",
+                        },
                     },
                 },
                 {
