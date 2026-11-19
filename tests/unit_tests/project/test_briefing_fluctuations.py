@@ -408,7 +408,8 @@ def test_severity_reports_insufficient_history() -> None:
         },
     )
     assert entry["severity"] == "insufficient"
-    assert "历史样本不足（3/6）" in entry["reason"]
+    assert "历史数据不足" in entry["reason"]
+    assert "10% 业务阈值" in entry["reason"]
 
 
 def test_dimension_factor_baselines_pool_scale_across_factors() -> None:

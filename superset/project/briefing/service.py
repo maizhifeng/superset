@@ -1965,22 +1965,22 @@ def _attach_fluctuation_baseline(
         else:
             entry["severity"] = "insufficient"
             entry["reason"] = (
-                f"历史样本不足（{samples}/{FLUCTUATION_MIN_HISTORY}），暂按业务阈值判断"
+                f"历史数据不足，暂按 {FLUCTUATION_MIN_PCT * 100:.0f}% 业务阈值判断"
             )
         return
     direction = "高于" if (delta or 0) >= 0 else "低于"
     if abs(z) == float("inf"):
         entry["severity"] = "abnormal"
-        entry["reason"] = f"{direction}近 {samples} 期的全部历史波动"
+        entry["reason"] = f"{direction}过去全部历史波动范围"
     elif abs(z) >= FLUCTUATION_Z_ABNORMAL:
         entry["severity"] = "abnormal"
-        entry["reason"] = f"{direction}近 {samples} 期正常范围（z={z:.1f}）"
+        entry["reason"] = f"明显{direction}过去 {samples} 期的正常波动"
     elif abs(z) >= FLUCTUATION_Z_WATCH:
         entry["severity"] = "watch"
-        entry["reason"] = f"{direction}近 {samples} 期常见波动（z={z:.1f}）"
+        entry["reason"] = f"{direction}过去 {samples} 期的常见波动"
     else:
         entry["severity"] = "normal"
-        entry["reason"] = f"在近 {samples} 期正常波动范围内（z={z:.1f}）"
+        entry["reason"] = f"处于过去 {samples} 期的正常波动范围"
     if planned:
         _mark_planned(entry, period_events or [])
 
@@ -2075,9 +2075,16 @@ def _metric_deltas_by_factor(
     labels: list[str],
     event_labels: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, list[float]], list[float]]:
-    """Each factor's chronological 环比 list, plus the pooled baseline deltas."""
-    deltas_by_item: dict[str, list[float]] = {}
-    pooled: list[float] = []
+    """Each factor's 环比 list, plus the pooled baseline deltas.
+
+    Event-touching deltas are preferred out of the pool; when a small dimension
+    (e.g. 平台, three values) is left with too few, the full history is used so
+    the factor still gets a verdict — the same fallback as the core metrics.
+    """
+    all_by_item: dict[str, list[float]] = {}
+    plain_by_item: dict[str, list[float]] = {}
+    pooled_all: list[float] = []
+    pooled_plain: list[float] = []
     for item in items:
         values: list[float | None] = []
         for sums in bucket_sums:
@@ -2085,20 +2092,38 @@ def _metric_deltas_by_factor(
                 values.append(None)
                 continue
             values.append(_metric_value_from_sums(sums.loc[item], metric))
-        deltas: list[float] = []
+        all_deltas: list[float] = []
+        plain_deltas: list[float] = []
         for index in range(1, len(values)):
             previous, current = values[index - 1], values[index]
-            if labels[index - 1] in event_labels or labels[index] in event_labels:
+            is_event = (
+                labels[index - 1] in event_labels or labels[index] in event_labels
+            )
+            delta = (
+                (current - previous) / abs(previous)
+                if previous is not None and current is not None and previous
+                else None
+            )
+            if delta is None:
                 continue
-            if previous is None or current is None or not previous:
-                continue
-            deltas.append((current - previous) / abs(previous))
-        if not deltas:
+            all_deltas.append(delta)
+            if not is_event:
+                plain_deltas.append(delta)
+        if not all_deltas:
             continue
-        # The newest delta is the factor's move being judged.
-        deltas_by_item[item] = deltas
-        pooled.extend(deltas[:-1])
-    return deltas_by_item, pooled
+        all_by_item[item] = all_deltas
+        plain_by_item[item] = plain_deltas
+        pooled_all.extend(all_deltas[:-1])
+        pooled_plain.extend(plain_deltas[:-1])
+    if len(pooled_plain) >= FLUCTUATION_MIN_HISTORY:
+        return (
+            {item: deltas for item, deltas in plain_by_item.items() if deltas},
+            pooled_plain,
+        )
+    return (
+        {item: deltas for item, deltas in all_by_item.items() if deltas},
+        pooled_all,
+    )
 
 
 def _metric_value_from_sums(row: Any, metric: _FluctuationMetric) -> float | None:
@@ -2166,15 +2191,16 @@ def _pooled_severity(z: float) -> str:
     return "normal"
 
 
-def _pooled_reason(z: float, delta: float, samples: int) -> str:
+def _pooled_reason(z: float, delta: float, _samples: int) -> str:
     if abs(z) == float("inf"):
-        return "超出同层池化的全部历史波动"
+        return "超出同类项目的全部历史波动"
     direction = "高于" if delta >= 0 else "低于"
     if abs(z) >= FLUCTUATION_Z_ABNORMAL:
-        return f"{direction}同层 {samples} 个分组样本的正常范围（z={z:.1f}）"
+        return f"明显{direction}同类项目的历史波动"
     if abs(z) >= FLUCTUATION_Z_WATCH:
-        return f"接近同层池化的常见波动（z={z:.1f}）"
-    return f"在同层池化的正常波动范围内（z={z:.1f}）"
+        edge = "上限" if delta >= 0 else "下限"
+        return f"接近同类项目的波动{edge}"
+    return "处于同类项目的正常波动范围"
 
 
 def _dimension_factor_baselines(

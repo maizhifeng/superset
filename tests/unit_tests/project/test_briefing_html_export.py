@@ -258,7 +258,7 @@ def _with_fluctuations() -> dict[str, Any]:
             "delta_pct": 0.574,
             "severity": "abnormal",
             "zscore": 3.2,
-            "reason": "高于近 8 期正常范围（z=3.2）",
+            "reason": "明显高于过去 8 期的正常波动",
             "baseline": {
                 "samples": 8,
                 "method": "robust",
@@ -283,7 +283,7 @@ def _with_fluctuations() -> dict[str, Any]:
                             "rank": "primary",
                             "severity": "abnormal",
                             "zscore": 2.4,
-                            "reason": "高于同层 8 个分组样本的正常范围（z=2.4）",
+                            "reason": "明显高于同类项目的历史波动",
                             "baseline": {
                                 "samples": 7,
                                 "pooled_samples": 8,
@@ -340,7 +340,7 @@ def _with_fluctuations() -> dict[str, Any]:
             "delta": 6.7,
             "delta_pct": 0.208,
             "severity": "insufficient",
-            "reason": "历史样本不足（3/6），暂按业务阈值判断",
+            "reason": "历史数据不足，暂按 10% 业务阈值判断",
             "baseline": {
                 "samples": 3,
                 "method": "insufficient",
@@ -364,7 +364,7 @@ def _with_fluctuations() -> dict[str, Any]:
             "delta_pct": 0.479,
             "severity": "normal",
             "zscore": 0.4,
-            "reason": "在近 8 期正常波动范围内（z=0.4）",
+            "reason": "处于过去 8 期的正常波动范围",
             "baseline": {
                 "samples": 8,
                 "method": "robust",
@@ -453,14 +453,16 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert ">异常</span>" in page
     assert ">历史不足</span>" in page
     assert ">正常</span>" in page
-    assert "近 8 期正常范围" in page
+    assert "明显高于过去 8 期的正常波动" in page
+    assert "中位环比" not in page
+    assert "z=" not in page
     # Launch/test weeks are marked as planned instead of abnormal.
     assert '<span class="fluct-sev event"' in page
     assert ">上线</span>" in page
     assert "策定九州韩国 上线 2026-11-11" in page
     # Factor rows carry their own pooled verdict as a coloured dot.
     assert '<span class="fluct-dot abnormal"' in page
-    assert "同层 8 个分组样本" in page
+    assert "明显高于同类项目的历史波动" in page
     # Colour follows the metric's own semantics: a ROI1 rise is good, a CPA
     # rise is bad, and 消耗 is neutral (grey) either way.
     assert 'class="delta-good">▲ 57.4%' in page

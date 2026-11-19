@@ -746,22 +746,8 @@ def _fluctuation_severity_label(metric: dict[str, Any]) -> str:
 
 
 def _fluctuation_baseline_title(metric: dict[str, Any]) -> str:
-    """Tooltip copy: the verdict's reason plus the historical band behind it."""
-    reason = str(metric.get("reason") or "")
-    baseline = metric.get("baseline") or {}
-    if not baseline or baseline.get("method") == "insufficient":
-        return reason or "历史样本不足，暂按业务阈值判断"
-    parts = [reason] if reason else []
-    low, high = baseline.get("low"), baseline.get("high")
-    if low is not None and high is not None:
-        parts.append(
-            f"近 {baseline.get('samples')} 期正常范围："
-            f"{format_roi(low)} ~ {format_roi(high)}"
-        )
-    median = baseline.get("median")
-    if median is not None:
-        parts.append(f"中位环比：{format_roi(median)}")
-    return "；".join(part for part in parts if part)
+    """Tooltip copy: one plain-language sentence, no statistics jargon."""
+    return str(metric.get("reason") or "")
 
 
 def _fluctuation_html(result: dict[str, Any]) -> str:

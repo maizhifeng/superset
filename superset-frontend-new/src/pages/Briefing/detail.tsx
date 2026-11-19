@@ -1659,44 +1659,14 @@ function fluctuationSeverityLabel(metric: FluctuationMetric): string {
   return FLUCTUATION_SEVERITY[severity]?.label ?? "";
 }
 
-/** Tooltip copy: the reason plus the historical band the verdict came from. */
+/** Tooltip copy: one plain-language sentence, no statistics jargon. */
 function fluctuationBaselineTitle(metric: FluctuationMetric): string {
-  const baseline = metric.baseline;
-  const reason = metric.reason ?? "";
-  if (!baseline || baseline.method === "insufficient") {
-    return reason || "历史样本不足，暂按业务阈值判断";
-  }
-  const parts = [reason];
-  if (baseline.low !== null && baseline.high !== null) {
-    parts.push(
-      `近 ${baseline.samples} 期正常范围：${formatPercent(
-        baseline.low,
-      )} ~ ${formatPercent(baseline.high)}`,
-    );
-  }
-  if (baseline.median !== null) {
-    parts.push(`中位环比：${formatPercent(baseline.median)}`);
-  }
-  return parts.filter(Boolean).join("；");
+  return metric.reason ?? "";
 }
 
-/** Tooltip for a factor's pooled verdict (same shape as the metric chip). */
+/** Tooltip for a factor's pooled verdict: the same plain-language reason. */
 function fluctuationFactorTitle(factor: FluctuationFactor): string {
-  const baseline = factor.baseline;
-  const reason = factor.reason ?? "";
-  if (!baseline || baseline.method === "insufficient") {
-    return reason || "历史样本不足";
-  }
-  const parts = [reason];
-  if (baseline.low !== null && baseline.high !== null) {
-    const pooled = baseline.pooled_samples ?? baseline.samples;
-    parts.push(
-      `同层正常范围：${formatPercent(baseline.low)} ~ ${formatPercent(
-        baseline.high,
-      )}（池化 ${pooled} 个样本）`,
-    );
-  }
-  return parts.filter(Boolean).join("；");
+  return factor.reason ?? "";
 }
 
 function fluctuationFactorColor(factor: FluctuationFactor): string | undefined {
