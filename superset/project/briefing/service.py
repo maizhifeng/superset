@@ -1781,6 +1781,7 @@ def _annotate_factors(
                     "project": event.project,
                     "date": event.date.isoformat(),
                     "kind": event.kind,
+                    "channel": event.channel,
                 }
                 for event in matched
             ]
@@ -1942,7 +1943,7 @@ def _mark_planned(entry: dict[str, Any], events: list[ProjectEvent]) -> None:
     seen: set[tuple[str, str, str]] = set()
     structured: list[dict[str, str]] = []
     for event in events:
-        key = (event.project, event.date.isoformat(), event.kind)
+        key = (event.project, event.date.isoformat(), event.kind, event.channel)
         if key in seen:
             continue
         seen.add(key)
@@ -1951,6 +1952,7 @@ def _mark_planned(entry: dict[str, Any], events: list[ProjectEvent]) -> None:
                 "project": event.project,
                 "date": event.date.isoformat(),
                 "kind": event.kind,
+                "channel": event.channel,
             }
         )
     entry["severity"] = "event"

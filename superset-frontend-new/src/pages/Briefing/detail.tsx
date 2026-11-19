@@ -457,7 +457,12 @@ interface FluctuationFactor {
   zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
-  events?: { project: string; date: string; kind: string }[];
+  events?: {
+    project: string;
+    date: string;
+    kind: string;
+    channel?: string;
+  }[];
 }
 
 /** One dimension's ranked factors for a metric. */
@@ -507,7 +512,12 @@ interface FluctuationMetric {
   reason?: string;
   baseline?: FluctuationBaseline | null;
   /** Launch/test events that explain a "event" verdict. */
-  events?: { project: string; date: string; kind: string }[];
+  events?: {
+    project: string;
+    date: string;
+    kind: string;
+    channel?: string;
+  }[];
 }
 
 interface JobLog {

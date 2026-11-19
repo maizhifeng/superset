@@ -117,7 +117,12 @@ def test_event_week_overrides_the_statistical_verdict() -> None:
     assert entry["severity"] == "event"
     assert entry["event_reason"] == "策定九州韩国 上线 2026-11-11"
     assert entry["events"] == [
-        {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
+        {
+            "project": "策定九州韩国",
+            "date": "2026-11-11",
+            "kind": "上线",
+            "channel": "",
+        }
     ]
     assert entry["reason"] == "事件：策定九州韩国 上线 2026-11-11"
 
@@ -164,5 +169,23 @@ def test_project_factor_inherits_the_event_verdict() -> None:
     assert factors[0]["severity"] == "event"
     assert factors[0]["reason"] == "事件：策定九州韩国 上线 2026-11-11"
     assert factors[0]["events"] == [
-        {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
+        {
+            "project": "策定九州韩国",
+            "date": "2026-11-11",
+            "kind": "上线",
+            "channel": "",
+        }
     ]
+
+
+def test_describe_events_merges_channels_on_the_same_date() -> None:
+    text = describe_events(
+        [
+            ProjectEvent("策定九州韩国", date(2026, 11, 11), "上线", "android"),
+            ProjectEvent("策定九州韩国", date(2026, 11, 11), "上线", "ios"),
+            ProjectEvent("策定九州韩国", date(2026, 11, 25), "上线", "ios"),
+        ]
+    )
+
+    assert text.count("策定九州韩国（android/ios） 上线 2026-11-11") == 1
+    assert "策定九州韩国（ios） 上线 2026-11-25" in text

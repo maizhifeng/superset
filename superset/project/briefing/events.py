@@ -54,11 +54,18 @@ _CACHE_TTL_SECONDS = 600
 
 @dataclass(frozen=True)
 class ProjectEvent:
-    """One dated project milestone (launch or a test start)."""
+    """One dated project milestone (launch or a test start).
+
+    ``channel`` is the calendar's ``channel_name`` (android / ios / 微信小游戏
+    …).  A game can launch on different channels on different dates, so the
+    channel travels with the event; the status rules themselves still judge the
+    project and the aggregate metric, not a single channel row.
+    """
 
     project: str
     date: date
     kind: str
+    channel: str = ""
 
 
 _cache: tuple[float, list[ProjectEvent]] | None = None
@@ -89,7 +96,7 @@ def _load_rows() -> pd.DataFrame:
     qualified = f"{schema}.{table_name}" if schema else table_name
     # Identifiers are deployment constants (columns/table above), never user
     # input; the values in the table are read as data, not interpolated.
-    sql = f"SELECT papp_name, {columns} FROM {qualified}"  # noqa: S608
+    sql = f"SELECT papp_name, channel_name, {columns} FROM {qualified}"  # noqa: S608
 
     database = (
         superset_db.session.query(Database)
@@ -120,10 +127,11 @@ def load_events() -> list[ProjectEvent]:
             project = str(row.get("papp_name") or "").strip()
             if not project:
                 continue
+            channel = str(row.get("channel_name") or "").strip()
             for column, kind in EVENT_COLUMNS:
                 day = _parse_event_date(row.get(column))
                 if day is not None:
-                    events.append(ProjectEvent(project, day, kind))
+                    events.append(ProjectEvent(project, day, kind, channel))
     _cache = (now, events)
     return events
 
@@ -153,13 +161,19 @@ def events_by_bucket(
 
 
 def describe_events(events: Iterable[ProjectEvent]) -> str:
-    """Human-readable event list for a fluctuation's reason line."""
-    seen: set[tuple[str, date, str]] = set()
-    parts: list[str] = []
+    """Human-readable event list for a fluctuation's reason line.
+
+    Same project/date/kind from several channels collapses into one entry with
+    the channels joined (「策定九州韩国（android/ios） 上线 2026-11-11」).
+    """
+    grouped: dict[tuple[str, date, str], list[str]] = {}
     for event in events:
         key = (event.project, event.date, event.kind)
-        if key in seen:
-            continue
-        seen.add(key)
-        parts.append(f"{event.project} {event.kind} {event.date.isoformat()}")
+        channels = grouped.setdefault(key, [])
+        if event.channel and event.channel not in channels:
+            channels.append(event.channel)
+    parts: list[str] = []
+    for (project, day, kind), channels in grouped.items():
+        label = f"{project}（{'/'.join(channels)}）" if channels else project
+        parts.append(f"{label} {kind} {day.isoformat()}")
     return "、".join(parts)
