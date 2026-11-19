@@ -1876,6 +1876,43 @@ function FluctuationList({
             >
               <Box
                 sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.5,
+                  px: 2,
+                  pt: 0.5,
+                  pb: 0.75,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{ color: TEXT_MUTED, fontWeight: 600 }}
+                >
+                  因素判级
+                </Typography>
+                {(
+                  ["abnormal", "watch", "normal", "insufficient"] as const
+                ).map((severity) => (
+                  <Box
+                    key={severity}
+                    sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                  >
+                    <Box
+                      sx={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        bgcolor: FLUCTUATION_SEVERITY[severity].color,
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+                      {FLUCTUATION_SEVERITY[severity].label}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box
+                sx={{
                   display: "grid",
                   gridTemplateColumns: {
                     xs: "1fr",

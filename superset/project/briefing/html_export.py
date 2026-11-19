@@ -333,6 +333,12 @@ details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
 .fluct-row .chev::before { content: "▸"; }
 details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
 .fluct-body { padding: 2px 16px 14px; }
+.fluct-legend {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  padding: 2px 0 8px; color: var(--ink-3); font-size: 12px;
+}
+.fluct-legend-title { font-weight: 600; }
+.fluct-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .fluct-dims { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 22px; }
 .fluct-dim-label { margin-bottom: 4px; color: var(--ink-3); font-size: 12px; }
 .fluct-factor {
@@ -718,7 +724,20 @@ def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
         )
     if not columns:
         return ""
-    return f'<div class="fluct-dims">{"".join(columns)}</div>'
+    legend = (
+        '<div class="fluct-legend">'
+        '<span class="fluct-legend-title">因素判级</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot abnormal"></span>异常</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot watch"></span>关注</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot normal"></span>正常</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot insufficient"></span>历史不足</span>'
+        "</div>"
+    )
+    return f'{legend}<div class="fluct-dims">{"".join(columns)}</div>'
 
 
 FLUCTUATION_SEVERITY_LABELS = {

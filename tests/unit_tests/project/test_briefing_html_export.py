@@ -463,6 +463,8 @@ def test_export_carries_the_fluctuation_block() -> None:
     # Factor rows carry their own pooled verdict as a coloured dot.
     assert '<span class="fluct-dot abnormal"' in page
     assert "明显高于同类项目的历史波动" in page
+    assert "因素判级" in page
+    assert ">异常</span>" in page
     # Colour follows the metric's own semantics: a ROI1 rise is good, a CPA
     # rise is bad, and 消耗 is neutral (grey) either way.
     assert 'class="delta-good">▲ 57.4%' in page
