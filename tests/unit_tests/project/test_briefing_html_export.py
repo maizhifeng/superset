@@ -387,7 +387,10 @@ def _with_fluctuations() -> dict[str, Any]:
             "delta": 117003,
             "delta_pct": 0.5027,
             "severity": "event",
-            "reason": "计划内事件：策定九州韩国 上线 2026-11-11",
+            "reason": "事件：策定九州韩国 上线 2026-11-11",
+            "events": [
+                {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
+            ],
             "baseline": {
                 "samples": 6,
                 "method": "robust",
@@ -453,7 +456,8 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert "近 8 期正常范围" in page
     # Launch/test weeks are marked as planned instead of abnormal.
     assert '<span class="fluct-sev event"' in page
-    assert ">计划内</span>" in page
+    assert ">上线</span>" in page
+    assert "策定九州韩国 上线 2026-11-11" in page
     # Factor rows carry their own pooled verdict as a coloured dot.
     assert '<span class="fluct-dot abnormal"' in page
     assert "同层 8 个分组样本" in page

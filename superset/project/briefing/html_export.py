@@ -731,6 +731,20 @@ FLUCTUATION_SEVERITY_LABELS = {
 }
 
 
+def _fluctuation_severity_label(metric: dict[str, Any]) -> str:
+    """Event verdicts read as the event itself (上线 / 首测 …)."""
+    severity = str(metric.get("severity") or "")
+    if severity == "event":
+        kinds: list[str] = []
+        for event in metric.get("events") or []:
+            kind = str(event.get("kind") or "")
+            if kind and kind not in kinds:
+                kinds.append(kind)
+        if kinds:
+            return kinds[0] if len(kinds) == 1 else f"{kinds[0]}等{len(kinds)}项"
+    return FLUCTUATION_SEVERITY_LABELS.get(severity, "")
+
+
 def _fluctuation_baseline_title(metric: dict[str, Any]) -> str:
     """Tooltip copy: the verdict's reason plus the historical band behind it."""
     reason = str(metric.get("reason") or "")
@@ -773,7 +787,7 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         key = str(metric.get("key") or "")
         label = str(metric.get("label") or key)
         severity = str(metric.get("severity") or "")
-        severity_label = FLUCTUATION_SEVERITY_LABELS.get(severity, "")
+        severity_label = _fluctuation_severity_label(metric)
         severity_html = (
             f'<span class="fluct-sev {severity}" '
             f'title="{_escape(_fluctuation_baseline_title(metric))}">'
@@ -813,7 +827,8 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         "<h3>关键指标波动</h3>"
         '<p class="caption">'
         f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
-        "标签（异常 / 关注 / 正常 / 计划内 / 历史不足）按历史环比自动判定；"
+        "标签为判级（异常 / 关注 / 正常）或事件名（上线 / 首测 / 二测 / 三测），"
+        "历史不足单独标注；"
         "展开可查看平台 / 媒体 / 主游戏的主次因素"
         "</p></div>"
         f"{''.join(items)}"

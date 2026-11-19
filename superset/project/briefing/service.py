@@ -1900,11 +1900,30 @@ def _baseline_zscore(delta: float | None, baseline: dict[str, Any]) -> float | N
 
 
 def _mark_planned(entry: dict[str, Any], events: list[ProjectEvent]) -> None:
-    """Override the verdict for a bucket containing a launch/test event."""
+    """Override the verdict for a bucket containing a launch/test event.
+
+    The structured ``events`` list lets the UI label the row with the event
+    name (上线 / 首测 …) instead of a generic 「计划内」 chip.
+    """
     description = describe_events(events)
+    seen: set[tuple[str, str, str]] = set()
+    structured: list[dict[str, str]] = []
+    for event in events:
+        key = (event.project, event.date.isoformat(), event.kind)
+        if key in seen:
+            continue
+        seen.add(key)
+        structured.append(
+            {
+                "project": event.project,
+                "date": event.date.isoformat(),
+                "kind": event.kind,
+            }
+        )
     entry["severity"] = "event"
+    entry["events"] = structured
     entry["event_reason"] = description
-    entry["reason"] = f"计划内事件：{description}"
+    entry["reason"] = f"事件：{description}"
 
 
 def _attach_fluctuation_baseline(

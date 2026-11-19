@@ -505,6 +505,8 @@ interface FluctuationMetric {
   zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
+  /** Launch/test events that explain a "event" verdict. */
+  events?: { project: string; date: string; kind: string }[];
 }
 
 interface JobLog {
@@ -1642,8 +1644,20 @@ const FLUCTUATION_SEVERITY: Record<string, { label: string; color: string }> = {
   normal: { label: "正常", color: BRIEFING_CSS_COLORS.statusSuccess },
   insufficient: { label: "历史不足", color: BRIEFING_CSS_COLORS.textDisabled },
   new: { label: "新增", color: BRIEFING_CSS_COLORS.textDisabled },
-  event: { label: "计划内", color: BRIEFING_CSS_COLORS.statusInfo },
+  event: { label: "事件", color: BRIEFING_CSS_COLORS.statusInfo },
 };
+
+/** Event verdicts read as the event itself (上线 / 首测 / 二测 …). */
+function fluctuationSeverityLabel(metric: FluctuationMetric): string {
+  const severity = metric.severity;
+  if (!severity) return "";
+  if (severity === "event") {
+    const kinds = [...new Set((metric.events ?? []).map((event) => event.kind))];
+    if (kinds.length === 0) return FLUCTUATION_SEVERITY.event.label;
+    return kinds.length === 1 ? kinds[0] : `${kinds[0]}等${kinds.length}项`;
+  }
+  return FLUCTUATION_SEVERITY[severity]?.label ?? "";
+}
 
 /** Tooltip copy: the reason plus the historical band the verdict came from. */
 function fluctuationBaselineTitle(metric: FluctuationMetric): string {
@@ -1714,7 +1728,7 @@ function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
           cursor: "help",
         }}
       >
-        {meta.label}
+        {fluctuationSeverityLabel(metric)}
       </Box>
     </Tooltip>
   );
@@ -1756,7 +1770,8 @@ function FluctuationList({
         <Typography variant="subtitle1">关键指标波动</Typography>
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
           环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
-          对比期 → 本期 ；标签（异常 / 关注 / 正常 / 计划内 / 历史不足）按历史环比自动判定；
+          对比期 → 本期 ；标签为判级（异常 / 关注 / 正常）或事件名（上线 / 首测 / 二测 / 三测），
+          历史不足单独标注；
           点击查看平台 / 媒体 / 主游戏的主次因素
         </Typography>
       </Box>

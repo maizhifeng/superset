@@ -116,7 +116,10 @@ def test_event_week_overrides_the_statistical_verdict() -> None:
 
     assert entry["severity"] == "event"
     assert entry["event_reason"] == "策定九州韩国 上线 2026-11-11"
-    assert "计划内事件" in entry["reason"]
+    assert entry["events"] == [
+        {"project": "策定九州韩国", "date": "2026-11-11", "kind": "上线"}
+    ]
+    assert entry["reason"] == "事件：策定九州韩国 上线 2026-11-11"
 
 
 def test_event_buckets_are_excluded_from_the_baseline() -> None:
