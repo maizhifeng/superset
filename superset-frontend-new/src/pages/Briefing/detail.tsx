@@ -1705,6 +1705,45 @@ function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
   );
 }
 
+/** Colour key for the factor verdict dots, kept beside the panel title. */
+function FluctuationLegend() {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1.5,
+        mt: 0.75,
+        flexWrap: "wrap",
+      }}
+    >
+      <Typography variant="caption" sx={{ color: TEXT_MUTED, fontWeight: 600 }}>
+        因素判级
+      </Typography>
+      {(
+        ["abnormal", "watch", "normal", "insufficient", "event"] as const
+      ).map((severity) => (
+        <Box
+          key={severity}
+          sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+        >
+          <Box
+            sx={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              bgcolor: FLUCTUATION_SEVERITY[severity].color,
+            }}
+          />
+          <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+            {FLUCTUATION_SEVERITY[severity].label}
+          </Typography>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 /**
  * §1「关键指标波动」: the headline metrics whose 环比 move is material, each
  * opening into the 平台 / 媒体 / 主游戏 factors behind it.
@@ -1745,6 +1784,7 @@ function FluctuationList({
           历史不足单独标注；
           点击查看平台 / 媒体 / 主游戏的主次因素
         </Typography>
+        <FluctuationLegend />
       </Box>
       {rows.map((metric) => {
         const open = openKeys.has(metric.key);
@@ -1875,49 +1915,6 @@ function FluctuationList({
                 exit: durationTokens.exit,
               }}
             >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1.5,
-                  px: 2,
-                  pt: 0.5,
-                  pb: 0.75,
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  sx={{ color: TEXT_MUTED, fontWeight: 600 }}
-                >
-                  因素判级
-                </Typography>
-                {(
-                  [
-                    "abnormal",
-                    "watch",
-                    "normal",
-                    "insufficient",
-                    "event",
-                  ] as const
-                ).map((severity) => (
-                  <Box
-                    key={severity}
-                    sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                  >
-                    <Box
-                      sx={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        bgcolor: FLUCTUATION_SEVERITY[severity].color,
-                      }}
-                    />
-                    <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
-                      {FLUCTUATION_SEVERITY[severity].label}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
               <Box
                 sx={{
                   display: "grid",

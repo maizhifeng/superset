@@ -724,22 +724,7 @@ def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
         )
     if not columns:
         return ""
-    legend = (
-        '<div class="fluct-legend">'
-        '<span class="fluct-legend-title">因素判级</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot abnormal"></span>异常</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot watch"></span>关注</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot normal"></span>正常</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot insufficient"></span>历史不足</span>'
-        '<span class="fluct-legend-item">'
-        '<span class="fluct-dot event"></span>事件</span>'
-        "</div>"
-    )
-    return f'{legend}<div class="fluct-dims">{"".join(columns)}</div>'
+    return f'<div class="fluct-dims">{"".join(columns)}</div>'
 
 
 FLUCTUATION_SEVERITY_LABELS = {
@@ -837,7 +822,20 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         "标签为判级（异常 / 关注 / 正常）或事件名（上线 / 首测 / 二测 / 三测），"
         "历史不足单独标注；"
         "展开可查看平台 / 媒体 / 主游戏的主次因素"
-        "</p></div>"
+        "</p>"
+        '<div class="fluct-legend">'
+        '<span class="fluct-legend-title">因素判级</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot abnormal"></span>异常</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot watch"></span>关注</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot normal"></span>正常</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot insufficient"></span>历史不足</span>'
+        '<span class="fluct-legend-item">'
+        '<span class="fluct-dot event"></span>事件</span>'
+        "</div></div>"
         f"{''.join(items)}"
         "</div>"
     )
