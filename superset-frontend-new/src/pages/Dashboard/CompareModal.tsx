@@ -88,7 +88,7 @@ function gameKey(game: { region: GameRegion; papp_id: string }): string {
   return startKey(game.region, game.papp_id);
 }
 
-const PERIOD_DAYS = [7, 14, 30, 60, 90, 180, 360];
+const PERIOD_DAYS = [7, 14, 30, 60, 90, 180, 360, 720];
 
 function fmtValue(
   key: string,
