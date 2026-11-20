@@ -323,6 +323,9 @@ details.fluct-item[open] > summary.fluct-row { background: #f8fafd; }
 .fluct-sev.abnormal { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
 .fluct-sev.watch { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
 .fluct-sev.normal { color: var(--good); border-color: var(--good); background: var(--good-soft); }
+.fluct-sev.structure {
+  color: var(--ink-3); border-color: var(--line); background: var(--line-soft);
+}
 .fluct-sev.insufficient, .fluct-sev.new { color: var(--ink-3); border-color: var(--line); background: var(--line-soft); }
 .fluct-row .primary {
   color: var(--ink-3); overflow: hidden; text-overflow: ellipsis;
@@ -361,7 +364,10 @@ details.fluct-item[open] > summary.fluct-row .chev { transform: rotate(90deg); }
   flex: 1; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap;
 }
-.fluct-factor .contrib { flex: none; font-variant-numeric: tabular-nums; }
+.fluct-factor .factor-values {
+  flex: none; color: var(--ink-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 
 /* ---- collapsible detail tables ---- */
 details.breakdown { margin-top: 16px; overflow: hidden; background: #fbfcfe; border: 1px solid var(--line-soft); border-radius: 12px; }
@@ -584,26 +590,51 @@ RATE_METRIC_KEYS = {"roi1", "natural_rate"}
 FLUCTUATION_TONE = {"spend": "neutral", "cpa": "lower"}
 
 
-def _fluctuation_value(metric_key: str, value: Any) -> str:
-    """A 波动 metric value in its own unit (percent for ratios)."""
+def _fluctuation_format(metric_key: str, value_format: Any = None) -> str:
+    """The server's value format, falling back to the legacy key mapping."""
+    if value_format in {"percent", "per_user", "money", "count", "number"}:
+        return str(value_format)
+    if metric_key in RATE_METRIC_KEYS:
+        return "percent"
+    if metric_key in {"ltv1", "cpa"}:
+        return "per_user"
+    if metric_key in {"spend", "recharge"}:
+        return "money"
+    if metric_key == "new_users":
+        return "count"
+    return "number"
+
+
+def _fluctuation_value(metric_key: str, value: Any, value_format: Any = None) -> str:
+    """A metric level: percentages keep their sign, everything else is an amount."""
     number = _as_float(value)
     if number is None:
         return "—"
-    if metric_key in RATE_METRIC_KEYS:
+    if _fluctuation_format(metric_key, value_format) == "percent":
         return f"{number * 100:.1f}%"
     return format_amount(number)
 
 
-def _fluctuation_contribution(metric_key: str, value: Any) -> str:
-    """A factor's signed contribution in the metric's own unit."""
-    number = _as_float(value)
-    if number is None:
+def _fluctuation_change(
+    metric_key: str,
+    item: dict[str, Any],
+    value_format: Any = None,
+    metric_kind: Any = None,
+) -> str:
+    """A factor's own metric change (本期 − 对比期), not its contribution."""
+    if metric_kind == "ratio" and "基数不足" in str(item.get("reason") or ""):
+        return "基数不足"
+    current = _as_float(item.get("current"))
+    previous = _as_float(item.get("previous"))
+    if current is None or previous is None:
         return "—"
+    number = current - previous
     sign = "+" if number > 0 else "−" if number < 0 else ""
-    if metric_key in RATE_METRIC_KEYS:
+    fmt = _fluctuation_format(metric_key, value_format)
+    if fmt == "percent":
         return f"{sign}{abs(number) * 100:.2f}%"
-    # The report page's number formatter drops a trailing ``.0``; match it so a
-    # whole-yuan contribution reads "3,863,322" rather than "3,863,322.0".
+    if fmt == "per_user":
+        return f"{sign}{abs(number):,.2f}"
     text = format_amount(abs(number))
     if text.endswith(".0"):
         text = text[:-2]
@@ -635,15 +666,20 @@ def _fluctuation_delta_html(metric: dict[str, Any]) -> str:
 
 
 def _fluctuation_primary(metric: dict[str, Any]) -> str:
-    """The headline factor: the strongest named change of the first dimension."""
+    """The headline factor: the strongest named change of the driver dimension."""
     dimensions = [
         dimension
         for dimension in (metric.get("dimensions") or [])
         if isinstance(dimension, dict)
     ]
+    driver_key = str(metric.get("driver_dimension") or "")
+    dimension = next(
+        (item for item in dimensions if item.get("key") == driver_key),
+        dimensions[0] if dimensions else None,
+    )
     items = [
         item
-        for item in ((dimensions[0].get("items") if dimensions else None) or [])
+        for item in ((dimension.get("items") if dimension else None) or [])
         if isinstance(item, dict)
     ]
     primary = next(
@@ -657,27 +693,25 @@ def _fluctuation_primary(metric: dict[str, Any]) -> str:
     )
     if not primary:
         return ""
-    return (
-        f"主因：{primary.get('name')} "
-        f"{_fluctuation_contribution(str(metric.get('key') or ''), primary.get('contribution'))}"
+    key = str(metric.get("key") or "")
+    change = _fluctuation_change(
+        key, primary, metric.get("value_format"), metric.get("kind")
     )
+    return f"主因：{primary.get('name')} {change}"
 
 
 def _fluctuation_factor_html(
-    metric_key: str, item: dict[str, Any], rank_index: int
+    metric_key: str,
+    item: dict[str, Any],
+    rank_index: int,
+    value_format: Any = None,
+    metric_kind: Any = None,
 ) -> str:
-    """One 主因/次因 row: rank chip → factor name → signed contribution.
+    """One 主因/次因 row: rank chip → factor name → the factor's own change.
 
-    The order is the report page's: the chip sits before the name and the
-    contribution is right-aligned, so the export and the page read alike.
+    Contributions stay in the payload for ranking; the page and export show
+    the factor's own metric change instead.
     """
-    contribution = _as_float(item.get("contribution"))
-    tone = FLUCTUATION_TONE.get(metric_key, "higher")
-    if contribution is None or tone == "neutral":
-        css = "delta-flat"
-    else:
-        improved = contribution >= 0 if tone == "higher" else contribution <= 0
-        css = "delta-good" if improved else "delta-bad"
     severity = str(item.get("severity") or "")
     dot = (
         f'<span class="fluct-dot {severity}" '
@@ -685,13 +719,13 @@ def _fluctuation_factor_html(
         if severity in FLUCTUATION_SEVERITY_LABELS
         else ""
     )
+    change = _fluctuation_change(metric_key, item, value_format, metric_kind)
     return (
         '<div class="fluct-factor">'
         f'<span class="rank">{"主因" if rank_index == 0 else "次因"}</span>'
         f"{dot}"
         f'<span class="name">{_escape(item.get("name"))}</span>'
-        f'<span class="contrib {css}">'
-        f"{_escape(_fluctuation_contribution(metric_key, contribution))}</span>"
+        f'<span class="factor-values">{_escape(change)}</span>'
         "</div>"
     )
 
@@ -711,7 +745,13 @@ def _fluctuation_detail_html(metric: dict[str, Any]) -> str:
         if not ranked:
             continue
         factors = "".join(
-            _fluctuation_factor_html(key, item, index)
+            _fluctuation_factor_html(
+                key,
+                item,
+                index,
+                metric.get("value_format"),
+                metric.get("kind"),
+            )
             for index, item in enumerate(ranked)
         )
         columns.append(
@@ -733,8 +773,14 @@ FLUCTUATION_SEVERITY_LABELS = {
 
 
 def _fluctuation_severity_label(metric: dict[str, Any]) -> str:
-    """Only the three statistical verdicts are surfaced."""
-    return FLUCTUATION_SEVERITY_LABELS.get(str(metric.get("severity") or ""), "")
+    """The row's verdict label, including the neutral structure-led verdict."""
+    severity = str(metric.get("severity") or "")
+    driver = str(metric.get("driver") or "")
+    if severity == "normal" and driver == "structure":
+        return "结构变化"
+    if severity == "normal" and driver == "both":
+        return "效率+结构"
+    return FLUCTUATION_SEVERITY_LABELS.get(severity, "")
 
 
 def _fluctuation_baseline_title(metric: dict[str, Any]) -> str:
@@ -759,15 +805,23 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         return ""
     min_pct = _as_float((result.get("thresholds") or {}).get("fluctuation_min_pct"))
     gate = 10 if min_pct is None else round(min_pct * 100)
+    min_rate_pp = _as_float(
+        (result.get("thresholds") or {}).get("fluctuation_min_rate_pp")
+    )
+    rate_gate = 1 if min_rate_pp is None else round(min_rate_pp * 100)
 
     items: list[str] = []
     for metric in metrics:
         key = str(metric.get("key") or "")
         label = str(metric.get("label") or key)
+        value_format = metric.get("value_format")
         severity = str(metric.get("severity") or "")
         severity_label = _fluctuation_severity_label(metric)
+        severity_class = (
+            "structure" if severity_label in ("结构变化", "效率+结构") else severity
+        )
         severity_html = (
-            f'<span class="fluct-sev {severity}" '
+            f'<span class="fluct-sev {severity_class}" '
             f'title="{_escape(_fluctuation_baseline_title(metric))}">'
             f"{severity_label}</span>"
             if severity_label
@@ -776,11 +830,13 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         cells = (
             f'<span class="metric">{_escape(label)}</span>'
             '<span class="values">'
-            f'<span class="prev">'
-            f"{_escape(_fluctuation_value(key, metric.get('previous')))}</span>"
+            '<span class="prev">'
+            f"{_escape(_fluctuation_value(key, metric.get('previous'), value_format))}"
+            "</span>"
             '<span class="arrow" aria-hidden="true">→</span>'
-            f'<span class="cur">'
-            f"{_escape(_fluctuation_value(key, metric.get('current')))}</span>"
+            '<span class="cur">'
+            f"{_escape(_fluctuation_value(key, metric.get('current'), value_format))}"
+            "</span>"
             "</span>"
             f'<span class="delta-cell">{_fluctuation_delta_html(metric)}</span>'
             f'<span class="primary">{severity_html}'
@@ -804,9 +860,11 @@ def _fluctuation_html(result: dict[str, Any]) -> str:
         '<div class="fluct-head">'
         "<h3>关键指标波动</h3>"
         '<p class="caption">'
-        f"环比变化 ≥{gate}% 且基数达到阈值的关键指标，数值为对比期 → 本期；"
-        "标签为判级（异常 / 关注 / 正常），历史数据不足时不显示标签；"
-        "展开可查看平台 / 媒体 / 主游戏的主次因素"
+        f"环比变化 ≥{gate}%（自然新增% 按 ≥{rate_gate}% 判定）"
+        "且基数达到阈值的关键指标，"
+        "数值为对比期 → 本期；因子列为该因子自身的指标变化，不是贡献值；"
+        "标签为判级或驱动（异常 / 关注 / 正常 / 结构变化），"
+        "历史数据不足时不显示标签；展开可查看平台 / 媒体 / 主游戏的主次因素"
         "</p>"
         '<div class="fluct-legend">'
         '<span class="fluct-legend-title">因素判级</span>'

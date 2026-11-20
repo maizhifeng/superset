@@ -24,6 +24,8 @@
  * rules can be unit tested without rendering a chart-heavy page.
  */
 
+import { formatNumber } from "@/utils/formatNumber";
+
 /** Every LTV milestone a report can carry (LTV1…LTV7). */
 export const ALL_LTV_DAYS: number[] = [1, 2, 3, 4, 5, 6, 7];
 
@@ -390,4 +392,123 @@ export function rollupMediaRows(
       recharge: prevRecharge,
     },
   };
+}
+
+/** The tone a fluctuation verdict chip paints with. */
+export type FluctuationVerdictTone = "abnormal" | "watch" | "normal" | "muted";
+
+/** The short driver label shown beside a fluctuation's verdict. */
+export function fluctuationDriverLabel(
+  driver: string | undefined,
+): string | null {
+  switch (driver) {
+    case "efficiency":
+      return "效率";
+    case "structure":
+      return "结构";
+    case "both":
+      return "效率+结构";
+    case "volume":
+      return "量级";
+    default:
+      return null;
+  }
+}
+
+/**
+ * The metric row's verdict chip.
+ *
+ * A structure-driven ratio move that is statistically normal is labelled
+ * 结构变化 rather than a green 正常: the overall ratio moved, but the efficiency
+ * component did not.  Abnormal/watch verdicts stay severity-first because they
+ * describe the efficiency component the backend judged.
+ */
+export function fluctuationVerdict(
+  driver: string | undefined,
+  severity: string | undefined,
+): { label: string; tone: FluctuationVerdictTone } | null {
+  if (severity === "abnormal") return { label: "异常", tone: "abnormal" };
+  if (severity === "watch") return { label: "关注", tone: "watch" };
+  if (driver === "structure") return { label: "结构变化", tone: "muted" };
+  if (driver === "both") return { label: "效率+结构", tone: "muted" };
+  if (severity === "normal") return { label: "正常", tone: "normal" };
+  return null;
+}
+
+/** How a fluctuation metric's levels and changes should be formatted. */
+export type FluctuationValueFormat =
+  "percent" | "per_user" | "money" | "count" | "number";
+
+/**
+ * The server-provided format, with a key-based fallback for stored results
+ * written before ``value_format`` existed.
+ */
+export function fluctuationValueFormat(metric: {
+  key: string;
+  value_format?: string;
+}): FluctuationValueFormat {
+  switch (metric.value_format) {
+    case "percent":
+    case "per_user":
+    case "money":
+    case "count":
+    case "number":
+      return metric.value_format;
+    default:
+      break;
+  }
+  if (metric.key === "roi1" || metric.key === "natural_rate") return "percent";
+  if (metric.key === "ltv1" || metric.key === "cpa") return "per_user";
+  if (metric.key === "spend" || metric.key === "recharge") return "money";
+  if (metric.key === "new_users") return "count";
+  return "number";
+}
+
+/** A metric level in its own format: 14.2% / 26.8 / 9,358,489. */
+export function formatFluctuationLevel(
+  format: FluctuationValueFormat,
+  value: number | null | undefined,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (format === "percent") return `${(value * 100).toFixed(1)}%`;
+  return formatNumber(value);
+}
+
+function formatCompact(value: number): string {
+  if (value >= 100000000) return `${formatNumber(value / 100000000)}亿`;
+  if (value >= 10000) return `${formatNumber(value / 10000)}万`;
+  return formatNumber(value);
+}
+
+/**
+ * A metric's absolute change in its own format.
+ *
+ * Ratio metrics use ``%`` for their absolute change; per-user metrics stay
+ * bare (the label carries the unit), and money / volume changes compact to
+ * 万/亿.
+ */
+export function formatFluctuationChange(
+  format: FluctuationValueFormat,
+  value: number,
+): string {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  const abs = Math.abs(value);
+  if (format === "percent") return `${sign}${(abs * 100).toFixed(2)}%`;
+  if (format === "per_user") return `${sign}${abs.toFixed(2)}`;
+  if (format === "money" || format === "count") {
+    return `${sign}${formatCompact(abs)}`;
+  }
+  return `${sign}${formatNumber(abs)}`;
+}
+
+/** A factor's own change, or 基数不足 for a ratio segment without volume. */
+export function formatFluctuationFactorChange(
+  format: FluctuationValueFormat,
+  kind: "additive" | "ratio" | undefined,
+  item: { current: number; previous: number; reason?: string },
+): string {
+  if (kind === "ratio" && item.reason?.includes("基数不足")) {
+    return "基数不足";
+  }
+  return formatFluctuationChange(format, item.current - item.previous);
 }

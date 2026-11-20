@@ -407,14 +407,14 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert '<span class="arrow" aria-hidden="true">→</span>' in page
     assert '<span class="cur">15.5%</span>' in page
     # The factors sit in the row's body, in the page's order: rank chip →
-    # factor name → signed contribution, grouped by dimension.
+    # factor name → 对比期 → 本期 value, grouped by dimension.
     assert '<div class="fluct-dim-label">平台</div>' in page
     assert '<div class="fluct-dim-label">主游戏</div>' in page
     assert '<span class="rank">主因</span>' in page
     assert '<span class="name">oversea</span>' in page
     assert '<span class="rank">次因</span>' in page
     assert '<span class="name">mobile</span>' in page
-    assert 'class="contrib delta-good">+6.00%' in page
+    assert 'class="factor-values">+6.00%' in page
     # The old "排名" column is gone; the chip carries the rank instead.
     assert "<th>排名</th>" not in page
     # A metric without factors is a plain row: no chevron, nothing to open.
@@ -437,6 +437,31 @@ def test_export_carries_the_fluctuation_block() -> None:
     assert 'class="delta-good">▲ 57.4%' in page
     assert 'class="delta-bad">▲ 20.8%' in page
     assert 'class="delta-flat">▲ 47.9%' in page
+
+
+def test_export_labels_a_structure_led_move_as_structure() -> None:
+    """A mix-led move is neutral grey, not a green 正常 verdict."""
+    result = _with_fluctuations()
+    metric = result["fluctuations"][0]
+    metric["driver"] = "structure"
+    metric["severity"] = "normal"
+
+    page = build_briefing_html(result, name="111")
+
+    assert "自然新增% 按 ≥1% 判定" in page
+    assert '<span class="fluct-sev structure"' in page
+    assert ">结构变化</span>" in page
+
+
+def test_export_marks_a_tiny_base_ratio_factor_as_insufficient() -> None:
+    result = _with_fluctuations()
+    metric = result["fluctuations"][0]
+    metric["kind"] = "ratio"
+    metric["dimensions"][0]["items"][0]["reason"] = "基数不足，不作判级"
+
+    page = build_briefing_html(result, name="111")
+
+    assert 'class="factor-values">基数不足</span>' in page
 
 
 def test_export_omits_the_fluctuation_block_without_rows() -> None:

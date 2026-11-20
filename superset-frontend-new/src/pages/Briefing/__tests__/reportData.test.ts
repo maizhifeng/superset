@@ -18,6 +18,12 @@
  */
 import { expect, test } from "vitest";
 import {
+  fluctuationDriverLabel,
+  fluctuationValueFormat,
+  fluctuationVerdict,
+  formatFluctuationChange,
+  formatFluctuationFactorChange,
+  formatFluctuationLevel,
   gamesByMedia,
   gamesOf,
   mediaByPlatform,
@@ -302,4 +308,66 @@ test("tableLtvDays caps the collapsed table at LTV1 and opens LTV2+ with 分天"
 
   expect(tableLtvDays(rows, false)).toEqual([1]);
   expect(tableLtvDays(rows, true)).toEqual([1, 2, 3]);
+});
+
+test("fluctuationVerdict labels structure moves without a green normal", () => {
+  expect(fluctuationVerdict("structure", "normal")).toEqual({
+    label: "结构变化",
+    tone: "muted",
+  });
+  expect(fluctuationVerdict("efficiency", "normal")).toEqual({
+    label: "正常",
+    tone: "normal",
+  });
+  expect(fluctuationVerdict("structure", "abnormal")).toEqual({
+    label: "异常",
+    tone: "abnormal",
+  });
+  expect(fluctuationVerdict("new", undefined)).toBeNull();
+});
+
+test("fluctuationDriverLabel names the driver", () => {
+  expect(fluctuationDriverLabel("efficiency")).toBe("效率");
+  expect(fluctuationDriverLabel("structure")).toBe("结构");
+  expect(fluctuationDriverLabel("both")).toBe("效率+结构");
+  expect(fluctuationDriverLabel("volume")).toBe("量级");
+  expect(fluctuationDriverLabel(undefined)).toBeNull();
+});
+
+test("fluctuation formatting follows value_format and legacy keys", () => {
+  expect(formatFluctuationLevel("percent", 0.142)).toBe("14.2%");
+  expect(formatFluctuationLevel("percent", null)).toBe("—");
+  expect(formatFluctuationChange("percent", 0.0872)).toBe("+8.72%");
+  expect(formatFluctuationChange("percent", -0.066)).toBe("−6.60%");
+  expect(formatFluctuationChange("per_user", 2.859)).toBe("+2.86");
+  expect(formatFluctuationChange("money", 6718131)).toBe("+671.8万");
+  expect(formatFluctuationChange("count", 117003)).toBe("+11.7万");
+  expect(
+    fluctuationValueFormat({ key: "roi_cum", value_format: "percent" }),
+  ).toBe("percent");
+  expect(fluctuationValueFormat({ key: "roi1" })).toBe("percent");
+  expect(fluctuationValueFormat({ key: "ltv1" })).toBe("per_user");
+});
+
+test("ratio factors with a tiny base read 基数不足 instead of a wild change", () => {
+  expect(
+    formatFluctuationFactorChange("per_user", "ratio", {
+      current: 204,
+      previous: 36962,
+      reason: "基数不足，不作判级",
+    }),
+  ).toBe("基数不足");
+  expect(
+    formatFluctuationFactorChange("per_user", "ratio", {
+      current: 24.35,
+      previous: 0,
+    }),
+  ).toBe("+24.35");
+  expect(
+    formatFluctuationFactorChange("money", "additive", {
+      current: 1751500,
+      previous: 150,
+      reason: "基数不足，不作判级",
+    }),
+  ).toBe("+175.1万");
 });

@@ -76,6 +76,11 @@ import {
   type FeishuSettings,
 } from "./feishu";
 import {
+  fluctuationDriverLabel,
+  fluctuationValueFormat,
+  fluctuationVerdict,
+  formatFluctuationFactorChange,
+  formatFluctuationLevel,
   gamesByMedia,
   gamesOf,
   mediaByPlatform,
@@ -88,6 +93,7 @@ import {
   tableLtvDays,
   visibleLtvDays,
   type DailyTotals,
+  type FluctuationVerdictTone,
   type MediaRollupRow,
   type RoiQuality,
 } from "./reportData";
@@ -384,6 +390,8 @@ interface DailyReportResult {
     default_breakeven_line: number;
     /** §1「关键指标波动」的入选门槛（比例，0.1 = 10%）。 */
     fluctuation_min_pct?: number;
+    /** 自然新增% 的绝对门槛（比例，0.01 = 1pp）。 */
+    fluctuation_min_rate_pp?: number;
   };
 }
 
@@ -474,7 +482,7 @@ interface FluctuationBaseline {
   samples: number;
   /** Factor bands pool the scale across the dimension's historical samples. */
   pooled_samples?: number;
-  method: "robust" | "stable" | "insufficient" | "pooled";
+  method: "robust" | "stable" | "insufficient" | "pooled" | "own";
   median: number | null;
   mad: number | null;
   p10: number | null;
@@ -487,6 +495,8 @@ interface FluctuationMetric {
   key: string;
   label: string;
   kind: "additive" | "ratio";
+  /** Server-provided value format; legacy results fall back to the key. */
+  value_format?: "percent" | "per_user" | "money" | "count" | "number";
   current: number;
   previous: number;
   delta: number;
@@ -494,11 +504,21 @@ interface FluctuationMetric {
   delta_pct: number | null;
   new: boolean;
   dimensions: FluctuationDimension[];
+  /** Rate/mix classification (ratio metrics) or 量级 for additive metrics. */
+  driver?: "efficiency" | "structure" | "both" | "volume" | "new" | "none";
+  driver_dimension?: string | null;
+  /** Signed efficiency and mix components behind a ratio move. */
+  efficiency_delta?: number | null;
+  mix_delta?: number | null;
   /** Statistical verdict against the metric's own 环比 history. */
   severity?: FluctuationSeverity;
+  /** Whether ``severity`` judged the delta or the efficiency component. */
+  severity_basis?: "delta" | "efficiency" | "none";
   zscore?: number | null;
+  efficiency_zscore?: number | null;
   reason?: string;
   baseline?: FluctuationBaseline | null;
+  efficiency_baseline?: FluctuationBaseline | null;
 }
 
 interface JobLog {
@@ -1477,47 +1497,6 @@ const FLUCTUATION_TONE: Record<
   cpa: { higherIsBetter: false },
 };
 
-/** A metric value, formatted by metric (used for both 对比期 and 本期). */
-function fluctuationValue(
-  metric: FluctuationMetric,
-  value: number | null | undefined,
-): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  if (metric.key === "roi1" || metric.key === "natural_rate") {
-    return formatPercent(value);
-  }
-  return formatNumber(value);
-}
-
-/**
- * A factor's contribution in the metric's own unit.
- *
- * 百分比指标（ROI1、自然新增%）按指标自身的 x% 口径给出绝对变化（如 +2.63%）；
- * LTV1、CPA 是「每用户数值」，保留原单位（小数保留 1 位）；增量型指标给出
- * 金额/人数。
- */
-function fluctuationContribution(
-  metric: FluctuationMetric,
-  value: number,
-): string {
-  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
-  const abs = Math.abs(value);
-  if (metric.key === "roi1" || metric.key === "natural_rate") {
-    return `${sign}${(abs * 100).toFixed(2)}%`;
-  }
-  return `${sign}${formatNumber(abs)}`;
-}
-
-/** The factor colour: the effect's direction under the metric's semantics. */
-function fluctuationColor(metric: FluctuationMetric, value: number): string {
-  const tone = FLUCTUATION_TONE[metric.key] ?? {};
-  if (tone.neutral) return BRIEFING_CSS_COLORS.textSecondary;
-  const higherIsBetter = tone.higherIsBetter ?? true;
-  return value >= 0 === higherIsBetter
-    ? BRIEFING_CSS_COLORS.statusSuccess
-    : BRIEFING_CSS_COLORS.statusError;
-}
-
 /** The 新增 marker: nothing to compare against, so no percentage. */
 function NewTag() {
   return (
@@ -1544,9 +1523,9 @@ function NewTag() {
 /**
  * One factor column (平台 / 媒体 / 主游戏) inside an open 波动 row.
  *
- * Only its 主因 and 次因 are listed — with the factor's own contribution
- * value, not its share of the move — ranked by the factor's influence, so the
- * column points at where the move came from without reprinting the tables.
+ * Each row shows the factor's own metric change; the
+ * backend's contribution/effect values stay off the page.  Every ranked
+ * factor is listed, including the folded 其他 row.
  */
 function FluctuationDimensionColumn({
   metric,
@@ -1555,15 +1534,32 @@ function FluctuationDimensionColumn({
   metric: FluctuationMetric;
   dimension: FluctuationDimension;
 }) {
-  // 「其他」 is the folded tail of the ranking, never a named factor.
-  const ranked = dimension.items.filter((item) => item.name !== "其他");
-  const leading = ranked.slice(0, 2);
+  const items = dimension.items;
+  const rankLabel = (item: FluctuationFactor, index: number) => {
+    if (item.rank === "primary") return "主因";
+    if (item.rank === "secondary") return "次因";
+    if (item.name === "其他") return "其他";
+    return `#${index + 1}`;
+  };
   return (
     <Box>
-      <Typography variant="subtitle2" sx={{ color: TEXT_MUTED, mb: 0.5 }}>
-        {dimension.label}
-      </Typography>
-      {leading.map((item, index) => (
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 1,
+          mb: 0.5,
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ color: TEXT_MUTED }}>
+          {dimension.label}
+        </Typography>
+        <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+          指标变化
+        </Typography>
+      </Box>
+      {items.map((item, index) => (
         <Box
           key={item.name}
           sx={{ display: "flex", alignItems: "baseline", gap: 0.75, py: 0.25 }}
@@ -1581,7 +1577,7 @@ function FluctuationDimensionColumn({
               whiteSpace: "nowrap",
             }}
           >
-            {index === 0 ? "主因" : "次因"}
+            {rankLabel(item, index)}
           </Box>
           {fluctuationFactorColor(item) && (
             <Tooltip title={fluctuationFactorTitle(item)} describeChild>
@@ -1603,24 +1599,39 @@ function FluctuationDimensionColumn({
             variant="body2"
             noWrap
             title={item.name}
-            sx={{ flex: 1, minWidth: 0, fontWeight: index === 0 ? 600 : 400 }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              fontWeight: item.rank === "primary" ? 600 : 400,
+            }}
           >
             {item.name}
           </Typography>
           <Typography
             variant="body2"
+            title={`对比期 ${formatFluctuationLevel(
+              fluctuationValueFormat(metric),
+              item.previous,
+            )} → 本期 ${formatFluctuationLevel(
+              fluctuationValueFormat(metric),
+              item.current,
+            )}`}
             sx={{
-              color: fluctuationColor(metric, item.contribution),
+              flexShrink: 0,
               fontWeight: 600,
               whiteSpace: "nowrap",
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {fluctuationContribution(metric, item.contribution)}
+            {formatFluctuationFactorChange(
+              fluctuationValueFormat(metric),
+              metric.kind,
+              item,
+            )}
           </Typography>
         </Box>
       ))}
-      {leading.length === 0 && (
+      {items.length === 0 && (
         <Typography variant="body2" sx={{ color: TEXT_MUTED }}>
           -
         </Typography>
@@ -1634,6 +1645,14 @@ const FLUCTUATION_SEVERITY: Record<string, { label: string; color: string }> = {
   abnormal: { label: "异常", color: BRIEFING_CSS_COLORS.statusError },
   watch: { label: "关注", color: BRIEFING_CSS_COLORS.statusWarning },
   normal: { label: "正常", color: BRIEFING_CSS_COLORS.statusSuccess },
+};
+
+/** Colours for the metric row's verdict, including the neutral 结构变化 tone. */
+const FLUCTUATION_VERDICT_COLOR: Record<FluctuationVerdictTone, string> = {
+  abnormal: BRIEFING_CSS_COLORS.statusError,
+  watch: BRIEFING_CSS_COLORS.statusWarning,
+  normal: BRIEFING_CSS_COLORS.statusSuccess,
+  muted: BRIEFING_CSS_COLORS.textSecondary,
 };
 
 /** Tooltip copy: one plain-language sentence, no statistics jargon. */
@@ -1651,11 +1670,44 @@ function fluctuationFactorColor(factor: FluctuationFactor): string | undefined {
   return FLUCTUATION_SEVERITY[factor.severity]?.color;
 }
 
-function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
-  const severity = metric.severity;
-  if (!severity) return null;
-  const meta = FLUCTUATION_SEVERITY[severity];
-  if (!meta) return null;
+/** A short driver label beside the verdict, e.g. 效率 / 结构 / 量级. */
+function FluctuationDriverTag({ metric }: { metric: FluctuationMetric }) {
+  const label = fluctuationDriverLabel(metric.driver);
+  if (!label) return null;
+  const verdict = fluctuationVerdict(metric.driver, metric.severity);
+  if (verdict?.label === "结构变化" || verdict?.label === "效率+结构") {
+    return null;
+  }
+  return (
+    <Box
+      component="span"
+      sx={{
+        flexShrink: 0,
+        px: 0.5,
+        py: "1px",
+        borderRadius: 0.5,
+        bgcolor: BRIEFING_CSS_COLORS.surfaceVariant,
+        color: TEXT_MUTED,
+        fontSize: "0.6875rem",
+        fontWeight: 600,
+        lineHeight: 1.5,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </Box>
+  );
+}
+
+/**
+ * The metric row's verdict: severity when the efficiency component is
+ * abnormal/watch, otherwise the driver (a structure-led move reads
+ * 「结构变化」 instead of a green 「正常」).
+ */
+function FluctuationVerdictChip({ metric }: { metric: FluctuationMetric }) {
+  const verdict = fluctuationVerdict(metric.driver, metric.severity);
+  if (!verdict) return null;
+  const color = FLUCTUATION_VERDICT_COLOR[verdict.tone];
   return (
     <Tooltip title={fluctuationBaselineTitle(metric)} describeChild>
       <Box
@@ -1666,8 +1718,8 @@ function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
           py: "1px",
           borderRadius: 0.5,
           border: "1px solid",
-          borderColor: meta.color,
-          color: meta.color,
+          borderColor: color,
+          color,
           fontSize: "0.6875rem",
           fontWeight: 600,
           lineHeight: 1.5,
@@ -1675,7 +1727,7 @@ function FluctuationSeverityChip({ metric }: { metric: FluctuationMetric }) {
           cursor: "help",
         }}
       >
-        {FLUCTUATION_SEVERITY[severity]?.label}
+        {verdict.label}
       </Box>
     </Tooltip>
   );
@@ -1716,6 +1768,10 @@ function FluctuationLegend() {
           </Typography>
         </Box>
       ))}
+      <Box sx={{ width: 1, height: 12, bgcolor: DIVIDER }} aria-hidden />
+      <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
+        驱动：效率 / 结构 / 量级；结构主导标为「结构变化」
+      </Typography>
     </Box>
   );
 }
@@ -1724,18 +1780,22 @@ function FluctuationLegend() {
  * §1「关键指标波动」: the headline metrics whose 环比 move is material, each
  * opening into the 平台 / 媒体 / 主游戏 factors behind it.
  *
- * Every column lists just its 主因 and 次因 — ranked by the factor's exact
- * contribution (增量 for additive metrics, 费率+结构 for ratios, computed by
- * the backend) — so the row points at where the move came from without
- * reprinting the numbers the detail tables already carry.
+ * Each expanded column lists every ranked factor — including the folded 其他
+ * row — and shows that factor's own change.  Backend contributions
+ * only rank the factors and drive the verdict; they are not displayed.  The
+ * row's verdict follows the backend's efficiency judgement and names the
+ * driver; a structure-led move reads 「结构变化」 rather than 正常.
  */
 function FluctuationList({
   rows,
   minPct,
+  minRatePct,
 }: {
   rows: FluctuationMetric[];
-  /** The backend's fluctuation gate (fraction), for the caption. */
+  /** The backend's relative fluctuation gate (fraction), for the caption. */
   minPct: number;
+  /** The 自然新增% absolute gate (fraction, 0.01 = 1pp). */
+  minRatePct: number;
 }) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
   const toggle = (key: string) =>
@@ -1755,20 +1815,44 @@ function FluctuationList({
       >
         <Typography variant="subtitle1">关键指标波动</Typography>
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
-          环比变化 ≥{Math.round(minPct * 100)}% 且基数达到阈值的关键指标，数值为
-          对比期 → 本期 ；标签为判级（异常 / 关注 / 正常），历史数据不足时不显示标签；
-          点击查看平台 / 媒体 / 主游戏的主次因素
+          环比 ≥{Math.round(minPct * 100)}%（自然新增% 按 ≥
+          {Math.round(minRatePct * 100)}%）且基数达阈值；数值为对比期 → 本期；
+          标签为判级或驱动（异常 / 关注 / 正常 / 结构变化），历史不足时不显示；点击展开
+          平台 / 媒体 / 主游戏因素
         </Typography>
         <FluctuationLegend />
+        <Typography
+          variant="caption"
+          sx={{ display: "block", mt: 0.5, color: TEXT_MUTED }}
+        >
+          因子列展示各因子自身的指标变化（比率指标为 % 绝对变化），不是对总指标的
+          贡献。
+        </Typography>
       </Box>
       {rows.map((metric) => {
         const open = openKeys.has(metric.key);
         const tone = FLUCTUATION_TONE[metric.key] ?? {};
-        // 摘要取第一个维度（平台）里最强、且真正有变化的因素。
+        const primaryDimension =
+          metric.dimensions.find(
+            (dimension) => dimension.key === metric.driver_dimension,
+          ) ?? metric.dimensions[0];
         const primary =
-          metric.dimensions[0]?.items.find(
-            (item) => item.contribution !== 0 && item.name !== "其他",
-          ) ?? metric.dimensions[0]?.items[0];
+          primaryDimension?.items.find((item) => item.name !== "其他") ??
+          primaryDimension?.items[0];
+        const primaryChange = primary
+          ? formatFluctuationFactorChange(
+              fluctuationValueFormat(metric),
+              metric.kind,
+              primary,
+            )
+          : "";
+        const primaryText = primary
+          ? `主因：${primary.name}${
+              primaryChange === "基数不足"
+                ? `（${primaryChange}）`
+                : ` ${primaryChange}`
+            }`
+          : "";
         return (
           <Box
             key={metric.key}
@@ -1821,7 +1905,10 @@ function FluctuationList({
                   variant="body2"
                   sx={{ color: TEXT_MUTED, textAlign: "right", whiteSpace: "nowrap" }}
                 >
-                  {fluctuationValue(metric, metric.previous)}
+                  {formatFluctuationLevel(
+                    fluctuationValueFormat(metric),
+                    metric.previous,
+                  )}
                 </Typography>
                 <Typography
                   variant="body2"
@@ -1833,7 +1920,10 @@ function FluctuationList({
                   variant="body2"
                   sx={{ fontWeight: 600, whiteSpace: "nowrap" }}
                 >
-                  {fluctuationValue(metric, metric.current)}
+                  {formatFluctuationLevel(
+                    fluctuationValueFormat(metric),
+                    metric.current,
+                  )}
                 </Typography>
               </Box>
               <Box>
@@ -1853,16 +1943,14 @@ function FluctuationList({
                   alignItems: "center",
                   gap: 0.75,
                   minWidth: 0,
+                  flexWrap: "wrap",
                 }}
               >
-                <FluctuationSeverityChip metric={metric} />
+                <FluctuationVerdictChip metric={metric} />
+                <FluctuationDriverTag metric={metric} />
                 <Typography
                   variant="caption"
-                  title={
-                    primary
-                      ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
-                      : undefined
-                  }
+                  title={primaryText || undefined}
                   sx={{
                     color: TEXT_MUTED,
                     overflow: "hidden",
@@ -1871,9 +1959,7 @@ function FluctuationList({
                     minWidth: 0,
                   }}
                 >
-                  {primary
-                    ? `主因：${primary.name} ${fluctuationContribution(metric, primary.contribution)}`
-                    : ""}
+                  {primaryText}
                 </Typography>
               </Box>
               {open ? (
@@ -5325,7 +5411,7 @@ export default function DailyReportDetail() {
                 <Tooltip
                   title={
                     resultIsWeekly
-                      ? "展示所选日期所在自然周（周一~周日）"
+                      ? "展示所选日期所在自然周（周一~周日）；若该周尚未结束，自动使用上一完整自然周"
                       : "展示所选日期的简报"
                   }
                 >
@@ -5480,6 +5566,9 @@ export default function DailyReportDetail() {
                     <FluctuationList
                       rows={result.fluctuations ?? []}
                       minPct={result.thresholds?.fluctuation_min_pct ?? 0.1}
+                      minRatePct={
+                        result.thresholds?.fluctuation_min_rate_pp ?? 0.01
+                      }
                     />
                   </Box>
                 )}

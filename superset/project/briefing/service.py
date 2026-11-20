@@ -72,6 +72,8 @@ SCATTERED_PROJECT_LABELS: set[str] = {
 # 波动门槛：|环比| 低于该比例的核心指标不进入 §1「关键指标波动」小节。
 # 先设 10%（业务口径）；如需按报告调整，可提为配置项而不是改代码。
 FLUCTUATION_MIN_PCT = 0.10
+# 有界比率（自然新增%）同时看绝对变化：相对门槛会压缩高基数比率的波动。
+FLUCTUATION_MIN_RATE_PP = 0.01
 # 统计基线：用核心指标自身的历史环比分布判断“这次波动是否正常”。
 # 少于该期数只给「历史不足」，不硬套统计带；±3σ 为异常、±2σ 为关注。
 FLUCTUATION_MIN_HISTORY = 6
@@ -438,23 +440,35 @@ def _reference_periods(
     date) and compare against the day before, with a trailing window of
     ``days_of_history`` days.  Weekly briefings aggregate complete natural
     weeks: without an override this is the last *complete* week; with one, the
-    week containing the given date.  Comparison is against the preceding week,
-    and history covers ``weeks_of_history`` weeks ending at the reported week.
-    All buckets are ordered newest-first.
+    week containing the given date, unless that week has not ended yet — then
+    the last complete week is used so the reported window is always seven full
+    days.  Comparison is against the preceding week, and history covers
+    ``weeks_of_history`` weeks ending at the reported week.  All buckets are
+    ordered newest-first.  ``ctx.anchor_date`` is the schedule's calendar date
+    in its own timezone; falling back to the process date keeps manual runs and
+    local tests on their existing behavior.
     """
+    today = ctx.anchor_date or date.today()
     if ctx.override_date:
         override = datetime.strptime(ctx.override_date, "%Y-%m-%d").date()
     else:
-        override = date.today()
+        override = today
 
     if normalize_report_type(config.report_type) == "weekly":
         if ctx.override_date:
             cur_start, cur_end = _week_containing(override)
+            # A week still in progress (or one that only ends today) cannot
+            # provide a complete seven-day window.  Fall back to the last
+            # complete week so the report and its comparison stay like-for-like.
+            if cur_end >= today:
+                cur_start, cur_end = _week_containing(
+                    _week_start(today) - timedelta(days=7)
+                )
         else:
             # Anchor a week back so the default window is always complete,
             # regardless of today's weekday.
             cur_start, cur_end = _week_containing(
-                _week_start(override) - timedelta(days=7)
+                _week_start(today) - timedelta(days=7)
             )
         weeks = max(int(config.weeks_of_history or 1), 1)
         history = [
@@ -1471,6 +1485,7 @@ class _FluctuationMetric:
     denominator: str
     weighted: bool
     base_kind: str
+    value_format: str
 
 
 def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
@@ -1480,7 +1495,9 @@ def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
     ltv_col = config.ltv_columns[0] if config.ltv_columns else ""
     roi_col = config.roi_columns[0] if config.roi_columns else ""
     return [
-        _FluctuationMetric("spend", money, "additive", money, "", False, "money"),
+        _FluctuationMetric(
+            "spend", money, "additive", money, "", False, "money", "money"
+        ),
         _FluctuationMetric(
             "recharge",
             config.recharge_column,
@@ -1489,8 +1506,11 @@ def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
             "",
             False,
             "flow",
+            "money",
         ),
-        _FluctuationMetric("new_users", users, "additive", users, "", False, "users"),
+        _FluctuationMetric(
+            "new_users", users, "additive", users, "", False, "users", "count"
+        ),
         _FluctuationMetric(
             "natural_rate",
             "自然新增%",
@@ -1499,8 +1519,11 @@ def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
             users,
             False,
             "users",
+            "percent",
         ),
-        _FluctuationMetric("cpa", "CPA", "ratio", money, users, False, "users"),
+        _FluctuationMetric(
+            "cpa", "CPA", "ratio", money, users, False, "users", "per_user"
+        ),
         _FluctuationMetric(
             "ltv1",
             "LTV1",
@@ -1509,6 +1532,7 @@ def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
             users,
             config.ltv_weighted_average,
             "users",
+            "per_user",
         ),
         _FluctuationMetric(
             "roi1",
@@ -1518,6 +1542,7 @@ def _fluctuation_metrics(config: DailyReportConfig) -> list[_FluctuationMetric]:
             money,
             config.roi_weighted_average,
             "money",
+            "percent",
         ),
     ]
 
@@ -1597,6 +1622,22 @@ def _base_threshold(metric: _FluctuationMetric, config: DailyReportConfig) -> fl
     return float(config.baseline_thresholds.get(key, 0.0) or 0.0)
 
 
+def _ratio_effects(
+    cur: tuple[float, float],
+    prev: tuple[float, float],
+    den_cur: float,
+    den_prev: float,
+) -> tuple[float, float]:
+    """One factor's 费率效应 and 结构效应 for a ratio change."""
+    r_cur = cur[0] / cur[1] if cur[1] else 0.0
+    r_prev = prev[0] / prev[1] if prev[1] else 0.0
+    w_cur = cur[1] / den_cur if den_cur else 0.0
+    w_prev = prev[1] / den_prev if den_prev else 0.0
+    rate = w_prev * (r_cur - r_prev)
+    mix = (w_cur - w_prev) * r_cur
+    return rate, mix
+
+
 def _ratio_factor(
     name: str,
     cur: tuple[float, float],
@@ -1612,17 +1653,12 @@ def _ratio_factor(
     ``R_cur − R_prev`` exactly (``Σw = 1`` per bucket).  A zero denominator
     reads as rate 0, so an item that appeared lands entirely in ``mix``.
     """
-    r_cur = cur[0] / cur[1] if cur[1] else 0.0
-    r_prev = prev[0] / prev[1] if prev[1] else 0.0
-    w_cur = cur[1] / den_cur if den_cur else 0.0
-    w_prev = prev[1] / den_prev if den_prev else 0.0
-    rate = w_prev * (r_cur - r_prev)
-    mix = (w_cur - w_prev) * r_cur
+    rate, mix = _ratio_effects(cur, prev, den_cur, den_prev)
     contribution = rate + mix
     return {
         "name": name or "-",
-        "current": r_cur,
-        "previous": r_prev,
+        "current": cur[0] / cur[1] if cur[1] else 0.0,
+        "previous": prev[0] / prev[1] if prev[1] else 0.0,
         "contribution": contribution,
         "share": contribution / delta if delta else None,
         "rate_effect": rate,
@@ -1758,6 +1794,100 @@ def _annotate_factors(
     return factors
 
 
+def _classify_driver(efficiency_delta: float, mix_delta: float, is_new: bool) -> str:
+    """Whether a ratio move came from rates, mix, or both."""
+    if is_new:
+        return "new"
+    total = abs(efficiency_delta) + abs(mix_delta)
+    if not total:
+        return "none"
+    if abs(efficiency_delta) >= 0.6 * total:
+        return "efficiency"
+    if abs(mix_delta) >= 0.6 * total:
+        return "structure"
+    return "both"
+
+
+def _block_effects(
+    blocks: list[dict[str, Any]],
+) -> tuple[float, float, str] | None:
+    """Sum rate/mix effects at the finest available dimension."""
+    by_key = {block["key"]: block for block in blocks}
+    for key in ("project", "media", "platform"):
+        block = by_key.get(key)
+        if block is None:
+            continue
+        rate = sum(float(item.get("rate_effect") or 0.0) for item in block["items"])
+        mix = sum(float(item.get("mix_effect") or 0.0) for item in block["items"])
+        return rate, mix, key
+    return None
+
+
+def _metric_totals(
+    current_df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    metric: _FluctuationMetric,
+    config: DailyReportConfig,
+) -> tuple[float, float, float, float] | None:
+    """Current/previous value and the base each one is judged on."""
+    if metric.kind == "additive":
+        cur_total = _sum_column(current_df, metric.numerator)
+        prev_total = _sum_column(prev_df, metric.numerator)
+        return cur_total, prev_total, cur_total, prev_total
+    cur_pieces = _metric_pieces(current_df, metric, config)
+    prev_pieces = _metric_pieces(prev_df, metric, config)
+    if not cur_pieces[1] or not prev_pieces[1]:
+        return None
+    return (
+        cur_pieces[0] / cur_pieces[1],
+        prev_pieces[0] / prev_pieces[1],
+        cur_pieces[1],
+        prev_pieces[1],
+    )
+
+
+def _fluctuation_gate(
+    metric: _FluctuationMetric,
+    current: float,
+    previous: float,
+    delta: float,
+) -> tuple[float | None, bool] | None:
+    """The relative/pp gate; None when the move is too small to list.
+
+    A 新增 (zero comparison base) returns ``(None, True)``.  ``自然新增%`` is a
+    bounded rate, so it is judged on its absolute percentage-point move instead
+    of the relative gate.
+    """
+    if not previous:
+        return (None, True) if current else None
+    pct = delta / abs(previous)
+    if metric.key == "natural_rate":
+        return (pct, False) if abs(delta) >= FLUCTUATION_MIN_RATE_PP else None
+    if abs(pct) < FLUCTUATION_MIN_PCT:
+        return None
+    return pct, False
+
+
+def _entry_driver(
+    blocks: list[dict[str, Any]],
+    metric: _FluctuationMetric,
+    is_new: bool,
+) -> tuple[str, float | None, float | None, str | None]:
+    """The driver label plus the signed efficiency/mix components."""
+    if metric.kind != "ratio":
+        return "volume", None, None, None
+    effects = _block_effects(blocks)
+    if effects is None:
+        return ("new" if is_new else "none"), None, None, None
+    efficiency_delta, mix_delta, dimension = effects
+    return (
+        _classify_driver(efficiency_delta, mix_delta, is_new),
+        efficiency_delta,
+        mix_delta,
+        dimension,
+    )
+
+
 def _fluctuation_entry(
     current_df: pd.DataFrame,
     prev_df: pd.DataFrame,
@@ -1767,36 +1897,17 @@ def _fluctuation_entry(
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """One metric's entry, or None when it is not a material fluctuation."""
-    if metric.kind == "additive":
-        cur_total = _sum_column(current_df, metric.numerator)
-        prev_total = _sum_column(prev_df, metric.numerator)
-        current, previous = cur_total, prev_total
-        base_cur, base_prev = cur_total, prev_total
-    else:
-        cur_pieces = _metric_pieces(current_df, metric, config)
-        prev_pieces = _metric_pieces(prev_df, metric, config)
-        if not cur_pieces[1] or not prev_pieces[1]:
-            return None
-        current = cur_pieces[0] / cur_pieces[1]
-        previous = prev_pieces[0] / prev_pieces[1]
-        # A ratio is only judged on a material denominator: its own base.
-        base_cur, base_prev = cur_pieces[1], prev_pieces[1]
+    totals = _metric_totals(current_df, prev_df, metric, config)
+    if totals is None:
+        return None
+    current, previous, base_cur, base_prev = totals
     if max(base_cur, base_prev) < _base_threshold(metric, config):
         return None
-    delta_pct: float | None
-    if previous:
-        pct = (current - previous) / abs(previous)
-        if abs(pct) < FLUCTUATION_MIN_PCT:
-            return None
-        delta_pct = pct
-        is_new = False
-    elif current:
-        # 新增: the comparison bucket had nothing, so there is no percentage.
-        delta_pct = None
-        is_new = True
-    else:
-        return None
     delta = current - previous
+    gate = _fluctuation_gate(metric, current, previous, delta)
+    if gate is None:
+        return None
+    delta_pct, is_new = gate
     blocks: list[dict[str, Any]] = []
     for key, column, label in dimensions:
         block = _dimension_block(
@@ -1814,15 +1925,23 @@ def _fluctuation_entry(
             blocks.append({"key": key, "label": label, "items": block})
     if not blocks:
         return None
+    driver, efficiency_delta, mix_delta, driver_dimension = _entry_driver(
+        blocks, metric, is_new
+    )
     return {
         "key": metric.key,
         "label": metric.label,
         "kind": metric.kind,
+        "value_format": metric.value_format,
         "current": current,
         "previous": previous,
         "delta": delta,
         "delta_pct": delta_pct,
         "new": is_new,
+        "driver": driver,
+        "driver_dimension": driver_dimension,
+        "efficiency_delta": efficiency_delta,
+        "mix_delta": mix_delta,
         "dimensions": blocks,
     }
 
@@ -1896,7 +2015,15 @@ def _baseline_zscore(delta: float | None, baseline: dict[str, Any]) -> float | N
     if baseline.get("method") == "stable":
         if delta == float(median):
             return 0.0
-        return float("inf") if delta > float(median) else float("-inf")
+        low = baseline.get("low")
+        high = baseline.get("high")
+        if low is not None and high is not None:
+            width = float(high) - float(low)
+            if width > 0:
+                # P10/P90 span roughly ±1.2816σ under normality.
+                scale = width / (2 * 1.2816)
+                return (delta - float(median)) / scale
+        return None
     return None
 
 
@@ -1922,26 +2049,31 @@ def _attach_fluctuation_baseline(
         "high": None,
     }
     entry["baseline"] = baseline
+    entry["severity_basis"] = "delta"
     if entry.get("new"):
         entry["zscore"] = None
         entry["severity"] = None
+        entry["severity_basis"] = "none"
         entry["reason"] = "新增指标，无可比的上一期"
         return
     delta = entry.get("delta_pct")
     z = _baseline_zscore(delta, baseline)
     entry["zscore"] = z
     samples = baseline.get("samples") or 0
-    if baseline.get("method") == "insufficient" or z is None:
+    if baseline.get("method") == "insufficient":
         entry["severity"] = None
+        entry["severity_basis"] = "none"
         entry["reason"] = (
             f"历史数据不足，暂按 {FLUCTUATION_MIN_PCT * 100:.0f}% 业务阈值判断"
         )
         return
+    if z is None:
+        entry["severity"] = None
+        entry["severity_basis"] = "none"
+        entry["reason"] = "历史波动为零，暂不判级"
+        return
     direction = "高于" if (delta or 0) >= 0 else "低于"
-    if abs(z) == float("inf"):
-        entry["severity"] = "abnormal"
-        entry["reason"] = f"{direction}过去全部历史波动范围"
-    elif abs(z) >= FLUCTUATION_Z_ABNORMAL:
+    if abs(z) >= FLUCTUATION_Z_ABNORMAL:
         entry["severity"] = "abnormal"
         entry["reason"] = f"明显{direction}过去 {samples} 期的正常波动"
     elif abs(z) >= FLUCTUATION_Z_WATCH:
@@ -2003,33 +2135,58 @@ def _dimension_bucket_sums(
     return bucket_sums, items
 
 
+@dataclass(frozen=True)
+class _FactorHistory:
+    """One factor's judged move plus the deltas that preceded it."""
+
+    deltas: list[float]
+    current: float | None
+    current_base: float
+    previous_base: float
+
+
 def _metric_deltas_by_factor(
     bucket_sums: list[pd.DataFrame],
     items: set[str],
     metric: _FluctuationMetric,
-) -> tuple[dict[str, list[float]], list[float]]:
-    """Each factor's 环比 list, plus the pooled baseline deltas."""
-    deltas_by_item: dict[str, list[float]] = {}
+) -> tuple[dict[str, _FactorHistory], list[float]]:
+    """Each factor's judged move and its preceding deltas.
+
+    The last bucket is always the judged transition; earlier transitions form
+    the factor's own baseline.  Skipping an undefined transition must not shift
+    the judged move onto an older delta.
+    """
+    histories: dict[str, _FactorHistory] = {}
     pooled: list[float] = []
     for item in items:
         values: list[float | None] = []
+        bases: list[float] = []
         for sums in bucket_sums:
             if sums.empty or item not in sums.index:
                 values.append(None)
+                bases.append(0.0)
                 continue
-            values.append(_metric_value_from_sums(sums.loc[item], metric))
+            row = sums.loc[item]
+            values.append(_metric_value_from_sums(row, metric))
+            bases.append(_metric_base_from_sums(row, metric))
+        current: float | None = None
+        if len(values) >= 2:
+            previous, latest = values[-2], values[-1]
+            if previous is not None and latest is not None and previous:
+                current = (latest - previous) / abs(previous)
         deltas: list[float] = []
-        for index in range(1, len(values)):
-            previous, current = values[index - 1], values[index]
-            if previous is None or current is None or not previous:
+        for index in range(1, len(values) - 1):
+            previous, latest = values[index - 1], values[index]
+            if previous is None or latest is None or not previous:
                 continue
-            deltas.append((current - previous) / abs(previous))
-        if not deltas:
+            deltas.append((latest - previous) / abs(previous))
+        current_base = bases[-1] if bases else 0.0
+        previous_base = bases[-2] if len(bases) >= 2 else 0.0
+        if current is None and not deltas:
             continue
-        # The newest delta is the factor's move being judged.
-        deltas_by_item[item] = deltas
-        pooled.extend(deltas[:-1])
-    return deltas_by_item, pooled
+        histories[item] = _FactorHistory(deltas, current, current_base, previous_base)
+        pooled.extend(deltas)
+    return histories, pooled
 
 
 def _metric_value_from_sums(row: Any, metric: _FluctuationMetric) -> float | None:
@@ -2047,60 +2204,159 @@ def _metric_value_from_sums(row: Any, metric: _FluctuationMetric) -> float | Non
     return numerator / denominator if denominator else None
 
 
+def _metric_base_from_sums(row: Any, metric: _FluctuationMetric) -> float:
+    """The volume a factor's metric is judged on (its value or denominator)."""
+    column = metric.numerator if metric.kind == "additive" else metric.denominator
+    try:
+        value = float(row.get(column))
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if pd.isna(value) else value
+
+
+def _factor_base_threshold(
+    metric: _FluctuationMetric, config: DailyReportConfig
+) -> float:
+    """The minimum volume a factor needs before its 环比 is judged.
+
+    The configured floors name the spend and new-user columns.  A revenue flow
+    has no floor of its own, so it falls back to the spend floor: comparing a
+    tiny recharge base with a full week's revenue would otherwise produce a
+    meaningless percentage.
+    """
+    threshold = _base_threshold(metric, config)
+    if threshold:
+        return threshold
+    if metric.base_kind == "flow":
+        return float(config.baseline_thresholds.get(config.spend_column, 0.0) or 0.0)
+    return 0.0
+
+
+def _no_verdict(
+    history: _FactorHistory,
+    reason: str,
+    pooled_baseline: dict[str, Any],
+) -> dict[str, Any]:
+    """A factor row without a statistical verdict, keeping its contribution."""
+    return {
+        "baseline": {
+            "samples": len(history.deltas),
+            "pooled_samples": pooled_baseline.get("samples") or 0,
+            "method": "insufficient",
+            "median": None,
+            "mad": None,
+            "p10": None,
+            "p90": None,
+            "low": None,
+            "high": None,
+        },
+        "zscore": None,
+        "severity": None,
+        "reason": reason,
+    }
+
+
 def _factor_baseline_stats(
-    deltas_by_item: dict[str, list[float]], pooled: list[float]
+    histories: dict[str, _FactorHistory],
+    pooled: list[float],
+    min_base: float,
+    metric_kind: str,
 ) -> dict[str, dict[str, Any]]:
-    """Own median + pooled MAD per factor, plus its severity verdict."""
+    """Judge each factor on its own historical 环比 distribution.
+
+    The pooled distribution only supplies a fallback scale when the factor's
+    own history is flat.  A factor without a comparable base or enough periods
+    gets no verdict, so a small or newly appearing segment cannot masquerade as
+    an anomaly.
+    """
     pooled_baseline = _robust_baseline(pooled)
-    if pooled_baseline["method"] == "insufficient":
-        return {}
     pooled_mad = float(pooled_baseline.get("mad") or 0.0)
+    pooled_scale = 1.4826 * pooled_mad
     stats: dict[str, dict[str, Any]] = {}
-    for item, deltas in deltas_by_item.items():
-        baseline_deltas = deltas[:-1]
-        own_median = (
-            float(pd.Series(baseline_deltas).median())
-            if len(baseline_deltas) >= 2
-            else float(pooled_baseline["median"])
+    for item, history in histories.items():
+        current = history.current
+        if current is None:
+            reason = (
+                "上期基数为 0（新增），不作判级"
+                if history.previous_base <= 0 < history.current_base
+                else "本期无可比的上一期波动，不作判级"
+            )
+            stats[item] = _no_verdict(history, reason, pooled_baseline)
+            continue
+        comparable_base = (
+            history.previous_base
+            if metric_kind == "additive"
+            else min(history.current_base, history.previous_base)
         )
-        if pooled_mad > 0:
-            z = 0.6745 * (deltas[-1] - own_median) / pooled_mad
-        elif deltas[-1] == own_median:
-            z = 0.0
+        if comparable_base < min_base:
+            stats[item] = _no_verdict(history, "基数不足，不作判级", pooled_baseline)
+            continue
+        if len(history.deltas) < FLUCTUATION_MIN_HISTORY:
+            stats[item] = _no_verdict(
+                history,
+                f"历史有效波动不足 {FLUCTUATION_MIN_HISTORY} 期，暂不判级",
+                pooled_baseline,
+            )
+            continue
+        own = _robust_baseline(history.deltas)
+        if own["method"] == "insufficient" or own["median"] is None:
+            stats[item] = _no_verdict(
+                history,
+                f"历史有效波动不足 {FLUCTUATION_MIN_HISTORY} 期，暂不判级",
+                pooled_baseline,
+            )
+            continue
+        own_median = float(own["median"])
+        own_mad = float(own.get("mad") or 0.0)
+        own_scale = 1.4826 * own_mad
+        if own_scale > 0:
+            scale = own_scale
+            method = "own"
+        elif pooled_scale > 0:
+            scale = pooled_scale
+            method = "pooled"
         else:
-            z = float("inf") if deltas[-1] > own_median else float("-inf")
+            stats[item] = _no_verdict(
+                history, "自身与同类历史均无波动，暂不判级", pooled_baseline
+            )
+            continue
+        z = (current - own_median) / scale
         band = {
-            "samples": len(baseline_deltas),
+            "samples": len(history.deltas),
             "pooled_samples": pooled_baseline["samples"],
-            "method": "pooled",
+            "method": method,
             "median": own_median,
-            "mad": pooled_mad,
-            "p10": pooled_baseline["p10"],
-            "p90": pooled_baseline["p90"],
-            "low": own_median - 3 * 1.4826 * pooled_mad,
-            "high": own_median + 3 * 1.4826 * pooled_mad,
+            "mad": own_mad if method == "own" else pooled_mad,
+            "p10": own["p10"],
+            "p90": own["p90"],
+            "low": own_median - 3 * scale,
+            "high": own_median + 3 * scale,
         }
         stats[item] = {
             "baseline": band,
             "zscore": z,
-            "severity": _pooled_severity(z),
-            "reason": _pooled_reason(z, deltas[-1], pooled_baseline["samples"]),
+            "severity": _factor_severity(z),
+            "reason": _factor_reason(z, current, len(history.deltas), method),
         }
     return stats
 
 
-def _pooled_severity(z: float) -> str:
-    if abs(z) == float("inf") or abs(z) >= FLUCTUATION_Z_ABNORMAL:
+def _factor_severity(z: float) -> str:
+    if abs(z) >= FLUCTUATION_Z_ABNORMAL:
         return "abnormal"
     if abs(z) >= FLUCTUATION_Z_WATCH:
         return "watch"
     return "normal"
 
 
-def _pooled_reason(z: float, delta: float, _samples: int) -> str:
-    if abs(z) == float("inf"):
-        return "超出同类项目的全部历史波动"
+def _factor_reason(z: float, delta: float, samples: int, method: str) -> str:
     direction = "高于" if delta >= 0 else "低于"
+    if method == "own":
+        if abs(z) >= FLUCTUATION_Z_ABNORMAL:
+            return f"明显{direction}过去 {samples} 期的正常波动"
+        if abs(z) >= FLUCTUATION_Z_WATCH:
+            return f"{direction}过去 {samples} 期的常见波动"
+        return f"处于过去 {samples} 期的正常波动范围"
     if abs(z) >= FLUCTUATION_Z_ABNORMAL:
         return f"明显{direction}同类项目的历史波动"
     if abs(z) >= FLUCTUATION_Z_WATCH:
@@ -2109,17 +2365,150 @@ def _pooled_reason(z: float, delta: float, _samples: int) -> str:
     return "处于同类项目的正常波动范围"
 
 
+def _driver_dimension(
+    dimensions: list[tuple[str, str, str]],
+) -> tuple[str, str, str] | None:
+    """The finest configured dimension for classifying rate vs mix."""
+    by_key = {key: (key, column, label) for key, column, label in dimensions}
+    for key in ("project", "media", "platform"):
+        if key in by_key:
+            return by_key[key]
+    return None
+
+
+def _pair_effects(
+    prev_df: pd.DataFrame,
+    current_df: pd.DataFrame,
+    column: str,
+    metric: _FluctuationMetric,
+    config: DailyReportConfig,
+) -> tuple[float, float] | None:
+    """One bucket pair's total rate/mix effects for a ratio metric."""
+    cur_pieces = _pieces_by_dimension(current_df, column, metric, config)
+    prev_pieces = _pieces_by_dimension(prev_df, column, metric, config)
+    if not cur_pieces or not prev_pieces:
+        return None
+    den_cur = sum(piece[1] for piece in cur_pieces.values())
+    den_prev = sum(piece[1] for piece in prev_pieces.values())
+    if not den_cur or not den_prev:
+        return None
+    efficiency = 0.0
+    mix = 0.0
+    for name in set(cur_pieces) | set(prev_pieces):
+        rate, mix_effect = _ratio_effects(
+            cur_pieces.get(name, (0.0, 0.0)),
+            prev_pieces.get(name, (0.0, 0.0)),
+            den_cur,
+            den_prev,
+        )
+        efficiency += rate
+        mix += mix_effect
+    return efficiency, mix
+
+
+def _metric_efficiency_baselines(
+    df: pd.DataFrame,
+    date_col: str,
+    history: list[PeriodBucket],
+    config: DailyReportConfig,
+) -> dict[str, dict[str, Any]]:
+    """Per-metric historical baselines for the efficiency (rate) component.
+
+    Ratio metrics are classified at the finest configured dimension.  The last
+    bucket pair is the move being judged; earlier pairs form the baseline.
+    """
+    dimensions = [
+        dimension
+        for dimension in _fluctuation_dimensions(config)
+        if dimension[1] in df.columns
+    ]
+    dimension = _driver_dimension(dimensions)
+    if len(history) < 2 or dimension is None:
+        return {}
+    dimension_key, column, _label = dimension
+    frames = [_bucket_subset(df, date_col, bucket) for bucket in reversed(history)]
+    result: dict[str, dict[str, Any]] = {}
+    for metric in _fluctuation_metrics(config):
+        if metric.kind != "ratio":
+            continue
+        history_effects: list[float] = []
+        for index in range(1, len(frames) - 1):
+            effect = _pair_effects(
+                frames[index - 1], frames[index], column, metric, config
+            )
+            if effect is not None:
+                history_effects.append(effect[0])
+        current_effect = _pair_effects(frames[-2], frames[-1], column, metric, config)
+        if current_effect is None:
+            continue
+        result[metric.key] = {
+            "baseline": _robust_baseline(history_effects),
+            "current": current_effect[0],
+            "mix": current_effect[1],
+            "dimension": dimension_key,
+        }
+    return result
+
+
+def _efficiency_reason(z: float, delta: float, samples: int, driver: str) -> str:
+    direction = "高于" if delta >= 0 else "低于"
+    if abs(z) >= FLUCTUATION_Z_ABNORMAL:
+        reason = f"效率明显{direction}过去 {samples} 期的正常波动"
+    elif abs(z) >= FLUCTUATION_Z_WATCH:
+        reason = f"效率{direction}过去 {samples} 期的常见波动"
+    else:
+        reason = f"效率处于过去 {samples} 期的正常波动范围"
+    suffix = {
+        "structure": "；结构变化为主",
+        "both": "；效率与结构共同变化",
+    }.get(driver, "")
+    return reason + suffix
+
+
+def _attach_efficiency_baseline(
+    entry: dict[str, Any], data: dict[str, Any] | None
+) -> None:
+    """Override a ratio metric's severity with its efficiency component.
+
+    A move dominated by mix is a structural change, not necessarily an
+    efficiency anomaly; its severity follows the rate (efficiency) component.
+    When the efficiency history cannot support a band, the overall metric
+    verdict is kept and the reason says so.
+    """
+    if not data:
+        return
+    entry["efficiency_baseline"] = data["baseline"]
+    entry["efficiency_dimension"] = data["dimension"]
+    if entry.get("new"):
+        entry["efficiency_zscore"] = None
+        return
+    z = _baseline_zscore(data["current"], data["baseline"])
+    entry["efficiency_zscore"] = z
+    if z is None:
+        reason = entry.get("reason") or ""
+        entry["reason"] = f"{reason}；效率历史不足，按整体环比判级"
+        return
+    entry["severity"] = _factor_severity(z)
+    entry["severity_basis"] = "efficiency"
+    entry["reason"] = _efficiency_reason(
+        z,
+        float(data["current"]),
+        int(data["baseline"].get("samples") or 0),
+        str(entry.get("driver") or ""),
+    )
+
+
 def _dimension_factor_baselines(
     df: pd.DataFrame,
     date_col: str,
     history: list[PeriodBucket],
     config: DailyReportConfig,
 ) -> dict[tuple[str, str, str], dict[str, Any]]:
-    """Pooled per-factor bands for the 波动 attribution rows.
+    """Per-factor bands for the 波动 attribution rows.
 
-    Each factor gets its own median 环比, but the **scale** is pooled across
-    every factor in the same dimension: a segment that only appears in a
-    handful of buckets still gets a stable normal range.
+    Each factor is judged against its own 环比 distribution; the pooled scale
+    is only a fallback for a factor whose own history is flat.  Factors with a
+    small or newly appearing base get no verdict rather than a misleading one.
     """
     metrics = _fluctuation_metrics(config)
     dimensions = _fluctuation_dimensions(config)
@@ -2144,12 +2533,13 @@ def _dimension_factor_baselines(
             continue
         bucket_sums, items = _dimension_bucket_sums(frames, column, base_columns)
         for metric in metrics:
-            deltas_by_item, pooled = _metric_deltas_by_factor(
-                bucket_sums, items, metric
-            )
-            if not deltas_by_item or not pooled:
+            histories, pooled = _metric_deltas_by_factor(bucket_sums, items, metric)
+            if not histories:
                 continue
-            for item, stats in _factor_baseline_stats(deltas_by_item, pooled).items():
+            min_base = _factor_base_threshold(metric, config)
+            for item, stats in _factor_baseline_stats(
+                histories, pooled, min_base, metric.kind
+            ).items():
                 result[(metric.key, dimension_key, item)] = stats
     return result
 
@@ -2160,14 +2550,20 @@ def _build_fluctuations(
     config: DailyReportConfig,
     baselines: dict[str, dict[str, Any]] | None = None,
     factor_baselines: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    efficiency_baselines: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """§1「关键指标波动」: the headline metrics worth explaining, each with the
     平台 / 媒体 / 主游戏 factors that moved it.
 
     A metric is listed when its 环比 clears ``FLUCTUATION_MIN_PCT`` on a base
-    above ``baseline_thresholds`` (a ratio is judged on its own denominator).
-    Additive metrics list each factor's 增量; ratio metrics decompose the move
-    into 费率效应 + 结构效应 — both add up to the metric's change exactly.
+    above ``baseline_thresholds`` (a ratio is judged on its own denominator and,
+    for 自然新增%, on an absolute percentage-point gate as well).  Additive
+    metrics list each factor's 增量; ratio metrics decompose the move into
+    费率效应 + 结构效应 — both add up to the metric's change exactly.
+
+    Ratio metrics are classified as efficiency- or structure-driven at the
+    finest configured dimension, and their severity follows the efficiency
+    component.  The list is ordered by the relative move, with a 新增 row first.
 
     The 主游戏 axis deliberately ignores the Top-N cut and the scattered-label
     filter the display views apply: attribution has to add up to the total, and
@@ -2179,7 +2575,8 @@ def _build_fluctuations(
     entries: list[dict[str, Any]] = []
     for metric in _fluctuation_metrics(config):
         if (
-            metric.numerator not in current_df.columns
+            metric.numerator != _NATURAL_NUMERATOR
+            and metric.numerator not in current_df.columns
             and metric.numerator not in prev_df.columns
         ):
             continue
@@ -2193,6 +2590,10 @@ def _build_fluctuations(
         )
         if entry is not None:
             _attach_fluctuation_baseline(entry, (baselines or {}).get(metric.key))
+            if metric.kind == "ratio":
+                _attach_efficiency_baseline(
+                    entry, (efficiency_baselines or {}).get(metric.key)
+                )
             entries.append(entry)
     # Biggest relative move first; a 新增 (no percentage) leads the list.
     entries.sort(
@@ -2269,6 +2670,9 @@ def _build_report(
         config,
         baselines=_fluctuation_baselines(daily, config),
         factor_baselines=_dimension_factor_baselines(df, date_col, history, config),
+        efficiency_baselines=_metric_efficiency_baselines(
+            df, date_col, history, config
+        ),
     )
 
     alerts = _detect_alerts(core, config)
@@ -2303,6 +2707,7 @@ def _build_report(
             "default_breakeven_line": config.default_breakeven_line,
             # §1「关键指标波动」的入选门槛，让前端文案与后端判定保持一致。
             "fluctuation_min_pct": FLUCTUATION_MIN_PCT,
+            "fluctuation_min_rate_pp": FLUCTUATION_MIN_RATE_PP,
             "fluctuation_z": FLUCTUATION_Z_ABNORMAL,
             "fluctuation_watch_z": FLUCTUATION_Z_WATCH,
             "fluctuation_min_history": FLUCTUATION_MIN_HISTORY,
@@ -2819,6 +3224,7 @@ def run_briefing(
             "roi_warning_line": config.roi_warning_line,
             "default_breakeven_line": config.default_breakeven_line,
             "fluctuation_min_pct": FLUCTUATION_MIN_PCT,
+            "fluctuation_min_rate_pp": FLUCTUATION_MIN_RATE_PP,
             "fluctuation_z": FLUCTUATION_Z_ABNORMAL,
             "fluctuation_watch_z": FLUCTUATION_Z_WATCH,
             "fluctuation_min_history": FLUCTUATION_MIN_HISTORY,
