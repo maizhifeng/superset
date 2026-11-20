@@ -43,6 +43,7 @@ const CRON_PRESETS: { value: string; label: string }[] = [
   { value: "0 9 * * *", label: "每天 09:00" },
   { value: "0 18 * * *", label: "每天 18:00" },
   { value: "0 9 * * 1", label: "每周一 09:00" },
+  { value: "30 9 * * 1", label: "每周一 09:30" },
   { value: "__custom__", label: "自定义" },
 ];
 
@@ -81,6 +82,25 @@ function fmtMd(d: Date): string {
   return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Read "now" through the schedule's timezone, not the browser's. */
+function nowInTimezone(timezone: string, now: Date = new Date()): Date {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+    const value = (type: string) =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    // Noon local avoids DST-midnight normalization; the preview only needs the
+    // calendar date and weekday.
+    return new Date(value("year"), value("month") - 1, value("day"), 12, 0, 0);
+  } catch {
+    return now;
+  }
+}
+
 /**
  * Human-readable preview of which period a scheduled run will report on.
  * Mirrors the backend semantics: daily runs report the previous calendar day
@@ -90,22 +110,24 @@ function fmtMd(d: Date): string {
  */
 function reportDatePreview(
   reportType: "daily" | "weekly",
+  timezone: string,
   now: Date = new Date(),
 ): string {
+  const zonedNow = nowInTimezone(timezone, now);
   if (reportType === "weekly") {
     // Monday-based week start, matching the backend's _week_start().
-    const weekStart = addDays(now, -((now.getDay() + 6) % 7));
+    const weekStart = addDays(zonedNow, -((zonedNow.getDay() + 6) % 7));
     const prevStart = addDays(weekStart, -7);
     const prevEnd = addDays(weekStart, -1);
     return (
       `将生成「上一完整自然周（周一~周日）」报告 — 例：报告 ` +
-      `${fmtMd(prevStart)} ~ ${fmtMd(prevEnd)}（按任务时区）`
+      `${fmtMd(prevStart)} ~ ${fmtMd(prevEnd)}（按任务时区 ${timezone}）`
     );
   }
-  const yesterday = addDays(now, -1);
+  const yesterday = addDays(zonedNow, -1);
   return (
-    `将生成（昨日）报告 — 例：今天 ${fmtMd(now)} 09:00执行 → 报告 ` +
-    `${fmtMd(yesterday)}（按任务时区）。`
+    `将生成（昨日）报告 — 例：今天 ${fmtMd(zonedNow)} 执行 → 报告 ` +
+    `${fmtMd(yesterday)}（按任务时区 ${timezone}）`
   );
 }
 
@@ -127,9 +149,10 @@ export default function ScheduleDialog({
   onChanged: () => void;
 }) {
   const notify = useNotificationStore((s) => s.notify);
+  const defaultCron = reportType === "weekly" ? "30 9 * * 1" : "0 8 * * *";
   const [active, setActive] = useState(true);
-  const [cronPreset, setCronPreset] = useState<string>("0 8 * * *");
-  const [crontab, setCrontab] = useState("0 8 * * *");
+  const [cronPreset, setCronPreset] = useState<string>(defaultCron);
+  const [crontab, setCrontab] = useState(defaultCron);
   const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [emails, setEmails] = useState("");
   const [saving, setSaving] = useState(false);
@@ -138,14 +161,14 @@ export default function ScheduleDialog({
   useEffect(() => {
     if (!open) return;
     setActive(schedule?.active ?? true);
-    const cron = schedule?.crontab || "0 8 * * *";
+    const cron = schedule?.crontab || defaultCron;
     setCrontab(cron);
     setCronPreset(
       CRON_PRESETS.some((p) => p.value === cron) ? cron : "__custom__",
     );
     setTimezone(schedule?.timezone || "Asia/Shanghai");
     setEmails(emailsFromRecipients(schedule?.recipients));
-  }, [open, schedule]);
+  }, [open, schedule, defaultCron]);
 
   const isCustom = cronPreset === "__custom__";
   const effectiveCron = isCustom ? crontab : cronPreset;
@@ -235,7 +258,7 @@ export default function ScheduleDialog({
       </DialogTitle>
       <DialogContent dividers>
         <Alert severity="info" sx={{ mb: 1.5, alignItems: "flex-start" }}>
-          {reportDatePreview(reportType)}
+          {reportDatePreview(reportType, timezone)}
         </Alert>
         <FormControlLabel
           control={

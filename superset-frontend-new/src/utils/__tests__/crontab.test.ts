@@ -8,6 +8,7 @@ test("formats daily schedules", () => {
 
 test("formats weekly schedules", () => {
   expect(formatCrontabZh("0 8 * * 1")).toBe("每周一 08:00");
+  expect(formatCrontabZh("30 9 * * 1")).toBe("每周一 09:30");
   expect(formatCrontabZh("0 8 * * 0")).toBe("每周日 08:00");
   expect(formatCrontabZh("0 8 * * 7")).toBe("每周日 08:00");
 });

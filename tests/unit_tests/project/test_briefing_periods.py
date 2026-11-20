@@ -112,10 +112,11 @@ def test_weekly_default_lands_on_complete_week_for_every_weekday() -> None:
 
 
 def test_weekly_override_selects_containing_week() -> None:
-    """With an explicit date, the week containing that date is reported."""
-    current, previous, history = _reference_periods(
-        DailyReportContext(override_date="2026-08-13"), _weekly_config()
-    )
+    """With an explicit past date, the week containing that date is reported."""
+    with _freeze_today(date(2026, 11, 20)):
+        current, previous, history = _reference_periods(
+            DailyReportContext(override_date="2026-08-13"), _weekly_config()
+        )
 
     assert (current.start, current.end) == (
         date(2026, 8, 10),
@@ -132,6 +133,54 @@ def test_weekly_override_selects_containing_week() -> None:
         "2026-07-27",
         "2026-07-20",
     ]
+
+
+def test_weekly_override_in_incomplete_week_uses_last_complete_week() -> None:
+    """A selected date in the still-running week reports the prior full week."""
+    with _freeze_today(date(2026, 11, 20)):
+        current, previous, history = _reference_periods(
+            DailyReportContext(override_date="2026-11-20"), _weekly_config()
+        )
+
+    assert (current.start, current.end) == (
+        date(2026, 11, 9),
+        date(2026, 11, 15),
+    )
+    assert (previous.start, previous.end) == (
+        date(2026, 11, 2),
+        date(2026, 11, 8),
+    )
+    assert history[0].label == current.label
+
+
+def test_weekly_override_on_week_end_falls_back_to_last_complete_week() -> None:
+    """The week that ends today is not reported until its data is complete."""
+    with _freeze_today(date(2026, 11, 22)):
+        current, previous, _ = _reference_periods(
+            DailyReportContext(override_date="2026-11-22"), _weekly_config()
+        )
+
+    assert (current.start, current.end) == (
+        date(2026, 11, 9),
+        date(2026, 11, 15),
+    )
+    assert (previous.start, previous.end) == (
+        date(2026, 11, 2),
+        date(2026, 11, 8),
+    )
+
+
+def test_weekly_override_future_date_uses_last_complete_week() -> None:
+    """A future date cannot pull in a week that has not happened yet."""
+    with _freeze_today(date(2026, 11, 20)):
+        current, _, _ = _reference_periods(
+            DailyReportContext(override_date="2026-12-01"), _weekly_config()
+        )
+
+    assert (current.start, current.end) == (
+        date(2026, 11, 9),
+        date(2026, 11, 15),
+    )
 
 
 def test_weekly_buckets_cover_year_boundary() -> None:
@@ -164,3 +213,22 @@ def test_weekly_range_labels_and_compat_keys() -> None:
     assert weekly_current.range_label == "08-17 ~ 08-23"
     assert weekly_previous.range_label == "08-10 ~ 08-16"
     assert weekly_history[1].range_label == "08-10 ~ 08-16"
+
+
+def test_weekly_anchor_date_uses_schedule_zone_not_container_date() -> None:
+    """A Monday 00:30 Asia/Shanghai run anchors on Monday, not UTC Sunday."""
+    # The container is still on Sunday 2026-11-22 (UTC), while the schedule's
+    # timezone has already rolled over to Monday 2026-11-23.
+    with _freeze_today(date(2026, 11, 22)):
+        current, previous, _ = _reference_periods(
+            DailyReportContext(anchor_date=date(2026, 11, 23)), _weekly_config()
+        )
+
+    assert (current.start, current.end) == (
+        date(2026, 11, 16),
+        date(2026, 11, 22),
+    )
+    assert (previous.start, previous.end) == (
+        date(2026, 11, 9),
+        date(2026, 11, 15),
+    )

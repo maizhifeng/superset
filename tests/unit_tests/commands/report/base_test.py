@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from functools import wraps
+from types import SimpleNamespace
 from typing import Any, Callable
 from unittest.mock import patch
 
@@ -31,7 +32,11 @@ from superset.commands.report.exceptions import (
     ReportScheduleCrontabNotValidError,
     ReportScheduleFrequencyNotAllowed,
 )
-from superset.reports.models import ReportScheduleType
+from superset.reports.models import (
+    ReportCreationMethod,
+    ReportDataFormat,
+    ReportScheduleType,
+)
 
 # Tuples, not sets: these feed ``@pytest.mark.parametrize``, and pytest-xdist
 # requires every worker to collect the same test ids in the same order. A set
@@ -416,3 +421,40 @@ def test_validate_alert_query_rejects_unauthorized_tables(
 
     assert len(exceptions) == 1
     assert isinstance(exceptions[0], AlertQueryDataAccessValidationError)
+
+
+def test_validate_chart_dashboard_allows_briefing_update_without_method() -> None:
+    """An update may omit creation_method; the stored briefing type still wins."""
+    command = BaseReportScheduleCommand()
+    command._properties = {"active": False, "type": ReportScheduleType.REPORT}
+    command._model = SimpleNamespace(
+        creation_method=ReportCreationMethod.BRIEFING,
+        type=ReportScheduleType.REPORT,
+        report_format=ReportDataFormat.PNG,
+        chart_id=None,
+        dashboard_id=None,
+    )
+    exceptions: list[Any] = []
+
+    command.validate_chart_dashboard(exceptions, update=True)
+
+    assert exceptions == []
+
+
+def test_validate_chart_dashboard_detects_briefing_from_extra() -> None:
+    """extra.briefing.config_id marks a briefing even without creation_method."""
+    command = BaseReportScheduleCommand()
+    command._properties = {"active": False, "type": ReportScheduleType.REPORT}
+    command._model = SimpleNamespace(
+        creation_method=ReportCreationMethod.ALERTS_REPORTS,
+        extra={"briefing": {"config_id": 7}},
+        type=ReportScheduleType.REPORT,
+        report_format=ReportDataFormat.PNG,
+        chart_id=None,
+        dashboard_id=None,
+    )
+    exceptions: list[Any] = []
+
+    command.validate_chart_dashboard(exceptions, update=True)
+
+    assert exceptions == []

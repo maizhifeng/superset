@@ -1905,16 +1905,18 @@ class BaseReportState:
         config_payload = self._get_briefing_config()
         config = config_from_dict(config_payload)
 
-        # Daily briefings report on "yesterday" relative to *today*; resolve
-        # today in the schedule's timezone so runs near midnight align with
-        # the configured zone.  Weekly briefings always target the last
-        # complete week, so they take no override date.
-        override_date = None
-        if normalize_report_type(config_payload.get("report_type")) == "daily":
-            import pytz
+        # Resolve "today" in the schedule's timezone.  The container may run
+        # in UTC, so using its process date would shift weekly anchors by a
+        # week around midnight (e.g. Monday 00:30 in Asia/Shanghai).
+        import pytz
 
-            tz = pytz.timezone(self._report_schedule.timezone or "UTC")
-            override_date = datetime.now(tz=tz).date().isoformat()
+        tz = pytz.timezone(self._report_schedule.timezone or "UTC")
+        anchor_date = datetime.now(tz=tz).date()
+        override_date = (
+            anchor_date.isoformat()
+            if normalize_report_type(config_payload.get("report_type")) == "daily"
+            else None
+        )
 
         def progress(message: str, level: str = "info") -> None:
             logger.log(
@@ -1925,14 +1927,19 @@ class BaseReportState:
             )
 
         logger.info(
-            "Running briefing (config %s, override_date=%s) - execution_id: %s",
+            "Running briefing (config %s, override_date=%s, anchor_date=%s) "
+            "- execution_id: %s",
             config_payload.get("id"),
             override_date,
+            anchor_date,
             self._execution_id,
         )
         result = run_briefing(
             config,
-            DailyReportContext(override_date=override_date),
+            DailyReportContext(
+                override_date=override_date,
+                anchor_date=anchor_date,
+            ),
             progress=progress,
             cancel=lambda: False,
         )

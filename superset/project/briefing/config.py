@@ -11,6 +11,7 @@ point at your UA dataset before first use.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
+from datetime import date
 from typing import Any
 
 # Supported briefing types; anything else normalizes to "daily".
@@ -156,6 +157,9 @@ class DailyReportContext:
 
     # 覆盖日期（"今天"，用于回溯测试），None 表示使用真实今天
     override_date: str | None = None
+    # 定时任务在「任务时区」里的今天。容器通常跑在 UTC，周报锚定周必须
+    # 用这个日期，否则周一凌晨等时刻会按容器日期错算一周。
+    anchor_date: date | None = None
     top_projects_count: int | None = None
     days_of_history: int | None = None
     datasource_id: int | None = None

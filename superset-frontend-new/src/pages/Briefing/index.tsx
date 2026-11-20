@@ -411,6 +411,7 @@ export default function BriefingList() {
                                   ? "上一完整周"
                                   : "前一日"}
                               </span>
+                              <span>· {cfg.schedule.timezone || "UTC"}</span>
                               {cfg.schedule.active &&
                                 cfg.schedule.next_run_at && (
                                   <>

@@ -163,24 +163,48 @@ class BaseReportScheduleCommand(BaseCommand):
             or report_format != ReportDataFormat.NONE
         )
 
+    def _effective_creation_method(self) -> Any:
+        """The payload's creation method, falling back to the stored schedule."""
+        creation_method = self._properties.get("creation_method")
+        if creation_method is not None:
+            return creation_method
+        model = getattr(self, "_model", None)
+        return getattr(model, "creation_method", None) if model is not None else None
+
+    def _is_briefing_schedule(self) -> bool:
+        """Whether this schedule is a briefing, even if the update omits the method."""
+        if self._effective_creation_method() == ReportCreationMethod.BRIEFING:
+            return True
+        extra = self._properties.get("extra")
+        if extra is None:
+            model = getattr(self, "_model", None)
+            extra = getattr(model, "extra", None) if model is not None else None
+        if isinstance(extra, dict):
+            briefing = extra.get("briefing")
+            return isinstance(briefing, dict) and bool(briefing.get("config_id"))
+        return False
+
     def validate_chart_dashboard(
         self, exceptions: list[ValidationError], update: bool = False
     ) -> None:
-        """Validate supplied assets and require one for an attachment format."""
+        """Validate supplied assets and require one for an attachment format.
+
+        Briefing schedules have no chart/dashboard: they reference a briefing
+        config via ``extra.briefing.config_id``.  Recognize them from either
+        marker so updates that omit ``creation_method`` still skip asset checks.
+        """
         requires_asset = self.requires_asset()
         chart_id = self._properties.get("chart")
         dashboard_id = self._properties.get("dashboard")
-        creation_method = self._properties.get("creation_method")
         if not requires_asset and not (chart_id or dashboard_id):
             return
 
-        if creation_method == ReportCreationMethod.BRIEFING:
-            # Briefing schedules reference a briefing config via
-            # extra.briefing.config_id instead of a chart or dashboard.
+        if self._is_briefing_schedule():
             if chart_id or dashboard_id:
                 exceptions.append(ReportScheduleOnlyChartOrDashboardError())
             return
 
+        creation_method = self._effective_creation_method()
         if creation_method == ReportCreationMethod.CHARTS and not chart_id:
             # User has not saved chart yet in Explore view
             exceptions.append(ChartNotSavedValidationError())
@@ -310,11 +334,7 @@ class BaseReportScheduleCommand(BaseCommand):
         Briefing schedules must reference a stored briefing configuration
         (key_value ``daily_report_cfg`` entry) via ``extra.briefing.config_id``.
         """
-        creation_method = self._properties.get("creation_method")
-        model = getattr(self, "_model", None)
-        if creation_method is None and model is not None:
-            creation_method = getattr(model, "creation_method", None)
-        if creation_method != ReportCreationMethod.BRIEFING:
+        if not self._is_briefing_schedule():
             return
 
         briefing = extra.get("briefing")
@@ -345,7 +365,7 @@ class BaseReportScheduleCommand(BaseCommand):
                     _("Briefing configuration %(id)s not found", id=config_id),
                     "extra",
                 )
-                )
+            )
 
     def _validate_native_filters(  # noqa: C901
         self,
