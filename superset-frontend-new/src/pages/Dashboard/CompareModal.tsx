@@ -1,36 +1,38 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  Fragment,
-} from "react";
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
+import Chip from "@mui/material/Chip";
 import IconButton from "@mui/material/IconButton";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
-import TextField from "@mui/material/TextField";
-import Autocomplete from "@mui/material/Autocomplete";
-import Chip from "@mui/material/Chip";
 import LinearProgress from "@mui/material/LinearProgress";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import CloseIcon from "@mui/icons-material/Close";
 import FlipIcon from "@mui/icons-material/Flip";
-import ChevronLeft from "@mui/icons-material/ChevronLeft";
-import ChevronRight from "@mui/icons-material/ChevronRight";
 import api, { getMetricFormatMap } from "@/api";
 import { filterValuesQuery } from "@/api/filterValues";
 import { postChartData } from "@/api/chartData";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
-import { REGION_LABELS, isGameRegion, type GameRegion } from "@/config/regions";
+import { isGameRegion } from "@/config/regions";
 import { isFederatedDataset } from "@/config/federatedDatasets";
 import {
   cchValueRegion,
@@ -38,7 +40,6 @@ import {
   narrowMediaByKnownValues,
 } from "@/pages/Dashboard/compareRegions";
 import { extractQueryFields } from "@/utils/query/extractQueryFields";
-import { formatMetricValue } from "@/utils/formatNumber";
 import type { MetricFormatMap } from "@/utils/formatNumber";
 import type { SimpleFilter, QueryObject } from "@/utils/query/types";
 import type {
@@ -49,9 +50,7 @@ import type {
   FormData,
 } from "@/types/api";
 import type { ChartDataResponseResult } from "@/utils/query/types";
-import { formatLtvMultiplier } from "@/pages/Dashboard/ltvMultiplier";
 import {
-  ANCHORS,
   ANCHOR_LABELS,
   anchorSectionLabel,
   buildStartMaps,
@@ -66,40 +65,20 @@ import type {
   ProfitSharingStartRow,
   StartMaps,
 } from "@/pages/Dashboard/compareStartDate";
+import { resolveDisplayName } from "@/pages/Dashboard/compareColumns";
 import {
-  resolveDisplayName,
-  displayLabel,
-} from "@/pages/Dashboard/compareColumns";
-
-interface GameOption {
-  papp_id: string;
-  region: GameRegion;
-  papp_name: string;
-  上线时间: string;
-}
-
-type SelectedGame = GameOption;
-
-/**
- * 游戏的唯一标识。国内与海外的 papp_id 可能重名（对应不同游戏），所以
- * 选择、分表、主对比的标识都要带上区域，起始日期映射同样如此。
- */
-function gameKey(game: { region: GameRegion; papp_id: string }): string {
-  return startKey(game.region, game.papp_id);
-}
-
-const PERIOD_DAYS = [7, 14, 30, 60, 90, 180, 360, 720];
-
-function fmtValue(
-  key: string,
-  value: unknown,
-  formatMap?: MetricFormatMap,
-): string {
-  return formatMetricValue(key, value, formatMap);
-}
-
-const extractName = (val: string) =>
-  val.replace(/\s*[([][^)\]]*[)\]]$/, "").trim();
+  COL,
+  extractName,
+  gameKey,
+  type CompareHoveredCell,
+  type CompareQuerySnapshot,
+  type CompareSecondaryResult,
+  type GameOption,
+  type SelectedGame,
+} from "@/pages/Dashboard/compareModalModel";
+import { CompareModalControls } from "@/pages/Dashboard/CompareModalControls";
+import { CompareModalFilters } from "@/pages/Dashboard/CompareModalFilters";
+import { CompareModalResults } from "@/pages/Dashboard/CompareModalResults";
 
 interface CompareModalProps {
   open: boolean;
@@ -108,18 +87,6 @@ interface CompareModalProps {
   chartData?: ChartDataPayload;
   chartMeta?: ChartData;
 }
-
-// Hardcoded actual column names from the dataset
-const COL = {
-  papp_name: "主游戏",
-  papp_id: "主游戏[ID]",
-  report_date_calc: "日期",
-  cch_name: "渠道商",
-  cch_name_id: "渠道商[ID]",
-  channel_name: "媒体",
-  ad_real_cost: "ad_real_cost",
-  n_unum: "n_unum",
-};
 
 export default function CompareModal({
   open,
@@ -163,22 +130,14 @@ export default function CompareModal({
   const [chartDsType, setChartDsType] = useState<string>("table");
   const [cchNameValues, setCchNameValues] = useState<string[]>([]);
   const [channelValues, setChannelValues] = useState<string[]>([]);
-  const [hoveredCell, setHoveredCell] = useState<{
-    table: "primary" | "secondary";
-    row: number;
-  } | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<CompareHoveredCell | null>(
+    null,
+  );
   const [metricFormatMap, setMetricFormatMap] = useState<MetricFormatMap>({});
-  const [intraSecondaryResult, setIntraSecondaryResult] = useState<{
-    columns: { name: string; type?: string }[];
-    data: ChartDataRow[];
-  } | null>(null);
+  const [intraSecondaryResult, setIntraSecondaryResult] =
+    useState<CompareSecondaryResult | null>(null);
   const intraSecondaryAggRef = useRef<ChartDataRow | null>(null);
-  const queryFilterSnapshot = useRef<{
-    games: SelectedGame[];
-    cchNames: string[];
-    channels: string[];
-    anchors: AnchorKey[];
-  } | null>(null);
+  const queryFilterSnapshot = useRef<CompareQuerySnapshot | null>(null);
   const sectionAggregateCacheRef = useRef<Record<string, ChartDataRow>>({});
   const scrollRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const syncDisabled = useRef(false);
@@ -209,14 +168,6 @@ export default function CompareModal({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [loading, queryProgress]);
-
-  const cchNameOptions = useMemo(() => {
-    return cchNameValues.filter((v) => !selectedCchNames.includes(v));
-  }, [cchNameValues, selectedCchNames]);
-
-  const channelOptions = useMemo(() => {
-    return channelValues.filter((v) => !selectedChannels.includes(v));
-  }, [channelValues, selectedChannels]);
 
   useEffect(() => {
     if (!open) {
@@ -374,14 +325,6 @@ export default function CompareModal({
       cancelled = true;
     };
   }, [open, chartId, chartMeta]);
-
-  const gameOptions = useMemo(
-    () =>
-      games.filter(
-        (g) => !selectedGames.some((sg) => gameKey(sg) === gameKey(g)),
-      ),
-    [games, selectedGames],
-  );
 
   const removeGame = useCallback((key: string) => {
     setSelectedGames((prev) => prev.filter((g) => gameKey(g) !== key));
@@ -1494,148 +1437,22 @@ export default function CompareModal({
             <CloseIcon />
           </IconButton>
         </Box>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            flexWrap: "wrap",
-            columnGap: 1.5,
-            rowGap: 0.5,
-          }}
-        >
-          <Box
-            sx={{
-              position: "relative",
-              display: "flex",
-              gap: 0.5,
-              alignItems: "center",
-            }}
-          >
-            <Typography sx={{ fontSize: "0.7rem", color: "text.secondary" }}>
-              基准
-            </Typography>
-            {ANCHORS.map((a) => {
-              const active = selectedAnchors.includes(a.key);
-              return (
-                <Chip
-                  key={a.key}
-                  label={a.label}
-                  size="small"
-                  variant={active ? "filled" : "outlined"}
-                  color={active ? "secondary" : "default"}
-                  onClick={() => toggleAnchor(a.key)}
-                  title="可多选，多选时按轮次分表对比（外对比）"
-                  sx={{ cursor: "pointer", minWidth: 28 }}
-                />
-              );
-            })}
-            {selectedAnchors.length > 1 && (
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -8,
-                  right: -8,
-                  px: 0.75,
-                  py: 0.15,
-                  borderRadius: "3px",
-                  bgcolor: "error.main",
-                  color: "common.white",
-                  fontSize: "0.65rem",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  zIndex: 10,
-                  pointerEvents: "none",
-                  boxShadow: "var(--mui-palette-shadow-sm)",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "inline-block",
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    bgcolor: "common.white",
-                    mr: 0.5,
-                    verticalAlign: "middle",
-                  }}
-                />
-                外对比
-              </Box>
-            )}
-          </Box>
-          <Box
-            sx={{
-              display: "flex",
-              gap: 1,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {PERIOD_DAYS.map((days) => (
-              <Chip
-                key={days}
-                label={`${selectedAnchors.length > 1 ? "各轮次后" : `${ANCHOR_LABELS[selectedAnchors[0]]}后`} ${days} 天`}
-                size="small"
-                variant={periodDays === days ? "filled" : "outlined"}
-                color={periodDays === days ? "primary" : "default"}
-                onClick={() => setPeriodDays(days)}
-                sx={{ cursor: "pointer" }}
-              />
-            ))}
-          </Box>
-          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-            {["P1D", "P1W", "P1M"].map((g) => (
-              <Chip
-                key={g}
-                label={g === "P1D" ? "日" : g === "P1W" ? "周" : "月"}
-                size="small"
-                variant={timeGrain === g ? "filled" : "outlined"}
-                color={timeGrain === g ? "secondary" : "default"}
-                onClick={() => setTimeGrain(g)}
-                sx={{ cursor: "pointer", minWidth: 28 }}
-              />
-            ))}
-          </Box>
-          <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-            {(["raw", "first", "prev"] as const).map((m) => (
-              <Chip
-                key={m}
-                label={
-                  m === "raw" ? "原值" : m === "first" ? "首日倍率" : "昨日倍率"
-                }
-                size="small"
-                variant={ltvMode === m ? "filled" : "outlined"}
-                color={ltvMode === m ? "secondary" : "default"}
-                onClick={() => setLtvMode(m)}
-                sx={{ cursor: "pointer", minWidth: 28 }}
-              />
-            ))}
-          </Box>
-          <Button
-            variant="contained"
-            size="small"
-            onClick={() => void handleQuery()}
-            disabled={selectedGames.length === 0 || loading || !chartFormData}
-            title=""
-            sx={{ ml: 1 }}
-          >
-            {loading ? "..." : "查询"}
-          </Button>
-          <IconButton
-            size="small"
-            onClick={() => scrollByStep(-1)}
-            title="向左滚动"
-          >
-            <ChevronLeft />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={() => scrollByStep(1)}
-            title="向右滚动"
-          >
-            <ChevronRight />
-          </IconButton>
-        </Box>
+        <CompareModalControls
+          selectedAnchors={selectedAnchors}
+          periodDays={periodDays}
+          timeGrain={timeGrain}
+          ltvMode={ltvMode}
+          loading={loading}
+          queryDisabled={
+            selectedGames.length === 0 || loading || !chartFormData
+          }
+          onToggleAnchor={toggleAnchor}
+          onPeriodDaysChange={setPeriodDays}
+          onTimeGrainChange={setTimeGrain}
+          onLtvModeChange={setLtvMode}
+          onQuery={() => void handleQuery()}
+          onScrollByStep={scrollByStep}
+        />
       </DialogTitle>
       <DialogContent
         sx={{
@@ -1647,392 +1464,27 @@ export default function CompareModal({
           overflow: "hidden",
         }}
       >
-        <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-          <Box sx={{ position: "relative" }}>
-            <Autocomplete
-              multiple
-              value={selectedGames}
-              inputValue={inputValue}
-              onInputChange={(_, v) => setInputValue(v)}
-              options={gameOptions}
-              getOptionLabel={(o) => `${o.papp_name} [${o.papp_id}]`}
-              renderOption={(props, option) => (
-                <Box component="li" {...props} key={gameKey(option)}>
-                  <Box
-                    component="span"
-                    sx={{
-                      flex: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {option.papp_name} [{option.papp_id}]
-                  </Box>
-                  {option.region === "oversea" && (
-                    <Box
-                      component="span"
-                      sx={{
-                        ml: 1,
-                        px: 0.5,
-                        borderRadius: 0.5,
-                        bgcolor: "action.hover",
-                        color: "text.secondary",
-                        fontSize: "0.7rem",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {REGION_LABELS.oversea}
-                    </Box>
-                  )}
-                </Box>
-              )}
-              onChange={(_, value) => {
-                setSelectedGames(value);
-                const newKeys = value.map((v: GameOption) => gameKey(v));
-                if (
-                  newKeys.length > 0 &&
-                  !newKeys.includes(primaryGameKey ?? "")
-                ) {
-                  setPrimaryGameKey(newKeys[0]);
-                }
-                if (newKeys.length === 0) setPrimaryGameKey(null);
-              }}
-              filterSelectedOptions
-              disableCloseOnSelect
-              openOnFocus
-              autoHighlight
-              noOptionsText="无匹配"
-              sx={{
-                minWidth: 250,
-                maxWidth: 400,
-                "& .MuiInputBase-root": { minHeight: 36 },
-                "& .MuiInputBase-input": {
-                  py: 0.5,
-                  fontSize: "0.8125rem",
-                  minWidth: 60,
-                },
-              }}
-              slotProps={{
-                chip: { size: "small", sx: { height: 20 } },
-                popper: {
-                  sx: {
-                    "& .MuiAutocomplete-listbox .MuiAutocomplete-option": {
-                      minHeight: 28,
-                      fontSize: "0.8125rem",
-                    },
-                    "& .MuiPaper-root": {
-                      border: "1px solid",
-                      borderColor: "divider",
-                    },
-                  },
-                },
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="选择要对比的游戏"
-                  placeholder={
-                    selectedGames.length > 0 ? "" : "按游戏名称或 ID 搜索"
-                  }
-                  size="small"
-                />
-              )}
-            />
-            {selectedGames.length > 1 && (
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -8,
-                  right: -8,
-                  px: 0.75,
-                  py: 0.15,
-                  borderRadius: "3px",
-                  bgcolor: "error.main",
-                  color: "common.white",
-                  fontSize: "0.65rem",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  zIndex: 10,
-                  pointerEvents: "none",
-                  boxShadow: "var(--mui-palette-shadow-sm)",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "inline-block",
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    bgcolor: "common.white",
-                    mr: 0.5,
-                    verticalAlign: "middle",
-                  }}
-                />
-                外对比
-              </Box>
-            )}
-          </Box>
-          <Box sx={{ position: "relative" }}>
-            <Autocomplete
-              multiple
-              value={selectedCchNames}
-              inputValue={cchNameInput}
-              onInputChange={(_, v) => setCchNameInput(v)}
-              options={cchNameOptions}
-              onChange={(_, value) => setSelectedCchNames(value)}
-              filterSelectedOptions
-              disableCloseOnSelect
-              size="small"
-              sx={{ minWidth: 200, maxWidth: 300 }}
-              noOptionsText="无选项"
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={COL.cch_name_id}
-                  placeholder="选择渠道商"
-                />
-              )}
-            />
-            {(() => {
-              if (selectedCchNames.length > 1) {
-                return (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      px: 0.75,
-                      py: 0.15,
-                      borderRadius: "3px",
-                      bgcolor: "error.main",
-                      color: "common.white",
-                      fontSize: "0.65rem",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      zIndex: 10,
-                      pointerEvents: "none",
-                      boxShadow: "var(--mui-palette-shadow-sm)",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "inline-block",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        bgcolor: "common.white",
-                        mr: 0.5,
-                        verticalAlign: "middle",
-                      }}
-                    />
-                    外对比
-                  </Box>
-                );
-              }
-              if (
-                selectedGames.length === 1 &&
-                selectedCchNames.length === 1 &&
-                selectedChannels.length <= 1
-              ) {
-                return (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      px: 0.75,
-                      py: 0.15,
-                      borderRadius: "3px",
-                      bgcolor: "info.main",
-                      color: "common.white",
-                      fontSize: "0.65rem",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      zIndex: 10,
-                      pointerEvents: "none",
-                      boxShadow: "var(--mui-palette-shadow-sm)",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "inline-block",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        bgcolor: "common.white",
-                        mr: 0.5,
-                        verticalAlign: "middle",
-                      }}
-                    />
-                    内对比
-                  </Box>
-                );
-              }
-              return null;
-            })()}
-          </Box>
-          <Box sx={{ position: "relative" }}>
-            <Autocomplete
-              multiple
-              value={selectedChannels}
-              inputValue={channelInput}
-              onInputChange={(_, v) => setChannelInput(v)}
-              options={channelOptions}
-              onChange={(_, value) => setSelectedChannels(value)}
-              filterSelectedOptions
-              disableCloseOnSelect
-              size="small"
-              sx={{ minWidth: 200, maxWidth: 300 }}
-              noOptionsText="无选项"
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={COL.channel_name}
-                  placeholder="选择媒体"
-                />
-              )}
-            />
-            {(() => {
-              if (selectedChannels.length > 1) {
-                return (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      px: 0.75,
-                      py: 0.15,
-                      borderRadius: "3px",
-                      bgcolor: "error.main",
-                      color: "common.white",
-                      fontSize: "0.65rem",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      zIndex: 10,
-                      pointerEvents: "none",
-                      boxShadow: "var(--mui-palette-shadow-sm)",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "inline-block",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        bgcolor: "common.white",
-                        mr: 0.5,
-                        verticalAlign: "middle",
-                      }}
-                    />
-                    外对比
-                  </Box>
-                );
-              }
-              if (
-                selectedGames.length === 1 &&
-                selectedChannels.length === 1 &&
-                selectedCchNames.length <= 1
-              ) {
-                return (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: -8,
-                      right: -8,
-                      px: 0.75,
-                      py: 0.15,
-                      borderRadius: "3px",
-                      bgcolor: "info.main",
-                      color: "common.white",
-                      fontSize: "0.65rem",
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      zIndex: 10,
-                      pointerEvents: "none",
-                      boxShadow: "var(--mui-palette-shadow-sm)",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: "inline-block",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        bgcolor: "common.white",
-                        mr: 0.5,
-                        verticalAlign: "middle",
-                      }}
-                    />
-                    内对比
-                  </Box>
-                );
-              }
-              return null;
-            })()}
-          </Box>
-          {(() => {
-            const isIntra =
-              selectedAnchors.length === 1 &&
-              selectedGames.length === 1 &&
-              selectedCchNames.length <= 1 &&
-              selectedChannels.length <= 1 &&
-              (selectedCchNames.length > 0 || selectedChannels.length > 0);
-            const isInter =
-              selectedAnchors.length > 1 ||
-              selectedCchNames.length > 1 ||
-              selectedChannels.length > 1 ||
-              selectedGames.length > 1;
-            if (!isIntra && !isInter) return null;
-            // 与分表标签一致:无可用起始日期的组合不计入分表数
-            const sectionCount = Math.max(sectionTags.length, 1);
-            const showWarning = isInter && sectionCount > 4;
-            return (
-              <>
-                <Box
-                  sx={{
-                    ml: "auto",
-                    alignSelf: "center",
-                    color: "text.secondary",
-                    fontSize: "0.8125rem",
-                    whiteSpace: "nowrap",
-                    px: 1,
-                    py: 0.25,
-                    borderRadius: "4px",
-                    bgcolor: isIntra ? "status.infoBg" : "status.errorBg",
-                    border: "1px dashed",
-                    borderColor: isIntra
-                      ? "color-mix(in srgb, var(--mui-palette-info-main) 30%, transparent)"
-                      : "color-mix(in srgb, var(--mui-palette-error-main) 30%, transparent)",
-                  }}
-                >
-                  {isIntra
-                    ? "选定为主表，其他为次表"
-                    : `维度组合独立分表 (${sectionCount}项)`}
-                </Box>
-                {showWarning && (
-                  <Box
-                    sx={{
-                      alignSelf: "center",
-                      px: 1,
-                      py: 0.15,
-                      borderRadius: "3px",
-                      bgcolor: "status.warningBg",
-                      border: "1px solid",
-                      borderColor:
-                        "color-mix(in srgb, var(--mui-palette-warning-main) 40%, transparent)",
-                      color: "warning.main",
-                      fontSize: "0.7rem",
-                      whiteSpace: "nowrap",
-                      fontWeight: 600,
-                    }}
-                  >
-                    ⚠ 项目较多，可能影响性能
-                  </Box>
-                )}
-              </>
-            );
-          })()}
-        </Box>
+        <CompareModalFilters
+          games={games}
+          selectedGames={selectedGames}
+          selectedCchNames={selectedCchNames}
+          selectedChannels={selectedChannels}
+          cchNameValues={cchNameValues}
+          channelValues={channelValues}
+          primaryGameKey={primaryGameKey}
+          inputValue={inputValue}
+          cchNameInput={cchNameInput}
+          channelInput={channelInput}
+          selectedAnchors={selectedAnchors}
+          sectionCount={Math.max(sectionTags.length, 1)}
+          onGamesChange={setSelectedGames}
+          onPrimaryGameChange={setPrimaryGameKey}
+          onCchNamesChange={setSelectedCchNames}
+          onChannelsChange={setSelectedChannels}
+          onInputValueChange={setInputValue}
+          onCchNameInputChange={setCchNameInput}
+          onChannelInputChange={setChannelInput}
+        />
 
         {sectionTags.length > 0 && (
           <Box
@@ -2124,767 +1576,22 @@ export default function CompareModal({
           </Typography>
         )}
 
-        {queryResult &&
-          (() => {
-            const columns = queryResult.columns;
-            const columnKeys = columns.map((c) => c.name);
-            const renderMetricValue = (colName: string, row: ChartDataRow) => {
-              const multiplier = formatLtvMultiplier(
-                colName,
-                row,
-                columnKeys,
-                ltvMode,
-              );
-              if (multiplier != null) return multiplier;
-              return fmtValue(colName, row[colName], metricFormatMap);
-            };
-
-            if (queryResult.data.length === 0) {
-              return (
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    py: 2,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 1,
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    选定周期未找到数据
-                  </Typography>
-                </Box>
-              );
-            }
-
-            const cellSx = (colIdx: number, zSticky: number) => {
-              const base = {
-                px: 0.75,
-                py: 0.25,
-                textAlign: "center",
-                fontSize: "0.75rem",
-                whiteSpace: "nowrap",
-                border: "none",
-                outline: "1px solid",
-                outlineColor: "divider",
-              };
-              const left = colStickyLeft[colIdx];
-              if (left === undefined) return base;
-              return {
-                ...base,
-                position: "sticky" as const,
-                left,
-                zIndex: zSticky,
-                bgcolor: "background.paper",
-              };
-            };
-            const thSx = (colIdx: number) => {
-              const base = cellSx(colIdx, 5);
-              const left = colStickyLeft[colIdx];
-              return {
-                ...base,
-                position: "sticky" as const,
-                top: 0,
-                zIndex: 6,
-                bgcolor: "grey.50",
-                fontWeight: 700,
-                ...(left !== undefined ? { left, zIndex: 7 } : {}),
-              };
-            };
-            const groupSx = (colIdx: number) =>
-              ({
-                ...cellSx(colIdx, 4),
-                fontWeight: colIdx === 0 ? 700 : 400,
-              }) as const;
-            const dataSx = (colIdx: number) => cellSx(colIdx, 1);
-
-            // Calculate column widths based on content type
-            const colWidths = columns.map((col) => {
-              const n = col.name;
-              const dn = col.displayName;
-              if (n === COL.papp_name) return 180;
-              if (dn === "月" || dn === "周" || dn === "日期") return 110;
-              if (n === COL.ad_real_cost || n === COL.n_unum) return 80;
-              if (n.startsWith("ltv_") || n.startsWith("roi_")) return 70;
-              return 72;
-            });
-
-            const isDimCol = (n: string, displayName: string) =>
-              n === COL.papp_name ||
-              n === COL.cch_name ||
-              n === COL.cch_name_id ||
-              n === COL.channel_name ||
-              displayName === "月" ||
-              displayName === "周" ||
-              displayName === "日期";
-
-            // Compute sticky left offsets for dimension columns
-            const colStickyLeft = columns.map((col, i) => {
-              const dn = displayLabel(col.name, col.displayName);
-              if (!isDimCol(col.name, dn)) return undefined;
-              let left = 0;
-              for (let j = 0; j < i; j++) {
-                if (
-                  isDimCol(
-                    columns[j].name,
-                    displayLabel(columns[j].name, columns[j].displayName),
-                  )
-                ) {
-                  left += colWidths[j];
-                }
-              }
-              return left;
-            });
-
-            const colGroup = (
-              <colgroup>
-                {colWidths.map((w, i) => (
-                  <col key={i} width={w} />
-                ))}
-              </colgroup>
-            );
-
-            let rowCounter = 0;
-            const renderGroup = (
-              groupKey: string,
-              rows: ChartDataRow[],
-              tableName: "primary" | "secondary",
-            ) => {
-              const isPrimary = tableName === "primary";
-              const parent = rows[0];
-              const children = rows.slice(1);
-              return (
-                <Fragment key={groupKey}>
-                  {/* Aggregate header row */}
-                  <TableRow
-                    sx={{
-                      bgcolor: isPrimary
-                        ? "primary.container"
-                        : "surface.variant",
-                      position: "sticky",
-                      top: isPrimary ? "28px" : 0,
-                      zIndex: isPrimary ? 3 : 2,
-                      "&:hover": { backgroundColor: "action.hover" },
-                    }}
-                    onMouseEnter={() =>
-                      setHoveredCell({ table: tableName, row: rowCounter++ })
-                    }
-                    onMouseLeave={() => setHoveredCell(null)}
-                  >
-                    {(() => {
-                      // Count dimension columns to span "合计" across all of them
-                      const dimColCount = columns.filter((c) =>
-                        isDimCol(c.name, displayLabel(c.name, c.displayName)),
-                      ).length;
-                      let dimColIdx = 0;
-                      return columns.map((col, ci) => {
-                        const dn = displayLabel(col.name, col.displayName);
-                        if (!isDimCol(col.name, dn)) {
-                          // Metric column: show aggregated value
-                          return (
-                            <TableCell
-                              key={col.name}
-                              colSpan={1}
-                              sx={{ ...groupSx(ci), fontWeight: 700 }}
-                            >
-                              {renderMetricValue(col.name, parent ?? {})}
-                            </TableCell>
-                          );
-                        }
-                        const isFirstDim = dimColIdx === 0;
-                        dimColIdx++;
-                        if (isFirstDim) {
-                          // First dimension column: show "合计" spanning all dim cols
-                          return (
-                            <TableCell
-                              key={col.name}
-                              colSpan={dimColCount}
-                              sx={{ ...groupSx(ci), fontWeight: 700 }}
-                            >
-                              合计
-                            </TableCell>
-                          );
-                        }
-                        // Other dimension columns: skip
-                        return null;
-                      });
-                    })()}
-                  </TableRow>
-                  {/* Detail rows */}
-                  {children.map((row, ri) => {
-                    const localIdx = rowCounter++;
-                    const shouldHighlight =
-                      hoveredCell &&
-                      hoveredCell.table !== tableName &&
-                      hoveredCell.row === localIdx;
-                    return (
-                      <TableRow
-                        key={`${groupKey}-${ri}`}
-                        sx={{
-                          bgcolor: shouldHighlight
-                            ? "action.selected"
-                            : isPrimary
-                              ? "primary.container"
-                              : "surface.main",
-                        }}
-                        onMouseEnter={() =>
-                          setHoveredCell({ table: tableName, row: localIdx })
-                        }
-                        onMouseLeave={() => setHoveredCell(null)}
-                      >
-                        {columns.map((col, ci) => (
-                          <TableCell key={col.name} sx={dataSx(ci)}>
-                            {renderMetricValue(col.name, row)}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    );
-                  })}
-                </Fragment>
-              );
-            };
-
-            const onScroll = (sourceKey: string, el: HTMLDivElement) => {
-              if (syncDisabled.current) return;
-              const isHZSource = sourceKey.startsWith("_hz_");
-              for (const [key, other] of scrollRefs.current) {
-                if (key === sourceKey) continue;
-                const isHZTarget = key.startsWith("_hz_");
-                // Horizontal scrollbar divs: only sync scrollLeft (no scrollTop)
-                if (isHZSource || isHZTarget) {
-                  if (other.scrollLeft !== el.scrollLeft)
-                    other.scrollLeft = el.scrollLeft;
-                } else {
-                  if (other.scrollLeft !== el.scrollLeft)
-                    other.scrollLeft = el.scrollLeft;
-                  if (other.scrollTop !== el.scrollTop)
-                    other.scrollTop = el.scrollTop;
-                }
-              }
-            };
-
-            const totalWidth = colWidths.reduce((a, b) => a + b, 0);
-
-            // Unified scrollable table container with floating horizontal scrollbar
-            // When sections > 1, each gets equal height via flex
-            const renderScrollableTable = (
-              tblKey: string,
-              header: React.ReactNode,
-              sections: React.ReactNode[],
-            ) => (
-              <Box
-                sx={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                }}
-              >
-                {header}
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    minHeight: 0,
-                  }}
-                >
-                  {sections.length === 1 ? (
-                    <Box
-                      ref={(el: HTMLDivElement | null) => {
-                        if (el) scrollRefs.current.set(tblKey, el);
-                        else scrollRefs.current.delete(tblKey);
-                      }}
-                      sx={{ flex: 1, overflow: "auto", minWidth: 0 }}
-                      onScroll={(e: React.UIEvent<HTMLDivElement>) =>
-                        onScroll(tblKey, e.currentTarget)
-                      }
-                    >
-                      {sections[0]}
-                    </Box>
-                  ) : (
-                    sections.map((section, i) => (
-                      <Box
-                        key={i}
-                        sx={{
-                          flex: "1 1 50%",
-                          overflow: "auto",
-                          minWidth: 0,
-                          minHeight: 0,
-                          borderTop: i > 0 ? "2px solid" : "none",
-                          borderColor: "primary.light",
-                        }}
-                        ref={(el: HTMLDivElement | null) => {
-                          if (el)
-                            scrollRefs.current.set(tblKey + "_sec" + i, el);
-                          else scrollRefs.current.delete(tblKey + "_sec" + i);
-                        }}
-                        onScroll={(e: React.UIEvent<HTMLDivElement>) =>
-                          onScroll(tblKey + "_sec" + i, e.currentTarget)
-                        }
-                      >
-                        {section}
-                      </Box>
-                    ))
-                  )}
-                </Box>
-                <Box
-                  ref={(el: HTMLDivElement | null) => {
-                    if (el) scrollRefs.current.set(tblKey + "_hz", el);
-                    else scrollRefs.current.delete(tblKey + "_hz");
-                  }}
-                  sx={{
-                    overflowX: "auto",
-                    overflowY: "hidden",
-                    bgcolor: "background.paper",
-                    position: "sticky",
-                    bottom: 0,
-                    zIndex: 2,
-                  }}
-                  onScroll={(e: React.UIEvent<HTMLDivElement>) =>
-                    onScroll(tblKey + "_hz", e.currentTarget)
-                  }
-                >
-                  <Box sx={{ width: totalWidth, height: 1 }} />
-                </Box>
-              </Box>
-            );
-
-            // Unified table component
-            const renderSection = (
-              groupKey: string,
-              rows: ChartDataRow[],
-              tableName: string,
-            ): React.ReactNode => (
-              <Box
-                key={groupKey}
-                sx={{
-                  ...(tableName !== "primary"
-                    ? {
-                        borderTop: "2px solid",
-                        borderTopColor: "primary.light",
-                      }
-                    : {}),
-                }}
-              >
-                <Table
-                  size="small"
-                  sx={{ tableLayout: "fixed", borderCollapse: "collapse" }}
-                >
-                  {colGroup}
-                  {(tableName === "primary" ||
-                    tableName === "intra_secondary") && (
-                    <TableHead>
-                      <TableRow>
-                        {columns.map((col, ci) => (
-                          <TableCell key={col.name} sx={thSx(ci)}>
-                            {displayLabel(col.name, col.displayName)}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                  )}
-                  <TableBody>
-                    {(() => {
-                      rowCounter = 0;
-                      return (
-                        <>
-                          {renderGroup(
-                            groupKey,
-                            rows,
-                            tableName as "primary" | "secondary",
-                          )}
-                        </>
-                      );
-                    })()}
-                  </TableBody>
-                </Table>
-              </Box>
-            );
-
-            // Build secondary tree rows (if intra-project was active at query time)
-            let intraSecondaryRows: ChartDataRow[] = [];
-            if (intraSecondaryResult && intraSecondaryResult.data.length > 0) {
-              const apiAgg = intraSecondaryAggRef.current;
-              const aggRow: ChartDataRow = {};
-              if (apiAgg) {
-                Object.assign(aggRow, apiAgg);
-                aggRow[COL.papp_name] = "其余渠道汇总";
-                aggRow[COL.cch_name] = "其余渠道";
-                aggRow[COL.channel_name] = "其余媒体";
-              }
-              if (!apiAgg) {
-                for (const col of columns) {
-                  const isDim = isDimCol(
-                    col.name,
-                    displayLabel(col.name, col.displayName),
-                  );
-                  if (!isDim) {
-                    let sum = 0,
-                      hasVal = false;
-                    for (const r of intraSecondaryResult.data) {
-                      const v = r[col.name];
-                      if (typeof v === "number") {
-                        sum += v;
-                        hasVal = true;
-                      }
-                    }
-                    aggRow[col.name] = hasVal ? sum : "";
-                  }
-                }
-                for (const col of columns) {
-                  const dn = displayLabel(col.name, col.displayName);
-                  if (dn === "日期" || dn === "周" || dn === "月") {
-                    aggRow[col.name] = "汇总";
-                    break;
-                  }
-                }
-              }
-              if (!apiAgg) {
-                // Set dimension labels for manual agg
-                aggRow[COL.papp_name] = "其余渠道汇总";
-                aggRow[COL.cch_name] = "其余渠道";
-                aggRow[COL.channel_name] = "其余媒体";
-              }
-              const detailRows = intraSecondaryResult.data.map((r) => {
-                const row: ChartDataRow = {};
-                for (const col of columns) {
-                  const dn = displayLabel(col.name, col.displayName);
-                  const isTime = dn === "日期" || dn === "周" || dn === "月";
-                  const raw = r[col.name];
-                  if (raw != null) {
-                    row[col.name] =
-                      isTime && typeof raw === "number"
-                        ? (() => {
-                            const d = new Date(Number.isFinite(raw) ? raw : 0);
-                            return !isNaN(d.getTime())
-                              ? `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`
-                              : String(raw);
-                          })()
-                        : raw;
-                  } else if (
-                    col.name === COL.cch_name ||
-                    col.name === COL.cch_name_id
-                  ) {
-                    row[col.name] = "其余渠道";
-                  } else if (col.name === COL.channel_name) {
-                    row[col.name] = "其余媒体";
-                  } else {
-                    row[col.name] = "";
-                  }
-                }
-                return row;
-              });
-              intraSecondaryRows = [aggRow, ...detailRows];
-            }
-
-            // Determine comparison mode and section data (using query-time filter snapshots)
-            const buildSections = () => {
-              const snap = queryFilterSnapshot.current;
-              if (!snap) return [];
-              const data = queryResult.data;
-              const snapAnchors: AnchorKey[] =
-                snap.anchors && snap.anchors.length > 0
-                  ? snap.anchors
-                  : ["上线时间"];
-              const multiAnchor = snapAnchors.length > 1;
-              const aggCache = sectionAggregateCacheRef.current;
-
-              // 单选轮次时保持原有单一对比;多选轮次时每个轮次独立分表(外对比),
-              // 分表标签带轮次前缀,与 sectionAggregateCacheRef 的 key 一致。
-              const buildFor = (
-                subset: Record<string, unknown>[],
-                anchor?: AnchorKey,
-              ) => {
-                const lbl = (label: string) =>
-                  anchor
-                    ? anchorSectionLabel(anchor, label, multiAnchor)
-                    : label;
-                const snapGames = snap.games;
-                const snapCchNames = snap.cchNames;
-                const snapChannels = snap.channels;
-                const sectionAnchor: AnchorKey = anchor ?? snapAnchors[0];
-                const isMultiGame = snapGames.length > 1;
-                const isMultiCch = snapCchNames.length > 1;
-                const isMultiChannel = snapChannels.length > 1;
-                const isIntraSnap =
-                  snapAnchors.length === 1 &&
-                  snapGames.length === 1 &&
-                  snapCchNames.length <= 1 &&
-                  snapChannels.length <= 1 &&
-                  (snapCchNames.length > 0 || snapChannels.length > 0);
-
-                // 分表窗口起始日期(用于按数据日期排序;与标签计算保持一致)
-                const sectionStart = (
-                  game: SelectedGame,
-                  cchName?: string,
-                ): string | undefined => {
-                  const resolvedCch =
-                    cchName ??
-                    (snapCchNames.length === 1
-                      ? extractName(snapCchNames[0])
-                      : undefined);
-                  return resolveDateRange(game, resolvedCch, sectionAnchor)
-                    ?.start;
-                };
-
-                // Helper: build section from detail rows
-                const makeSection = (
-                  label: string,
-                  filterFn: (row: ChartDataRow) => boolean,
-                  tableName: string,
-                  start?: string,
-                ) => {
-                  const allRows = subset.filter(filterFn) as ChartDataRow[];
-                  if (allRows.length === 0) return null;
-                  const dataAgg = allRows.find((r) =>
-                    String(r.id ?? "").startsWith("p_"),
-                  );
-                  const detailRows = allRows.filter(
-                    (r) => !String(r.id ?? "").startsWith("p_"),
-                  );
-                  if (detailRows.length === 0) return null;
-                  const sectionAgg = aggCache[label] || dataAgg || null;
-                  const renderFn = (key: string) => {
-                    if (sectionAgg) {
-                      const rows = [sectionAgg, ...detailRows];
-                      return renderSection(key, rows, tableName);
-                    }
-                    // Detail-only: wrap in a table with header but no aggregate row
-                    return (
-                      <Box key={key}>
-                        <Table
-                          size="small"
-                          sx={{
-                            tableLayout: "fixed",
-                            borderCollapse: "collapse",
-                          }}
-                        >
-                          {colGroup}
-                          {(tableName === "primary" ||
-                            tableName === "intra_secondary") && (
-                            <TableHead>
-                              <TableRow>
-                                {columns.map((col, ci) => (
-                                  <TableCell key={col.name} sx={thSx(ci)}>
-                                    {displayLabel(col.name, col.displayName)}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            </TableHead>
-                          )}
-                          <TableBody>
-                            {detailRows.map((row, ri) => (
-                              <TableRow key={ri} hover>
-                                {columns.map((col, ci) => (
-                                  <TableCell key={col.name} sx={dataSx(ci)}>
-                                    {renderMetricValue(col.name, row)}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </Box>
-                    );
-                  };
-                  return {
-                    rows: detailRows,
-                    render: renderFn,
-                    start,
-                    anchor: sectionAnchor,
-                    label,
-                  };
-                };
-
-                // 1) Multi-game + filters: each game is a section
-                if (isMultiGame) {
-                  return snapGames.map((g) =>
-                    makeSection(
-                      lbl(g.papp_name),
-                      (r) => String(r[COL.papp_name] ?? "") === g.papp_name,
-                      "primary",
-                      sectionStart(g),
-                    ),
-                  );
-                }
-
-                // 2) Single game + multiple cch × multiple channels: M×N sections
-                if (isMultiCch && isMultiChannel) {
-                  return snapCchNames.flatMap((cch) =>
-                    snapChannels.map((ch) =>
-                      makeSection(
-                        lbl(`${extractName(cch)} × ${ch}`),
-                        (r) =>
-                          String(r[COL.cch_name] ?? "") === extractName(cch) &&
-                          String(r[COL.channel_name] ?? "") === ch,
-                        "primary",
-                        sectionStart(snapGames[0], extractName(cch)),
-                      ),
-                    ),
-                  );
-                }
-
-                // 3) Single game + multiple cch_names: each cch is a section
-                if (isMultiCch) {
-                  return snapCchNames.map((cch) =>
-                    makeSection(
-                      lbl(extractName(cch)),
-                      (r) => String(r[COL.cch_name] ?? "") === extractName(cch),
-                      "primary",
-                      sectionStart(snapGames[0], extractName(cch)),
-                    ),
-                  );
-                }
-
-                // 4) Single game + multiple channels: each channel is a section
-                if (isMultiChannel) {
-                  return snapChannels.map((ch) =>
-                    makeSection(
-                      lbl(ch),
-                      (r) => String(r[COL.channel_name] ?? "") === ch,
-                      "primary",
-                      sectionStart(snapGames[0]),
-                    ),
-                  );
-                }
-
-                // 5) Single game + single filter: intra-project (primary vs remaining)
-                if (isIntraSnap) {
-                  const game = snapGames[0];
-                  const gameName = game.papp_name;
-                  const primaryFilter = (r: ChartDataRow) => {
-                    if (String(r[COL.papp_name] ?? "") !== gameName)
-                      return false;
-                    if (
-                      snapCchNames.length === 1 &&
-                      (r[COL.cch_name] ?? "") !== "" &&
-                      String(r[COL.cch_name] ?? "") !==
-                        extractName(snapCchNames[0])
-                    )
-                      return false;
-                    if (
-                      snapChannels.length === 1 &&
-                      (r[COL.channel_name] ?? "") !== "" &&
-                      String(r[COL.channel_name] ?? "") !== snapChannels[0]
-                    )
-                      return false;
-                    return true;
-                  };
-                  const primarySection = makeSection(
-                    lbl(gameName),
-                    primaryFilter,
-                    "primary",
-                    sectionStart(game),
-                  );
-                  let secondarySection: ReturnType<typeof makeSection> | null =
-                    null;
-                  if (
-                    intraSecondaryResult &&
-                    intraSecondaryResult.data.length > 0
-                  ) {
-                    secondarySection = {
-                      rows: intraSecondaryRows,
-                      render: (_key: string) =>
-                        renderSection(
-                          "intra_secondary_data",
-                          intraSecondaryRows,
-                          "intra_secondary",
-                        ),
-                      start: primarySection?.start,
-                      anchor: sectionAnchor,
-                      label: `${lbl(gameName)}（其余渠道）`,
-                    };
-                  }
-                  return [primarySection, secondarySection].filter(Boolean);
-                }
-
-                // 6) Single game + no filters: single section
-                return [
-                  makeSection(
-                    lbl(snapGames[0]?.papp_name ?? ""),
-                    () => true,
-                    "primary",
-                    sectionStart(snapGames[0]),
-                  ),
-                ];
-              };
-
-              if (multiAnchor) {
-                return snapAnchors.flatMap((anchor) =>
-                  buildFor(
-                    data.filter(
-                      (r) => String(r.__anchor ?? "上线时间") === anchor,
-                    ),
-                    anchor,
-                  ),
-                );
-              }
-              return buildFor(data);
-            };
-
-            const sections = buildSections()
-              .filter(Boolean)
-              .map((s) => s!)
-              // 分表按数据日期先后排序,而不是点击顺序
-              .sort(compareSectionOrder);
-
-            if (sections.length === 0) {
-              return (
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    py: 2,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 1,
-                  }}
-                >
-                  <Typography variant="body2" color="text.secondary">
-                    选定周期未找到数据
-                  </Typography>
-                </Box>
-              );
-            }
-
-            return (
-              <Box
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    minWidth: 0,
-                    border: "1px solid",
-                    borderColor: "divider",
-                    borderRadius: 1,
-                  }}
-                >
-                  {renderScrollableTable(
-                    "_primary",
-                    null,
-                    sections.map((s, i) => (
-                      <Box key={i}>{s.render("sec" + i)}</Box>
-                    )),
-                  )}
-                </Box>
-              </Box>
-            );
-          })()}
+        {queryResult && (
+          <CompareModalResults
+            queryResult={queryResult}
+            intraSecondaryResult={intraSecondaryResult}
+            intraSecondaryAggRef={intraSecondaryAggRef}
+            queryFilterSnapshotRef={queryFilterSnapshot}
+            sectionAggregateCacheRef={sectionAggregateCacheRef}
+            metricFormatMap={metricFormatMap}
+            ltvMode={ltvMode}
+            hoveredCell={hoveredCell}
+            onHoveredCellChange={setHoveredCell}
+            resolveDateRange={resolveDateRange}
+            scrollRefs={scrollRefs}
+            syncDisabled={syncDisabled}
+          />
+        )}
 
         {queryResult && queryResult.data.length === 0 && (
           <Box

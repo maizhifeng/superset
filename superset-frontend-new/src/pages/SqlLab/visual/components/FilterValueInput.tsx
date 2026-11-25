@@ -1,6 +1,25 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import TextField from "@mui/material/TextField";
 import Box from "@mui/material/Box";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import LocalizedDatePicker from "@/components/LocalizedDatePicker";
 import dayjs from "dayjs";
 import type { ColumnCategory } from "../operators";
 import { operatorDef } from "../operators";
@@ -45,7 +64,7 @@ export default function FilterValueInput({
 
   if (op === "date_on" || op === "date_before" || op === "date_after") {
     return (
-      <DatePicker
+      <LocalizedDatePicker
         disabled={disabled}
         value={toDayjs(values[0])}
         onChange={(v) =>
@@ -60,7 +79,7 @@ export default function FilterValueInput({
   if (op === "date_between") {
     return (
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-        <DatePicker
+        <LocalizedDatePicker
           disabled={disabled}
           value={toDayjs(values[0])}
           onChange={(v) =>
@@ -72,7 +91,7 @@ export default function FilterValueInput({
         <Box component="span" sx={{ color: "text.secondary" }}>
           —
         </Box>
-        <DatePicker
+        <LocalizedDatePicker
           disabled={disabled}
           value={toDayjs(values[1])}
           onChange={(v) =>

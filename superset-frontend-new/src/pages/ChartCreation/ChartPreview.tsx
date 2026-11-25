@@ -1,5 +1,26 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useRef, useState, useEffect } from "react";
 import Box from "@mui/material/Box";
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import Tooltip from "@mui/material/Tooltip";
@@ -14,11 +35,12 @@ import { getECharts } from "@/utils/echarts";
 import DataPreviewTable from "@/components/DataPreviewTable";
 import PivotTable from "@/components/PivotTable";
 import ChartLoadingSkeleton from "@/components/ChartLoadingSkeleton";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import type { WideMetricComponent } from "@/utils/pivot";
 import type { ChartDataPayload, ChartDataRow } from "@/types/api";
 import { formatMetricValue, type MetricFormatMap } from "@/utils/formatNumber";
 import { useNotificationStore } from "@/store/notificationStore";
-import { DEFAULT_PIVOT_CONFIG } from "./useChartEditor";
+import { DEFAULT_PIVOT_CONFIG, type ChartPreviewData } from "./useChartEditor";
 
 interface ChartPreviewProps {
   datasourceId: string;
@@ -28,7 +50,7 @@ interface ChartPreviewProps {
   pivotMetricKeys: string[];
   groupby: string[];
   groupbyColumns: string[];
-  chartData: ChartDataPayload | null;
+  chartData: ChartPreviewData | null;
   chartTotalsRows?: ChartDataRow[] | null;
   chartSubtotalRows?: ChartDataRow[][] | null;
   loadingData: boolean;
@@ -76,20 +98,43 @@ export default function ChartPreview({
     resolvedType === "table" || resolvedType === "pivot_table_v2"
       ? Boolean(chartData?.data && chartData.data.length > 0)
       : Boolean(
-          bigNumberValue ||
-            (chartData?.data && chartData.data.length > 0),
+          bigNumberValue || (chartData?.data && chartData.data.length > 0),
         );
 
   const notify = useNotificationStore((s) => s.notify);
   const chartRef = useRef<InstanceType<typeof ReactEChartsCore> | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [stalled, setStalled] = useState(false);
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  useEffect(() => {
+    const awaitingPreview =
+      Boolean(datasourceId && hasValidType && metrics.length > 0) &&
+      !loadingData &&
+      ((!chartData && !option) || Boolean(option && !chartLibReady));
+    if (!awaitingPreview) {
+      setStalled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setStalled(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [
+    chartData,
+    chartLibReady,
+    datasourceId,
+    hasValidType,
+    loadingData,
+    metrics.length,
+    option,
+  ]);
+
+  const handleReload = () => window.location.reload();
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -165,6 +210,21 @@ export default function ChartPreview({
           <Typography variant="body2" color="text.disabled">
             请至少选择一个指标
           </Typography>
+        ) : chartData?.error ? (
+          <Alert
+            severity="error"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={chartData.onRetry ?? handleReload}
+              >
+                重试
+              </Button>
+            }
+          >
+            {chartData.error}
+          </Alert>
         ) : resolvedType === "pivot_table_v2" && loadingData ? (
           <ChartLoadingSkeleton />
         ) : loadingData && !chartData ? (
@@ -340,14 +400,20 @@ export default function ChartPreview({
               minHeight: 250,
             }}
           >
-            <ReactEChartsCore
-              ref={chartRef}
-              echarts={getECharts()}
-              option={option}
-              style={{ height: "100%", width: "100%", minHeight: 250 }}
-              notMerge
-              lazyUpdate
-            />
+            <ErrorBoundary
+              compact
+              title="图表预览渲染失败"
+              description="图表组件出现异常，请重试渲染。"
+            >
+              <ReactEChartsCore
+                ref={chartRef}
+                echarts={getECharts()}
+                option={option}
+                style={{ height: "100%", width: "100%", minHeight: 250 }}
+                notMerge
+                lazyUpdate
+              />
+            </ErrorBoundary>
             <Tooltip title={isFullscreen ? "退出全屏" : "全屏查看"}>
               <IconButton
                 size="small"
@@ -387,6 +453,17 @@ export default function ChartPreview({
               </IconButton>
             </Tooltip>
           </Box>
+        ) : stalled ? (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" size="small" onClick={handleReload}>
+                重新加载
+              </Button>
+            }
+          >
+            图表预览加载超时，请检查网络后重试。
+          </Alert>
         ) : option ? (
           <CircularProgress size={20} />
         ) : chartData ? (

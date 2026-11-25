@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
@@ -338,17 +357,30 @@ export default function DatasetList() {
     if (rows.length === 0) return;
     const map: Record<number, BindingInfo> = {};
     for (const row of rows) {
-      const extraRaw = (row as any).extra;
+      const extraRaw = row.extra;
       if (!extraRaw) continue;
       try {
-        const extra = JSON.parse(extraRaw);
+        const extra = parseExtra(extraRaw);
         const fed = extra.federated;
-        if (fed?.enabled && fed.partner_dataset_id) {
+        if (
+          isRecord(fed) &&
+          fed.enabled === true &&
+          typeof fed.partner_dataset_id === "number" &&
+          Array.isArray(fed.databases) &&
+          fed.databases.length === 2
+        ) {
+          const [firstDatabase, secondDatabase] = fed.databases as unknown[];
+          if (
+            typeof firstDatabase !== "string" ||
+            typeof secondDatabase !== "string"
+          ) {
+            continue;
+          }
           const partner = rows.find((r) => r.id === fed.partner_dataset_id);
           map[row.id] = {
             partnerId: fed.partner_dataset_id,
             partnerName: partner?.table_name ?? `#${fed.partner_dataset_id}`,
-            databases: fed.databases ?? [],
+            databases: [firstDatabase, secondDatabase],
           };
         }
       } catch {
@@ -358,8 +390,7 @@ export default function DatasetList() {
     setFederatedMap(map);
   }, [rows]);
 
-  const getDbName = (row: DatasetRow) =>
-    (row as any).database?.database_name ?? "";
+  const getDbName = (row: DatasetRow) => row.database?.database_name ?? "";
 
   const handleRowClick = useCallback(
     (row: DatasetRow) => {
@@ -391,9 +422,12 @@ export default function DatasetList() {
     if (!dbA || !dbB || dbA === dbB) return;
 
     try {
-      const [ra, rb] = await Promise.all([getDataset(a.id), getDataset(b.id)]);
-      const ea = parseExtra((ra as any)?.extra);
-      const eb = parseExtra((rb as any)?.extra);
+      const [ra, rb] = await Promise.all([
+        getDataset<{ extra?: string | null }>(a.id),
+        getDataset<{ extra?: string | null }>(b.id),
+      ]);
+      const ea = parseExtra(ra?.extra);
+      const eb = parseExtra(rb?.extra);
       ea.federated = {
         enabled: true,
         partner_dataset_id: b.id,
@@ -422,11 +456,11 @@ export default function DatasetList() {
     if (!info) return;
     try {
       const [ra, rb] = await Promise.all([
-        getDataset(id),
-        getDataset(info.partnerId),
+        getDataset<{ extra?: string | null }>(id),
+        getDataset<{ extra?: string | null }>(info.partnerId),
       ]);
-      const ea = parseExtra((ra as any)?.extra);
-      const eb = parseExtra((rb as any)?.extra);
+      const ea = parseExtra(ra?.extra);
+      const eb = parseExtra(rb?.extra);
       delete ea.federated;
       delete eb.federated;
       await Promise.all([
@@ -998,9 +1032,14 @@ export default function DatasetList() {
   );
 }
 
-function parseExtra(raw: string | undefined | null): any {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseExtra(raw: string | undefined | null): Record<string, unknown> {
   try {
-    return JSON.parse(raw || "{}");
+    const parsed: unknown = JSON.parse(raw || "{}");
+    return isRecord(parsed) ? parsed : {};
   } catch {
     return {};
   }

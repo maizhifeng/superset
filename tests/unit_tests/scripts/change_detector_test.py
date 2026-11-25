@@ -178,6 +178,13 @@ def test_docker_workflow_changes_trigger_docker_build() -> None:
     )
 
 
+def test_new_frontend_changes_trigger_docker_build() -> None:
+    assert change_detector.detect_changes(
+        ["superset-frontend-new/src/main.tsx"],
+        change_detector.PATTERNS["docker"],
+    )
+
+
 def test_grype_config_changes_trigger_docker_build() -> None:
     """A change to only `.grype.yaml` (the vulnerability-scan config) must
     still be classified as "docker", or an accidental broad exclusion in it

@@ -1,8 +1,28 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 import api from "@/api";
 import { test, expect, vi, beforeEach } from "vitest";
 import { mockPaginatedResponse, mockCharts } from "@fixtures/chartData";
+import rison from "rison";
 
 vi.mock("@/api", () => ({
   default: {
@@ -92,6 +112,84 @@ test("search text change resets page to 0", async () => {
 
   await waitFor(() => expect(result.current.searchText).toBe("sales"));
   expect(result.current.paginationModel.page).toBe(0);
+});
+
+test("search request uses page zero with the new filter", async () => {
+  vi.mocked(api.get).mockResolvedValue({ data: mockPaginatedResponse });
+
+  const { result } = renderHook(() =>
+    usePaginatedList({
+      endpoint: "/chart/",
+      filterColumn: "slice_name",
+    }),
+  );
+
+  await waitFor(() => expect(result.current.loading).toBe(false));
+
+  act(() => {
+    result.current.setPaginationModel({ page: 2, pageSize: 50 });
+  });
+  await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalledTimes(2));
+
+  vi.mocked(api.get).mockClear();
+  act(() => {
+    result.current.handleSearchChange("sales");
+  });
+
+  await waitFor(() => expect(result.current.searchText).toBe("sales"));
+  await waitFor(() => expect(vi.mocked(api.get)).toHaveBeenCalledTimes(1));
+
+  const requestUrl = vi.mocked(api.get).mock.calls[0][0];
+  const encodedQuery = new URL(requestUrl, "http://localhost").searchParams.get(
+    "q",
+  );
+  const query = rison.decode<{
+    page: number;
+    filters: Array<{ col: string; opr: string; value: string }>;
+  }>(encodedQuery ?? "");
+
+  expect(query.page).toBe(0);
+  expect(query.filters).toEqual([
+    { col: "slice_name", opr: "ct", value: "sales" },
+  ]);
+});
+
+test("a new non-silent request aborts the previous in-flight request", async () => {
+  let resolveFirst!: (value: { data: typeof mockPaginatedResponse }) => void;
+  const first = new Promise<{ data: typeof mockPaginatedResponse }>(
+    (resolve) => {
+      resolveFirst = resolve;
+    },
+  );
+  const refreshedRows = [{ ...mockCharts[0], id: 99 }];
+  vi.mocked(api.get)
+    .mockReturnValueOnce(first)
+    .mockResolvedValueOnce({
+      data: { result: refreshedRows, count: refreshedRows.length },
+    });
+
+  const { result } = renderHook(() =>
+    usePaginatedList({
+      endpoint: "/chart/",
+      filterColumn: "slice_name",
+    }),
+  );
+
+  act(() => {
+    result.current.fetchData();
+  });
+
+  expect(vi.mocked(api.get)).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(api.get).mock.calls[0][1]?.signal?.aborted).toBe(true);
+
+  await waitFor(() => expect(result.current.rows).toEqual(refreshedRows));
+
+  resolveFirst({ data: mockPaginatedResponse });
+  await act(async () => {
+    await first;
+  });
+
+  expect(result.current.rows).toEqual(refreshedRows);
 });
 
 test("handleDelete sends delete request and refreshes", async () => {

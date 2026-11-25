@@ -1,17 +1,42 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { create } from "zustand";
+import { v4 as uuidv4 } from "uuid";
 import api, {
   getStoredToken,
   setStoredToken,
+  getStoredRefreshToken,
   setStoredRefreshToken,
   refreshAccessToken,
   setupTokenRefresh,
   cancelTokenRefresh,
   setStoredBackupToken,
   getStoredBackupToken,
+  setStoredBackupRefreshToken,
+  getStoredBackupRefreshToken,
   fetchCsrfToken,
   clearAuthAndBackup,
   SWITCHED_FLAG_KEY,
 } from "@/api";
+import { clearQueryCache } from "@/api/queryClient";
+import { AUTH_EXPIRED_EVENT } from "@/api/authEvents";
 import { useMenuSettings } from "@/store/menuSettings";
 
 interface User {
@@ -32,8 +57,13 @@ function normalizeRoles(
   );
 }
 
+function clearClientAuthorization(): void {
+  delete api.defaults.headers.common.Authorization;
+}
+
 interface AuthState {
   token: string | null;
+  sessionId: string | null;
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
@@ -49,6 +79,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()((set, _get) => ({
   token: getStoredToken(),
+  sessionId: null,
   isSwitchedUser: localStorage.getItem(SWITCHED_FLAG_KEY) === "true",
   user: (() => {
     try {
@@ -69,45 +100,65 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   init: async () => {
     const savedToken = getStoredToken();
     if (!savedToken) {
-      set({ loading: false });
+      clearClientAuthorization();
+      clearQueryCache();
+      set({ token: null, sessionId: null, loading: false });
       return;
     }
     api.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
     try {
       const res = await api.get("/me/");
-      if (res.data?.result) {
-        const userData: User = { username: res.data.result.username };
-        localStorage.setItem("superset_user", JSON.stringify(userData));
-        set({ user: userData, isAuthenticated: true });
-        setupTokenRefresh();
-        await _get().fetchRoles();
-        await useMenuSettings.getState().fetchSettings();
-        set({ loading: false });
-      }
+      if (!res.data?.result) throw new Error("Invalid session response");
+      const userData: User = { username: res.data.result.username };
+      localStorage.setItem("superset_user", JSON.stringify(userData));
+      clearQueryCache();
+      set({
+        token: savedToken,
+        sessionId: uuidv4(),
+        user: userData,
+        isAuthenticated: true,
+      });
+      setupTokenRefresh();
+      await _get().fetchRoles();
+      await useMenuSettings.getState().fetchSettings();
+      set({ loading: false });
     } catch {
       const newToken = await refreshAccessToken();
       if (newToken) {
         api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
         try {
           const meRes = await api.get("/me/");
-          if (meRes.data?.result) {
-            const userData: User = { username: meRes.data.result.username };
-            localStorage.setItem("superset_user", JSON.stringify(userData));
-            set({ user: userData, isAuthenticated: true });
-            setupTokenRefresh();
-            await _get().fetchRoles();
-            await useMenuSettings.getState().fetchSettings();
-            set({ loading: false });
-            return;
-          }
+          if (!meRes.data?.result) throw new Error("Invalid session response");
+          const userData: User = { username: meRes.data.result.username };
+          localStorage.setItem("superset_user", JSON.stringify(userData));
+          clearQueryCache();
+          set({
+            token: newToken,
+            sessionId: uuidv4(),
+            user: userData,
+            isAuthenticated: true,
+          });
+          setupTokenRefresh();
+          await _get().fetchRoles();
+          await useMenuSettings.getState().fetchSettings();
+          set({ loading: false });
+          return;
         } catch {
-          // /me/ failed even after refresh, fall through to clear auth
+          clearAuthAndBackup();
         }
+      } else {
+        clearAuthAndBackup();
       }
 
-      setStoredToken(null);
-      setStoredRefreshToken(null);
-      set({ token: null, user: null, loading: false, isAuthenticated: false });
+      clearClientAuthorization();
+      clearQueryCache();
+      set({
+        token: null,
+        sessionId: null,
+        user: null,
+        loading: false,
+        isAuthenticated: false,
+      });
     }
   },
 
@@ -125,12 +176,21 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     const refreshToken = res.data?.refresh_token;
 
     setStoredToken(accessToken);
-    if (refreshToken) {
-      setStoredRefreshToken(refreshToken);
-    }
+    setStoredRefreshToken(refreshToken ?? null);
+    setStoredBackupToken(null);
+    setStoredBackupRefreshToken(null);
+    api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
     const userData: User = { username };
     localStorage.setItem("superset_user", JSON.stringify(userData));
-    set({ token: accessToken, user: userData, isAuthenticated: true });
+    clearQueryCache();
+    set({
+      token: accessToken,
+      sessionId: uuidv4(),
+      user: userData,
+      isAuthenticated: true,
+      loading: false,
+      isSwitchedUser: false,
+    });
     setupTokenRefresh();
     await _get().fetchRoles();
     await useMenuSettings.getState().fetchSettings();
@@ -139,9 +199,12 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
 
   logout: () => {
     clearAuthAndBackup();
+    clearClientAuthorization();
+    clearQueryCache();
     cancelTokenRefresh();
     set({
       token: null,
+      sessionId: null,
       user: null,
       isAuthenticated: false,
       loading: false,
@@ -150,14 +213,24 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
   },
 
   setToken: (token: string | null) => {
-    set({ token, isAuthenticated: !!token });
+    if (!token) {
+      clearClientAuthorization();
+      clearQueryCache();
+    }
+    set((state) => ({
+      token,
+      sessionId: token ? (state.sessionId ?? uuidv4()) : null,
+      isAuthenticated: !!token,
+    }));
   },
 
   switchToUser: async (username: string, _password?: string) => {
     const currentToken = getStoredToken();
+    const currentRefreshToken = getStoredRefreshToken();
     if (currentToken) {
       setStoredBackupToken(currentToken);
     }
+    setStoredBackupRefreshToken(currentRefreshToken);
     cancelTokenRefresh();
     try {
       const res = await api.get<{
@@ -171,9 +244,9 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       }
       const refreshToken = res.data?.refresh_token;
       setStoredToken(accessToken);
-      if (refreshToken) {
-        setStoredRefreshToken(refreshToken);
-      }
+      setStoredRefreshToken(refreshToken ?? null);
+      api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+      clearQueryCache();
       const targetRoles: Record<string, boolean> = {};
       if (res.data?.roles) {
         for (const role of res.data.roles) {
@@ -185,6 +258,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       localStorage.setItem(SWITCHED_FLAG_KEY, "true");
       set({
         token: accessToken,
+        sessionId: uuidv4(),
         user: userData,
         isAuthenticated: true,
         isSwitchedUser: true,
@@ -192,18 +266,23 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       setupTokenRefresh();
     } catch (err) {
       setStoredBackupToken(null);
+      setStoredBackupRefreshToken(null);
       throw err;
     }
   },
 
   switchBackToAdmin: async () => {
     const backupToken = getStoredBackupToken();
+    const backupRefreshToken = getStoredBackupRefreshToken();
     if (!backupToken) return;
     cancelTokenRefresh();
     setStoredToken(backupToken);
+    setStoredRefreshToken(backupRefreshToken);
     setStoredBackupToken(null);
+    setStoredBackupRefreshToken(null);
     localStorage.removeItem(SWITCHED_FLAG_KEY);
     api.defaults.headers.common.Authorization = `Bearer ${backupToken}`;
+    clearQueryCache();
     try {
       const res = await api.get("/me/");
       if (res.data?.result) {
@@ -213,6 +292,7 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
         localStorage.setItem("superset_user", JSON.stringify(userData));
         set({
           token: backupToken,
+          sessionId: uuidv4(),
           user: userData,
           isAuthenticated: true,
           isSwitchedUser: false,
@@ -222,7 +302,16 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
       }
     } catch {
       clearAuthAndBackup();
-      set({ token: null, user: null, isAuthenticated: false, loading: false });
+      clearClientAuthorization();
+      clearQueryCache();
+      set({
+        token: null,
+        sessionId: null,
+        user: null,
+        isAuthenticated: false,
+        loading: false,
+        isSwitchedUser: false,
+      });
     }
   },
 
@@ -246,5 +335,21 @@ export const useAuthStore = create<AuthState>()((set, _get) => ({
     }
   },
 }));
+
+if (typeof window !== "undefined") {
+  window.addEventListener(AUTH_EXPIRED_EVENT, () => {
+    cancelTokenRefresh();
+    clearClientAuthorization();
+    clearQueryCache();
+    useAuthStore.setState({
+      token: null,
+      sessionId: null,
+      user: null,
+      isAuthenticated: false,
+      loading: false,
+      isSwitchedUser: false,
+    });
+  });
+}
 
 void useAuthStore.getState().init();

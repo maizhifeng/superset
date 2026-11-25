@@ -1,10 +1,28 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   useMemo,
   useCallback,
   useState,
   useRef,
   useEffect,
-  type ReactNode,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -13,17 +31,10 @@ import {
   Box,
   Paper,
   Alert,
-  Typography,
   Button,
   CircularProgress,
   Divider,
   Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  TextField,
   IconButton,
   Menu,
   MenuItem,
@@ -39,8 +50,6 @@ import CodeIcon2 from "@mui/icons-material/Code";
 import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import FormatAlignLeftIcon from "@mui/icons-material/FormatAlignLeft";
 import { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -56,6 +65,12 @@ import { monoFontFamily } from "@/theme/typography";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import SchemaBrowser from "./SchemaBrowser";
 import ResultsTable from "./ResultsTable";
+import QueryResultsEmptyState from "./QueryResultsEmptyState";
+import SchemaContextMenu from "./SchemaContextMenu";
+import SqlLabDialogs, {
+  type PendingContextState,
+  type VisualModeSwitchDialogState,
+} from "./SqlLabDialogs";
 import SaveDatasetDialog from "./SaveDatasetDialog";
 import ResizeHandle from "@/components/ResizeHandle";
 import { useSqlLab } from "./useSqlLab";
@@ -110,96 +125,6 @@ const editorToolbarDividerSx = {
   bgcolor: "divider",
   mx: 0.75,
 };
-
-interface QueryHintCardProps {
-  icon: ReactNode;
-  title: string;
-  hint?: string;
-  description: string;
-}
-
-/** 结果区空态中的一条快捷键提示（纯说明，不使用伪按钮）。 */
-function QueryHintCard({ icon, title, hint, description }: QueryHintCardProps) {
-  return (
-    <Box
-      sx={{
-        flex: 1,
-        minWidth: 0,
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 1,
-        p: 1.25,
-        borderRadius: 1.5,
-        border: "1px solid",
-        borderColor: "divider",
-        bgcolor: "background.paper",
-        textAlign: "left",
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 26,
-          height: 26,
-          borderRadius: 1,
-          bgcolor: "bg.muted",
-          color: "primary.main",
-          flexShrink: 0,
-          mt: 0.125,
-          "& svg": { fontSize: 16 },
-        }}
-      >
-        {icon}
-      </Box>
-      <Box sx={{ minWidth: 0 }}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.75,
-            flexWrap: "wrap",
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{ fontWeight: 600, color: "text.primary" }}
-          >
-            {title}
-          </Typography>
-          {hint && (
-            <Box
-              component="kbd"
-              sx={{
-                fontFamily: monoFontFamily,
-                fontSize: "0.625rem",
-                lineHeight: 1.6,
-                px: 0.5,
-                borderRadius: "4px",
-                border: "1px solid",
-                borderColor: "divider",
-                bgcolor: "surface.variant",
-                color: "text.secondary",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {hint}
-            </Box>
-          )}
-        </Box>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ display: "block", mt: 0.25, lineHeight: 1.45 }}
-        >
-          {description}
-        </Typography>
-      </Box>
-    </Box>
-  );
-}
 
 export default function SqlLab() {
   const location = useLocation();
@@ -350,6 +275,7 @@ export default function SqlLab() {
     paginatedData,
     handleRun,
     handleRunSql,
+    stopQuery,
     recentQueries,
     loadRecentQuery,
     clearRecentQueries,
@@ -363,7 +289,6 @@ export default function SqlLab() {
     fetchTableListForSchema,
     insertTable,
     insertColumn,
-    setLoading,
   } = useSqlLab({ initialSql, initialDatabaseId, initialSchema });
 
   // ---- 可视化组装器接线 ----
@@ -554,15 +479,11 @@ export default function SqlLab() {
   }, [mode, databaseId, schema]);
 
   // 模式切换：V→S 把生成的 SQL 带入编辑器；S→V 仅当 SQL 携带合法模型注释。
-  const [switchDialog, setSwitchDialog] = useState<
-    { kind: "no-model" } | { kind: "modified"; model: VisualQueryModel } | null
-  >(null);
-  const [pendingContext, setPendingContext] = useState<
-    | { kind: "database"; value: number }
-    | { kind: "schema"; value: string }
-    | null
-  >(null);
+  const [switchDialog, setSwitchDialog] =
+    useState<VisualModeSwitchDialogState>(null);
 
+  const [pendingContext, setPendingContext] =
+    useState<PendingContextState>(null);
   const backendOf = useCallback(
     (id?: number) =>
       databases.find((d) => d.id === (id || databaseId))?.backend,
@@ -745,7 +666,7 @@ export default function SqlLab() {
           height: "100%",
           border: "1px solid var(--mui-palette-divider)",
           borderRadius: "8px",
-          // 与数据集编辑页 SqlQueryEditor 共用同一字体栈：首选 index.html 加载的
+          // 与数据集编辑页 SqlQueryEditor 共用同一字体栈：优先使用本机安装的
           // JetBrains Mono，Windows 上依次回退到 Cascadia Code / Consolas，
           // 避免两处 SQL 编辑器的字形不一致。
           fontFamily: monoFontFamily,
@@ -993,7 +914,7 @@ export default function SqlLab() {
             mode === "visual" ? handleRunVisual() : void handleRun()
           }
           onRunSelected={runSelectedStatement}
-          onStopQuery={() => setLoading(false)}
+          onStopQuery={stopQuery}
           onNewTab={newQueryTab}
           onFormatSql={handleFormatSql}
           onPrevTab={() => {}}
@@ -1219,7 +1140,7 @@ export default function SqlLab() {
                   color="error"
                   size="small"
                   startIcon={<StopIcon />}
-                  onClick={() => setLoading(false)}
+                  onClick={stopQuery}
                   disabled={!loading}
                 >
                   停止
@@ -1605,278 +1526,20 @@ export default function SqlLab() {
                 onRowsPerPageChange={setRowsPerPage}
               />
             ) : (
-              <Paper
-                variant="outlined"
-                sx={{
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: "auto",
-                  display: "flex",
-                  borderRadius: 2,
-                  borderStyle: "dashed",
-                  borderColor: "divider",
-                  bgcolor: "surface.variant",
-                  px: { xs: 2, md: 4 },
-                  py: 2,
-                  // 以面板自身高度（而非视口高度）决定空态密度：
-                  // 可视化组装器较高时结果区会被压缩，此时逐级收起说明文字，
-                  // 避免提示卡片被裁切。
-                  containerType: "size",
-                }}
-              >
-                <Box
-                  sx={{
-                    // 用自动外边距居中：内容高于面板时仍可从顶部滚动，
-                    // 不会被 flex 居中裁掉顶部。
-                    m: "auto",
-                    width: "100%",
-                    maxWidth: 720,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 2,
-                    "@container (max-height: 190px)": { gap: 1.5 },
-                  }}
-                >
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: { xs: "column", sm: "row" },
-                      alignItems: "center",
-                      gap: 1.5,
-                      textAlign: { xs: "center", sm: "left" },
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        bgcolor: "background.paper",
-                        border: "1px solid",
-                        borderColor: "divider",
-                        color: "primary.main",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {mode === "visual" ? (
-                        <AutoFixHighIcon sx={{ fontSize: 22 }} />
-                      ) : (
-                        <CodeIcon2 sx={{ fontSize: 22 }} />
-                      )}
-                    </Box>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography
-                        variant="subtitle1"
-                        sx={{
-                          fontWeight: 600,
-                          color: "text.primary",
-                          mb: 0.25,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {mode === "visual"
-                          ? "运行可视化查询以查看结果"
-                          : "运行 SQL 以查看结果"}
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        sx={{ lineHeight: 1.5 }}
-                      >
-                        {mode === "visual"
-                          ? "在上方「数据源」选择数据库、模式与数据表，配置关联、字段、筛选与汇总，然后点击运行。"
-                          : "从左面板选择数据库和模式，编写 SQL，然后点击运行。"}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: { xs: "column", sm: "row" },
-                      alignItems: "stretch",
-                      gap: 1,
-                      width: "100%",
-                      "@container (max-height: 140px)": { display: "none" },
-                    }}
-                  >
-                    <QueryHintCard
-                      icon={<PlayArrowIcon />}
-                      title="运行查询"
-                      hint="Ctrl+Enter / Ctrl+R"
-                      description={
-                        mode === "visual"
-                          ? "按当前组装配置生成并执行 SQL"
-                          : "执行编辑器中的 SQL"
-                      }
-                    />
-                    <QueryHintCard
-                      icon={<FormatAlignLeftIcon />}
-                      title="格式化 SQL"
-                      hint="Ctrl+Shift+F"
-                      description={
-                        mode === "sql"
-                          ? "整理当前 SQL 的缩进与换行"
-                          : "切换到 SQL 模式后可用"
-                      }
-                    />
-                    {mode === "visual" ? (
-                      <QueryHintCard
-                        icon={<ArrowForwardIcon />}
-                        title="切换 SQL 模式"
-                        description="把生成的 SQL 带到编辑器继续手写"
-                      />
-                    ) : (
-                      <QueryHintCard
-                        icon={<SaveIcon />}
-                        title="保存为数据集"
-                        description="查询返回结果后可保存为数据集"
-                      />
-                    )}
-                  </Box>
-                  <Typography
-                    variant="caption"
-                    color="text.disabled"
-                    sx={{
-                      "@container (max-height: 200px)": { display: "none" },
-                    }}
-                  >
-                    Ctrl+T 新建标签页 · Ctrl+S 保存查询
-                  </Typography>
-                </Box>
-              </Paper>
+              <QueryResultsEmptyState mode={mode} />
             )}
           </Box>
         </Box>
       </Box>
-      <Box
-        component="div"
-        onContextMenu={(e) => e.preventDefault()}
-        sx={{ position: "fixed", zIndex: (t) => t.zIndex.modal }}
-      >
-        {ctxMenu && (
-          <Paper
-            sx={{
-              position: "absolute",
-              top: ctxMenu.mouseY,
-              left: ctxMenu.mouseX,
-              py: 0.5,
-              minWidth: 180,
-              zIndex: (t) => t.zIndex.modal + 1,
-            }}
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            {ctxMenu.column ? (
-              <>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() => {
-                    insertColumn(ctxMenu.table!, ctxMenu.column!);
-                    handleCtxClose();
-                  }}
-                >
-                  插入列：{ctxMenu.table}.{ctxMenu.column}
-                </Button>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() =>
-                    void handleCopyCtx(`${ctxMenu.table}.${ctxMenu.column}`)
-                  }
-                >
-                  复制列名
-                </Button>
-              </>
-            ) : ctxMenu.table ? (
-              <>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() => {
-                    insertTable(ctxMenu.table!);
-                    handleCtxClose();
-                  }}
-                >
-                  插入表：FROM {ctxMenu.table}
-                </Button>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() => void handleCopyCtx(ctxMenu.table!)}
-                >
-                  复制表名
-                </Button>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() =>
-                    void handleCopyCtx(
-                      schema
-                        ? `SELECT * FROM ${schema}.${ctxMenu.table!};`
-                        : `SELECT * FROM ${ctxMenu.table!};`,
-                    )
-                  }
-                >
-                  复制 SELECT
-                </Button>
-                <Button
-                  fullWidth
-                  sx={{
-                    justifyContent: "flex-start",
-                    px: 2,
-                    py: 0.75,
-                    textTransform: "none",
-                    fontSize: "0.8125rem",
-                  }}
-                  onClick={() => {
-                    const cols =
-                      (schema && columnCache[schema]?.[ctxMenu.table!]) || [];
-                    void handleCopyCtx(
-                      cols.length ? cols.join(", ") : "（未加载列）",
-                    );
-                  }}
-                >
-                  复制全部列名
-                </Button>
-              </>
-            ) : null}
-          </Paper>
-        )}
-      </Box>
+      <SchemaContextMenu
+        ctxMenu={ctxMenu}
+        schema={schema}
+        columnCache={columnCache}
+        onInsertColumn={insertColumn}
+        onInsertTable={insertTable}
+        onCopy={handleCopyCtx}
+        onClose={handleCtxClose}
+      />
       <SaveDatasetDialog
         open={saveDialogOpen}
         datasetName={datasetName}
@@ -1919,122 +1582,29 @@ export default function SqlLab() {
           </MenuItem>
         )}
       </Menu>
-      <Dialog
-        open={saveQueryOpen}
-        onClose={() => !saveQuerySaving && setSaveQueryOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>保存查询</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="查询名称"
-            value={saveQueryLabel}
-            onChange={(e) => setSaveQueryLabel(e.target.value)}
-            size="small"
-            sx={{ mt: 1 }}
-          />
-          {saveQueryError && (
-            <Alert severity="error" sx={{ mt: 1.5, borderRadius: 1.5 }}>
-              {saveQueryError}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setSaveQueryOpen(false)}
-            disabled={saveQuerySaving}
-          >
-            取消
-          </Button>
-          <Button
-            variant="contained"
-            disabled={saveQuerySaving || !saveQueryLabel.trim()}
-            onClick={() => void handleSaveQuery()}
-          >
-            {saveQuerySaving ? "保存中..." : "保存"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* 切换到可视化模式的保护对话框 */}
-      <Dialog
-        open={switchDialog !== null}
-        onClose={() => setSwitchDialog(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>
-          {switchDialog?.kind === "modified"
-            ? "SQL 已被手工修改"
-            : "无法转换为可视化查询"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {switchDialog?.kind === "modified"
-              ? "当前 SQL 与可视化模型生成的语句不一致。继续进入可视化模式将丢弃手工修改（模型本身不受影响）。"
-              : "当前 SQL 未携带可视化模型注释（手写 SQL 无法自动反解）。可新建一个可视化查询，或继续使用 SQL 编辑器。"}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSwitchDialog(null)}>取消</Button>
-          {switchDialog?.kind === "modified" ? (
-            <Button
-              variant="contained"
-              color="warning"
-              onClick={() => {
-                applyVisualModel(switchDialog.model);
-                setSwitchDialog(null);
-              }}
-            >
-              继续（丢弃手改）
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={() => {
-                setSql("");
-                updateActiveTab({
-                  mode: "visual",
-                  model: emptyModel(Number(databaseId) || 0, schema),
-                });
-                setSwitchDialog(null);
-              }}
-            >
-              新建可视化查询
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      {/* 切换数据库/模式导致可视查询重置的确认对话框 */}
-      <Dialog
-        open={pendingContext !== null}
-        onClose={() => setPendingContext(null)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>重置可视化查询？</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {pendingContext?.kind === "database"
-              ? "切换数据库会清空当前的可视化查询配置（数据表、关联、字段、筛选与汇总）。"
-              : "切换模式会清空当前的可视化查询配置（数据表、关联、字段、筛选与汇总）。"}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPendingContext(null)}>取消</Button>
-          <Button
-            variant="contained"
-            color="warning"
-            onClick={confirmContextChange}
-          >
-            切换并重置
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <SqlLabDialogs
+        saveQueryOpen={saveQueryOpen}
+        saveQuerySaving={saveQuerySaving}
+        saveQueryLabel={saveQueryLabel}
+        saveQueryError={saveQueryError}
+        onSaveQueryOpenChange={setSaveQueryOpen}
+        onSaveQueryLabelChange={setSaveQueryLabel}
+        onSaveQuery={() => void handleSaveQuery()}
+        switchDialog={switchDialog}
+        onSwitchDialogClose={() => setSwitchDialog(null)}
+        onApplyVisualModel={applyVisualModel}
+        onNewVisualQuery={() => {
+          setSql("");
+          updateActiveTab({
+            mode: "visual",
+            model: emptyModel(Number(databaseId) || 0, schema),
+          });
+          setSwitchDialog(null);
+        }}
+        pendingContext={pendingContext}
+        onPendingContextClose={() => setPendingContext(null)}
+        onConfirmContextChange={confirmContextChange}
+      />
     </Box>
   );
 }

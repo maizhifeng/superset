@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { WebSocket } from "ws";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { Session } from "./types.js";
@@ -22,26 +41,39 @@ export class SessionStore {
     return store;
   }
 
-  has(ws: WebSocket, storeSessionId: string): boolean {
-    return this.getWsStore(ws).has(storeSessionId);
+  has(ws: WebSocket, storeSessionId: string, userId: string): boolean {
+    const session = this.sessions.get(storeSessionId);
+    return (
+      session?.userId === userId && this.getWsStore(ws).has(storeSessionId)
+    );
   }
 
   getAgentSession(
     ws: WebSocket,
     storeSessionId: string,
+    userId: string,
   ): AgentSession | undefined {
+    if (this.sessions.get(storeSessionId)?.userId !== userId) return undefined;
     return this.getWsStore(ws).get(storeSessionId)?.agentSession;
   }
 
-  getSession(storeSessionId: string): Session | undefined {
-    return this.sessions.get(storeSessionId);
+  getSession(storeSessionId: string, userId?: string): Session | undefined {
+    const session = this.sessions.get(storeSessionId);
+    if (!session) return undefined;
+    if (userId !== undefined && session.userId !== userId) return undefined;
+    return session;
   }
 
   getCurrentSessionId(ws: WebSocket): string | undefined {
     return this.wsCurrentSessionId.get(ws);
   }
 
-  setCurrentSessionId(ws: WebSocket, storeSessionId: string): void {
+  setCurrentSessionId(
+    ws: WebSocket,
+    storeSessionId: string,
+    userId: string,
+  ): void {
+    if (this.sessions.get(storeSessionId)?.userId !== userId) return;
     this.wsCurrentSessionId.set(ws, storeSessionId);
   }
 
@@ -51,10 +83,15 @@ export class SessionStore {
     userId: string,
     agentSession: AgentSession,
     datasetId?: number,
-  ): void {
+  ): AgentSession {
+    const existing = this.sessions.get(storeSessionId);
+    if (existing && existing.userId !== userId) {
+      throw new Error("storeSessionId 已被其他用户使用");
+    }
     const wsStore = this.getWsStore(ws);
-    if (wsStore.has(storeSessionId)) {
-      return; // already exists, just activate
+    const wsEntry = wsStore.get(storeSessionId);
+    if (wsEntry) {
+      return wsEntry.agentSession;
     }
     this.sessions.set(storeSessionId, {
       id: storeSessionId,
@@ -63,6 +100,7 @@ export class SessionStore {
       datasetId,
     });
     wsStore.set(storeSessionId, { agentSession, unsub: () => {} });
+    return agentSession;
   }
 
   setSubscription(storeSessionId: string, unsub: () => void): void {
@@ -80,7 +118,11 @@ export class SessionStore {
     this.subscriptions.delete(storeSessionId);
   }
 
-  remove(ws: WebSocket, storeSessionId: string): void {
+  remove(ws: WebSocket, storeSessionId: string, userId?: string): void {
+    const session = this.sessions.get(storeSessionId);
+    if (!session || (userId !== undefined && session.userId !== userId)) {
+      return;
+    }
     this.subscriptions.get(storeSessionId)?.();
     this.subscriptions.delete(storeSessionId);
     const wsStore = this.getWsStore(ws);
@@ -120,8 +162,10 @@ export class SessionStore {
       this.subscriptions.delete(sid);
       entry.unsub();
       entry.agentSession.dispose();
+      this.sessions.delete(sid);
     }
     store.clear();
+    this.wsCurrentSessionId.delete(ws);
   }
 
   // ── Per-WebSocket model preference ──────────────────────────
@@ -143,9 +187,13 @@ export class SessionStore {
     }
   }
 
-  setState(storeSessionId: string, state: Session["state"]): void {
+  setState(
+    storeSessionId: string,
+    state: Session["state"],
+    userId?: string,
+  ): void {
     const session = this.sessions.get(storeSessionId);
-    if (session) {
+    if (session && (userId === undefined || session.userId === userId)) {
       session.state = state;
     }
   }
@@ -162,42 +210,41 @@ export function getWsPreferredModel(ws: WebSocket): string | undefined {
   return wsModelPreferences.get(ws);
 }
 
-// Per-WebSocket Superset auth token (from frontend's login session)
-const wsAuthTokens = new WeakMap<WebSocket, string>();
-
-export function setWsAuthToken(ws: WebSocket, token: string): void {
-  wsAuthTokens.set(ws, token);
-}
-
-export function getWsAuthToken(ws: WebSocket): string | undefined {
-  return wsAuthTokens.get(ws);
+export interface VerifiedUserContext {
+  userId: string;
+  token: string;
 }
 
 // Per-WebSocket verified identity (resolved from the JWT by ws-auth).
 // null means the token was rejected; undefined means not yet verified.
-const wsVerifiedUsers = new WeakMap<WebSocket, string | null>();
-const wsAuthPending = new WeakMap<WebSocket, Promise<string | null> | null>();
+const wsVerifiedUsers = new WeakMap<WebSocket, VerifiedUserContext | null>();
+const wsAuthPending = new WeakMap<
+  WebSocket,
+  Promise<VerifiedUserContext | null> | null
+>();
 
 export function setWsVerifiedUser(
   ws: WebSocket,
-  username: string | null,
+  context: VerifiedUserContext | null,
 ): void {
-  wsVerifiedUsers.set(ws, username);
+  wsVerifiedUsers.set(ws, context);
 }
 
-export function getWsVerifiedUser(ws: WebSocket): string | null | undefined {
+export function getWsVerifiedUser(
+  ws: WebSocket,
+): VerifiedUserContext | null | undefined {
   return wsVerifiedUsers.get(ws);
 }
 
 export function setWsAuthPending(
   ws: WebSocket,
-  pending: Promise<string | null> | null,
+  pending: Promise<VerifiedUserContext | null> | null,
 ): void {
   wsAuthPending.set(ws, pending);
 }
 
 export function getWsAuthPending(
   ws: WebSocket,
-): Promise<string | null> | null | undefined {
+): Promise<VerifiedUserContext | null> | null | undefined {
   return wsAuthPending.get(ws);
 }

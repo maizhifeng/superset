@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -13,6 +32,7 @@ import type { EChartsOption, EChartsType } from "echarts";
 import EChart from "@/pages/Briefing/EChart";
 import AnalysisGestureGuide from "./AnalysisGestureGuide";
 import type { ChartDataRow } from "@/types/api";
+import { escapeHtml } from "@/utils/escapeHtml";
 import { formatPctValue } from "@/utils/formatNumber";
 import {
   detectAnomalies,
@@ -46,11 +66,6 @@ function axisIndexOf(axis: AnalysisAxis | undefined): number {
   return AXIS_KEYS.indexOf(axisKeyOf(axis));
 }
 
-/** Minimal ECharts surface used to map data points to canvas pixels. */
-interface PixelChartInstance {
-  convertToPixel: (finder: unknown, value: unknown) => number | number[];
-}
-/** Chips shown inline before the rest move into the "更多" popover. */
 const VISIBLE_ANOMALY_COUNT = 3;
 
 /** Highest/lowest/last points: the few values worth labelling on a line. */
@@ -535,7 +550,7 @@ export default function AnalysisTrendChart({
   // One-time hand gesture pointing at the first anomalous bar/point.  The
   // position comes from ECharts so the hand lands on the data column itself
   // instead of the anomaly chips above the chart.
-  const chartInstanceRef = useRef<PixelChartInstance | null>(null);
+  const chartInstanceRef = useRef<EChartsType | null>(null);
   const [chartReadyTick, setChartReadyTick] = useState(0);
   const [gestureAnchor, setGestureAnchor] = useState<{
     left: number;
@@ -727,9 +742,8 @@ export default function AnalysisTrendChart({
       for (const entry of orderedDefinitions) {
         const definition = entry.definition;
         lines.push(
-          `${definition.label}: ${formatMetricValue(
-            definition,
-            displayRows[index]?.[definition.key],
+          `${escapeHtml(definition.label)}: ${escapeHtml(
+            formatMetricValue(definition, displayRows[index]?.[definition.key]),
           )}`,
         );
         if (
@@ -738,9 +752,11 @@ export default function AnalysisTrendChart({
           definition.key === comparisonMetric.key
         ) {
           lines.push(
-            `${definition.label}（7日移动平均）: ${formatMetricValue(
-              comparisonMetric,
-              rollingBaseline[index] ?? null,
+            `${escapeHtml(definition.label)}（7日移动平均）: ${escapeHtml(
+              formatMetricValue(
+                comparisonMetric,
+                rollingBaseline[index] ?? null,
+              ),
             )}`,
           );
         }
@@ -753,9 +769,8 @@ export default function AnalysisTrendChart({
           // earlier, so label it accordingly and surface the week-over-week
           // change even when the comparison line itself is hidden.
           lines.push(
-            `${definition.label}（${weeklyView ? "上一周" : "上期"}）: ${formatMetricValue(
-              comparisonMetric,
-              comparisonSeries.data[index],
+            `${escapeHtml(definition.label)}（${weeklyView ? "上一周" : "上期"}）: ${escapeHtml(
+              formatMetricValue(comparisonMetric, comparisonSeries.data[index]),
             )}`,
           );
           if (weeklyView) {
@@ -764,7 +779,7 @@ export default function AnalysisTrendChart({
               displayRows[index]?.[definition.key],
               comparisonSeries.data[index],
             );
-            if (delta) lines.push(`周环比: ${delta.text}`);
+            if (delta) lines.push(`周环比: ${escapeHtml(delta.text)}`);
           }
         }
       }
@@ -782,7 +797,9 @@ export default function AnalysisTrendChart({
           }[];
           if (list.length === 0) return "";
           const index = list[0]?.dataIndex ?? 0;
-          return [labels[index] ?? "", ...tooltipRows(index)].join("<br/>");
+          return [escapeHtml(labels[index] ?? ""), ...tooltipRows(index)].join(
+            "<br/>",
+          );
         },
       },
       legend: {
@@ -1047,14 +1064,13 @@ export default function AnalysisTrendChart({
                           ? "正面"
                           : "中性";
                     return [
-                      `${fullDate} ${comparisonMetric.label}`,
-                      `数值：${formatMetricValue(
-                        comparisonMetric,
-                        anomaly.value,
+                      `${escapeHtml(fullDate)} ${escapeHtml(comparisonMetric.label)}`,
+                      `数值：${escapeHtml(
+                        formatMetricValue(comparisonMetric, anomaly.value),
                       )}`,
                       `较7日移动平均${
                         anomaly.direction === "up" ? "上升" : "下降"
-                      } ${anomaly.deltaText}`,
+                      } ${escapeHtml(anomaly.deltaText)}`,
                       `影响：${impact}`,
                     ].join("<br/>");
                   },

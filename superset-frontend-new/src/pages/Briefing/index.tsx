@@ -1,6 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
+import Alert from "@mui/material/Alert";
 import Paper from "@mui/material/Paper";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
@@ -23,6 +43,7 @@ import SendIcon from "@mui/icons-material/Send";
 import PageFrame from "@/components/PageFrame";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { formatCrontabZh } from "@/utils/crontab";
 import ConfigForm from "./ConfigForm";
 import ScheduleDialog, {
@@ -107,6 +128,8 @@ export default function BriefingList() {
   const notify = useNotificationStore((s) => s.notify);
   const [rows, setRows] = useState<ReportConfigRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | ReportType>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ReportConfigRow | null>(null);
@@ -123,22 +146,29 @@ export default function BriefingList() {
     null,
   );
 
-  const load = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!opts?.silent) setLoading(true);
-      try {
-        const res = await api.get<{ result: ReportConfigRow[] }>(
-          "/briefing/configs",
-        );
-        setRows(res.data.result ?? []);
-      } catch {
-        notify({ severity: "error", message: "加载简报列表失败" });
-      } finally {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    if (!opts?.silent) setLoading(true);
+    try {
+      const res = await api.get<{ result: ReportConfigRow[] }>(
+        "/briefing/configs",
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      setRows(res.data.result ?? []);
+      setLoadError(null);
+    } catch (err: unknown) {
+      if (controller.signal.aborted) return;
+      setLoadError(parseErrorMessage(err, "加载简报列表失败"));
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
         if (!opts?.silent) setLoading(false);
       }
-    },
-    [notify],
-  );
+    }
+  }, []);
 
   // Refresh without the full-table spinner (used by countdown expiry).
   const refreshSilently = useCallback(() => {
@@ -148,6 +178,16 @@ export default function BriefingList() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!rows.some((row) => row.schedule?.active)) return;
+    const timer = window.setInterval(() => {
+      void load({ silent: true });
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [load, rows]);
 
   const openCreate = () => {
     setEditing(null);
@@ -246,6 +286,18 @@ export default function BriefingList() {
         </ToggleButtonGroup>
       }
     >
+      {loadError && (
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={() => void load()}>
+              重试
+            </Button>
+          }
+        >
+          {loadError}
+        </Alert>
+      )}
       <Paper
         variant="outlined"
         sx={{
@@ -280,6 +332,19 @@ export default function BriefingList() {
                 <tr>
                   <td colSpan={5} style={{ padding: 24, textAlign: "center" }}>
                     <CircularProgress size={24} />
+                  </td>
+                </tr>
+              ) : loadError && rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{
+                      padding: 24,
+                      textAlign: "center",
+                      color: "error.main",
+                    }}
+                  >
+                    加载失败，请使用上方「重试」。
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (

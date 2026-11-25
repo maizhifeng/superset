@@ -1,4 +1,23 @@
-import { test, expect, vi } from "vitest";
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { test, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
 import {
   validateAgentOutput,
@@ -24,8 +43,16 @@ vi.mock("../tools/querySuperset.js", () => ({
   executeQuerySuperset: vi
     .fn()
     .mockResolvedValue("平台 | 消耗\n--- | ---\nmini_game | 1000"),
-  getSchema: vi.fn().mockResolvedValue("可用维度列: 日期, 平台\n\n可用指标: SUM(消耗)"),
+  getSchema: vi.fn().mockResolvedValue({
+    text: "可用维度列: 日期, 平台\n\n可用指标: SUM(消耗)",
+    validColNames: new Set(["日期", "平台", "消耗"]),
+    validMetricNames: new Set(["SUM(消耗)"]),
+  }),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 test("isReportIntent matches periodic report requests", () => {
   expect(isReportIntent("请生成昨日数据日报")).toBe(true);
@@ -65,10 +92,9 @@ test("fetchReportData queries every perspective and emits progress", async () =>
   const events: Array<Record<string, unknown>> = [];
   const data = await fetchReportData(
     config,
-    "alice",
+    { userId: "alice", token: "token" },
     (e) => events.push(e),
     "sid-1",
-    "token",
   );
 
   expect(data).toContain("### 视角 1：平台维度");
@@ -175,7 +201,10 @@ async function runPrompt(session: SessionLike, message: string) {
   store.create(ws, sid, "alice", session);
   store.setCurrentSessionId(ws, sid);
   const events: Array<Record<string, unknown>> = [];
-  await processPrompt(ws, sid, session, message, (e) => events.push(e), store);
+  await processPrompt(ws, sid, session, message, (e) => events.push(e), store, {
+    userId: "alice",
+    token: "token",
+  });
   return { events, store };
 }
 
@@ -272,7 +301,9 @@ test("two-step perspectives rank topN first then filter with IN", async () => {
   const { executeQuerySuperset } = await import("../tools/querySuperset.js");
   const mocked = vi.mocked(executeQuerySuperset);
   mocked
-    .mockResolvedValueOnce("主游戏 | SUM(消耗)\n--- | ---\n三国 | 5000\n西游 | 4000")
+    .mockResolvedValueOnce(
+      "主游戏 | SUM(消耗)\n--- | ---\n三国 | 5000\n西游 | 4000",
+    )
     .mockResolvedValueOnce(
       "日期 | 主游戏 | 渠道商 | SUM(消耗)\n--- | --- | --- | ---\n7/1 | 三国 | 微信 | 1000",
     );
@@ -296,7 +327,12 @@ test("two-step perspectives rank topN first then filter with IN", async () => {
     },
   };
   const events: Array<Record<string, unknown>> = [];
-  const data = await fetchReportData(config, "alice", (e) => events.push(e), "s1", "tok");
+  const data = await fetchReportData(
+    config,
+    { userId: "alice", token: "tok" },
+    (e) => events.push(e),
+    "s1",
+  );
 
   expect(mocked).toHaveBeenCalledTimes(2);
   const [topArgs, drillArgs] = mocked.mock.calls.map((c) => c[0]) as [
@@ -315,5 +351,7 @@ test("two-step perspectives rank topN first then filter with IN", async () => {
   expect(drillArgs.filters).toEqual({ 主游戏: ["三国", "西游"] });
   expect(data).toContain("按 SUM(消耗) 排名前 2 的主游戏");
   expect(data).toContain("三国、西游");
-  expect(events.filter((e) => e.type === "tool_execution_start")).toHaveLength(2);
+  expect(events.filter((e) => e.type === "tool_execution_start")).toHaveLength(
+    2,
+  );
 });

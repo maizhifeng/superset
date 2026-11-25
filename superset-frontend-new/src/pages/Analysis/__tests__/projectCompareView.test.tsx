@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   fireEvent,
   render,
@@ -234,6 +253,7 @@ function renderView(overrides: Partial<AnalysisFilters> = {}) {
 type CapturedOption = {
   xAxis?: { data?: unknown[] };
   series?: { name?: string; data?: unknown[] }[];
+  tooltip?: { formatter?: (params: unknown) => string };
   yAxis?: { name?: string; formatter?: unknown };
 };
 
@@ -555,4 +575,25 @@ test("shows a project metadata error with a retry", async () => {
   expect(
     await screen.findByRole("table", { name: "上线基准项目对比表" }),
   ).toBeInTheDocument();
+});
+
+test("renders project names as text in comparison tooltips", async () => {
+  const untrusted = `<img src=x onerror="alert(1)">&`;
+  mockProjects(
+    [{ ...PAPP_ROWS[0], papp_name: untrusted }, PAPP_ROWS[1]],
+    PROFIT_ROWS,
+  );
+  renderView();
+  await screen.findByRole("table", { name: "上线基准项目对比表" });
+
+  const seriesName = capturedOption()?.series?.[0]?.name ?? "";
+  const html = capturedOption()?.tooltip?.formatter?.([
+    { dataIndex: 0, seriesName, value: 1 },
+  ]);
+  const template = document.createElement("template");
+  template.innerHTML = html ?? "";
+
+  expect(seriesName).toContain(untrusted);
+  expect(template.content.querySelector("img")).toBeNull();
+  expect(template.content.textContent).toContain(untrusted);
 });

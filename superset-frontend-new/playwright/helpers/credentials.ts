@@ -1,15 +1,46 @@
 /**
- * Shared E2E credentials. Override per environment with E2E_USER /
- * E2E_PASSWORD; the defaults match the local docker-compose dev stack.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
-export const E2E_USER = process.env.E2E_USER ?? "zhifeng.mai@rastar.com";
-export const E2E_PASSWORD = process.env.E2E_PASSWORD ?? "admin123";
 
-/** Fill the login form and submit through the UI. */
+export function getE2EUser(): string {
+  const user = process.env.E2E_USER?.trim();
+  if (!user) {
+    throw new Error(
+      "E2E_USER is required to run authenticated Playwright tests",
+    );
+  }
+  return user;
+}
+
+export function getE2EPassword(): string {
+  const password = process.env.E2E_PASSWORD;
+  if (!password) {
+    throw new Error(
+      "E2E_PASSWORD is required to run authenticated Playwright tests",
+    );
+  }
+  return password;
+}
+
 export async function loginViaUi(
   page: import("@playwright/test").Page,
-  user = E2E_USER,
-  password = E2E_PASSWORD,
+  user = getE2EUser(),
+  password = getE2EPassword(),
 ): Promise<void> {
   await page.goto("/login");
   // Pre-dismiss the onboarding tour so it never blocks interactions.

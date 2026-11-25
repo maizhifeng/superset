@@ -1,8 +1,35 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { createHash } from "node:crypto";
 import { loadConfig } from "../config.js";
 import { logger } from "../logger.js";
+import { getTokenFingerprint } from "../ws-auth.js";
 import { LRUCache } from "lru-cache";
 
 const config = loadConfig();
+
+export interface SupersetDataContext {
+  userId: string;
+  token: string;
+  datasetId?: number;
+}
 
 interface SimpleAggregate {
   expressionType: "SIMPLE";
@@ -13,28 +40,58 @@ interface SimpleAggregate {
 
 type MetricEntry = string | SimpleAggregate;
 
-// Dynamically populated from schema fetch; the schema is the single
-// source of truth for valid metric names.
-let validMetricNames: Set<string> | null = null;
+interface SchemaColumn {
+  column_name: string;
+  groupby?: boolean;
+  type_generic?: number;
+}
 
-export function buildMetricEntry(m: string): MetricEntry {
-  const sumMatch = m.match(/^SUM\((.+)\)$/);
+interface ParsedSchema {
+  text: string;
+  validColNames: ReadonlySet<string>;
+  validMetricNames: ReadonlySet<string>;
+}
+
+export type SchemaSnapshot = ParsedSchema;
+
+interface CachedSchema extends ParsedSchema {
+  expiresAt: number;
+}
+
+interface SchemaCacheScope {
+  userId: string;
+  datasetId: number;
+  token: string;
+}
+
+const SCHEMA_CACHE_TTL = 5 * 60 * 1000;
+const schemaCache = new LRUCache<string, CachedSchema>({
+  max: 200,
+  ttl: SCHEMA_CACHE_TTL,
+  ttlAutopurge: true,
+});
+
+export function buildMetricEntry(
+  metric: string,
+  validMetricNames?: ReadonlySet<string>,
+): MetricEntry {
+  const sumMatch = metric.match(/^SUM\((.+)\)$/);
   if (sumMatch) {
     return {
       expressionType: "SIMPLE",
       column: { column_name: sumMatch[1] },
       aggregate: "SUM",
-      label: m,
+      label: metric,
     };
   }
-  if (validMetricNames?.has(m)) {
-    return m;
+  if (validMetricNames?.has(metric)) {
+    return metric;
   }
   return {
     expressionType: "SIMPLE",
-    column: { column_name: m },
+    column: { column_name: metric },
     aggregate: "SUM",
-    label: `SUM(${m})`,
+    label: `SUM(${metric})`,
   };
 }
 
@@ -125,15 +182,14 @@ function filterTopRowsByMetric(
   if (total === 0) return { rows, truncatedCount: 0 };
 
   const sorted = [...rows].sort((a, b) => {
-    const va = typeof a[metricCol] === "number" ? (a[metricCol] as number) : 0;
-    const vb = typeof b[metricCol] === "number" ? (b[metricCol] as number) : 0;
+    const va = typeof a[metricCol] === "number" ? a[metricCol] : 0;
+    const vb = typeof b[metricCol] === "number" ? b[metricCol] : 0;
     return descending ? vb - va : va - vb;
   });
 
   let cumulative = 0;
   const cutoffIdx = sorted.findIndex((row) => {
-    const val =
-      typeof row[metricCol] === "number" ? (row[metricCol] as number) : 0;
+    const val = typeof row[metricCol] === "number" ? row[metricCol] : 0;
     cumulative += val / total;
     return cumulative >= threshold;
   });
@@ -149,11 +205,6 @@ function normalizeColName(name: string): string {
   return sumMatch ? sumMatch[1] : name;
 }
 
-/**
- * Parse the model-provided orderby. Accepts the standard array form
- * [["列名", true/false]] as well as human-friendly strings like
- * "日期↓", "日期↑", "消耗 desc", "消耗 降序".
- */
 export function parseOrderby(value: unknown): [string, boolean][] {
   if (Array.isArray(value)) {
     return (value as [string, boolean][]).map(
@@ -166,7 +217,6 @@ export function parseOrderby(value: unknown): [string, boolean][] {
     const match = trimmed.match(/^(.+?)\s*(↓|↑|desc|asc|降序|升序)$/i);
     if (match) {
       const col = normalizeColName(match[1].trim());
-      // orderby tuple is [column, ascending]: false = descending
       const isDesc = /↓|desc|降序/i.test(match[2]);
       return [[col, !isDesc] as [string, boolean]];
     }
@@ -179,25 +229,7 @@ export function parseRowLimit(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.min(Math.max(1, Math.round(value)), 1000);
   }
-  // Default to the maximum so detail queries (project × channel × day)
-  // are not silently truncated; the 95% top-rows filter keeps the
-  // response token-bounded instead.
   return 1000;
-}
-
-// ── Auth token cache ────────────────────────────────────────────
-let schemaToken: string | null = null;
-let schemaTokenTime = 0;
-const TOKEN_CACHE_TTL = 60 * 60 * 1000; // 1 hour
-
-// ── Schema cache (TTL-based) ────────────────────────────────────
-let schemaCache: string | null = null;
-let schemaCacheTime = 0;
-let validColNames: Set<string> | null = null;
-const SCHEMA_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-function isCacheValid(cacheTime: number, ttl: number): boolean {
-  return cacheTime > 0 && Date.now() - cacheTime < ttl;
 }
 
 export async function fetchWithRetry(
@@ -230,36 +262,42 @@ export async function fetchWithRetry(
   throw lastErr ?? new Error("fetch failed");
 }
 
-export function parseAndCacheSchema(json: {
+function emptySchema(): SchemaSnapshot {
+  return {
+    text: "",
+    validColNames: new Set<string>(),
+    validMetricNames: new Set<string>(),
+  };
+}
+
+function parseSchema(json: {
   result: Record<string, unknown>;
-}): string {
+}): SchemaSnapshot {
   const r = json.result;
-  if (!r) return "";
+  if (!r) return emptySchema();
 
-  const cols = r.columns as
-    | Array<{ column_name: string; groupby?: boolean; type_generic?: number }>
-    | undefined;
+  const cols = r.columns as SchemaColumn[] | undefined;
   const metrics = r.metrics as Array<{ metric_name: string }> | undefined;
-
-  // GenericDataType in this Superset fork (superset/utils/core.py):
-  // NUMERIC = 0, STRING = 1, TEMPORAL = 2, BOOLEAN = 3
-  // (unlike upstream Superset where NUMERIC is 1/2 — the fork's enum has
-  // a single NUMERIC=0 covering int/float/decimal columns)
-  const isNumeric = (c: { type_generic?: number }) => c.type_generic === 0;
+  const isNumeric = (column: SchemaColumn) => column.type_generic === 0;
 
   const lines: string[] = [];
   if (cols) {
     const dimCols = cols.filter(
-      (c) =>
-        !isNumeric(c) &&
-        c.groupby !== false &&
-        !(c.column_name || "").endsWith("[ID]"),
+      (column) =>
+        !isNumeric(column) &&
+        column.groupby !== false &&
+        !(column.column_name || "").endsWith("[ID]"),
     );
     const numericCols = cols
-      .filter((c) => isNumeric(c) && !(c.column_name || "").endsWith("[ID]"))
-      .map((c) => c.column_name);
+      .filter(
+        (column) =>
+          isNumeric(column) && !(column.column_name || "").endsWith("[ID]"),
+      )
+      .map((column) => column.column_name);
 
-    lines.push(`可用维度列: ${dimCols.map((c) => c.column_name).join(", ")}`);
+    lines.push(
+      `可用维度列: ${dimCols.map((column) => column.column_name).join(", ")}`,
+    );
     lines.push("");
     if (numericCols.length > 0) {
       lines.push(
@@ -269,155 +307,171 @@ export function parseAndCacheSchema(json: {
     }
   }
   if (metrics) {
-    const displayMetrics = metrics.map((m) => m.metric_name);
-    lines.push(`可用指标: ${displayMetrics.join(", ")}`);
+    lines.push(
+      `可用指标: ${metrics.map((metric) => metric.metric_name).join(", ")}`,
+    );
     lines.push("");
   }
-  validColNames = new Set((cols ?? []).map((c) => c.column_name));
-  validMetricNames = new Set([
-    ...(metrics ?? []).map((m) => m.metric_name),
-    ...((cols ?? [])
-      .filter((c) => isNumeric(c) && !(c.column_name || "").endsWith("[ID]"))
-      .map((c) => `SUM(${c.column_name})`) as string[]),
-  ]);
-  schemaCache = lines.join("\n");
-  schemaCacheTime = Date.now();
-  logger.info(
-    "schema",
-    `fetched ${cols?.length ?? 0} cols, ${metrics?.length ?? 0} metrics`,
-  );
-  return schemaCache;
+
+  return {
+    text: lines.join("\n"),
+    validColNames: new Set((cols ?? []).map((column) => column.column_name)),
+    validMetricNames: new Set([
+      ...(metrics ?? []).map((metric) => metric.metric_name),
+      ...(cols ?? [])
+        .filter(
+          (column) =>
+            isNumeric(column) && !(column.column_name || "").endsWith("[ID]"),
+        )
+        .map((column) => `SUM(${column.column_name})`),
+    ]),
+  };
 }
 
-export async function resolveToken(authToken?: string): Promise<string | null> {
-  // Frontend-provided token takes priority
-  if (authToken) return authToken;
-  // Cached env-derived JWT
-  if (schemaToken && isCacheValid(schemaTokenTime, TOKEN_CACHE_TTL)) {
-    return schemaToken;
-  }
-  // Try env-based JWT login
-  if (!config.supersetUsername || !config.supersetPassword) return null;
-  const { flaskInternalUrl, supersetUsername, supersetPassword } = config;
-  try {
-    const res = await fetchWithRetry(
-      `${flaskInternalUrl}/api/v1/security/login`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: supersetUsername,
-          password: supersetPassword,
-          provider: "db",
-        }),
-        signal: AbortSignal.timeout(5000),
-      },
+function schemaCacheKey(scope: SchemaCacheScope): string {
+  return JSON.stringify([
+    scope.userId,
+    scope.datasetId,
+    getTokenFingerprint(scope.token),
+  ]);
+}
+
+export function parseAndCacheSchema(
+  json: { result: Record<string, unknown> },
+  scope?: SchemaCacheScope,
+): string {
+  const parsed = parseSchema(json);
+  if (scope) {
+    schemaCache.set(schemaCacheKey(scope), {
+      ...parsed,
+      expiresAt: Date.now() + SCHEMA_CACHE_TTL,
+    });
+    logger.info(
+      "schema",
+      `fetched schema for user=${scope.userId} dataset=${scope.datasetId}`,
     );
-    if (res.ok) {
-      const data = (await res.json()) as { access_token: string };
-      schemaToken = data.access_token;
-      schemaTokenTime = Date.now();
-      return schemaToken;
-    }
-  } catch {
-    // token unavailable
   }
-  return null;
+  return parsed.text;
+}
+
+export function requireUserToken(context: SupersetDataContext): string {
+  if (!context.userId.trim() || !context.token.trim()) {
+    throw new Error("未认证：缺少已验证用户或访问令牌");
+  }
+  return context.token;
 }
 
 export async function getSchema(
-  userId: string,
-  authToken?: string,
-  datasetId?: number,
-): Promise<string> {
-  if (schemaCache && isCacheValid(schemaCacheTime, SCHEMA_CACHE_TTL)) {
-    return schemaCache;
-  }
+  context: SupersetDataContext,
+): Promise<SchemaSnapshot> {
+  const token = requireUserToken(context);
+  const datasetId = context.datasetId ?? config.datasetId;
+  const cacheKey = schemaCacheKey({ userId: context.userId, datasetId, token });
+  const cached = schemaCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached;
 
-  schemaCache = null;
-  schemaCacheTime = 0;
-
-  const dsId = datasetId ?? config.datasetId;
-  const token = await resolveToken(authToken);
-  let schemaError: string | null = null;
-
-  if (token) {
-    try {
-      const res = await fetchWithRetry(
-        `${config.flaskInternalUrl}/api/v1/dataset/${dsId}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      if (res.ok) {
-        const json = (await res.json()) as { result: Record<string, unknown> };
-        return parseAndCacheSchema(json);
-      }
-      schemaError = `Bearer auth failed: HTTP ${res.status}`;
-    } catch (e) {
-      schemaError = `Bearer auth failed: ${(e as Error).message}`;
+  try {
+    const res = await fetchWithRetry(
+      `${config.flaskInternalUrl}/api/v1/dataset/${datasetId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { result: Record<string, unknown> };
+      parseAndCacheSchema(json, {
+        userId: context.userId,
+        datasetId,
+        token,
+      });
+      return schemaCache.get(cacheKey) ?? emptySchema();
     }
+    logger.warn("schema", `failed to fetch schema: HTTP ${res.status}`);
+  } catch (error) {
+    logger.warn(
+      "schema",
+      `failed to fetch schema: ${(error as Error).message}`,
+    );
   }
-  logger.warn("schema", `failed to fetch schema: ${schemaError}`);
-  return "";
+  return emptySchema();
 }
 
-// ── Query result cache (LRU, 30s TTL, max 500 entries) ──────────
 const queryCache = new LRUCache<string, string>({
   max: 500,
   ttl: 30_000,
   ttlAutopurge: true,
 });
 
-function buildCacheKey(args: Record<string, unknown>): string {
-  const columns = ((args.columns as string[]) ?? []).slice().sort();
-  const metrics = ((args.metrics as string[]) ?? []).slice().sort();
-  return JSON.stringify({
-    columns,
-    metrics,
-    time_range: args.time_range,
-    filters: args.filters,
-    row_limit: args.row_limit,
-  });
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
+export function buildQueryCacheKey(
+  context: SupersetDataContext,
+  args: Record<string, unknown>,
+): string {
+  const datasetId = context.datasetId ?? config.datasetId;
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: 1,
+        userId: context.userId,
+        datasetId,
+        tokenFingerprint: getTokenFingerprint(context.token),
+        args: canonicalize(args),
+      }),
+      "utf8",
+    )
+    .digest("hex");
 }
 
 export async function executeQuerySuperset(
   args: Record<string, unknown>,
-  userId: string,
+  context: SupersetDataContext,
   signal?: AbortSignal,
-  authToken?: string,
 ): Promise<string> {
-  const cacheKey = buildCacheKey(args);
+  const token = requireUserToken(context);
+  const datasetId = context.datasetId ?? config.datasetId;
+  const cacheKey = buildQueryCacheKey(context, args);
   const cached = queryCache.get(cacheKey);
   if (cached) {
     logger.info("query", "cache hit");
     return cached;
   }
 
-  const { flaskInternalUrl, datasetId } = config;
+  const { flaskInternalUrl } = config;
   const rowLimit = parseRowLimit(args.row_limit);
   const timeRange = (args.time_range as string) ?? "Last 14 days";
   const columns = args.columns as string[];
   const metricsArr = args.metrics as string[];
   const hasDateCol = columns.includes("日期");
   const temporalCol = "日期";
-  let metrics: MetricEntry[] = metricsArr.map(buildMetricEntry);
   const filters = buildFilters(args.filters);
   const showAll = args.show_all === true;
 
-  const token = await resolveToken(authToken);
-  const schema = await getSchema(userId, authToken);
+  const schema = await getSchema(context);
+  let metrics: MetricEntry[] = metricsArr.map((metric) =>
+    buildMetricEntry(metric, schema.validMetricNames),
+  );
   logger.info(
     "query",
-    `user=${userId} token=${!!token} schema=${!!schema} validColNames=${!!validColNames} metrics=[${metricsArr.join(",")}]`,
+    `user=${context.userId} dataset=${datasetId} metrics=[${metricsArr.join(",")}]`,
   );
 
-  // Filter out invalid metric names against known schema
-  const isValidStringMetric = (m: string) => validMetricNames?.has(m) ?? false;
-  const isValidObjMetric = (m: SimpleAggregate) =>
-    validColNames ? validColNames.has(m.column.column_name) : false;
+  const isValidStringMetric = (metric: string) =>
+    schema.validMetricNames.has(metric);
+  const isValidObjMetric = (metric: SimpleAggregate) =>
+    schema.validColNames.has(metric.column.column_name);
 
-  const filteredMetrics = metrics.filter((m) => {
-    if (typeof m === "string") return isValidStringMetric(m);
-    return isValidObjMetric(m);
+  const filteredMetrics = metrics.filter((metric) => {
+    if (typeof metric === "string") return isValidStringMetric(metric);
+    return isValidObjMetric(metric);
   });
   if (filteredMetrics.length !== metrics.length) {
     logger.info(
@@ -426,8 +480,8 @@ export async function executeQuerySuperset(
     );
   }
   if (filteredMetrics.length === 0 && metrics.length > 0) {
-    return schema
-      ? `${schema}---\n查询失败: 指标名 "${metricsArr.join(", ")}" 不存在或名称不准确。指标名必须逐字使用 Schema 中的确切名称（区分大小写），禁止改写（如「消耗金额」「新增用户」）；数值列用 SUM(列名) 形式。`
+    return schema.text
+      ? `${schema.text}---\n查询失败: 指标名 "${metricsArr.join(", ")}" 不存在或名称不准确。指标名必须逐字使用 Schema 中的确切名称（区分大小写），禁止改写（如「消耗金额」「新增用户」）；数值列用 SUM(列名) 形式。`
       : `查询失败: 指标名 "${metricsArr.join(", ")}" 不存在或名称不准确，请使用 Schema 中的确切指标名`;
   }
   metrics = filteredMetrics;
@@ -438,8 +492,6 @@ export async function executeQuerySuperset(
     if (typeof first === "object") return first.label;
     return first;
   })();
-  // Honor the model's ordering intent when it parses cleanly (standard
-  // array or "列名↓/↑" style); fall back to first-metric descending.
   const modelOrderby = parseOrderby(args.orderby);
   const effectiveOrderby: [string, boolean][] =
     modelOrderby.length > 0
@@ -467,19 +519,17 @@ export async function executeQuerySuperset(
 
   logger.info(
     "query",
-    `metrics=${JSON.stringify(metrics)} orderby=${JSON.stringify(effectiveOrderby)} schema=${!!schema}`,
+    `metrics=${JSON.stringify(metrics)} orderby=${JSON.stringify(effectiveOrderby)} schema=${!!schema.text}`,
   );
 
-  const baseHeaders: Record<string, string> = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    // The backend derives the acting user from this Bearer token, so no
-    // impersonation headers are needed (or accepted).
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    Authorization: `Bearer ${token}`,
   };
 
   let res = await fetch(`${flaskInternalUrl}/api/v1/chart/agent-data`, {
     method: "POST",
-    headers: baseHeaders,
+    headers,
     body: JSON.stringify(payload),
     signal,
   });
@@ -490,7 +540,7 @@ export async function executeQuerySuperset(
     payload.queries[0].orderby = undefined as unknown as [string, boolean][];
     res = await fetch(`${flaskInternalUrl}/api/v1/chart/agent-data`, {
       method: "POST",
-      headers: baseHeaders,
+      headers,
       body: JSON.stringify(payload),
       signal,
     });
@@ -499,30 +549,34 @@ export async function executeQuerySuperset(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     logger.error("query", `final error: ${text.slice(0, 300)}`);
-    const errMsg = schema
-      ? `${schema}---\n查询失败: ${text.slice(0, 200)}`
+    return schema.text
+      ? `${schema.text}---\n查询失败: ${text.slice(0, 200)}`
       : `查询失败: ${text.slice(0, 200)}`;
-    return errMsg;
   }
 
-  const json = await res.json();
-  const result = json?.result?.[0];
+  const json = (await res.json()) as {
+    result?: Array<{
+      data?: Record<string, unknown>[];
+      colnames?: string[];
+      rowcount?: number;
+    }>;
+  };
+  const result = json.result?.[0];
   let rows: Record<string, unknown>[] = result?.data ?? [];
   const cols: string[] = result?.colnames ?? [];
 
   if (cols.length === 0) {
-    return schema ? `${schema}（查询未返回数据）` : "（查询未返回数据）";
+    return schema.text
+      ? `${schema.text}（查询未返回数据）`
+      : "（查询未返回数据）";
   }
 
   let truncatedCount = 0;
   if (!showAll && effectiveOrderby.length > 0 && effectiveOrderby[0][0]) {
-    // Trend/drill-down queries (columns contain 日期) must stay complete:
-    // truncating by a metric would drop days and break the time axis.
-    // Ranking queries keep the 95% top-rows filter to bound the response.
     if (!cols.includes("日期")) {
       const sortCol = effectiveOrderby[0][0];
       const isDesc = effectiveOrderby[0][1] !== false;
-      const metricCol = cols.find((c) => c === sortCol);
+      const metricCol = cols.find((column) => column === sortCol);
       if (metricCol) {
         const filtered = filterTopRowsByMetric(rows, metricCol, isDesc, 0.95);
         rows = filtered.rows;
@@ -532,17 +586,11 @@ export async function executeQuerySuperset(
   }
 
   const table = toMarkdownTable(cols, rows, rowLimit, truncatedCount);
-
-  // Surface silent row-limit truncation: when the backend returned exactly
-  // row_limit rows, more rows may exist. Let the model decide whether to
-  // re-query with a larger row_limit.
-  const rowcount = (result?.rowcount as number | undefined) ?? rows.length;
+  const rowcount = result?.rowcount ?? rows.length;
   if (rowcount >= rowLimit) {
-    queryCache.set(
-      cacheKey,
-      `${table}\n\n> 结果已达行数上限（${rowLimit} 行），可能不完整。如需完整数据请设置更大的 row_limit 重新查询。`,
-    );
-    return `${table}\n\n> 结果已达行数上限（${rowLimit} 行），可能不完整。如需完整数据请设置更大的 row_limit 重新查询。`;
+    const resultText = `${table}\n\n> 结果已达行数上限（${rowLimit} 行），可能不完整。如需完整数据请设置更大的 row_limit 重新查询。`;
+    queryCache.set(cacheKey, resultText);
+    return resultText;
   }
   queryCache.set(cacheKey, table);
   return table;

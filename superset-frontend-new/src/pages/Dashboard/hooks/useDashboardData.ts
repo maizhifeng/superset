@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useState, useCallback, useRef } from "react";
 import { isCancelledError } from "@tanstack/react-query";
 import type {
@@ -7,6 +26,8 @@ import type {
   FormData,
 } from "@/types/api";
 import { queryClient } from "@/api/queryClient";
+import { useAuthStore } from "@/store/authStore";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import {
   fetchChartData,
   type ChartDataResult,
@@ -14,11 +35,22 @@ import {
 
 export function parseChartConfig(chart: ChartData): FormData {
   const raw = chart.params || chart.form_data || "{}";
-  const fd = typeof raw === "string" ? JSON.parse(raw) : raw;
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {};
+    }
+  }
+  const fd =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   return {
-    ...(fd as FormData),
+    ...fd,
     datasource:
-      fd.datasource ||
+      (typeof fd.datasource === "string" && fd.datasource) ||
       `${chart.datasource_id}__${chart.datasource_type || "table"}`,
   };
 }
@@ -44,6 +76,10 @@ interface FetchResult extends ChartDataResult {
   id: number;
 }
 
+type BatchFetchResult =
+  | { status: "success"; cid: number; result: FetchResult }
+  | { status: "error"; cid: number; error: string };
+
 /**
  * React-query cache key for one chart fetch.  The filter fingerprint is part
  * of the key for every fetch — forced ones included — so react-query never
@@ -55,8 +91,15 @@ function chartDataKey(
   cid: number,
   sig: string | undefined,
   page: number,
+  sessionId: string | null,
 ): string[] {
-  return ["chart-data", String(cid), sig ?? "force", String(page)];
+  return [
+    "chart-data",
+    sessionId ?? "anonymous",
+    String(cid),
+    sig ?? "force",
+    String(page),
+  ];
 }
 
 /**
@@ -76,6 +119,7 @@ export function upsertRows<T>(
 }
 
 export function useDashboardData() {
+  const sessionId = useAuthStore((state) => state.sessionId);
   const [chartMeta, setChartMeta] = useState<Record<number, ChartData>>({});
   const [chartData, setChartData] = useState<Record<number, ChartDataPayload>>(
     {},
@@ -137,6 +181,7 @@ export function useDashboardData() {
       const pivotTotalRowsMap: Record<number, ChartDataRow[]> = {};
       const pivotSubtotalRowsMap: Record<number, ChartDataRow[][]> = {};
       const hasMoreMap: Record<number, boolean> = {};
+      const errorMap: Record<number, string> = {};
       // Charts used to be fetched three at a time.  On a dashboard where one
       // card is a pivot table the pivot request dominates its batch, so the
       // remaining cards only started after it finished, roughly doubling the
@@ -162,16 +207,16 @@ export function useDashboardData() {
         if (force) {
           for (const cid of batch) {
             queryClient.removeQueries({
-              queryKey: ["chart-data", String(cid)],
+              queryKey: ["chart-data", sessionId ?? "anonymous", String(cid)],
             });
           }
         }
 
         const results = await Promise.all(
-          batch.map(async (cid) => {
+          batch.map(async (cid): Promise<BatchFetchResult | null> => {
             try {
               const result = await queryClient.fetchQuery<FetchResult>({
-                queryKey: chartDataKey(cid, sig, page ?? 0),
+                queryKey: chartDataKey(cid, sig, page ?? 0, sessionId),
                 staleTime: force ? 0 : 30_000,
                 queryFn: () =>
                   fetchChartWithTotal(
@@ -182,26 +227,32 @@ export function useDashboardData() {
                     page,
                   ),
               });
-              return result;
+              return { status: "success", cid, result };
             } catch (error) {
-              // A newer forced fetch drops this chart's cached entries, which
-              // cancels any in-flight request for it.  Treat the cancellation
-              // as supersession instead of failing the whole call.
               if (isCancelledError(error)) return null;
-              throw error;
+              return {
+                status: "error",
+                cid,
+                error: parseErrorMessage(error, "图表加载失败"),
+              };
             }
           }),
         );
-        // A cancelled request means a newer call took over: stop here so no
-        // further batches run and nothing partial is reported.
-        for (const r of results) {
-          if (r === null) return null;
-          dataMap[r.id] = r.data;
-          totalRowMap[r.id] = r.totalRow;
-          if (r.pivotTotalRows) pivotTotalRowsMap[r.id] = r.pivotTotalRows;
-          if (r.pivotSubtotalRows)
-            pivotSubtotalRowsMap[r.id] = r.pivotSubtotalRows;
-          if (r.hasMore !== undefined) hasMoreMap[r.id] = r.hasMore;
+        for (const entry of results) {
+          if (entry === null) return null;
+          if (entry.status === "error") {
+            errorMap[entry.cid] = entry.error;
+            continue;
+          }
+          const result = entry.result;
+          dataMap[result.id] = result.data;
+          totalRowMap[result.id] = result.totalRow;
+          if (result.pivotTotalRows)
+            pivotTotalRowsMap[result.id] = result.pivotTotalRows;
+          if (result.pivotSubtotalRows)
+            pivotSubtotalRowsMap[result.id] = result.pivotSubtotalRows;
+          if (result.hasMore !== undefined)
+            hasMoreMap[result.id] = result.hasMore;
         }
       }
       // A newer call superseded this one mid-flight: report nothing so
@@ -214,9 +265,10 @@ export function useDashboardData() {
         pivotTotalRowsMap,
         pivotSubtotalRowsMap,
         hasMoreMap,
+        errorMap,
       };
     },
-    [fetchChartWithTotal, buildAdhocFiltersRef],
+    [fetchChartWithTotal, buildAdhocFiltersRef, sessionId],
   );
 
   const refreshChart = useCallback(

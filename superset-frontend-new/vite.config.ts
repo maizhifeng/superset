@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import react from "@vitejs/plugin-react";
 import checker from "vite-plugin-checker";
 import compression from "vite-plugin-compression";
@@ -48,16 +67,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
-      "@superset-ui/core": resolve(__dirname, "packages/superset-ui-core/src"),
-      "@superset-ui/chart-controls": resolve(
-        __dirname,
-        "packages/superset-ui-chart-controls/src",
-      ),
-      "@superset-ui/switchboard": resolve(
-        __dirname,
-        "packages/superset-ui-switchboard/src",
-      ),
-      "@apache-superset/core": resolve(__dirname, "packages/superset-core/src"),
       "@fixtures": resolve(__dirname, "spec/fixtures"),
     },
   },
@@ -72,40 +81,9 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, "dist"),
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: process.env.GENERATE_SOURCEMAP === "true",
     target: "es2020",
     chunkSizeWarningLimit: 500,
-    rollupOptions: {
-      output: {
-        manualChunks(id: string): string | undefined {
-          if (id.includes("node_modules/echarts/core")) return "echarts-core";
-          if (id.includes("node_modules/echarts/charts"))
-            return "echarts-charts";
-          if (id.includes("node_modules/echarts/components"))
-            return "echarts-components";
-          if (id.includes("node_modules/echarts/renderers"))
-            return "echarts-renderers";
-          if (id.includes("node_modules/@mui/x-data-grid")) return "mui-x-grid";
-          if (id.includes("node_modules/@mui/x-date-pickers"))
-            return "mui-x-pickers";
-          if (id.includes("node_modules/@mui/x-tree-view"))
-            return "mui-x-tree-view";
-          if (
-            id.includes("node_modules/@codemirror") ||
-            id.includes("node_modules/@uiw/react-codemirror")
-          )
-            return "codemirror";
-          if (id.includes("node_modules/@dnd-kit")) return "dnd-kit";
-          if (
-            id.includes("node_modules/react-dom") ||
-            id.includes("node_modules/react/") ||
-            id.includes("node_modules/react-router")
-          )
-            return "react-vendor";
-          return undefined;
-        },
-      },
-    },
   },
   server: {
     port: 9000,
@@ -124,6 +102,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    testTimeout: 10_000,
     setupFiles: ["./src/setupTests.ts"],
     include: [
       "src/**/*.{test,spec}.{ts,tsx}",
@@ -131,5 +110,21 @@ export default defineConfig({
     ],
     exclude: ["node_modules", "dist"],
     css: true,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/**/*.{test,spec}.{ts,tsx}",
+        "src/**/__tests__/**",
+        "src/**/*.d.ts",
+        "src/setupTests.ts",
+      ],
+      reporter: ["text", "html", "lcov"],
+      thresholds: {
+        lines: 45,
+        functions: 38,
+        branches: 36,
+      },
+    },
   },
 });

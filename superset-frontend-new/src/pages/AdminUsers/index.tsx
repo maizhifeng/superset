@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
@@ -858,9 +877,8 @@ export default function AdminUsers() {
             </DialogTitle>
             <DialogContent>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                「默认」跟随角色权限（无角色要求的页面默认可访问）；「允许 /
-                拒绝」为该用户
-                单独放行或拦截对应页面及其详情页。全局菜单开关关闭的路由，此处放行无效。
+                「默认」跟随服务端角色权限；「拒绝」用于额外拦截对应页面及其详情页。
+                本地路由配置不能授予角色权限，全局菜单开关关闭的路由也不会放行。
               </Typography>
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                 {routePoints.map((point) => {
@@ -868,12 +886,7 @@ export default function AdminUsers() {
                     ? (routeOverrides[routeTarget.username] ?? {})
                     : {};
                   const value = userOverrides[point.path];
-                  const state =
-                    value === true
-                      ? "allow"
-                      : value === false
-                        ? "deny"
-                        : "default";
+                  const state = value === false ? "deny" : "default";
 
                   return (
                     <Box
@@ -914,9 +927,7 @@ export default function AdminUsers() {
                         value={state}
                         onChange={(_, next) => {
                           if (!routeTarget || !next) return;
-                          if (next === "allow") {
-                            setOverride(routeTarget.username, point.path, true);
-                          } else if (next === "deny") {
+                          if (next === "deny") {
                             setOverride(
                               routeTarget.username,
                               point.path,
@@ -932,12 +943,6 @@ export default function AdminUsers() {
                           sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
                         >
                           默认
-                        </ToggleButton>
-                        <ToggleButton
-                          value="allow"
-                          sx={{ px: 1, py: 0.25, fontSize: "0.75rem" }}
-                        >
-                          允许
                         </ToggleButton>
                         <ToggleButton
                           value="deny"

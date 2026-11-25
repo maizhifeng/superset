@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { test, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
@@ -6,7 +25,16 @@ import {
   upsertRows,
 } from "@/pages/Dashboard/hooks/useDashboardData";
 import { queryClient } from "@/api/queryClient";
-import type { ChartDataRow } from "@/types/api";
+import type { ChartData, ChartDataRow } from "@/types/api";
+
+const { mockAuthState } = vi.hoisted(() => ({
+  mockAuthState: { sessionId: "test-session" },
+}));
+
+vi.mock("@/store/authStore", () => ({
+  useAuthStore: (selector: (state: { sessionId: string }) => unknown) =>
+    selector(mockAuthState),
+}));
 
 vi.mock("@/api", () => ({
   default: {
@@ -20,6 +48,7 @@ vi.mock("@/api", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockAuthState.sessionId = "test-session";
   // The module-level queryClient persists across tests; stale entries would
   // satisfy fetchQuery without touching the network.
   queryClient.clear();
@@ -51,6 +80,25 @@ test("parseChartConfig handles missing form_data gracefully", () => {
   };
   const result = parseChartConfig(chart);
   expect(result.datasource).toBe("99__table");
+});
+
+test("parseChartConfig handles invalid JSON and non-object values", () => {
+  const chart = {
+    id: 3,
+    slice_name: "test3",
+    viz_type: "line",
+    datasource_id: 7,
+    datasource_type: "table",
+    form_data: "{invalid-json",
+  };
+
+  expect(parseChartConfig(chart).datasource).toBe("7__table");
+  expect(parseChartConfig({ ...chart, form_data: "null" }).datasource).toBe(
+    "7__table",
+  );
+  expect(parseChartConfig({ ...chart, form_data: "[]" }).datasource).toBe(
+    "7__table",
+  );
 });
 
 test("initial state has empty chart data", () => {
@@ -297,6 +345,50 @@ test("repeated non-forced fetch with unchanged filters is served from cache", as
     await result.current.getChartDataWithFilters([8], meta, buildFn);
   });
   expect(api.default.post).toHaveBeenCalledTimes(1);
+});
+
+test("chart cache is isolated by auth session", async () => {
+  const api = await import("@/api");
+  vi.mocked(api.default.post).mockResolvedValue({
+    data: { result: [{ data: [{ dim: "v1" }] }, { data: [] }] },
+  });
+  const { result, rerender } = renderHook(() => useDashboardData());
+  const meta = { 8: buildChart(8, 8) as unknown as ChartData };
+  const buildFn = () => [{ subject: "dim", operator: "==", comparator: "x" }];
+
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn);
+  });
+
+  mockAuthState.sessionId = "other-session";
+  rerender();
+
+  await act(async () => {
+    await result.current.getChartDataWithFilters([8], meta, buildFn);
+  });
+
+  expect(api.default.post).toHaveBeenCalledTimes(2);
+});
+
+test("one chart failure does not discard successful chart results", async () => {
+  const api = await import("@/api");
+  vi.mocked(api.default.post)
+    .mockRejectedValueOnce(new Error("chart eight failed"))
+    .mockResolvedValueOnce({
+      data: { result: [{ data: [{ dim: "ok" }] }, { data: [] }] },
+    });
+  const { result } = renderHook(() => useDashboardData());
+  const meta = {
+    8: buildChart(8, 8) as unknown as ChartData,
+    9: buildChart(9, 9) as unknown as ChartData,
+  };
+
+  await act(async () => {
+    const response = await result.current.getChartDataWithFilters([8, 9], meta);
+    expect(response?.dataMap[9]).toEqual({ data: [{ dim: "ok" }] });
+    expect(response?.errorMap[8]).toContain("chart eight failed");
+    expect(response?.errorMap[9]).toBeUndefined();
+  });
 });
 
 test("changing the end time while the start-time fetch is in flight lands both filters", async () => {

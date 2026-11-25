@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   memo,
   useRef,
@@ -14,6 +33,8 @@ import Typography from "@mui/material/Typography";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import IconButton from "@mui/material/IconButton";
+import Alert from "@mui/material/Alert";
+import Button from "@mui/material/Button";
 import Tooltip from "@mui/material/Tooltip";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
@@ -26,6 +47,8 @@ import FlipIcon from "@mui/icons-material/Flip";
 import CloseIcon from "@mui/icons-material/Close";
 import FullscreenOutlined from "@mui/icons-material/FullscreenOutlined";
 import LeaderboardOutlined from "@mui/icons-material/LeaderboardOutlined";
+import TableChartIcon from "@mui/icons-material/TableChart";
+import type { EChartsType } from "echarts";
 import { keyframes } from "@emotion/react";
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import { buildEChartsOption, getECharts } from "@/utils/echarts";
@@ -69,12 +92,17 @@ export interface CompareConfig {
 
 const LONG_PRESS_MS = 500;
 
+type LockableScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape") => Promise<void>;
+};
+
 interface ChartCardProps {
   chartId: number;
   sliceName?: string;
   vizType: string;
   data?: ChartDataPayload;
   loading?: boolean;
+  error?: string;
   meta?: ChartData | { slice_name?: string };
   containerWidth: number;
   onRefresh: (chartId: number) => void;
@@ -122,6 +150,7 @@ function ChartCard({
   vizType,
   data,
   loading: chartLoading,
+  error,
   meta,
   containerWidth,
   onRefresh,
@@ -182,7 +211,9 @@ function ChartCard({
   const chartLibReady = useEChartsType(vizType);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const refreshTimer = useRef<ReturnType<typeof setTimeout>>();
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<EChartsType | null>(null);
+  const [showDataTable, setShowDataTable] = useState(false);
+  const chartTitle = meta?.slice_name || sliceName || `Chart #${chartId}`;
 
   const [localCountdown, setLocalCountdown] = useState<number | undefined>(
     undefined,
@@ -275,7 +306,7 @@ function ChartCard({
 
   const tryImageCopy = async (): Promise<boolean> => {
     if (typeof ClipboardItem === "undefined") return false;
-    const instance = chartRef.current?.getEchartsInstance();
+    const instance = chartRef.current;
     if (!instance) return false;
     try {
       const dataUrl = instance.getDataURL({
@@ -296,7 +327,7 @@ function ChartCard({
   // `navigator.clipboard.write` needs a secure context (HTTPS/localhost), so
   // on plain-http deployments the image copy falls back to a browser download.
   const downloadImage = (): boolean => {
-    const instance = chartRef.current?.getEchartsInstance();
+    const instance = chartRef.current;
     if (!instance) return false;
     try {
       const dataUrl = instance.getDataURL({
@@ -306,7 +337,7 @@ function ChartCard({
       });
       const link = document.createElement("a");
       link.href = dataUrl;
-      link.download = `${meta?.slice_name || sliceName || `chart-${chartId}`}.png`;
+      link.download = `${chartTitle}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -484,6 +515,31 @@ function ChartCard({
     vizType,
   ]);
 
+  const chartSummary = useMemo(() => {
+    if (!processedData) return `${chartTitle}，暂无数据`;
+    const colnames = processedData.colnames ?? [];
+    const chartRows = Array.isArray(processedData.data)
+      ? processedData.data
+      : [];
+    if (colnames.length === 0)
+      return `${chartTitle}，共 ${chartRows.length} 行数据`;
+    const preview = chartRows
+      .slice(0, 5)
+      .map((row, index) => {
+        const values = colnames.map((column) => {
+          const value = row[column];
+          const display =
+            value !== null && value !== undefined && tableFormatCell
+              ? tableFormatCell(column, value)
+              : String(value ?? "");
+          return `${column}：${display}`;
+        });
+        return `第 ${index + 1} 行，${values.join("，")}`;
+      })
+      .join("；");
+    return `${chartTitle}，共 ${chartRows.length} 行。列：${colnames.join("、")}。${preview}`;
+  }, [chartTitle, processedData, tableFormatCell]);
+
   const option = useMemo(
     () =>
       processedData
@@ -595,14 +651,12 @@ function ChartCard({
 
   const toggleFullScreen = async () => {
     fullscreen.setFullscreen(chartId);
-    const isLandscape = (screen.orientation as any)?.type?.startsWith?.(
-      "landscape",
-    );
-    if (isLandscape) return;
-    const canLock = typeof (screen.orientation as any)?.lock === "function";
-    if (canLock) {
+    const orientation = screen.orientation as
+      LockableScreenOrientation | undefined;
+    if (orientation?.type.startsWith("landscape")) return;
+    if (orientation?.lock) {
       try {
-        await (screen.orientation as any).lock("landscape");
+        await orientation.lock("landscape");
       } catch {
         fullscreen.setForceLandscape(true);
       }
@@ -613,7 +667,7 @@ function ChartCard({
 
   const exitFullScreen = () => {
     fullscreen.exit();
-    (screen.orientation as any)?.unlock?.();
+    screen.orientation?.unlock();
   };
 
   useEffect(() => {
@@ -681,6 +735,8 @@ function ChartCard({
     <>
       <Card
         ref={cardRef}
+        component="section"
+        aria-label={chartTitle}
         onTouchStart={touchStart}
         onTouchEnd={touchEnd}
         onTouchMove={touchMove}
@@ -742,7 +798,7 @@ function ChartCard({
               transition: "opacity 120ms ease",
             }}
           >
-            {meta?.slice_name || sliceName || `Chart #${chartId}`}
+            {meta?.slice_name || chartTitle}
           </Typography>
           <Box
             ref={toolbarRef}
@@ -919,6 +975,21 @@ function ChartCard({
                 />
               </IconButton>
             </Tooltip>
+            <Tooltip title={showDataTable ? "收起数据表" : "查看数据表"}>
+              <IconButton
+                size="small"
+                aria-label={showDataTable ? "收起数据表" : "查看数据表"}
+                aria-pressed={showDataTable}
+                disabled={!processedData}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDataTable((value) => !value);
+                }}
+                sx={{ p: 0.5, ml: isMobile ? 0.5 : 0 }}
+              >
+                <TableChartIcon sx={{ fontSize: isMobile ? 22 : 18 }} />
+              </IconButton>
+            </Tooltip>
             <Tooltip
               title={
                 vizType === "table" || vizType === "pivot_table_v2"
@@ -1006,6 +1077,29 @@ function ChartCard({
         >
           {chartLoading ? (
             <ChartLoadingSkeleton />
+          ) : error ? (
+            <Alert
+              severity="error"
+              role="alert"
+              sx={{ m: "auto" }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => onRefresh(chartId)}
+                >
+                  重试
+                </Button>
+              }
+            >
+              {error}
+            </Alert>
+          ) : showDataTable && processedData ? (
+            <DataPreviewTable
+              data={processedData}
+              maxRows={100}
+              formatCell={tableFormatCell}
+            />
           ) : vizType === "table" && data ? (
             isCompareActive ? (
               <MirrorTable
@@ -1038,9 +1132,13 @@ function ChartCard({
             )
           ) : option && chartLibReady ? (
             <ReactEChartsCore
-              ref={chartRef}
+              ref={(instance) => {
+                chartRef.current = instance?.getEchartsInstance() ?? null;
+              }}
               echarts={getECharts()}
               option={option}
+              role="img"
+              aria-label={chartSummary}
               style={{ height: "100%", width: "100%" }}
               notMerge
               lazyUpdate
@@ -1121,11 +1219,12 @@ function ChartCard({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {meta?.slice_name || sliceName || `Chart #${chartId}`}
+                    {meta?.slice_name || chartTitle}
                   </Box>
                   <Tooltip title="退出全屏">
                     <IconButton
                       size="small"
+                      aria-label="退出全屏"
                       onClick={exitFullScreen}
                       sx={{ p: 0.5 }}
                     >
@@ -1134,7 +1233,24 @@ function ChartCard({
                   </Tooltip>
                 </Box>
                 <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-                  {vizType === "table" && data ? (
+                  {error ? (
+                    <Alert
+                      severity="error"
+                      role="alert"
+                      sx={{ m: "auto" }}
+                      action={
+                        <Button
+                          color="inherit"
+                          size="small"
+                          onClick={() => onRefresh(chartId)}
+                        >
+                          重试
+                        </Button>
+                      }
+                    >
+                      {error}
+                    </Alert>
+                  ) : vizType === "table" && data ? (
                     <DataPreviewTable
                       data={processedData}
                       maxRows={100}
@@ -1143,6 +1259,12 @@ function ChartCard({
                       page={page}
                       hasMore={hasMore}
                       onPageChange={onPageChange}
+                    />
+                  ) : showDataTable && processedData ? (
+                    <DataPreviewTable
+                      data={processedData}
+                      maxRows={100}
+                      formatCell={tableFormatCell}
                     />
                   ) : vizType === "pivot_table_v2" &&
                     data?.data &&
@@ -1156,6 +1278,8 @@ function ChartCard({
                     <ReactEChartsCore
                       echarts={getECharts()}
                       option={option}
+                      role="img"
+                      aria-label={chartSummary}
                       style={{ height: "100%", width: "100%" }}
                       notMerge
                       lazyUpdate
@@ -1182,6 +1306,7 @@ export default memo(ChartCard, (prev, next) => {
     prev.sliceName === next.sliceName &&
     prev.data === next.data &&
     prev.loading === next.loading &&
+    prev.error === next.error &&
     prev.mirrorData === next.mirrorData &&
     prev.compareConfig === next.compareConfig &&
     prev.onRefresh === next.onRefresh &&

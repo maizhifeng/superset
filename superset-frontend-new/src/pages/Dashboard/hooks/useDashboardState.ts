@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import type { DashboardData, ChartData, DashboardPosition } from "@/types/api";
@@ -67,6 +86,7 @@ export function useDashboardState() {
   const [chartPages, setChartPages] = useState<Record<number, number>>({});
   const [chartHasMore, setChartHasMore] = useState<Record<number, boolean>>({});
   const [chartLoading, setChartLoading] = useState<Record<number, boolean>>({});
+  const [chartErrors, setChartErrors] = useState<Record<number, string>>({});
   const [metricFormatMaps, setMetricFormatMaps] = useState<
     Record<number, Record<string, string>>
   >({});
@@ -301,6 +321,7 @@ export function useDashboardState() {
         setTotalRows(result.totalRowMap);
         setPivotTotalRows(result.pivotTotalRowsMap);
         setPivotSubtotalRows(result.pivotSubtotalRowsMap);
+        setChartErrors(result.errorMap);
       }
     } catch (err: unknown) {
       setError(parseErrorMessage(err, "加载仪表板失败"));
@@ -382,6 +403,11 @@ export function useDashboardState() {
   const refreshChart = useCallback(
     async (chartId: number, page?: number) => {
       setChartLoading((prev) => ({ ...prev, [chartId]: true }));
+      setChartErrors((prev) => {
+        const next = { ...prev };
+        delete next[chartId];
+        return next;
+      });
       try {
         // Snapshot the active filter signature so a response that lands after
         // the filters changed again (auto-refresh / pagination racing a filter
@@ -419,6 +445,11 @@ export function useDashboardState() {
           if (cc?.enabled && cc.chartId === chartId)
             void fetchMirrorRef.current(chartId, cc.dimensions, result.data);
         }
+      } catch (err: unknown) {
+        setChartErrors((prev) => ({
+          ...prev,
+          [chartId]: parseErrorMessage(err, "图表刷新失败"),
+        }));
       } finally {
         setChartLoading((prev) => ({ ...prev, [chartId]: false }));
       }
@@ -465,6 +496,11 @@ export function useDashboardState() {
           Object.entries(prev).filter(([k]) => !ids.includes(Number(k))),
         ),
       );
+      setChartErrors((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).filter(([key]) => !ids.includes(Number(key))),
+        ),
+      );
       // Monotonic sequence for this refresh round: a superseded round must
       // only clear the loading flags of the charts it still owns.
       const seq = ++refreshSeqRef.current;
@@ -489,6 +525,7 @@ export function useDashboardState() {
         setTotalRows((prev) => ({ ...prev, ...totalRowMap }));
         setPivotTotalRows((prev) => ({ ...prev, ...pivotTotalRowsMap }));
         setPivotSubtotalRows((prev) => ({ ...prev, ...pivotSubtotalRowsMap }));
+        setChartErrors((prev) => ({ ...prev, ...result.errorMap }));
         const cc = compareConfigRef.current;
         if (cc?.enabled) {
           const freshData = dataMap[cc.chartId];
@@ -814,6 +851,7 @@ export function useDashboardState() {
     pivotTotalRows,
     pivotSubtotalRows,
     chartLoading,
+    chartErrors,
     chartPages,
     chartHasMore,
     metricFormatMaps,

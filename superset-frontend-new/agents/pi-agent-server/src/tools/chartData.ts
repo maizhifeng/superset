@@ -1,6 +1,30 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { loadConfig } from "../config.js";
 import { logger } from "../logger.js";
-import { fetchWithRetry, resolveToken, toMarkdownTable } from "./querySuperset.js";
+import {
+  fetchWithRetry,
+  requireUserToken,
+  toMarkdownTable,
+  type SupersetDataContext,
+} from "./querySuperset.js";
 
 /**
  * Chart insight data acquisition. Fetches a chart's metadata and data
@@ -79,14 +103,13 @@ function buildFilterInfo(filters: Record<string, unknown>): {
 export async function buildChartInsightPrompt(
   chartId: number,
   filters: Record<string, unknown>,
-  userId: string,
-  authToken?: string,
+  context: SupersetDataContext,
 ): Promise<string> {
   const config = loadConfig();
-  const token = await resolveToken(authToken);
-  const authHeaders: Record<string, string> = token
-    ? { Authorization: `Bearer ${token}` }
-    : {};
+  const token = requireUserToken(context);
+  const authHeaders: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
 
   const infoResp = await fetchWithRetry(
     `${config.flaskInternalUrl}/api/v1/chart/${chartId}`,
@@ -95,7 +118,9 @@ export async function buildChartInsightPrompt(
   if (!infoResp.ok) {
     throw new Error(`获取图表信息失败: HTTP ${infoResp.status}`);
   }
-  const info = parseChartInfo((await infoResp.json()) as Record<string, unknown>);
+  const info = parseChartInfo(
+    (await infoResp.json()) as Record<string, unknown>,
+  );
   if (!info.dsId) throw new Error("图表数据源 ID 为空");
   const fi = buildFilterInfo(filters);
 
@@ -180,7 +205,7 @@ export async function buildChartInsightPrompt(
 
   logger.info(
     "insight",
-    `chart=${chartId} user=${userId} rows=${sorted.length} cols=${colnames.length}`,
+    `chart=${chartId} user=${context.userId} rows=${sorted.length} cols=${colnames.length}`,
   );
 
   return `分析图表 #${chartId} 的数据。\n\n图表上下文:\n${contextLines.join("\n")}${dataBlock}`;

@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { Pool } from "pg";
 import type {
   AssistantMessage,
@@ -58,8 +77,13 @@ export function toAgentMessages(messages: StoredMessage[]): Message[] {
 let pool: Pool | null = null;
 let poolDisabled = false;
 
+interface MemorySession {
+  userId: string;
+  messages: StoredMessage[];
+}
+
 // In-memory fallback maps
-const memorySessions = new Map<string, StoredMessage[]>();
+const memorySessions = new Map<string, MemorySession>();
 const memoryModelPrefs = new Map<string, string>();
 
 function getPool(): Pool | null {
@@ -121,19 +145,32 @@ export async function saveSessionMessages(
 ): Promise<void> {
   const db = getPool();
   if (!db) {
-    memorySessions.set(sessionId, messages);
+    const existing = memorySessions.get(sessionId);
+    if (existing && existing.userId !== userId) return;
+    memorySessions.set(sessionId, { userId, messages });
     return;
   }
   try {
-    await db.query(
+    const res = await db.query(
       `INSERT INTO agent_sessions (id, user_id, messages, updated_at)
        VALUES ($1, $2, $3, now())
        ON CONFLICT (id) DO UPDATE
-       SET messages = $3, updated_at = now()`,
+       SET messages = EXCLUDED.messages, updated_at = now()
+       WHERE agent_sessions.user_id = EXCLUDED.user_id`,
       [sessionId, userId, JSON.stringify(messages)],
     );
+    if (res.rowCount === 0) {
+      logger.warn("store", `session ${sessionId} belongs to another user`);
+      return;
+    }
   } catch (e) {
-    memorySessions.set(sessionId, messages);
+    const existing = memorySessions.get(sessionId);
+    if (!existing || existing.userId === userId) {
+      memorySessions.set(sessionId, { userId, messages });
+    } else {
+      logger.warn("store", `session ${sessionId} belongs to another user`);
+      return;
+    }
     logger.warn(
       "store",
       `failed to save session ${sessionId}: ${(e as Error).message}`,
@@ -143,13 +180,17 @@ export async function saveSessionMessages(
 
 export async function loadSessionMessages(
   sessionId: string,
+  userId: string,
 ): Promise<StoredMessage[] | null> {
   const db = getPool();
-  if (!db) return memorySessions.get(sessionId) ?? null;
+  if (!db) {
+    const session = memorySessions.get(sessionId);
+    return session?.userId === userId ? session.messages : null;
+  }
   try {
     const res = await db.query(
-      `SELECT messages FROM agent_sessions WHERE id = $1`,
-      [sessionId],
+      `SELECT messages FROM agent_sessions WHERE id = $1 AND user_id = $2`,
+      [sessionId, userId],
     );
     if (res.rowCount === 0) return null;
     const parsed = res.rows[0].messages as StoredMessage[];
@@ -160,16 +201,44 @@ export async function loadSessionMessages(
       "store",
       `failed to load session ${sessionId}: ${(e as Error).message}`,
     );
-    return memorySessions.get(sessionId) ?? null;
+    const session = memorySessions.get(sessionId);
+    return session?.userId === userId ? session.messages : null;
   }
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
+export async function getSessionOwner(
+  sessionId: string,
+): Promise<string | null> {
   const db = getPool();
-  memorySessions.delete(sessionId);
+  if (!db) return memorySessions.get(sessionId)?.userId ?? null;
+  try {
+    const res = await db.query(
+      `SELECT user_id FROM agent_sessions WHERE id = $1`,
+      [sessionId],
+    );
+    return (res.rows[0]?.user_id as string | undefined) ?? null;
+  } catch (e) {
+    logger.warn(
+      "store",
+      `failed to get session owner for ${sessionId}: ${(e as Error).message}`,
+    );
+    return memorySessions.get(sessionId)?.userId ?? null;
+  }
+}
+
+export async function deleteSession(
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  const db = getPool();
+  const session = memorySessions.get(sessionId);
+  if (session?.userId === userId) memorySessions.delete(sessionId);
   if (!db) return;
   try {
-    await db.query(`DELETE FROM agent_sessions WHERE id = $1`, [sessionId]);
+    await db.query(
+      `DELETE FROM agent_sessions WHERE id = $1 AND user_id = $2`,
+      [sessionId, userId],
+    );
   } catch (e) {
     logger.warn(
       "store",

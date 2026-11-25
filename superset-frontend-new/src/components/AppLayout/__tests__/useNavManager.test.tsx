@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import type { ReactNode } from "react";
 import { test, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
@@ -108,6 +127,18 @@ test("clicking non-mapped route keeps pinned panel open", async () => {
   expect(useNavStore.getState().sidePanelOpen).toBe(true);
 });
 
+test("exposes direct paths for mobile navigation", () => {
+  const { result } = renderHook(() => useNavManager(), { wrapper });
+
+  expect(result.current.navigationItems).toEqual(
+    expect.arrayContaining([
+      { id: "database/list", path: "/database/list", label: "数据库" },
+      { id: "sqllab", path: "/sqllab", label: "SQL 实验室" },
+      { id: "system_admin", path: "/system/admin", label: "系统管理" },
+    ]),
+  );
+});
+
 test("per-user deny hides a menu entry without role requirements", () => {
   useUserRouteOverrides.setState({
     overrides: { admin: { "/database/list": false } },
@@ -120,7 +151,7 @@ test("per-user deny hides a menu entry without role requirements", () => {
   );
 });
 
-test("per-user grant shows a role-restricted menu entry", () => {
+test("per-user grant cannot show a role-restricted menu entry", () => {
   useMenuSettings.setState({
     items: [
       {
@@ -140,8 +171,21 @@ test("per-user grant shows a role-restricted menu entry", () => {
 
   const { result } = renderHook(() => useNavManager(), { wrapper });
 
-  expect(result.current.activityBarItems.map((item) => item.id)).toContain(
+  expect(result.current.activityBarItems.map((item) => item.id)).not.toContain(
     "project_config",
+  );
+});
+
+test("per-user grant cannot show the fixed system admin entry", () => {
+  useAuthStore.setState({ user: { username: "admin", roles: {} } });
+  useUserRouteOverrides.setState({
+    overrides: { admin: { "/system/admin": true } },
+  });
+
+  const { result } = renderHook(() => useNavManager(), { wrapper });
+
+  expect(result.current.activityBarItems.map((item) => item.id)).not.toContain(
+    "system_admin",
   );
 });
 

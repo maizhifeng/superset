@@ -1,4 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -24,6 +43,8 @@ import BookmarkIcon from "@mui/icons-material/Bookmark";
 import api from "@/api";
 import { useRecentDashboards } from "@/store/recentDashboards";
 import { useRecentCharts } from "@/store/recentCharts";
+import { useAuthStore } from "@/store/authStore";
+import { readRecentSqlQueries } from "@/utils/recentSql";
 import rison from "rison";
 
 interface SearchOverlayProps {
@@ -40,10 +61,12 @@ interface Hit {
     | "dataset"
     | "database"
     | "saved_query"
+    | "sql"
     | "command";
   id: number;
   title: string;
   meta?: string;
+  sql?: string;
 }
 
 /** 静态导航命令：在结果中始终置顶，便于快速跳转到常用模块。 */
@@ -88,7 +111,7 @@ const COMMANDS: CommandEntry[] = [
     id: 5,
     title: "系统管理",
     meta: "用户与角色管理",
-    path: "/system",
+    path: "/system/admin",
     icon: <ExtensionIcon sx={{ fontSize: 18, color: "warning.main" }} />,
   },
   {
@@ -142,6 +165,8 @@ function iconFor(kind: Hit["kind"]) {
       return <StorageIcon sx={{ fontSize: 18, color: "warning.main" }} />;
     case "saved_query":
       return <BookmarkIcon sx={{ fontSize: 18, color: "secondary.main" }} />;
+    case "sql":
+      return <CodeIcon sx={{ fontSize: 18, color: "secondary.main" }} />;
     default:
       return <ExtensionIcon sx={{ fontSize: 18, color: "primary.main" }} />;
   }
@@ -153,6 +178,7 @@ const LABELS: Record<Hit["kind"], string> = {
   dataset: "数据集",
   database: "数据库",
   saved_query: "保存的查询",
+  sql: "最近的查询",
   command: "命令",
 };
 
@@ -177,26 +203,24 @@ export default function SearchOverlay({
   const navigate = useNavigate();
   const recentDbs = useRecentDashboards((s) => s.items);
   const recentCharts = useRecentCharts((s) => s.items);
+  const username = useAuthStore((state) => state.user?.username ?? "");
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const [recentHits, setRecentHits] = useState<Hit[]>([]);
   const [recentSqlQueries, setRecentSqlQueries] = useState<string[]>([]);
+  const listboxId = useId();
 
   const trimmed = query.trim();
 
-  // 读取 SQL Lab 最近执行的查询列表。
   useEffect(() => {
-    if (!open || trimmed) return;
-    try {
-      const raw = localStorage.getItem("superset-sql-lab-recent-queries");
-      const arr = raw ? (JSON.parse(raw) as string[]) : [];
-      setRecentSqlQueries(Array.isArray(arr) ? arr.slice(0, 3) : []);
-    } catch {
+    if (!open || trimmed) {
       setRecentSqlQueries([]);
+      return;
     }
-  }, [open, trimmed]);
+    setRecentSqlQueries(readRecentSqlQueries(username).slice(0, 3));
+  }, [open, trimmed, username]);
 
   // 静态命令：按键入词过滤并始终展示，支持键盘导航跳转到常用模块。
   const commandHits = useMemo(() => {
@@ -213,12 +237,6 @@ export default function SearchOverlay({
       meta: c.meta,
     }));
   }, [trimmed]);
-
-  // 命令或实体命中任一时，进入结果列表（支持键盘导航）。
-  const hasAny = useMemo(
-    () => hits.length > 0 || commandHits.length > 0,
-    [hits, commandHits],
-  );
 
   // 空查询时展示"最近访问"的仪表板/图表作为快捷入口。
   useEffect(() => {
@@ -370,20 +388,35 @@ export default function SearchOverlay({
       dataset: [],
       database: [],
       saved_query: [],
+      sql: [],
     };
     for (const c of commandHits) out.command.push(c);
     for (const h of hits) out[h.kind].push(h);
     return out;
   }, [hits, commandHits]);
 
-  // 按展示顺序扁平化的结果列表，用于键盘上下导航。
-  const flatHits = useMemo(
-    () => KEY_ORDER.flatMap((kind) => groupedHits[kind]),
-    [groupedHits],
+  const recentSqlHits = useMemo<Hit[]>(
+    () =>
+      recentSqlQueries.map((sql, index) => ({
+        kind: "sql",
+        id: index,
+        title: sql.split("\n").filter(Boolean).join(" ").slice(0, 80) || sql,
+        sql,
+      })),
+    [recentSqlQueries],
   );
-  const [highlightIndex, setHighlightIndex] = useState(-1);
+
+  const flatHits = useMemo(
+    () =>
+      trimmed
+        ? KEY_ORDER.flatMap((kind) => groupedHits[kind])
+        : [...recentHits, ...recentSqlHits],
+    [trimmed, groupedHits, recentHits, recentSqlHits],
+  );
+  const hasAny = flatHits.length > 0;
 
   // 结果变化时重置高亮。
+  const [highlightIndex, setHighlightIndex] = useState(-1);
   useEffect(() => {
     setHighlightIndex(-1);
   }, [flatHits.length, query]);
@@ -451,12 +484,65 @@ export default function SearchOverlay({
           .catch(() => navigate("/saved_query/list"));
         break;
       }
+      case "sql":
+        navigate("/sqllab", { state: { initialSql: h.sql ?? "" } });
+        break;
       case "command": {
         const cmd = COMMANDS.find((c) => c.id === h.id);
         if (cmd) navigate(cmd.path);
         break;
       }
     }
+  };
+
+  const optionId = (hit: Hit) => `${listboxId}-${hit.kind}-${hit.id}`;
+  const activeHit =
+    open && !loading && highlightIndex >= 0
+      ? flatHits[highlightIndex]
+      : undefined;
+  const renderOption = (hit: Hit) => {
+    const flatIdx = flatHits.indexOf(hit);
+    const active = flatIdx === highlightIndex;
+    return (
+      <ListItemButton
+        key={`${hit.kind}-${hit.id}`}
+        id={optionId(hit)}
+        role="option"
+        aria-selected={active}
+        tabIndex={-1}
+        dense
+        selected={active}
+        onClick={() => goTo(hit)}
+        onMouseMove={() => setHighlightIndex(flatIdx)}
+        ref={(el) => {
+          if (el && active) el.scrollIntoView?.({ block: "nearest" });
+        }}
+        sx={{ borderRadius: 1.5 }}
+      >
+        <ListItemIcon sx={{ minWidth: 30 }}>
+          {hit.kind === "command"
+            ? (COMMANDS.find((c) => c.id === hit.id)?.icon ?? iconFor(hit.kind))
+            : iconFor(hit.kind)}
+        </ListItemIcon>
+        <ListItemText
+          primary={
+            <Typography
+              variant="body2"
+              sx={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontFamily: hit.kind === "sql" ? "monospace" : undefined,
+              }}
+            >
+              {hit.title}
+            </Typography>
+          }
+          secondary={hit.meta}
+          slotProps={{ secondary: { sx: { fontSize: "0.7rem" } } }}
+        />
+      </ListItemButton>
+    );
   };
 
   return (
@@ -500,176 +586,93 @@ export default function SearchOverlay({
                   </InputAdornment>
                 ),
                 endAdornment: loading ? (
-                  <CircularProgress size={16} />
+                  <CircularProgress size={16} aria-label="正在搜索" />
                 ) : undefined,
+              },
+              htmlInput: {
+                "aria-label": "全局搜索",
+                role: "combobox",
+                "aria-autocomplete": "list",
+                "aria-expanded": open,
+                "aria-controls": listboxId,
+                "aria-activedescendant": activeHit
+                  ? optionId(activeHit)
+                  : undefined,
               },
             }}
           />
-          {trimmed &&
-            !loading &&
-            (hasAny ? (
-              <List dense sx={{ maxHeight: 360, overflow: "auto", pt: 1 }}>
-                {KEY_ORDER.flatMap((kind) => {
-                  const items = groupedHits[kind];
-                  if (items.length === 0) return null;
-                  return [
-                    <Box key={kind} sx={{ px: 1, pt: 1.25, pb: 0.25 }}>
+          {open && (
+            <List
+              id={listboxId}
+              role="listbox"
+              aria-label="搜索建议"
+              dense
+              sx={{ maxHeight: 360, overflow: "auto", pt: 1 }}
+            >
+              {trimmed && loading ? (
+                <Box sx={{ px: 1, py: 2, textAlign: "center" }} role="status">
+                  <Typography variant="body2" color="text.secondary">
+                    正在搜索…
+                  </Typography>
+                </Box>
+              ) : trimmed ? (
+                hasAny ? (
+                  KEY_ORDER.flatMap((kind) => {
+                    const items = groupedHits[kind];
+                    if (items.length === 0) return [];
+                    return [
+                      <Box
+                        key={kind}
+                        role="presentation"
+                        sx={{ px: 1, pt: 1.25, pb: 0.25 }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ fontWeight: 600, letterSpacing: "0.03em" }}
+                        >
+                          {LABELS[kind]} · {items.length}
+                        </Typography>
+                      </Box>,
+                      ...items.map(renderOption),
+                    ];
+                  })
+                ) : (
+                  <Box sx={{ px: 1, py: 2, textAlign: "center" }} role="status">
+                    <Typography variant="body2" color="text.secondary">
+                      没有匹配结果
+                    </Typography>
+                  </Box>
+                )
+              ) : (
+                <>
+                  {recentHits.length > 0 && (
+                    <Box role="presentation" sx={{ px: 1, pt: 0.5, pb: 0.25 }}>
                       <Typography
                         variant="caption"
                         color="text.secondary"
-                        sx={{ fontWeight: 600, letterSpacing: "0.03em" }}
+                        sx={{ display: "block", fontWeight: 600 }}
                       >
-                        {LABELS[kind]} · {items.length}
+                        最近访问
                       </Typography>
-                    </Box>,
-                    ...items.map((h) => {
-                      const flatIdx = flatHits.indexOf(h);
-                      const active = flatIdx === highlightIndex;
-                      return (
-                        <ListItemButton
-                          key={`${h.kind}-${h.id}`}
-                          dense
-                          selected={active}
-                          onClick={() => goTo(h)}
-                          onMouseMove={() =>
-                            setHighlightIndex((prev) =>
-                              prev === flatIdx ? prev : flatIdx,
-                            )
-                          }
-                          ref={(el) => {
-                            if (el && active) {
-                              el.scrollIntoView({ block: "nearest" });
-                            }
-                          }}
-                          sx={{ borderRadius: 1.5 }}
-                        >
-                          <ListItemIcon sx={{ minWidth: 30 }}>
-                            {h.kind === "command"
-                              ? (COMMANDS.find((c) => c.id === h.id)?.icon ??
-                                iconFor(h.kind))
-                              : iconFor(h.kind)}
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {h.title}
-                              </Typography>
-                            }
-                            secondary={h.meta}
-                            slotProps={{
-                              secondary: { sx: { fontSize: "0.7rem" } },
-                            }}
-                          />
-                        </ListItemButton>
-                      );
-                    }),
-                  ];
-                })}
-              </List>
-            ) : (
-              <Box sx={{ px: 1, py: 2, textAlign: "center" }}>
-                <Typography variant="body2" color="text.secondary">
-                  没有匹配结果
-                </Typography>
-              </Box>
-            ))}
-          {!trimmed && recentHits.length > 0 && (
-            <Box sx={{ mt: 1 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", px: 1, pt: 0.5, fontWeight: 600 }}
-              >
-                最近访问
-              </Typography>
-              <List dense>
-                {recentHits.map((h) => (
-                  <ListItemButton
-                    key={`${h.kind}-${h.id}`}
-                    dense
-                    onClick={() => goTo(h)}
-                    sx={{ borderRadius: 1.5 }}
-                  >
-                    <ListItemIcon sx={{ minWidth: 30 }}>
-                      {iconFor(h.kind)}
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {h.title}
-                        </Typography>
-                      }
-                    />
-                  </ListItemButton>
-                ))}
-              </List>
-            </Box>
-          )}
-          {!trimmed && recentSqlQueries.length > 0 && (
-            <Box sx={{ mt: 1 }}>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ display: "block", px: 1, pt: 0.5, fontWeight: 600 }}
-              >
-                最近的查询
-              </Typography>
-              <List dense>
-                {recentSqlQueries.map((q, i) => {
-                  const oneLine = q
-                    .split("\n")
-                    .filter(Boolean)
-                    .join(" ")
-                    .slice(0, 80);
-                  return (
-                    <ListItemButton
-                      key={`${q}-${i}`}
-                      dense
-                      onClick={() => {
-                        onClose();
-                        navigate("/sqllab", { state: { initialSql: q } });
-                      }}
-                      sx={{ borderRadius: 1.5 }}
-                    >
-                      <ListItemIcon sx={{ minWidth: 30 }}>
-                        <CodeIcon
-                          sx={{ fontSize: 18, color: "secondary.main" }}
-                        />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            {oneLine || q}
-                          </Typography>
-                        }
-                      />
-                    </ListItemButton>
-                  );
-                })}
-              </List>
-            </Box>
+                    </Box>
+                  )}
+                  {recentHits.map(renderOption)}
+                  {recentSqlHits.length > 0 && (
+                    <Box role="presentation" sx={{ px: 1, pt: 1, pb: 0.25 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", fontWeight: 600 }}
+                      >
+                        最近的查询
+                      </Typography>
+                    </Box>
+                  )}
+                  {recentSqlHits.map(renderOption)}
+                </>
+              )}
+            </List>
           )}
           {open && (
             <Box

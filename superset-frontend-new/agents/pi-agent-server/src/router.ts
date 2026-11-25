@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { WebSocket } from "ws";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ClientMessage, ModelInfo, ServerMessage } from "./types.js";
@@ -5,21 +24,30 @@ import {
   SessionStore,
   setWsPreferredModel,
   getWsPreferredModel,
-  setWsAuthToken,
-  getWsAuthToken,
   setWsVerifiedUser,
   getWsVerifiedUser,
   setWsAuthPending,
   getWsAuthPending,
+  type VerifiedUserContext,
 } from "./session-store.js";
 import { verifyToken } from "./ws-auth.js";
-import { processPrompt, processInsight, type AgentEventSender } from "./agent-orchestrator.js";
 import {
+  processPrompt,
+  processInsight,
+  type AgentEventSender,
+} from "./agent-orchestrator.js";
+import {
+  getSessionOwner,
   loadSessionMessages,
   toAgentMessages,
   deleteSession as deleteStoredSession,
   setPreferredModel,
 } from "./store.js";
+
+type SessionFactory = (
+  userId: string,
+  ws: WebSocket,
+) => Promise<AgentSession | null>;
 
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) {
@@ -49,50 +77,143 @@ function parseMessage(raw: string): ClientMessage | null {
   }
 }
 
+const wsAuthGenerations = new WeakMap<WebSocket, number>();
+
 function beginAuthVerification(ws: WebSocket, token: string | null): void {
-  if (!token) return;
-  const pending = (async () => {
-    const username = await verifyToken(token);
-    setWsVerifiedUser(ws, username);
-    return username;
+  setWsVerifiedUser(ws, null);
+  if (!token) {
+    setWsAuthPending(ws, null);
+    return;
+  }
+  const generation = (wsAuthGenerations.get(ws) ?? 0) + 1;
+  wsAuthGenerations.set(ws, generation);
+  const pending: Promise<VerifiedUserContext | null> = (async () => {
+    const userId = await verifyToken(token);
+    if (wsAuthGenerations.get(ws) !== generation) return null;
+    const context = userId ? { userId, token } : null;
+    setWsVerifiedUser(ws, context);
+    return context;
   })();
   setWsAuthPending(ws, pending);
 }
 
-/**
- * Resolve the verified username for a WebSocket connection. Waits for an
- * in-flight token verification (the frontend sends `auth` right before
- * `new_session` on connect) and returns null when no valid token was seen.
- */
-async function ensureVerified(ws: WebSocket): Promise<string | null> {
+async function ensureVerified(
+  ws: WebSocket,
+): Promise<VerifiedUserContext | null> {
   const pending = getWsAuthPending(ws);
   if (pending) {
     try {
       await pending;
     } catch {
-      // verification errors are handled inside verifyToken
+      setWsVerifiedUser(ws, null);
     }
-    setWsAuthPending(ws, null);
+    if (getWsAuthPending(ws) === pending) setWsAuthPending(ws, null);
   }
-  return getWsVerifiedUser(ws) ?? null;
+  const context = getWsVerifiedUser(ws);
+  if (!context) return null;
+  const userId = await verifyToken(context.token);
+  if (userId !== context.userId) {
+    setWsVerifiedUser(ws, null);
+    return null;
+  }
+  return context;
+}
+
+function sendAuthError(
+  ws: WebSocket,
+  insight?: { storeSessionId?: string },
+): void {
+  send(ws, {
+    type: "error",
+    message: "未认证：请先通过 auth 消息提供有效的访问令牌",
+    retryable: true,
+    ...insight,
+    ...(insight ? { insight: true } : {}),
+  });
+}
+
+async function canAccessSession(
+  ws: WebSocket,
+  sessionStore: SessionStore,
+  storeSessionId: string,
+  identity: VerifiedUserContext,
+): Promise<boolean> {
+  const active = sessionStore.getSession(storeSessionId);
+  const owner = active?.userId ?? (await getSessionOwner(storeSessionId));
+  if (owner && owner !== identity.userId) {
+    send(ws, {
+      type: "error",
+      message: "无权访问该会话",
+      retryable: false,
+      storeSessionId,
+    });
+    return false;
+  }
+  return true;
+}
+
+async function loadOwnedSession(
+  ws: WebSocket,
+  sessionStore: SessionStore,
+  storeSessionId: string,
+  identity: VerifiedUserContext,
+  sessionFactory: SessionFactory,
+  datasetId?: number,
+): Promise<AgentSession | null> {
+  const existing = sessionStore.getAgentSession(
+    ws,
+    storeSessionId,
+    identity.userId,
+  );
+  if (existing) return existing;
+  if (!(await canAccessSession(ws, sessionStore, storeSessionId, identity))) {
+    return null;
+  }
+
+  const agentSession = await sessionFactory(identity.userId, ws);
+  if (!agentSession) {
+    send(ws, {
+      type: "error",
+      message: "无法创建 AI 会话",
+      retryable: false,
+      storeSessionId,
+    });
+    return null;
+  }
+
+  try {
+    const history = await loadSessionMessages(storeSessionId, identity.userId);
+    if (history && history.length > 0) {
+      agentSession.state.messages = toAgentMessages(history);
+    }
+    const activeSession = sessionStore.create(
+      ws,
+      storeSessionId,
+      identity.userId,
+      agentSession,
+      datasetId,
+    );
+    if (activeSession !== agentSession) agentSession.dispose();
+    return activeSession;
+  } catch (error) {
+    agentSession.dispose();
+    send(ws, {
+      type: "error",
+      message: (error as Error).message,
+      retryable: false,
+      storeSessionId,
+    });
+    return null;
+  }
 }
 
 export function handleConnection(
   ws: WebSocket,
-  sessionFactory: (
-    userId: string,
-    ws: WebSocket,
-  ) => Promise<AgentSession | null>,
+  sessionFactory: SessionFactory,
   modelList: ModelInfo[] = [],
-  accessToken?: string,
   defaultModel = "",
 ): void {
   const sessionStore = new SessionStore();
-
-  if (accessToken) {
-    setWsAuthToken(ws, accessToken);
-    beginAuthVerification(ws, accessToken);
-  }
 
   sendModelList(ws, modelList, defaultModel);
 
@@ -107,71 +228,205 @@ export function handleConnection(
       return;
     }
 
+    if (msg.type === "auth") {
+      beginAuthVerification(ws, msg.access_token);
+      return;
+    }
+
+    const identity = await ensureVerified(ws);
+    if (!identity) {
+      sendAuthError(
+        ws,
+        msg.type === "insight"
+          ? { storeSessionId: msg.storeSessionId }
+          : undefined,
+      );
+      return;
+    }
+
     switch (msg.type) {
-      case "auth":
-        if (msg.access_token) {
-          setWsAuthToken(ws, msg.access_token);
-          beginAuthVerification(ws, msg.access_token);
+      case "new_session": {
+        if (!msg.storeSessionId) {
+          send(ws, {
+            type: "error",
+            message: "storeSessionId 是必需的",
+            retryable: false,
+          });
+          break;
         }
-        break;
-
-      case "new_session":
-        await handleNewSession(ws, sessionStore, msg, sessionFactory);
-        break;
-
-      case "select_session":
+        const agentSession = await loadOwnedSession(
+          ws,
+          sessionStore,
+          msg.storeSessionId,
+          identity,
+          sessionFactory,
+          msg.dataset_id,
+        );
+        if (!agentSession) break;
+        sessionStore.setCurrentSessionId(
+          ws,
+          msg.storeSessionId,
+          identity.userId,
+        );
         send(ws, { type: "session_created", sessionId: msg.storeSessionId });
         break;
+      }
 
-      case "prompt":
-        await handlePromptMessage(ws, sessionStore, msg, sessionFactory);
+      case "select_session": {
+        if (!msg.storeSessionId) {
+          send(ws, {
+            type: "error",
+            message: "storeSessionId 是必需的",
+            retryable: false,
+          });
+          break;
+        }
+        const agentSession = await loadOwnedSession(
+          ws,
+          sessionStore,
+          msg.storeSessionId,
+          identity,
+          sessionFactory,
+        );
+        if (!agentSession) break;
+        sessionStore.setCurrentSessionId(
+          ws,
+          msg.storeSessionId,
+          identity.userId,
+        );
+        send(ws, { type: "session_created", sessionId: msg.storeSessionId });
         break;
+      }
 
-      case "insight":
-        await handleInsightMessage(ws, sessionStore, msg, sessionFactory);
+      case "prompt": {
+        const storeSessionId =
+          msg.storeSessionId ?? sessionStore.getCurrentSessionId(ws);
+        if (!storeSessionId) {
+          send(ws, {
+            type: "error",
+            message: "storeSessionId 是必需的",
+            retryable: false,
+          });
+          break;
+        }
+        const agentSession = await loadOwnedSession(
+          ws,
+          sessionStore,
+          storeSessionId,
+          identity,
+          sessionFactory,
+        );
+        if (!agentSession) break;
+        sessionStore.setCurrentSessionId(ws, storeSessionId, identity.userId);
+
+        const emit: AgentEventSender = (event) => {
+          send(ws, event as unknown as ServerMessage);
+        };
+
+        await processPrompt(
+          ws,
+          storeSessionId,
+          agentSession,
+          msg.message,
+          emit,
+          sessionStore,
+          identity,
+        );
         break;
+      }
 
-      case "set_model":
-        if (msg.model) {
-          // Reject models the provider does not serve (skip validation when
-          // the model list is unavailable, e.g. provider was down at boot).
-          if (
-            modelList.length > 0 &&
-            !modelList.some((m) => m.id === msg.model)
-          ) {
-            send(ws, {
-              type: "error",
-              message: `模型 "${msg.model}" 不在可用模型列表中`,
-              retryable: false,
-            });
-            break;
-          }
-          setWsPreferredModel(ws, msg.model);
-          if (msg.user_id) {
-            await setPreferredModel(msg.user_id, msg.model);
-          }
-          // Sessions keep the model they were created with, so discard ALL
-          // sessions of this connection — the next prompt recreates them
-          // with the newly selected model (this also covers sessions created
-          // before the first prompt, which had no "current session" set).
-          const currentSid = sessionStore.getCurrentSessionId(ws);
-          sessionStore.removeAll(ws);
-          if (currentSid) {
-            send(ws, { type: "session_created", sessionId: currentSid });
-          }
-          // Echo the updated model state so the client selector stays in sync
-          sendModelList(ws, modelList, defaultModel);
+      case "insight": {
+        if (!msg.storeSessionId) {
+          send(ws, {
+            type: "error",
+            message: "storeSessionId 是必需的",
+            retryable: false,
+            insight: true,
+          });
+          break;
+        }
+        const agentSession = await loadOwnedSession(
+          ws,
+          sessionStore,
+          msg.storeSessionId,
+          identity,
+          sessionFactory,
+        );
+        if (!agentSession) break;
+
+        const emit: AgentEventSender = (event) => {
+          send(ws, event as unknown as ServerMessage);
+        };
+
+        await processInsight(
+          ws,
+          msg.storeSessionId,
+          agentSession,
+          msg.chartId,
+          msg.filters ?? {},
+          msg.prompt,
+          emit,
+          sessionStore,
+          identity,
+        );
+        break;
+      }
+
+      case "set_model": {
+        if (!msg.model) break;
+        if (
+          modelList.length > 0 &&
+          !modelList.some((model) => model.id === msg.model)
+        ) {
+          send(ws, {
+            type: "error",
+            message: `模型 "${msg.model}" 不在可用模型列表中`,
+            retryable: false,
+          });
+          break;
+        }
+        const currentSid = sessionStore.getCurrentSessionId(ws);
+        const currentSession = currentSid
+          ? sessionStore.getSession(currentSid, identity.userId)
+          : undefined;
+        sessionStore.removeAll(ws);
+        setWsPreferredModel(ws, msg.model);
+        await setPreferredModel(identity.userId, msg.model);
+        if (currentSession) {
+          send(ws, { type: "session_created", sessionId: currentSession.id });
+        }
+        sendModelList(ws, modelList, defaultModel);
+        break;
+      }
+
+      case "abort": {
+        const storeSessionId =
+          msg.storeSessionId ?? sessionStore.getCurrentSessionId(ws);
+        if (
+          storeSessionId &&
+          (await canAccessSession(ws, sessionStore, storeSessionId, identity))
+        ) {
+          sessionStore.remove(ws, storeSessionId, identity.userId);
         }
         break;
+      }
 
-      case "abort":
-        handleAbort(ws, sessionStore, msg);
+      case "delete_session": {
+        if (
+          !msg.storeSessionId ||
+          !(await canAccessSession(
+            ws,
+            sessionStore,
+            msg.storeSessionId,
+            identity,
+          ))
+        ) {
+          break;
+        }
+        sessionStore.remove(ws, msg.storeSessionId, identity.userId);
+        await deleteStoredSession(msg.storeSessionId, identity.userId);
         break;
-
-      case "delete_session":
-        sessionStore.remove(ws, msg.storeSessionId);
-        await deleteStoredSession(msg.storeSessionId);
-        break;
+      }
 
       default:
         send(ws, {
@@ -185,203 +440,4 @@ export function handleConnection(
   ws.on("close", () => {
     sessionStore.cleanup(ws);
   });
-}
-
-async function handleNewSession(
-  ws: WebSocket,
-  sessionStore: SessionStore,
-  msg: ClientMessage & { type: "new_session" },
-  sessionFactory: (
-    userId: string,
-    ws: WebSocket,
-  ) => Promise<AgentSession | null>,
-): Promise<void> {
-  const verifiedUser = await ensureVerified(ws);
-  if (!verifiedUser) {
-    send(ws, {
-      type: "error",
-      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
-      retryable: true,
-    });
-    return;
-  }
-
-  const { storeSessionId } = msg;
-  if (!storeSessionId) {
-    send(ws, {
-      type: "error",
-      message: "storeSessionId 是必需的",
-      retryable: false,
-    });
-    return;
-  }
-
-  if (sessionStore.has(ws, storeSessionId)) {
-    send(ws, { type: "session_created", sessionId: storeSessionId });
-    return;
-  }
-
-  const agentSession = await sessionFactory(verifiedUser, ws);
-  if (!agentSession) {
-    send(ws, {
-      type: "error",
-      message: "无法创建 AI 会话",
-      retryable: false,
-    });
-    return;
-  }
-
-  // Restore the persisted transcript so conversations continue across
-  // server restarts (frontend session ids are stable in local storage).
-  const history = await loadSessionMessages(storeSessionId);
-  if (history && history.length > 0) {
-    agentSession.state.messages = toAgentMessages(history);
-  }
-
-  sessionStore.create(
-    ws,
-    storeSessionId,
-    verifiedUser,
-    agentSession,
-    msg.dataset_id,
-  );
-  send(ws, { type: "session_created", sessionId: storeSessionId });
-}
-
-async function handlePromptMessage(
-  ws: WebSocket,
-  sessionStore: SessionStore,
-  msg: ClientMessage & { type: "prompt" },
-  sessionFactory: (
-    userId: string,
-    ws: WebSocket,
-  ) => Promise<AgentSession | null>,
-): Promise<void> {
-  const verifiedUser = await ensureVerified(ws);
-  if (!verifiedUser) {
-    send(ws, {
-      type: "error",
-      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
-      retryable: true,
-    });
-    return;
-  }
-
-  const storeSessionId =
-    msg.storeSessionId ?? sessionStore.getCurrentSessionId(ws);
-  if (!storeSessionId) {
-    send(ws, {
-      type: "error",
-      message: "storeSessionId 是必需的",
-      retryable: false,
-    });
-    return;
-  }
-
-  let agentSession = sessionStore.getAgentSession(ws, storeSessionId);
-  if (!agentSession) {
-    // Auto-create session
-    const newSession = await sessionFactory(verifiedUser, ws);
-    if (!newSession) {
-      send(ws, {
-        type: "error",
-        message: "无法创建 AI 会话",
-        retryable: false,
-      });
-      return;
-    }
-    agentSession = newSession;
-    sessionStore.create(ws, storeSessionId, verifiedUser, agentSession);
-  }
-
-  sessionStore.setCurrentSessionId(ws, storeSessionId);
-
-  const emit: AgentEventSender = (event) => {
-    send(ws, event as unknown as ServerMessage);
-  };
-
-  await processPrompt(
-    ws,
-    storeSessionId,
-    agentSession,
-    msg.message,
-    emit,
-    sessionStore,
-  );
-}
-
-async function handleInsightMessage(
-  ws: WebSocket,
-  sessionStore: SessionStore,
-  msg: ClientMessage & { type: "insight" },
-  sessionFactory: (
-    userId: string,
-    ws: WebSocket,
-  ) => Promise<AgentSession | null>,
-): Promise<void> {
-  const verifiedUser = await ensureVerified(ws);
-  if (!verifiedUser) {
-    send(ws, {
-      type: "error",
-      message: "未认证：请先通过 auth 消息提供有效的访问令牌",
-      retryable: true,
-      storeSessionId: msg.storeSessionId,
-      insight: true,
-    });
-    return;
-  }
-
-  const storeSessionId = msg.storeSessionId;
-  if (!storeSessionId) {
-    send(ws, {
-      type: "error",
-      message: "storeSessionId 是必需的",
-      retryable: false,
-      insight: true,
-    });
-    return;
-  }
-
-  let agentSession = sessionStore.getAgentSession(ws, storeSessionId);
-  if (!agentSession) {
-    const newSession = await sessionFactory(verifiedUser, ws);
-    if (!newSession) {
-      send(ws, {
-        type: "error",
-        message: "无法创建 AI 会话",
-        retryable: false,
-        storeSessionId,
-        insight: true,
-      });
-      return;
-    }
-    agentSession = newSession;
-    sessionStore.create(ws, storeSessionId, verifiedUser, agentSession);
-  }
-
-  const emit: AgentEventSender = (event) => {
-    send(ws, event as unknown as ServerMessage);
-  };
-
-  await processInsight(
-    ws,
-    storeSessionId,
-    agentSession,
-    msg.chartId,
-    msg.filters ?? {},
-    msg.prompt,
-    emit,
-    sessionStore,
-  );
-}
-
-function handleAbort(
-  ws: WebSocket,
-  sessionStore: SessionStore,
-  msg: ClientMessage & { type: "abort" },
-): void {
-  const sid = msg.storeSessionId ?? sessionStore.getCurrentSessionId(ws);
-  if (sid) {
-    sessionStore.remove(ws, sid);
-  }
 }

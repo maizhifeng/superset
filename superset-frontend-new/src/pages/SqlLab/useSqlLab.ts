@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   useState,
   useEffect,
@@ -6,10 +25,17 @@ import {
   useRef,
   type SetStateAction,
 } from "react";
-import api, { QUERY_TIMEOUT_MS } from "@/api";
+import api from "@/api";
+import { executeSql } from "./api";
 import { parseErrorMessage } from "@/utils/parseErrorMessage";
 import { formatSqlText } from "@/utils/sqlFormat";
 import { useNotificationStore } from "@/store/notificationStore";
+import { useAuthStore } from "@/store/authStore";
+import {
+  clearRecentSqlQueries,
+  readRecentSqlQueries,
+  storeRecentSqlQueries,
+} from "@/utils/recentSql";
 import rison from "rison";
 import type { Database, QueryResult, TableMetadata } from "@/types/api";
 import type { Completion } from "@codemirror/autocomplete";
@@ -25,23 +51,8 @@ const LAST_DB_KEY = "superset-sql-lab-last-database";
 const LAST_SCHEMA_KEY = "superset-sql-lab-last-schema";
 const ROWS_PER_PAGE_KEY = "superset-sql-lab-rows-per-page";
 const SIDEBAR_KEY = "superset-sql-lab-sidebar-open";
-const RECENT_KEY = "superset-sql-lab-recent-queries";
 
 const MAX_RECENT = 6;
-
-function readRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    const arr = raw ? (JSON.parse(raw) as string[]) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
-
-function storeRecent(queries: string[]) {
-  localStorage.setItem(RECENT_KEY, JSON.stringify(queries));
-}
 
 /**
  * 查询执行失败的提示：权限不足 / 限流给出可操作的明确说明，
@@ -82,6 +93,7 @@ export function useSqlLab({
   initialSchema,
 }: UseSqlLabOptions = {}) {
   const notify = useNotificationStore((state) => state.notify);
+  const username = useAuthStore((state) => state.user?.username ?? "");
   const [databases, setDatabases] = useState<Database[]>([]);
   // 记住上次使用的数据库，便于再次进入 SQL 实验室时延续上下文。
   const [databaseId, setDatabaseId] = useState<number | "">(() => {
@@ -121,8 +133,12 @@ export function useSqlLab({
     setSqlState(value);
   }, []);
   const [recentQueries, setRecentQueries] = useState<string[]>(() =>
-    readRecent(),
+    readRecentSqlQueries(username),
   );
+
+  useEffect(() => {
+    setRecentQueries(readRecentSqlQueries(username));
+  }, [username]);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -596,6 +612,16 @@ export function useSqlLab({
   //（已被后发起的执行取代）则整份丢弃，避免旧响应覆盖新状态。
   // loading 也只由最新一次执行收尾，防止旧请求提前关闭新请求的加载态。
   const runIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      runIdRef.current += 1;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
 
   /**
    * 执行 SQL 的统一实现。
@@ -606,24 +632,22 @@ export function useSqlLab({
     async (runSql: string, recordRecent: boolean) => {
       if (databaseId === "" || !runSql.trim()) return;
       const runId = ++runIdRef.current;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       setLoading(true);
       setError(null);
       setResult(null);
       try {
-        const res = await api.post<QueryResult>(
-          "/sqllab/execute/",
+        const res = await executeSql(
           {
             database_id: databaseId,
             sql: runSql,
-            // 携带当前模式：PostgreSQL 系引擎会据此设置 search_path
-            //（Hive/Spark 等设置 USE/SET SCHEMA），使未加模式前缀的表名
-            // 解析到所选模式，也让 RLS 能对未限定表名生效。
             ...(schema ? { schema } : {}),
           },
-          { timeout: QUERY_TIMEOUT_MS },
+          controller.signal,
         );
-        // 已有更新的执行发起，过期响应不写 result / error / loading。
-        if (runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current || controller.signal.aborted) return;
         setResult(res.data);
         // 成功与失败互斥：清掉可能残留的旧错误，避免 Alert 与结果表格同屏。
         setError(null);
@@ -633,21 +657,29 @@ export function useSqlLab({
               0,
               MAX_RECENT,
             );
-            storeRecent(next);
+            storeRecentSqlQueries(username, next);
             return next;
           });
         }
       } catch (err: unknown) {
-        if (runId !== runIdRef.current) return;
+        if (runId !== runIdRef.current || controller.signal.aborted) return;
         setError(formatQueryError(err));
         // 成功与失败互斥：失败时清掉可能残留的旧结果。
         setResult(null);
       } finally {
         if (runId === runIdRef.current) setLoading(false);
+        if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [databaseId, schema],
+    [databaseId, schema, username],
   );
+
+  const stopQuery = useCallback(() => {
+    runIdRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+  }, []);
 
   const handleRun = useCallback(() => {
     // 执行也是"落盘点"：保证标签页保存的是实际编辑的最新 SQL。
@@ -760,8 +792,8 @@ export function useSqlLab({
   /** 清空最近查询历史。 */
   const clearRecentQueries = useCallback(() => {
     setRecentQueries([]);
-    localStorage.removeItem(RECENT_KEY);
-  }, []);
+    clearRecentSqlQueries(username);
+  }, [username]);
 
   return {
     databases,
@@ -809,6 +841,7 @@ export function useSqlLab({
     paginatedData,
     handleRun,
     handleRunSql,
+    stopQuery,
     recentQueries,
     loadRecentQuery,
     clearRecentQueries,

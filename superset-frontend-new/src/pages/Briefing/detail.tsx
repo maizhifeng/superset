@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   memo,
   useCallback,
@@ -35,26 +54,30 @@ import SendIcon from "@mui/icons-material/Send";
 import SettingsIcon from "@mui/icons-material/Settings";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import EditIcon from "@mui/icons-material/Edit";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import CategoryIcon from "@mui/icons-material/Category";
 import TableChartIcon from "@mui/icons-material/TableChart";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import LocalizedDatePicker from "@/components/LocalizedDatePicker";
 import dayjs, { type Dayjs } from "dayjs";
 import PageHeader from "@/components/PageHeader";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useBreadcrumbStore } from "@/store/breadcrumbStore";
-import useReducedMotion, {
-  prefersReducedMotion,
-} from "@/hooks/useReducedMotion";
-import type { EChartsOption } from "echarts";
+import { prefersReducedMotion } from "@/hooks/useReducedMotion";
+import type { ECElementEvent, EChartsOption } from "echarts";
 import { duration as durationTokens, ease as easeTokens } from "@/theme/tokens";
 import api from "@/api";
+import { parseErrorMessage } from "@/utils/parseErrorMessage";
+import { escapeHtml } from "@/utils/escapeHtml";
 import { formatNumber as formatRawNumber } from "@/utils/formatNumber";
 import ConfigForm from "./ConfigForm";
 import EChart from "./EChart";
+import ChapterNav from "./ChapterNav";
+import JobLogPanel, { JobStatusBar } from "./JobPanels";
+import { useBriefingJob } from "./useBriefingJob";
+import { reportChapters } from "./chapters";
 import {
   ALERT_LEVEL_COLOR,
   BRIEFING_BLOCK_HEADER_CLASS,
@@ -62,10 +85,7 @@ import {
   BRIEFING_STICKY_CELL_CLASS,
   BRIEFING_TABLE_CLASS,
   CALLOUT_BG,
-  JOB_STATUS_COLOR,
-  JOB_STATUS_LABEL,
   briefingTable,
-  type JobStatus,
 } from "./reportStyles";
 import FeishuDialog from "./FeishuDialog";
 import WasdHint from "./WasdHint";
@@ -110,10 +130,6 @@ import {
 // instead of pinning the paper values.
 const TEXT_MUTED = BRIEFING_CSS_COLORS.textSecondary;
 const DIVIDER = BRIEFING_CSS_COLORS.divider;
-const TERMINAL_BG = "#0d1117";
-const TERMINAL_TEXT = "#c9d1d9";
-const TERMINAL_MUTED = "#8b949e";
-const TERMINAL_HOVER = "rgba(255,255,255,0.04)";
 
 interface BriefingChartColors {
   spend: string;
@@ -126,6 +142,14 @@ interface BriefingChartColors {
   roiGood: string;
   roiWarning: string;
   roiCritical: string;
+}
+
+interface ChartTooltipItem {
+  axisValue?: string | number;
+  dataIndex?: number;
+  marker?: string;
+  seriesName?: string;
+  value?: number | null;
 }
 
 /**
@@ -163,14 +187,6 @@ function useBriefingColors(): BriefingChartColors {
 
 // Local keyframes.  Every one of them collapses to instant under the theme's
 // global ``prefers-reduced-motion: reduce`` rule.
-const statusPulse = keyframes`
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.82); }
-`;
-const railSweep = keyframes`
-  from { transform: translateX(-100%); }
-  to { transform: translateX(320%); }
-`;
 const valuePulse = keyframes`
   from { color: var(--mui-palette-primary-main); transform: translateY(-2px); }
   to { color: inherit; transform: translateY(0); }
@@ -521,22 +537,6 @@ interface FluctuationMetric {
   efficiency_baseline?: FluctuationBaseline | null;
 }
 
-interface JobLog {
-  ts: string;
-  level: string;
-  message: string;
-}
-
-interface JobInfo {
-  id: string;
-  config_id: number;
-  status: "running" | "done" | "error" | "cancelled";
-  logs: JobLog[];
-  error?: string;
-  cancel_requested?: boolean;
-  result?: DailyReportResult;
-}
-
 const SPEND_LABEL = "返点后消耗";
 const RECHARGE_LABEL = "充值流水";
 const PAY_RATE_LABEL = "1日付费率";
@@ -547,12 +547,6 @@ const RETENTION_LABEL = "2日留存率";
 const USERS_LABEL = "新增进入";
 // Drill-down views only show the leading series to avoid long-tail clutter.
 const MAX_DRILL_SERIES = 10;
-
-// Log lines can carry a success level that report alerts never emit.
-const LOG_LEVEL_COLOR: Record<string, string> = {
-  ...ALERT_LEVEL_COLOR,
-  success: BRIEFING_CSS_COLORS.statusSuccess,
-};
 
 function formatNumber(value: number | null | undefined): string {
   // ``null`` is the payload's "undefined ratio" (no cost / no users); an em
@@ -1408,25 +1402,24 @@ function PlatformSplitTable({ rows }: { rows: PlatformRow[] }) {
                 <td style={briefingTable.bodyCell({ padding: "5px 8px" })}>
                   {row.platform || "-"}
                 </td>
-                {metricCellsText(
-                  metricRowValues(row, row.prev),
-                  ltvDays,
-                ).map((cell) => (
-                  <td
-                    key={cell.key}
-                    title={cell.title}
-                    style={briefingTable.bodyCell({
-                      numeric: true,
-                      padding: "5px 8px",
-                    })}
-                  >
-                    <span
-                      style={cell.color ? { color: cell.color } : undefined}
+                {metricCellsText(metricRowValues(row, row.prev), ltvDays).map(
+                  (cell) => (
+                    <td
+                      key={cell.key}
+                      title={cell.title}
+                      style={briefingTable.bodyCell({
+                        numeric: true,
+                        padding: "5px 8px",
+                      })}
                     >
-                      {cell.text}
-                    </span>
-                  </td>
-                ))}
+                      <span
+                        style={cell.color ? { color: cell.color } : undefined}
+                      >
+                        {cell.text}
+                      </span>
+                    </td>
+                  ),
+                )}
               </tr>
             ))}
           </tbody>
@@ -1748,9 +1741,7 @@ function FluctuationLegend() {
       <Typography variant="caption" sx={{ color: TEXT_MUTED, fontWeight: 600 }}>
         因素判级
       </Typography>
-      {(
-        ["abnormal", "watch", "normal"] as const
-      ).map((severity) => (
+      {(["abnormal", "watch", "normal"] as const).map((severity) => (
         <Box
           key={severity}
           sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
@@ -1817,16 +1808,16 @@ function FluctuationList({
         <Typography variant="caption" sx={{ color: TEXT_MUTED }}>
           环比 ≥{Math.round(minPct * 100)}%（自然新增% 按 ≥
           {Math.round(minRatePct * 100)}%）且基数达阈值；数值为对比期 → 本期；
-          标签为判级或驱动（异常 / 关注 / 正常 / 结构变化），历史不足时不显示；点击展开
-          平台 / 媒体 / 主游戏因素
+          标签为判级或驱动（异常 / 关注 / 正常 /
+          结构变化），历史不足时不显示；点击展开 平台 / 媒体 / 主游戏因素
         </Typography>
         <FluctuationLegend />
         <Typography
           variant="caption"
           sx={{ display: "block", mt: 0.5, color: TEXT_MUTED }}
         >
-          因子列展示各因子自身的指标变化（比率指标为 % 绝对变化），不是对总指标的
-          贡献。
+          因子列展示各因子自身的指标变化（比率指标为 %
+          绝对变化），不是对总指标的 贡献。
         </Typography>
       </Box>
       {rows.map((metric) => {
@@ -1903,7 +1894,11 @@ function FluctuationList({
               >
                 <Typography
                   variant="body2"
-                  sx={{ color: TEXT_MUTED, textAlign: "right", whiteSpace: "nowrap" }}
+                  sx={{
+                    color: TEXT_MUTED,
+                    textAlign: "right",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   {formatFluctuationLevel(
                     fluctuationValueFormat(metric),
@@ -3010,7 +3005,7 @@ function TrendChart({
     () =>
       onSelect
         ? {
-            click: (p: any) => {
+            click: (p: ECElementEvent) => {
               if (
                 p?.componentType === "series" &&
                 p?.seriesType === "bar" &&
@@ -3047,18 +3042,23 @@ function TrendChart({
       tooltip: {
         trigger: "axis",
         confine: true,
-        formatter: (params: any) => {
-          const list = Array.isArray(params) ? params : [params];
-          const lines = list.map((p: any) => {
-            if (p.seriesName === "返点后消耗")
-              return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
-            if (p.seriesName === "新增进入")
-              return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
-            if (p.seriesName === "ROI1" || p.seriesName === "广告ROI")
-              return `${p.marker}${p.seriesName}: ${formatPercent(p.value)}`;
-            return `${p.marker}${p.seriesName}: ${formatNumber(p.value)}`;
+        formatter: (params: unknown) => {
+          const list = (
+            Array.isArray(params) ? params : [params]
+          ) as ChartTooltipItem[];
+          const lines = list.map((item) => {
+            const marker = item.marker ?? "";
+            const seriesName = escapeHtml(item.seriesName ?? "");
+            if (item.seriesName === "ROI1" || item.seriesName === "广告ROI") {
+              return `${marker}${seriesName}: ${escapeHtml(
+                formatPercent(item.value),
+              )}`;
+            }
+            return `${marker}${seriesName}: ${escapeHtml(
+              formatNumber(item.value),
+            )}`;
           });
-          return `${list[0]?.axisValue ?? ""}<br/>${lines.join("<br/>")}`;
+          return `${escapeHtml(list[0]?.axisValue ?? "")}<br/>${lines.join("<br/>")}`;
         },
       },
       legend: {
@@ -3280,7 +3280,13 @@ function aggregateByChannel(projects: ProjectRow[], game: string): ComboRow[] {
     g.ltv1w += (p.ltv1 ?? 0) * (p.new_users || 0);
     g.roi1w += (p.roi1 ?? 0) * (p.spend || 0);
     g.adRoiw += (p.ad_roi ?? 0) * (p.spend || 0);
-    const pv = p.prev ?? { spend: 0, new_users: 0, ltv1: 0, roi1: 0, ad_roi: 0 };
+    const pv = p.prev ?? {
+      spend: 0,
+      new_users: 0,
+      ltv1: 0,
+      roi1: 0,
+      ad_roi: 0,
+    };
     g.pSpend += pv.spend ?? 0;
     g.pUsers += pv.new_users ?? 0;
     g.pLtv1w += (pv.ltv1 ?? 0) * (pv.new_users ?? 0);
@@ -3323,7 +3329,7 @@ function MetricsComboChart({
     () =>
       onSelect
         ? {
-            click: (p: any) => {
+            click: (p: ECElementEvent) => {
               if (
                 p?.componentType === "series" &&
                 p?.seriesType === "bar" &&
@@ -3360,22 +3366,41 @@ function MetricsComboChart({
       tooltip: {
         trigger: "axis",
         confine: true,
-        formatter: (params: any) => {
-          const arr = Array.isArray(params) ? params : [params];
-          const idx = arr[0].dataIndex;
-          const p = rows[idx];
-          const lines = arr.map((s: any) => {
-            if (s.seriesName === "返点后消耗")
-              return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.spend, p.prev?.spend))}）`;
-            if (s.seriesName === "新增进入")
-              return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.new_users, p.prev?.new_users))}）`;
-            if (s.seriesName === "ROI1")
-              return `${s.marker}${s.seriesName}: ${formatPercent(s.value)}（${fmtDelta(pct(p.roi1, p.prev?.roi1))}）`;
-            if (s.seriesName === "广告ROI")
-              return `${s.marker}${s.seriesName}: ${formatPercent(s.value)}（${fmtDelta(pct(p.ad_roi, p.prev?.ad_roi))}）`;
-            return `${s.marker}${s.seriesName}: ${formatNumber(s.value)}（${fmtDelta(pct(p.ltv1, p.prev?.ltv1))}）`;
+        formatter: (params: unknown) => {
+          const arr = (
+            Array.isArray(params) ? params : [params]
+          ) as ChartTooltipItem[];
+          const idx = arr[0]?.dataIndex ?? 0;
+          const row = rows[idx];
+          if (!row) return "";
+          const lines = arr.map((item) => {
+            const marker = item.marker ?? "";
+            const seriesName = escapeHtml(item.seriesName ?? "");
+            if (item.seriesName === "返点后消耗") {
+              return `${marker}${seriesName}: ${escapeHtml(
+                formatNumber(item.value),
+              )}（${fmtDelta(pct(row.spend, row.prev?.spend))}）`;
+            }
+            if (item.seriesName === "新增进入") {
+              return `${marker}${seriesName}: ${escapeHtml(
+                formatNumber(item.value),
+              )}（${fmtDelta(pct(row.new_users, row.prev?.new_users))}）`;
+            }
+            if (item.seriesName === "ROI1") {
+              return `${marker}${seriesName}: ${escapeHtml(
+                formatPercent(item.value),
+              )}（${fmtDelta(pct(row.roi1, row.prev?.roi1))}）`;
+            }
+            if (item.seriesName === "广告ROI") {
+              return `${marker}${seriesName}: ${escapeHtml(
+                formatPercent(item.value),
+              )}（${fmtDelta(pct(row.ad_roi, row.prev?.ad_roi))}）`;
+            }
+            return `${marker}${seriesName}: ${escapeHtml(
+              formatNumber(item.value),
+            )}（${fmtDelta(pct(row.ltv1, row.prev?.ltv1))}）`;
           });
-          return `${p.label}<br/>${lines.join("<br/>")}`;
+          return `${escapeHtml(row.label)}<br/>${lines.join("<br/>")}`;
         },
       },
       legend: {
@@ -3692,11 +3717,7 @@ function MediaSpendChart({
     () =>
       onSelect
         ? {
-            click: (p: {
-              componentType?: string;
-              seriesType?: string;
-              name?: string;
-            }) => {
+            click: (p: ECElementEvent) => {
               if (
                 p?.componentType === "series" &&
                 p?.seriesType === "bar" &&
@@ -3724,15 +3745,15 @@ function MediaSpendChart({
           const row = arr.length > 0 ? rows[arr[0].dataIndex] : undefined;
           if (!row) return "";
           if (row.kind === "header") {
-            return `<strong>${row.label}</strong><br/>消耗合计 ${formatNumber(
-              row.spend,
+            return `<strong>${escapeHtml(row.label)}</strong><br/>消耗合计 ${escapeHtml(
+              formatNumber(row.spend),
             )}`;
           }
           const level = roiQuality(row.roi1, breakevenLine, criticalLine);
           const roiD = pct(row.roi1, row.prev?.roi1);
           return [
-            `<strong>${row.label}</strong>${
-              row.platform ? ` · ${row.platform}` : ""
+            `<strong>${escapeHtml(row.label)}</strong>${
+              row.platform ? ` · ${escapeHtml(row.platform)}` : ""
             }`,
             `消耗 ${formatNumber(row.spend)} ｜ ROI1 ${formatPercent(row.roi1)}（${
               roiD === null
@@ -4251,363 +4272,6 @@ function MediaBreakdownTable({
   );
 }
 
-function reportChapters(trendLabel: string): { id: string; label: string }[] {
-  return [
-    { id: "sec-core", label: "核心指标" },
-    { id: "sec-trend", label: trendLabel },
-    { id: "sec-projects", label: "主游戏分析" },
-    { id: "sec-media", label: "媒体分析" },
-  ];
-}
-
-/** Horizontal cut (px) on each chapter card's leading and trailing edges. */
-const CHAPTER_SLANT_PX = 9;
-/** Floor on a step's width, so the shorter labels still read as full blocks. */
-const CHAPTER_STEP_MIN_WIDTH = 92;
-
-/**
- * Chapter jump nav, rendered inside the breadcrumb bar as a step progress bar.
- *
- * It started as a plain row of text buttons, which read as incidental chrome
- * rather than navigation.  Each chapter is now a slanted card in a stepped
- * bar — quadrilaterals cut on the leading and trailing edges, flat at the two
- * outer ends so the group still reads as one continuous control — and the fill
- * climbs with the reader's position: reached chapters tinted, the current one
- * solid, the rest neutral.  That makes "where am I" legible from the shape of
- * the bar alone, without reading the labels.
- */
-/** Scroll-spy for the chapter nav: the active id lives with the nav so the
- * page (and its tables) does not re-render while scrolling. */
-function useActiveChapter(chapters: { id: string; label: string }[]): string {
-  const [activeId, setActiveId] = useState(chapters[0]?.id ?? "");
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length === 0) return;
-        visible.sort(
-          (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
-        );
-        const next = visible[0].target.id;
-        setActiveId((previous) => (previous === next ? previous : next));
-      },
-      { rootMargin: "-15% 0px -75% 0px", threshold: 0 },
-    );
-    chapters.forEach((c) => {
-      const el = document.getElementById(c.id);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [chapters]);
-  return activeId;
-}
-
-function ChapterNav({
-  chapters,
-  onJump,
-}: {
-  chapters: { id: string; label: string }[];
-  onJump: (id: string) => void;
-}) {
-  const activeId = useActiveChapter(chapters);
-  const activeIndex = Math.max(
-    0,
-    chapters.findIndex((c) => c.id === activeId),
-  );
-  return (
-    <Box
-      component="nav"
-      aria-label="章节导航"
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: "2px",
-        minWidth: 0,
-        flexShrink: 0,
-      }}
-    >
-      {chapters.map((chapter, i) => {
-        const active = i === activeIndex;
-        const reached = i <= activeIndex;
-        const first = i === 0;
-        const last = i === chapters.length - 1;
-        // A parallelogram per step: the leading edge leans one way and the
-        // trailing edge the same way, so neighbours cut parallel to each other.
-        const cut = `polygon(${first ? 0 : CHAPTER_SLANT_PX}px 0, 100% 0, calc(100% - ${
-          last ? 0 : CHAPTER_SLANT_PX
-        }px) 100%, 0 100%)`;
-        return (
-          <Box
-            key={chapter.id}
-            component="button"
-            type="button"
-            onClick={() => onJump(chapter.id)}
-            aria-current={active ? "step" : undefined}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: 26,
-              minWidth: CHAPTER_STEP_MIN_WIDTH,
-              border: 0,
-              font: "inherit",
-              fontSize: "0.8125rem",
-              fontWeight: active ? 700 : 500,
-              lineHeight: 1,
-              letterSpacing: 0,
-              px: `${CHAPTER_SLANT_PX + 9}px`,
-              clipPath: cut,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              bgcolor: active
-                ? "primary.main"
-                : reached
-                  ? "primary.container"
-                  : "action.hover",
-              color: active
-                ? "primary.contrastText"
-                : reached
-                  ? "primary.onContainer"
-                  : "text.disabled",
-              transition: "background-color 150ms ease, color 150ms ease",
-              "&:hover": {
-                bgcolor: active ? "primary.dark" : "action.selected",
-                color: active ? "primary.contrastText" : "text.primary",
-              },
-            }}
-          >
-            {chapter.label}
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
-function JobLogPanel({
-  logs,
-  status,
-  expanded,
-  onToggle,
-}: {
-  logs: JobLog[];
-  status: JobStatus;
-  /** Whether the log body is shown; collapsed keeps a one-line summary bar. */
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (boxRef.current && expanded) {
-      boxRef.current.scrollTop = boxRef.current.scrollHeight;
-    }
-  }, [logs, expanded]);
-
-  const lastLine = logs[logs.length - 1]?.message;
-
-  return (
-    <Paper
-      variant="outlined"
-      sx={{
-        mb: 2,
-        bgcolor: TERMINAL_BG,
-        color: TERMINAL_TEXT,
-        overflow: "hidden",
-      }}
-    >
-      <Box
-        onClick={onToggle}
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1,
-          px: 1.5,
-          py: 0.75,
-          cursor: "pointer",
-          userSelect: "none",
-          "&:hover": { bgcolor: TERMINAL_HOVER },
-        }}
-      >
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1,
-            flex: 1,
-            minWidth: 0,
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{ color: JOB_STATUS_COLOR[status], fontWeight: 600 }}
-          >
-            执行日志 · {JOB_STATUS_LABEL[status]}
-          </Typography>
-          {!expanded && lastLine && (
-            <Typography variant="caption" noWrap sx={{ color: TERMINAL_MUTED }}>
-              {lastLine}
-            </Typography>
-          )}
-        </Box>
-        {expanded ? (
-          <ExpandLessIcon sx={{ fontSize: 18, color: TERMINAL_MUTED }} />
-        ) : (
-          <ExpandMoreIcon sx={{ fontSize: 18, color: TERMINAL_MUTED }} />
-        )}
-      </Box>
-      <Collapse
-        in={expanded}
-        timeout={{
-          enter: durationTokens.standard,
-          exit: durationTokens.standard,
-        }}
-        unmountOnExit={false}
-      >
-        <Box
-          ref={boxRef}
-          sx={{
-            maxHeight: 200,
-            overflowY: "auto",
-            px: 1.5,
-            pb: 1.5,
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 12,
-            opacity: expanded ? 1 : 0,
-            transition: `opacity ${durationTokens.quick}ms ${easeTokens.standard}`,
-          }}
-        >
-          {logs.length === 0 && status === "running" && (
-            <Box sx={{ color: TERMINAL_MUTED }}>等待任务启动…</Box>
-          )}
-          {logs.map((log, i) => (
-            <Box
-              key={`${log.ts}-${i}`}
-              // New lines ease in so a busy job reads as progress rather than
-              // as text appearing out of nowhere.
-              sx={{
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.6,
-                animation: `briefingLogLineIn ${durationTokens.micro}ms ease-out both`,
-              }}
-            >
-              <span style={{ color: TERMINAL_MUTED }}>
-                [{log.ts.split("T")[1] ?? log.ts}]{" "}
-              </span>
-              <span
-                style={{ color: LOG_LEVEL_COLOR[log.level] ?? TERMINAL_TEXT }}
-              >
-                {log.message}
-              </span>
-            </Box>
-          ))}
-        </Box>
-      </Collapse>
-    </Paper>
-  );
-}
-
-/**
- * Run status strip: phase dot, elapsed time and the latest log line.
- *
- * Replaces a generic indeterminate progress bar, which said "something is
- * happening" without saying what.
- */
-function JobStatusBar({
-  status,
-  elapsedSec,
-  lastLog,
-}: {
-  status: JobStatus;
-  elapsedSec: number;
-  lastLog: JobLog | null;
-}) {
-  const reduced = useReducedMotion();
-  const running = status === "running";
-  const color = JOB_STATUS_COLOR[status];
-
-  return (
-    <Paper
-      variant="outlined"
-      sx={{
-        mb: 2,
-        overflow: "hidden",
-        bgcolor: BRIEFING_CSS_COLORS.surfaceMain,
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          gap: 1.25,
-          px: 1.5,
-          py: 1,
-        }}
-      >
-        <Box
-          aria-hidden
-          sx={{
-            flexShrink: 0,
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            bgcolor: color,
-            animation:
-              running && !reduced
-                ? `${statusPulse} 1.4s ease-in-out infinite`
-                : "none",
-          }}
-        />
-        <Typography variant="body2" sx={{ fontWeight: 600, color }}>
-          {JOB_STATUS_LABEL[status]}
-        </Typography>
-        {running && (
-          <Typography
-            variant="body2"
-            sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}
-          >
-            已运行 {Math.floor(elapsedSec / 60)} 分{" "}
-            {String(elapsedSec % 60).padStart(2, "0")} 秒
-          </Typography>
-        )}
-        <Box sx={{ flex: 1, minWidth: 0 }} />
-        {lastLog && (
-          <Typography
-            variant="caption"
-            noWrap
-            sx={{ color: "text.secondary", maxWidth: { xs: 140, md: 420 } }}
-          >
-            {lastLog.message}
-          </Typography>
-        )}
-      </Box>
-      {running && (
-        <Box
-          sx={{
-            position: "relative",
-            height: 2,
-            bgcolor: "action.hover",
-            overflow: "hidden",
-          }}
-        >
-          <Box
-            aria-hidden
-            sx={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              width: "30%",
-              bgcolor: "primary.main",
-              animation: reduced
-                ? "none"
-                : `${railSweep} 1.6s ease-in-out infinite`,
-            }}
-          />
-        </Box>
-      )}
-    </Paper>
-  );
-}
-
 /**
  * The trend chart's text alternative: the same numbers as a table, so the
  * canvas is not the only way to read the report.
@@ -4632,17 +4296,22 @@ export default function DailyReportDetail() {
   const [form, setForm] = useState<ReportParamValues | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus>("idle");
-  const [logs, setLogs] = useState<JobLog[]>([]);
-  // The live-log panel folds itself away once a run settles; the user can
-  // re-open it from the collapsed summary bar.
-  const [logsExpanded, setLogsExpanded] = useState(true);
-  const [result, setResult] = useState<DailyReportResult | null>(null);
-  const [jobError, setJobError] = useState<string | null>(null);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [now, setNow] = useState<number>(Date.now());
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const {
+    jobStatus,
+    logs,
+    logsExpanded,
+    result,
+    jobError,
+    pollError,
+    isRunning,
+    elapsedSec,
+    lastLog,
+    handleRun,
+    handleStop,
+    retryPolling,
+    toggleLogs,
+    restoreResult,
+  } = useBriefingJob<DailyReportResult>({ configId, reportDate, reportType });
   const [showComboDaily, setShowComboDaily] = useState(false);
   // 不分客户端: roll a game's channels into a single row.
   // 分渠道 is the report's default view; 分地区 refines it and is off by
@@ -4668,8 +4337,6 @@ export default function DailyReportDetail() {
   );
   // The report scrolls inside its own container (the chapter rail tracks it).
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Once the reader touches the log panel, it stops folding itself away.
-  const logsTouchedRef = useRef(false);
 
   // 飞书推送: whether targets are configured (drives the header button) and
   // the settings dialog visibility.
@@ -4736,38 +4403,9 @@ export default function DailyReportDetail() {
     setExpandedProjects(new Set());
   }, [result?.report_date]);
 
-  // Live elapsed timer while a job is running (so a long query doesn't look stuck).
-  useEffect(() => {
-    if (jobStatus !== "running") return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [jobStatus]);
-
-  // Fold the log panel away shortly after a run settles: the final lines stay
-  // readable for a moment, then the panel fades into its collapsed summary
-  // bar.  A fresh run re-opens it immediately, and a panel the reader has
-  // opened by hand is never closed underneath them.
-  useEffect(() => {
-    if (jobStatus === "idle") return;
-    if (jobStatus === "running") {
-      setLogsExpanded(true);
-      return;
-    }
-    if (logsTouchedRef.current) return;
-    const t = setTimeout(() => setLogsExpanded(false), 4000);
-    return () => clearTimeout(t);
-  }, [jobStatus]);
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
   const loadConfig = useCallback(async () => {
     if (!configId) return;
+    setConfigError(null);
     try {
       const res = await api.get<{ result: Record<string, unknown> }>(
         `/briefing/configs/${configId}`,
@@ -4776,8 +4414,8 @@ export default function DailyReportDetail() {
       setReportName(String(res.data.result?.name ?? "简报详情"));
       setReportType(normalizeReportType(res.data.result?.report_type));
       setForm(paramsFromConfig(res.data.result));
-    } catch {
-      setConfigError("未找到该简报，可能已被删除。");
+    } catch (err: unknown) {
+      setConfigError(parseErrorMessage(err, "未找到该简报，可能已被删除。"));
     }
   }, [configId]);
 
@@ -4800,8 +4438,7 @@ export default function DailyReportDetail() {
       .then((res) => {
         const latest = res.data.result;
         if (latest) {
-          setResult(latest);
-          setJobStatus("done");
+          restoreResult(latest);
           setReportType(normalizeReportType(latest.report_type));
           if (latest.report_date) {
             restoredDateRef.current = latest.report_date;
@@ -4813,7 +4450,7 @@ export default function DailyReportDetail() {
         // No persisted result yet — the user can run the briefing to generate
         // one.
       });
-  }, [configId]);
+  }, [configId, restoreResult]);
 
   // Keep the picker's default aligned with the briefing type.  Daily reports
   // on yesterday; weekly picks a date inside the target week, so anchor on the
@@ -4830,8 +4467,6 @@ export default function DailyReportDetail() {
         : dayjs().subtract(1, "day"),
     );
   }, [reportType]);
-
-  useEffect(() => () => stopPolling(), []);
 
   // Chapter list for the nav; the nav observes the sections itself (see
   // ChapterNav) so scrolling does not re-render the report body.
@@ -4882,104 +4517,6 @@ export default function DailyReportDetail() {
   // Clear on leave so no stale name lingers on the next route.
   useEffect(() => () => setCustomBreadcrumb(null), [setCustomBreadcrumb]);
 
-  const loadJob = useCallback(async (jid: string) => {
-    try {
-      const res = await api.get<{ result: JobInfo }>(`/briefing/jobs/${jid}`);
-      const job = res.data.result;
-      setLogs(job.logs ?? []);
-      setJobError(job.error ?? null);
-      if (job.status === "done" && job.result) {
-        setResult(job.result);
-      }
-      if (job.status !== "running") {
-        setJobStatus(job.status);
-        stopPolling();
-      }
-    } catch {
-      // Ignore transient poll failures; the job continues in the background.
-    }
-  }, []);
-
-  const run = useCallback(
-    async (override?: Dayjs | null) => {
-      if (!configId) return;
-      // Avoid launching an invalid/duplicate run while one is in progress.
-      if (jobStatus === "running") {
-        notify({
-          severity: "info",
-          message: "该简报正在执行中，请先等待或停止当前任务。",
-        });
-        return;
-      }
-      stopPolling();
-      setJobStatus("running");
-      setLogs([]);
-      setResult(null);
-      setJobError(null);
-      setStartedAt(Date.now());
-      try {
-        // The picker holds the report date the user wants to see.  Daily runs
-        // treat `override_date` as the "as-of" date and report on the day
-        // before it, so shift by one day to make the picked date the report
-        // date; weekly runs select the natural (Monday–Sunday) week
-        // containing the picked date, so it is passed through unchanged.
-        const params: { override_date?: string } = {};
-        if (override) {
-          params.override_date =
-            reportType === "weekly"
-              ? override.format("YYYY-MM-DD")
-              : override.add(1, "day").format("YYYY-MM-DD");
-        }
-        const startRes = await api.post<{
-          result: { job_id: string; status: string; already_running: boolean };
-        }>("/briefing/jobs", { config_id: configId, ...params });
-        const { job_id, already_running } = startRes.data.result;
-        setJobId(job_id);
-        if (already_running) {
-          notify({
-            severity: "info",
-            message: "检测到该简报已有执行中的任务，已切换到该任务。",
-          });
-        }
-        // Poll the job until it finishes.
-        await loadJob(job_id);
-        pollRef.current = setInterval(() => {
-          void loadJob(job_id);
-        }, 1500);
-      } catch (e) {
-        const backendError = (
-          e as { response?: { data?: { error?: unknown } } }
-        ).response?.data?.error;
-        const msg =
-          typeof backendError === "string"
-            ? backendError
-            : e instanceof Error
-              ? e.message
-              : "任务启动失败";
-        setJobError(msg);
-        setJobStatus("error");
-        notify({ severity: "error", message: msg });
-      }
-    },
-    [configId, reportType, jobStatus, notify, loadJob],
-  );
-
-  const handleRun = useCallback(() => {
-    void run(reportDate);
-  }, [run, reportDate]);
-
-  const handleStop = useCallback(async () => {
-    if (!jobId) return;
-    try {
-      await api.post(`/briefing/jobs/${jobId}/cancel`);
-      notify({ severity: "info", message: "正在停止任务…" });
-      // Poll once more to reflect the cancelled state promptly.
-      setTimeout(() => void loadJob(jobId), 800);
-    } catch {
-      notify({ severity: "error", message: "停止失败" });
-    }
-  }, [jobId, notify, loadJob]);
-
   const openEdit = () => {
     if (config) setForm(paramsFromConfig(config));
     setEditOpen(true);
@@ -5011,8 +4548,6 @@ export default function DailyReportDetail() {
   // The headline band's 环比 figures are derived inside ``CoreStatBand``, so
   // the same code produces the total's and each platform's.
 
-  const isRunning = jobStatus === "running";
-  const elapsedSec = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
   // The rendered result's type wins over the config type (they agree in
   // practice; legacy results without a type fall back to the daily display).
   const resultIsWeekly =
@@ -5399,7 +4934,7 @@ export default function DailyReportDetail() {
                 >
                   {feishuPushing ? "推送中…" : "推送飞书"}
                 </Button>
-                <DatePicker
+                <LocalizedDatePicker
                   label={resultIsWeekly ? "简报周（任选日期）" : "简报日期"}
                   value={reportDate}
                   onChange={(v: Dayjs | null) => setReportDate(v)}
@@ -5458,13 +4993,43 @@ export default function DailyReportDetail() {
             <JobStatusBar
               status={jobStatus}
               elapsedSec={elapsedSec}
-              lastLog={logs.length > 0 ? logs[logs.length - 1] : null}
+              lastLog={lastLog}
             />
           )}
 
           {configError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert
+              severity="error"
+              sx={{ mb: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => void loadConfig()}
+                >
+                  重试
+                </Button>
+              }
+            >
               {configError}
+            </Alert>
+          )}
+
+          {pollError && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => void retryPolling()}
+                >
+                  重试
+                </Button>
+              }
+            >
+              {pollError}
             </Alert>
           )}
 
@@ -5485,10 +5050,7 @@ export default function DailyReportDetail() {
               logs={logs}
               status={jobStatus}
               expanded={logsExpanded}
-              onToggle={() => {
-                logsTouchedRef.current = true;
-                setLogsExpanded((v) => !v);
-              }}
+              onToggle={toggleLogs}
             />
           )}
 

@@ -71,6 +71,14 @@ function payload(labels: string[]): ChartDataPayload {
   };
 }
 
+function tooltipFormatter(option: unknown): (params: unknown) => string {
+  return (
+    option as {
+      tooltip: { formatter: (params: unknown) => string };
+    }
+  ).tooltip.formatter;
+}
+
 test("x-axis labels are told to hide overlaps instead of stacking", () => {
   const option = cartesianOption(payload(LONG_CJK_LABELS));
   expect(option.xAxis.axisLabel).toMatchObject({
@@ -106,4 +114,38 @@ test("does not change category labels or series data", () => {
   expect(option.series[0].data).toEqual(
     DATE_LABELS.map((_, i) => 1000 - i * 10),
   );
+});
+
+test("renders pie names and column names as text in HTML tooltips", () => {
+  const name = `<img src=x onerror="alert(1)">&`;
+  const metric = `<svg onload="alert(1)">`;
+  const option = buildEChartsOption("pie", {
+    data: [{ [name]: name, [metric]: 10 }],
+  });
+  const template = document.createElement("template");
+  template.innerHTML = tooltipFormatter(option)({
+    name,
+    value: 10,
+    percent: 50,
+  });
+
+  expect(template.content.querySelector("img, svg")).toBeNull();
+  expect(template.content.textContent).toContain(name);
+  expect(template.content.textContent).toContain(metric);
+});
+
+test("renders axis labels and series names as text in HTML tooltips", () => {
+  const name = `<img src=x onerror="alert(1)">&`;
+  const metric = `<svg onload="alert(1)">`;
+  const option = buildEChartsOption("bar", {
+    data: [{ [name]: name, [metric]: 10 }],
+  });
+  const template = document.createElement("template");
+  template.innerHTML = tooltipFormatter(option)([
+    { name, seriesName: metric, value: 10 },
+  ]);
+
+  expect(template.content.querySelector("img, svg")).toBeNull();
+  expect(template.content.textContent).toContain(name);
+  expect(template.content.textContent).toContain(metric);
 });

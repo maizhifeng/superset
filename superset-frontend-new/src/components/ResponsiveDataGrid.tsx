@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   useCallback,
   useEffect,
@@ -11,19 +30,23 @@ import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Checkbox from "@mui/material/Checkbox";
 import DeleteIcon from "@mui/icons-material/Delete";
+import IconButton from "@mui/material/IconButton";
 import KeyboardArrowRight from "@mui/icons-material/KeyboardArrowRight";
 import Pagination from "@mui/material/Pagination";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { useToolbarStore } from "@/store/toolbarStore";
 import { useMediaQuery, useTheme } from "@mui/material";
-import type { DataGridProps } from "@mui/x-data-grid";
+import type { DataGridProps, GridCallbackDetails } from "@mui/x-data-grid";
 import DataGridTable from "./DataGridTable";
 
 const SWIPE_THRESHOLD = 40;
 const ACTION_WIDTH = 72;
 
-interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, "rows"> {
+interface ResponsiveDataGridProps<
+  R extends { id?: string | number } = Record<string, unknown>,
+> extends Omit<DataGridProps, "rows"> {
   rows: readonly R[];
   renderCard?: (row: R) => ReactNode;
   onEdit?: (row: R) => void;
@@ -34,8 +57,9 @@ interface ResponsiveDataGridProps<R = any> extends Omit<DataGridProps, "rows"> {
   onSelectionChange?: (ids: string[]) => void;
 }
 
-function SwipeableCard({
+function SwipeableCard<R extends { id?: string | number }>({
   row,
+  rowLabel,
   children,
   onEdit,
   onDelete,
@@ -45,10 +69,11 @@ function SwipeableCard({
   showCheckbox,
   onToggleSelect,
 }: {
-  row: Record<string, unknown>;
+  row: R;
+  rowLabel: string;
   children: ReactNode;
-  onEdit?: (row: Record<string, unknown>) => void;
-  onDelete?: (row: Record<string, unknown>) => void;
+  onEdit?: (row: R) => void;
+  onDelete?: (row: R) => void;
   isOpen: boolean;
   onOpenChange: (id: string | null) => void;
   isSelected: boolean;
@@ -142,6 +167,10 @@ function SwipeableCard({
 
   return (
     <Card
+      role="button"
+      tabIndex={0}
+      aria-label={rowLabel}
+      aria-pressed={isSelected}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -149,6 +178,16 @@ function SwipeableCard({
         if (justSwiped.current) return;
         if (isOpen) closeSwipe();
         else if (showCheckbox) onToggleSelect(String(row.id ?? ""));
+        else if (onDelete) onOpenChange(String(row.id ?? ""));
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (isOpen) closeSwipe();
+          else if (showCheckbox) onToggleSelect(String(row.id ?? ""));
+          else if (onDelete) onOpenChange(String(row.id ?? ""));
+        }
       }}
       onPointerDown={() => {
         if (!isOpen && !showCheckbox) onOpenChange(null);
@@ -197,6 +236,9 @@ function SwipeableCard({
               <Checkbox
                 checked={isSelected}
                 size="small"
+                tabIndex={showCheckbox ? 0 : -1}
+                aria-hidden={!showCheckbox}
+                aria-label={`选择${rowLabel}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleSelect(String(row.id ?? ""));
@@ -225,50 +267,80 @@ function SwipeableCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              bgcolor: "primary.main",
+              bgcolor: onDelete ? "error.main" : "primary.main",
               opacity: isOpen ? 0 : 1,
               transition: "opacity 0.2s ease",
             }}
           >
-            <KeyboardArrowRight sx={{ fontSize: 20, color: "white" }} />
+            {onDelete ? (
+              <Tooltip title={`删除${rowLabel}`}>
+                <IconButton
+                  size="small"
+                  aria-label={`删除${rowLabel}`}
+                  aria-hidden={isOpen}
+                  tabIndex={isOpen ? -1 : 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete();
+                  }}
+                  sx={{ color: "white" }}
+                >
+                  <DeleteIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <KeyboardArrowRight sx={{ fontSize: 20, color: "white" }} />
+            )}
           </Box>
         </Box>
-        <Box
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete();
-          }}
-          sx={{
-            width: ACTION_WIDTH,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 0.25,
-            bgcolor: "error.main",
-            cursor: "pointer",
-          }}
-        >
-          <DeleteIcon sx={{ fontSize: 22, color: "white" }} />
-          <Typography
-            variant="caption"
+        {onDelete && (
+          <Box
+            component="button"
+            type="button"
+            aria-label={`删除${rowLabel}`}
+            aria-hidden={!isOpen}
+            tabIndex={isOpen ? 0 : -1}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete();
+            }}
             sx={{
-              fontSize: "0.75rem",
-              fontWeight: 600,
+              width: ACTION_WIDTH,
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 0.25,
+              border: 0,
+              bgcolor: "error.main",
               color: "white",
-              lineHeight: 1,
+              cursor: "pointer",
+              font: "inherit",
             }}
           >
-            删除
-          </Typography>
-        </Box>
+            <DeleteIcon sx={{ fontSize: 22, color: "white" }} />
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "white",
+                lineHeight: 1,
+              }}
+            >
+              删除
+            </Typography>
+          </Box>
+        )}
       </Box>
     </Card>
   );
 }
 
-export default function ResponsiveDataGrid<R = any>({
+export default function ResponsiveDataGrid<
+  R extends { id?: string | number } = Record<string, unknown>,
+>({
   renderCard,
   onEdit,
   onDelete,
@@ -349,33 +421,39 @@ export default function ResponsiveDataGrid<R = any>({
     );
   }
 
-  const rows = gridProps.rows as R[];
+  const rows = gridProps.rows;
   const paginationModel = gridProps.paginationModel;
   const rowCount = gridProps.rowCount ?? rows.length;
   const pageSize = paginationModel?.pageSize ?? 25;
   const page = paginationModel?.page ?? 0;
   const totalPages = Math.ceil(rowCount / pageSize);
 
+  const changePage = (p: number) => {
+    const model = { page: p - 1, pageSize };
+    const details = {
+      reason: "setPaginationModel",
+      api: gridProps.apiRef?.current,
+    } as GridCallbackDetails<"pagination">;
+    gridProps.onPaginationModelChange?.(model, details);
+    setJumpPage("");
+  };
+
   const handlePageChange = (_: React.ChangeEvent<unknown>, p: number) => {
-    gridProps.onPaginationModelChange?.({ page: p - 1, pageSize }, {} as any);
+    changePage(p);
   };
 
   return (
     <Box sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1, pb: 2 }}>
         {rows.map((row, i) => {
-          const recordRow = row as Record<string, unknown>;
-          const cardId = String(recordRow.id ?? i);
+          const cardId = String(row.id ?? i);
           return (
             <SwipeableCard
               key={cardId}
-              row={recordRow}
-              onEdit={
-                onEdit as ((row: Record<string, unknown>) => void) | undefined
-              }
-              onDelete={
-                onDelete as ((row: Record<string, unknown>) => void) | undefined
-              }
+              row={row}
+              rowLabel={`第 ${i + 1} 项`}
+              onEdit={onEdit}
+              onDelete={onDelete}
               isOpen={openCardId === cardId}
               onOpenChange={handleOpenChange}
               isSelected={selectedIds.has(cardId)}
@@ -416,11 +494,7 @@ export default function ResponsiveDataGrid<R = any>({
                 if (e.key === "Enter") {
                   const n = Number(jumpPage);
                   if (n >= 1 && n <= totalPages) {
-                    gridProps.onPaginationModelChange?.(
-                      { page: n - 1, pageSize },
-                      {} as never,
-                    );
-                    setJumpPage("");
+                    changePage(n);
                   }
                 }
               }}

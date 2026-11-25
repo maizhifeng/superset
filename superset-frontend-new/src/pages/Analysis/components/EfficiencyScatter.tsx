@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -5,6 +24,7 @@ import { useTheme } from "@mui/material/styles";
 import type { EChartsOption } from "echarts";
 import EChart from "@/pages/Briefing/EChart";
 import type { ChartDataRow } from "@/types/api";
+import { escapeHtml } from "@/utils/escapeHtml";
 import { formatNumber, formatPctValue } from "@/utils/formatNumber";
 import { formatMetricValue, toNumber } from "../format";
 import { topicMetric } from "../topics";
@@ -149,8 +169,7 @@ export default function EfficiencyScatter({
   }, [bounds, points]);
 
   const maxSpend = useMemo(
-    () =>
-      shownPoints.reduce((max, point) => Math.max(max, point.value[2]), 0),
+    () => shownPoints.reduce((max, point) => Math.max(max, point.value[2]), 0),
     [shownPoints],
   );
 
@@ -174,10 +193,16 @@ export default function EfficiencyScatter({
           const value = item.data?.value;
           if (!value) return "";
           return [
-            item.data?.name ?? "",
-            `${cpaMetric.label}: ${formatMetricValue(cpaMetric, value[0])}`,
-            `${roiMetric.label}: ${formatMetricValue(roiMetric, value[1])}`,
-            `${spendMetric.label}: ${formatMetricValue(spendMetric, value[2])}`,
+            escapeHtml(item.data?.name ?? ""),
+            `${escapeHtml(cpaMetric.label)}: ${escapeHtml(
+              formatMetricValue(cpaMetric, value[0]),
+            )}`,
+            `${escapeHtml(roiMetric.label)}: ${escapeHtml(
+              formatMetricValue(roiMetric, value[1]),
+            )}`,
+            `${escapeHtml(spendMetric.label)}: ${escapeHtml(
+              formatMetricValue(spendMetric, value[2]),
+            )}`,
           ].join("<br/>");
         },
       },
@@ -315,8 +340,8 @@ export default function EfficiencyScatter({
             color="text.secondary"
             sx={{ fontVariantNumeric: "tabular-nums" }}
           >
-            仅展示{spendMetric.label}最高的 {MAX_POINTS} 个{dimensionLabel}（范围内共{" "}
-            {hiddenOverflow + shownPoints.length} 个）
+            仅展示{spendMetric.label}最高的 {MAX_POINTS} 个{dimensionLabel}
+            （范围内共 {hiddenOverflow + shownPoints.length} 个）
           </Typography>
         )}
       </Box>

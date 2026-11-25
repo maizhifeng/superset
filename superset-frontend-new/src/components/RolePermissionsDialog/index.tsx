@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
@@ -19,7 +38,6 @@ import api from "@/api";
 import {
   describePermission,
   describeResource,
-  fetchPermissionViews,
   isDataAccessPerm,
   type PermissionViewEntry,
 } from "@/utils/permissionDescriptions";
@@ -31,6 +49,8 @@ export interface RolePermissionsTarget {
 }
 
 let rolePermissionIdsCache: Promise<Map<number, number[]>> | null = null;
+let permissionViewsCache: Promise<Map<number, PermissionViewEntry>> | null =
+  null;
 
 function fetchRolePermissionIds(): Promise<Map<number, number[]>> {
   if (!rolePermissionIdsCache) {
@@ -47,9 +67,52 @@ function fetchRolePermissionIds(): Promise<Map<number, number[]>> {
           map.set(role.id, role.permission_ids ?? []);
         }
         return map;
+      })
+      .catch((err: unknown) => {
+        rolePermissionIdsCache = null;
+        throw err;
       });
   }
   return rolePermissionIdsCache;
+}
+
+function fetchRolePermissionViews(): Promise<Map<number, PermissionViewEntry>> {
+  if (!permissionViewsCache) {
+    permissionViewsCache = (async () => {
+      const map = new Map<number, PermissionViewEntry>();
+      let page = 0;
+      for (;;) {
+        const res = await api.get<{
+          result: {
+            id: number;
+            permission: { name: string };
+            view_menu: { name: string };
+          }[];
+          count: number;
+        }>(
+          `/security/permissions-resources/?q=${rison.encode({
+            page_size: 100,
+            page,
+          })}`,
+        );
+        const { result, count } = res.data;
+        for (const item of result) {
+          map.set(item.id, {
+            id: item.id,
+            permission: item.permission.name,
+            viewMenu: item.view_menu.name,
+          });
+        }
+        if ((page + 1) * 100 >= count) break;
+        page += 1;
+      }
+      return map;
+    })().catch((err: unknown) => {
+      permissionViewsCache = null;
+      throw err;
+    });
+  }
+  return permissionViewsCache;
 }
 
 interface RolePermissionsContentProps {
@@ -75,33 +138,39 @@ export function RolePermissionsContent({
     role.permissionIds ?? null,
   );
   const [loading, setLoading] = useState(!role.permissionIds);
-  const [error, setError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [viewError, setViewError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMap, setViewMap] = useState<Map<number, PermissionViewEntry> | null>(
-    null,
-  );
+  const [viewMap, setViewMap] = useState<Map<
+    number,
+    PermissionViewEntry
+  > | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchPermissionViews()
+    setViewError(null);
+    fetchRolePermissionViews()
       .then((m) => {
         if (!cancelled) setViewMap(m);
       })
       .catch(() => {
-        if (!cancelled) setError("加载权限定义失败");
+        if (!cancelled) setViewError("加载权限定义失败");
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryKey]);
 
   useEffect(() => {
+    setPermissionError(null);
     if (role.permissionIds) {
       setPermissionIds(role.permissionIds);
       setLoading(false);
       return;
     }
     let cancelled = false;
+    setLoading(true);
     fetchRolePermissionIds()
       .then((map) => {
         if (cancelled) return;
@@ -110,14 +179,14 @@ export function RolePermissionsContent({
       })
       .catch(() => {
         if (!cancelled) {
-          setError("加载角色权限失败");
+          setPermissionError("加载角色权限失败");
           setLoading(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [role.id, role.permissionIds]);
+  }, [role.id, role.permissionIds, retryKey]);
 
   const groups = useMemo<PermissionGroup[]>(() => {
     if (!permissionIds || !viewMap) return [];
@@ -170,6 +239,31 @@ export function RolePermissionsContent({
       .filter((g): g is PermissionGroup => !!g);
   }, [groups, searchTerm]);
 
+  const error = permissionError ?? viewError;
+
+  if (error) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => {
+              setViewMap(null);
+              setPermissionIds(role.permissionIds ?? null);
+              setRetryKey((value) => value + 1);
+            }}
+          >
+            重试
+          </Button>
+        }
+      >
+        {error}
+      </Alert>
+    );
+  }
+
   if (loading || !viewMap) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
@@ -177,20 +271,28 @@ export function RolePermissionsContent({
       </Box>
     );
   }
-  if (error) {
-    return <Alert severity="error">{error}</Alert>;
-  }
 
   const total = groups.reduce((acc, g) => acc + g.items.length, 0);
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+      <Box
+        sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}
+      >
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           {role.name}
         </Typography>
-        <Chip label={`${total} 项权限`} size="small" color="primary" variant="outlined" />
-        <Chip label={`${groups.length} 个资源`} size="small" variant="outlined" />
+        <Chip
+          label={`${total} 项权限`}
+          size="small"
+          color="primary"
+          variant="outlined"
+        />
+        <Chip
+          label={`${groups.length} 个资源`}
+          size="small"
+          variant="outlined"
+        />
       </Box>
       <TextField
         size="small"
@@ -235,9 +337,7 @@ export function RolePermissionsContent({
               {group.items.length} 项
             </Typography>
           </Box>
-          {!compact && (
-            <Divider sx={{ mb: 1 }} />
-          )}
+          {!compact && <Divider sx={{ mb: 1 }} />}
           <Box
             sx={{
               display: "flex",

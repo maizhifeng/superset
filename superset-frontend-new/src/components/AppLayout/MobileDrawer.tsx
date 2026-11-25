@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { Link as RouterLink } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
@@ -41,9 +60,15 @@ export default function MobileDrawer({
       open={open}
       onClose={onClose}
       sx={{ display: { xs: "block", sm: "none" } }}
-      slotProps={{ paper: { sx: { width: { xs: "50vw", sm: 260 } } } }}
+      slotProps={{
+        paper: {
+          sx: { width: { xs: "50vw", sm: 260 } },
+        },
+      }}
     >
       <Box
+        component="nav"
+        aria-label="移动端导航"
         sx={{
           width: "100%",
           display: "flex",
@@ -60,7 +85,7 @@ export default function MobileDrawer({
         </Box>
         <List sx={{ flex: 1, overflow: "auto" }}>
           {items
-            .filter((item) => item.id !== "home" && enabled[item.id])
+            .filter((item) => enabled[item.id])
             .map((item) => (
               <ListItem key={item.id} disablePadding>
                 <ListItemButton
@@ -112,7 +137,13 @@ export default function MobileDrawer({
               </Typography>
             </Box>
           </Box>
-          <ListItemButton onClick={onLogout} sx={{ borderRadius: 1 }}>
+          <ListItemButton
+            onClick={() => {
+              onClose();
+              onLogout();
+            }}
+            sx={{ borderRadius: 1 }}
+          >
             <Logout sx={{ fontSize: 18, mr: 1, color: "text.secondary" }} />
             <ListItemText
               primary="退出登录"

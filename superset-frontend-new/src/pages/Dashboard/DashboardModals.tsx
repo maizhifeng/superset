@@ -1,9 +1,34 @@
-import { lazy, Suspense } from "react";
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { lazy, Suspense, useCallback } from "react";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
-import UndoRedoKeyListeners from "@/dashboard/components/UndoRedoKeyListeners";
+import { useShortcutWithHelp } from "@/hooks/useShortcut";
 import DashboardNav from "@/pages/Dashboard/DashboardNav";
-import type { ChartData } from "@/types/api";
+import type {
+  CompareConfig,
+  CompareDimension,
+} from "@/pages/Dashboard/ChartCard";
+import type { ColumnOption } from "@/pages/Dashboard/CompareConfigModal";
+import type { BuildAdhocFilters } from "@/pages/Dashboard/hooks/useDashboardData";
+import type { ChartData, ChartDataPayload } from "@/types/api";
 
 const ChartEditor = lazy(() => import("@/pages/ChartCreation/ChartEditor"));
 const CompareConfigModal = lazy(
@@ -12,7 +37,24 @@ const CompareConfigModal = lazy(
 const CompareModal = lazy(() => import("@/pages/Dashboard/CompareModal"));
 const AddChartDialog = lazy(() => import("@/pages/Dashboard/AddChartDialog"));
 
-type AnyCompare = any;
+interface DashboardCompareState {
+  compareConfig: CompareConfig | null;
+  compareModalOpen: boolean;
+  datasetCompareColumns: ColumnOption[];
+  initialCompareColumns: ColumnOption[];
+  compareFullData?: ChartDataPayload;
+  handleApplyCompare: (dimensions: CompareDimension[]) => void;
+  closeCompareModal: () => void;
+  periodModalOpen: boolean;
+  periodModalChartId: number | null;
+  periodModalChartData?: ChartDataPayload;
+  compareChartMeta?: ChartData;
+  closePeriodModal: () => void;
+}
+
+type DashboardFilterBuilder = (
+  datasetId?: number,
+) => ReturnType<BuildAdhocFilters>;
 
 interface DashboardModalsProps {
   isDrawerOpen: boolean;
@@ -24,9 +66,9 @@ interface DashboardModalsProps {
   dashboardChartIds: Set<number>;
   pageKey: string;
 
-  compare: AnyCompare;
+  compare: DashboardCompareState;
 
-  buildAdhocFilters: any;
+  buildAdhocFilters: DashboardFilterBuilder;
   onChartSaved: (chartId: number) => void;
   onCloseDrawer: () => void;
   onNavClose: () => void;
@@ -47,7 +89,6 @@ export default function DashboardModals({
   navItems,
   addChartDialogOpen,
   dashboardChartIds,
-  pageKey: _pageKey,
   compare,
   buildAdhocFilters,
   onChartSaved,
@@ -57,6 +98,47 @@ export default function DashboardModals({
   onAddChartClose,
   onSaveLayout,
 }: DashboardModalsProps) {
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen();
+    } else {
+      void document.exitFullscreen();
+    }
+  }, []);
+
+  const buildEditorAdhocFilters = useCallback(
+    (datasetId?: number) =>
+      buildAdhocFilters(datasetId).map((filter) => ({
+        clause: "WHERE" as const,
+        expressionType: "SIMPLE" as const,
+        subject: filter.subject,
+        operator: filter.operator,
+        comparator: Array.isArray(filter.comparator)
+          ? filter.comparator.map(String)
+          : String(filter.comparator ?? ""),
+      })),
+    [buildAdhocFilters],
+  );
+
+  useShortcutWithHelp(
+    "ctrl+s",
+    (event) => {
+      event.preventDefault();
+      void onSaveLayout();
+    },
+    { label: "Save Dashboard", category: "dashboard" },
+    { allowInInput: true },
+  );
+
+  useShortcutWithHelp(
+    "f",
+    (event) => {
+      event.preventDefault();
+      toggleFullscreen();
+    },
+    { label: "Toggle Full Screen", category: "dashboard" },
+  );
+
   return (
     <>
       <Drawer
@@ -86,7 +168,7 @@ export default function DashboardModals({
                 initialData={
                   editingSliceId ? chartMeta[Number(editingSliceId)] : null
                 }
-                buildDashboardAdhocFilters={buildAdhocFilters}
+                buildDashboardAdhocFilters={buildEditorAdhocFilters}
               />
             </Suspense>
           )}
@@ -122,19 +204,6 @@ export default function DashboardModals({
           onClose={onAddChartClose}
         />
       </Suspense>
-
-      <UndoRedoKeyListeners
-        onUndo={() => {}}
-        onRedo={() => {}}
-        onSave={() => void onSaveLayout()}
-        onToggleFullScreen={() => {
-          if (!document.fullscreenElement) {
-            void document.documentElement.requestFullscreen();
-          } else {
-            void document.exitFullscreen();
-          }
-        }}
-      />
 
       <DashboardNav open={navOpen} items={navItems} onClose={onNavClose} />
     </>

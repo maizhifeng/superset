@@ -1,10 +1,36 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { WebSocket } from "ws";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { SessionStore } from "./session-store.js";
-import { getWsAuthToken } from "./session-store.js";
-import { executeQuerySuperset, getSchema } from "./tools/querySuperset.js";
+import type { SessionStore, VerifiedUserContext } from "./session-store.js";
+import {
+  executeQuerySuperset,
+  getSchema,
+  type SupersetDataContext,
+} from "./tools/querySuperset.js";
 import { buildChartInsightPrompt } from "./tools/chartData.js";
-import { loadAgentConfig, type AgentConfig, type ReportPerspective } from "./agent-config.js";
+import {
+  loadAgentConfig,
+  type AgentConfig,
+  type ReportPerspective,
+} from "./agent-config.js";
 import { loadConfig } from "./config.js";
 import { logger } from "./logger.js";
 import { tryRenderStructuredContent, buildFallbackOutput } from "./renderer.js";
@@ -56,7 +82,9 @@ export function isReportIntent(message: string): boolean {
   return REPORT_INTENT_PATTERNS.some((re) => re.test(message));
 }
 
-const DICT_INTENT_PATTERNS = [/(?:数据字典|字段定义|字段含义|数据模型)/];
+const DICT_INTENT_PATTERNS = [
+  /(?:数据字典|字段定义|字段含义|业务含义|数据模型)/,
+];
 
 /**
  * Whether the prompt asks for the dataset data dictionary. Dictionary
@@ -97,10 +125,9 @@ export function parseMarkdownRows(md: string): string[][] {
  */
 export async function fetchReportData(
   config: AgentConfig,
-  userId: string,
+  context: SupersetDataContext,
   emit: AgentEventSender,
   storeSessionId: string,
-  authToken?: string,
 ): Promise<string> {
   const { perspectives, defaultTimeRange } = config.report;
   const results: string[] = [];
@@ -122,10 +149,9 @@ export async function fetchReportData(
         data = await fetchTopDrilldown(
           p,
           defaultTimeRange,
-          userId,
+          context,
           emit,
           storeSessionId,
-          authToken,
           i,
         );
       } else {
@@ -137,7 +163,7 @@ export async function fetchReportData(
           toolName: "query_superset",
           args,
         });
-        data = await executeQuerySuperset(args, userId, undefined, authToken);
+        data = await executeQuerySuperset(args, context);
         emit({
           type: "tool_execution_end",
           storeSessionId,
@@ -163,10 +189,9 @@ export async function fetchReportData(
 async function fetchTopDrilldown(
   p: ReportPerspective,
   defaultTimeRange: string,
-  userId: string,
+  context: SupersetDataContext,
   emit: AgentEventSender,
   storeSessionId: string,
-  authToken: string | undefined,
   perspectiveIndex: number,
 ): Promise<string> {
   const topBy = p.topBy as string;
@@ -189,12 +214,7 @@ async function fetchTopDrilldown(
     toolName: "query_superset",
     args: topArgs,
   });
-  const topData = await executeQuerySuperset(
-    topArgs,
-    userId,
-    undefined,
-    authToken,
-  );
+  const topData = await executeQuerySuperset(topArgs, context);
   emit({
     type: "tool_execution_end",
     storeSessionId,
@@ -227,7 +247,7 @@ async function fetchTopDrilldown(
     toolName: "query_superset",
     args,
   });
-  const data = await executeQuerySuperset(args, userId, undefined, authToken);
+  const data = await executeQuerySuperset(args, context);
   emit({
     type: "tool_execution_end",
     storeSessionId,
@@ -310,7 +330,9 @@ export function extractToolResultText(messages: unknown[]): string {
  * Reduce agent transcript messages to the plain-text user/assistant turns
  * that get persisted for session restore.
  */
-export function extractPersistableMessages(messages: unknown[]): StoredMessage[] {
+export function extractPersistableMessages(
+  messages: unknown[],
+): StoredMessage[] {
   const contentText = (content: unknown): string => {
     if (typeof content === "string") return content;
     if (Array.isArray(content))
@@ -337,8 +359,9 @@ export async function processPrompt(
   message: string,
   emit: AgentEventSender,
   sessionStore: SessionStore,
+  identity: VerifiedUserContext,
 ): Promise<void> {
-  const session = sessionStore.getSession(storeSessionId);
+  const session = sessionStore.getSession(storeSessionId, identity.userId);
   if (!session) {
     emit({
       type: "error",
@@ -359,7 +382,7 @@ export async function processPrompt(
     return;
   }
 
-  sessionStore.setState(storeSessionId, "running");
+  sessionStore.setState(storeSessionId, "running", identity.userId);
 
   const isReport = isReportIntent(message);
   const isDict = isDictIntent(message);
@@ -401,7 +424,11 @@ export async function processPrompt(
       let terminated = false;
 
       const unsub = agentSession.subscribe((event) => {
-        if (terminated || !sessionStore.getSession(storeSessionId)) return;
+        if (
+          terminated ||
+          !sessionStore.getSession(storeSessionId, identity.userId)
+        )
+          return;
 
         if (event.type === "message_update") {
           const ae = event.assistantMessageEvent;
@@ -429,10 +456,13 @@ export async function processPrompt(
         const config = loadAgentConfig();
         const data = await fetchReportData(
           config,
-          session.userId ?? "unknown",
+          {
+            userId: identity.userId,
+            token: identity.token,
+            datasetId: session.datasetId,
+          },
           emit,
           storeSessionId,
-          getWsAuthToken(ws),
         );
         promptText = [
           message,
@@ -446,22 +476,24 @@ export async function processPrompt(
           `报告需覆盖全部 ${config.report.perspectives.length} 个分析视角，结合用户要求组织结构与重点，结论需有数据依据。`,
         ].join("\n");
       } else if (isDict) {
-        const schema = await getSchema(
-          session.userId ?? "unknown",
-          getWsAuthToken(ws),
-        );
+        const schema = await getSchema({
+          userId: identity.userId,
+          token: identity.token,
+          datasetId: session.datasetId,
+        });
         promptText = [
           message,
           "",
           "以下是系统已获取的数据集 Schema（维度列与指标定义）：",
           "",
-          schema || "（Schema 获取失败，请说明数据字典暂不可用，不要编造字段定义）",
+          schema.text ||
+            "（Schema 获取失败，请说明数据字典暂不可用，不要编造字段定义）",
         ].join("\n");
       }
 
       await agentSession.prompt(promptText);
 
-      const current = sessionStore.getSession(storeSessionId);
+      const current = sessionStore.getSession(storeSessionId, identity.userId);
       if (!current || current.state !== "running") return true;
 
       const messages = agentSession.state.messages ?? [];
@@ -488,12 +520,10 @@ export async function processPrompt(
       // be restored with their full history on the next connection.
       const persistable = extractPersistableMessages(messages);
       if (persistable.length > 0) {
-        const owner = sessionStore.getSession(storeSessionId);
-        await saveSessionMessages(
-          storeSessionId,
-          owner?.userId ?? "unknown",
-          persistable,
-        );
+        const owner = sessionStore.getSession(storeSessionId, identity.userId);
+        if (owner) {
+          await saveSessionMessages(storeSessionId, owner.userId, persistable);
+        }
       }
       return true;
     } catch (e: unknown) {
@@ -502,7 +532,10 @@ export async function processPrompt(
         wantReasoning &&
         !reasoningRetried &&
         /reasoning|thinking|enable_thinking/i.test(errMsg);
-      if (reasoningRejected && sessionStore.getSession(storeSessionId)) {
+      if (
+        reasoningRejected &&
+        sessionStore.getSession(storeSessionId, identity.userId)
+      ) {
         reasoningRetried = true;
         logger.warn(
           "prompt",
@@ -515,7 +548,7 @@ export async function processPrompt(
         return false;
       }
       // 主动 abort 时 session 已被移除，发 agent_end 而非 error，保留已有内容不被清除
-      if (!sessionStore.getSession(storeSessionId)) {
+      if (!sessionStore.getSession(storeSessionId, identity.userId)) {
         emit({
           type: "agent_end",
           storeSessionId,
@@ -541,10 +574,10 @@ export async function processPrompt(
       // retry loop; runOnce returns false only when reasoning was rejected
     }
   } finally {
-    if (sessionStore.getSession(storeSessionId)) {
+    if (sessionStore.getSession(storeSessionId, identity.userId)) {
       sessionStore.deleteSubscription(storeSessionId);
       sessionStore.updateUnsub(ws, storeSessionId, () => {});
-      sessionStore.setState(storeSessionId, "idle");
+      sessionStore.setState(storeSessionId, "idle", identity.userId);
     }
   }
 }
@@ -567,6 +600,7 @@ export async function processInsight(
   followUpPrompt: string | undefined,
   emit: AgentEventSender,
   sessionStore: SessionStore,
+  identity: VerifiedUserContext,
 ): Promise<void> {
   const emitInsight: AgentEventSender = (event) =>
     emit({ ...event, insight: true });
@@ -578,7 +612,7 @@ export async function processInsight(
       retryable,
     });
 
-  const session = sessionStore.getSession(storeSessionId);
+  const session = sessionStore.getSession(storeSessionId, identity.userId);
   if (!session) {
     sendError("会话不存在", false);
     return;
@@ -587,7 +621,7 @@ export async function processInsight(
     sendError("当前会话正在处理中，请等待完成或发送 abort", true);
     return;
   }
-  sessionStore.setState(storeSessionId, "running");
+  sessionStore.setState(storeSessionId, "running", identity.userId);
 
   try {
     emitInsight({ type: "agent_start", storeSessionId });
@@ -595,12 +629,10 @@ export async function processInsight(
     let promptText = followUpPrompt ?? "";
     if (chartId !== undefined) {
       try {
-        promptText = await buildChartInsightPrompt(
-          chartId,
-          filters,
-          session.userId ?? "unknown",
-          getWsAuthToken(ws),
-        );
+        promptText = await buildChartInsightPrompt(chartId, filters, {
+          userId: identity.userId,
+          token: identity.token,
+        });
       } catch (e) {
         sendError(
           `图表数据获取失败: ${(e as Error).message ?? String(e)}`,
@@ -616,7 +648,11 @@ export async function processInsight(
 
     let terminated = false;
     const unsub = agentSession.subscribe((event) => {
-      if (terminated || !sessionStore.getSession(storeSessionId)) return;
+      if (
+        terminated ||
+        !sessionStore.getSession(storeSessionId, identity.userId)
+      )
+        return;
       if (event.type === "message_update") {
         const ae = event.assistantMessageEvent;
         if (ae.type === "text_delta") {
@@ -654,10 +690,10 @@ export async function processInsight(
       sendError(errMsg, true);
     }
   } finally {
-    if (sessionStore.getSession(storeSessionId)) {
+    if (sessionStore.getSession(storeSessionId, identity.userId)) {
       sessionStore.deleteSubscription(storeSessionId);
       sessionStore.updateUnsub(ws, storeSessionId, () => {});
-      sessionStore.setState(storeSessionId, "idle");
+      sessionStore.setState(storeSessionId, "idle", identity.userId);
     }
   }
 }

@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import rison from "rison";
 import api from "@/api";
@@ -90,9 +109,6 @@ export function usePaginatedList<T>(
   } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const searchLoaded = useRef(false);
-  const sortLoaded = useRef(false);
-  const extraFilterLoaded = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const abortRef = useRef<AbortController | null>(null);
   const inFlightRef = useRef(false);
@@ -113,10 +129,8 @@ export function usePaginatedList<T>(
       const { endpoint, filterColumn, errorMessage, sortFieldMap } =
         configRef.current;
       const silent = opts?.silent ?? false;
-      if (inFlightRef.current) {
-        // 请求在途：非静默请求直接跳过（调用方会自行重试）；静默轮询则排队，
-        // 待当前请求结束后补发，保证"最后登录"等轮询数据不会永久缺失。
-        if (silent) pendingSilentRefetchRef.current = true;
+      if (inFlightRef.current && silent) {
+        pendingSilentRefetchRef.current = true;
         return;
       }
       abortRef.current?.abort();
@@ -196,32 +210,30 @@ export function usePaginatedList<T>(
     localStorage.setItem(PAGE_SIZE_KEY, String(paginationModel.pageSize));
   }, [paginationModel.pageSize]);
 
-  useEffect(() => {
-    if (searchLoaded.current) {
-      setPaginationModel((prev) => ({ ...prev, page: 0 }));
-    }
-    searchLoaded.current = true;
-  }, [searchText]);
-  useEffect(() => {
-    if (sortLoaded.current) {
-      setPaginationModel((prev) => ({ ...prev, page: 0 }));
-    }
-    sortLoaded.current = true;
-  }, [sortModel]);
-
-  useEffect(() => {
-    if (extraFilterLoaded.current) {
-      setPaginationModel((prev) => ({ ...prev, page: 0 }));
-    }
-    extraFilterLoaded.current = true;
-  }, [extraFilters]);
-
-  const handleSearchChange = useCallback((v: string) => {
-    clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      setSearchText(v);
-    }, SEARCH_DEBOUNCE_MS);
+  const updateSearchText = useCallback((value: string) => {
+    setSearchText(value);
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
   }, []);
+
+  const updateSortModel = useCallback((value: SortModel[]) => {
+    setSortModel(value);
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  }, []);
+
+  const updateExtraFilters = useCallback((value: ListFilter[]) => {
+    setExtraFilters(value);
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  }, []);
+
+  const handleSearchChange = useCallback(
+    (v: string) => {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        updateSearchText(v);
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [updateSearchText],
+  );
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -251,10 +263,10 @@ export function usePaginatedList<T>(
     deleteTarget,
     deleteLoading,
     deleteError,
-    setSearchText,
+    setSearchText: updateSearchText,
     setPaginationModel,
-    setSortModel,
-    setExtraFilters,
+    setSortModel: updateSortModel,
+    setExtraFilters: updateExtraFilters,
     setDeleteTarget,
     handleSearchChange,
     handleDelete,

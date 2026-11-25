@@ -1,9 +1,31 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { type ReactNode, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Tooltip from "@mui/material/Tooltip";
 import IconButton from "@mui/material/IconButton";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
+import MenuIcon from "@mui/icons-material/Menu";
 import { useAuthStore } from "@/store/authStore";
 import { useNavStore } from "@/store/navStore";
 import { useShortcutWithHelp } from "@/hooks/useShortcut";
@@ -17,6 +39,7 @@ import ActivityBar from "@/components/ActivityBar/ActivityBar";
 import SidePanel from "@/components/SidePanel/SidePanel";
 import DetailOverlay from "@/components/DetailOverlay/DetailOverlay";
 import SearchOverlay from "@/components/AppLayout/SearchOverlay";
+import MobileDrawer from "@/components/AppLayout/MobileDrawer";
 import { useNavManager } from "@/components/AppLayout/useNavManager";
 
 const categoryLabels: Record<string, string> = {
@@ -35,6 +58,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const switchBackToAdmin = useAuthStore((s) => s.switchBackToAdmin);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const activeOverlay = useNavStore((s) => s.activeOverlay);
   const closeOverlay = useNavStore((s) => s.closeOverlay);
@@ -44,6 +70,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   );
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const pageTip = usePageTip();
 
   const {
@@ -58,6 +85,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     openTimerRef,
     togglePinSidePanel,
     activityBarItems,
+    navigationItems,
     handleNavEnter,
     handleNavLeave,
     handleActivitySelect,
@@ -101,6 +129,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     activityBarItems.find((i) => i.id === (hoverCat ?? activeCategory))
       ?.label ??
     "";
+  const mobileItems = [
+    { id: "home", path: "/", label: "首页" },
+    ...navigationItems,
+  ];
+  const mobileEnabled = Object.fromEntries(
+    mobileItems.map((item) => [item.id, true]),
+  );
+  const isMobileItemActive = (path: string) =>
+    path === "/"
+      ? pathname === "/"
+      : pathname === path || pathname.startsWith(`${path}/`);
 
   return (
     <Box
@@ -128,6 +167,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <Tooltip title="搜索" placement="right">
               <IconButton
                 size="small"
+                aria-label="搜索"
                 onClick={() => setSearchOpen(true)}
                 sx={{ color: "text.secondary" }}
               >
@@ -159,11 +199,34 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               }}
             />
           }
+          mobileMenuButton={
+            <IconButton
+              size="small"
+              aria-label="打开导航菜单"
+              aria-haspopup="dialog"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <MenuIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          }
+          mobileDrawer={
+            <MobileDrawer
+              open={mobileNavOpen}
+              onClose={() => setMobileNavOpen(false)}
+              items={mobileItems}
+              enabled={mobileEnabled}
+              isActive={isMobileItemActive}
+              username={user?.username}
+              onLogout={handleLogout}
+            />
+          }
         />
       </Box>
 
       <SidePanel
         open={
+          !isMobile &&
           sidePanelOpen &&
           (sidePanelPinned || activeCategory != null || hoverCat != null)
         }
@@ -184,7 +247,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           flex: 1,
           minWidth: 0,
           overflow: "hidden",
-          ml: sidePanelOpen && sidePanelPinned ? "180px" : 0,
+          ml: !isMobile && sidePanelOpen && sidePanelPinned ? "180px" : 0,
           transition: (t) =>
             t.transitions.create("margin", {
               easing: t.transitions.easing.sharp,

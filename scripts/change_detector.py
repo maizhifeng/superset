@@ -84,6 +84,7 @@ PATTERNS = {
         r"^docker.*",
         r"^\.github/workflows/docker\.yml$",
         r"^\.grype\.yaml$",
+        r"^superset-frontend-new/",
     ],
     "docs": [
         r"^docs/",

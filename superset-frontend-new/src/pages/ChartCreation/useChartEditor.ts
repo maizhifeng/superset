@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { EChartsOption } from "echarts";
@@ -19,6 +38,10 @@ import type { AdhocMetric, QueryOrderBy } from "@/utils/query/types";
 import { formatNumber } from "@/utils/formatNumber";
 import { getChartDataUrl } from "@/api/chartData";
 import { isFederatedDataset } from "@/config/federatedDatasets";
+
+export type ChartPreviewData = ChartDataPayload & {
+  onRetry?: () => void;
+};
 
 export interface PivotConfig {
   aggregateFunction: string;
@@ -140,7 +163,7 @@ export function useChartEditor({
     column: string;
     direction: "asc" | "desc";
   } | null>(null);
-  const [chartData, setChartData] = useState<ChartDataPayload | null>(null);
+  const [chartData, setChartData] = useState<ChartPreviewData | null>(null);
   const [chartTotalsRows, setChartTotalsRows] = useState<ChartDataRow[] | null>(
     null,
   );
@@ -148,6 +171,7 @@ export function useChartEditor({
     ChartDataRow[][] | null
   >(null);
   const [loadingData, setLoadingData] = useState(false);
+  const [previewRetryKey, setPreviewRetryKey] = useState(0);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const pageSize = 50;
@@ -160,6 +184,18 @@ export function useChartEditor({
   const abortRef = useRef<AbortController | null>(null);
   const chartDataRef = useRef(chartData);
   chartDataRef.current = chartData;
+  const retryPreview = useCallback(() => {
+    setChartData(null);
+    setPreviewRetryKey((value) => value + 1);
+  }, []);
+  const setPreviewResult = useCallback(
+    (payload: ChartPreviewData) => {
+      setChartData(
+        payload.error ? { ...payload, onRetry: retryPreview } : payload,
+      );
+    },
+    [retryPreview],
+  );
   const metricNames = useMemo(
     () => new Set(metricsList.map((m) => m.metric_name)),
     [metricsList],
@@ -479,6 +515,7 @@ export function useChartEditor({
       setLoadingData(false);
       return;
     }
+    setChartData((current) => (current?.error ? null : current));
     // Pivot layout changes must not keep rendering the stale grid: switch to
     // the skeleton immediately and render only once the new data is ready.
     if (previewParams.viz_type === "pivot_table_v2") setLoadingData(true);
@@ -535,7 +572,7 @@ export function useChartEditor({
         ]);
         const cached = wideCacheRef.current;
         if (cached && cached.key === wideKey) {
-          setChartData(cached.payload);
+          setPreviewResult(cached.payload);
           // Wide payloads re-aggregate totals client-side; leftover rows from
           // an earlier legacy query belong to a previous condition.
           setChartTotalsRows(null);
@@ -565,8 +602,10 @@ export function useChartEditor({
             ) as ChartDataPayload[];
             const payload = results[0];
             if (payload) {
-              setChartData(payload);
-              wideCacheRef.current = { key: wideKey, payload };
+              setPreviewResult(payload);
+              wideCacheRef.current = payload.error
+                ? null
+                : { key: wideKey, payload };
               setHasMore(false);
             } else {
               setChartData({});
@@ -738,11 +777,14 @@ export function useChartEditor({
                 if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
               }
             }
-            setChartData(rowData);
+            setPreviewResult(rowData);
           })
-          .catch(() => {
+          .catch((err: unknown) => {
             if (controller.signal.aborted) return;
-            setChartData({});
+            setChartData({
+              error: parseErrorMessage(err, "图表预览加载失败"),
+              onRetry: retryPreview,
+            });
             setChartTotalsRows(null);
             setChartSubtotalRows(null);
           })
@@ -765,10 +807,19 @@ export function useChartEditor({
     page,
     buildMetricsPayload,
     dimensionOptions,
+    previewRetryKey,
+    retryPreview,
+    setPreviewResult,
   ]);
 
   const option = useMemo(() => {
-    if (!chartData || !resolvedType || resolvedType === "auto") return null;
+    if (
+      !chartData ||
+      chartData.error ||
+      !resolvedType ||
+      resolvedType === "auto"
+    )
+      return null;
     if (resolvedType === "table" || resolvedType === "pivot_table_v2")
       return null;
     return buildEChartsOption(
@@ -986,6 +1037,7 @@ export function useChartEditor({
 
   const handleRunQuery = useCallback(() => {
     setPage(0);
+    setChartData((current) => (current?.error ? null : current));
     setLoadingData(true);
     const queryFormData: FormData = {
       metrics: buildMetricsPayload(metrics),
@@ -1127,10 +1179,13 @@ export function useChartEditor({
             if (hasNext) rowData.data = rowData.data.slice(0, pageSize);
           }
         }
-        setChartData(rowData);
+        setPreviewResult(rowData);
       })
-      .catch(() => {
-        setChartData({});
+      .catch((err: unknown) => {
+        setChartData({
+          error: parseErrorMessage(err, "图表预览加载失败"),
+          onRetry: retryPreview,
+        });
         setChartTotalsRows(null);
         setChartSubtotalRows(null);
       })
@@ -1146,6 +1201,8 @@ export function useChartEditor({
     sortEntry,
     buildDashboardAdhocFilters,
     buildMetricsPayload,
+    retryPreview,
+    setPreviewResult,
   ]);
 
   useEffect(() => {

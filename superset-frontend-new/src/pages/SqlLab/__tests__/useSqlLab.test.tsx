@@ -1,9 +1,34 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { test, expect, vi, beforeEach, type Mock } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useSqlLab } from "@/pages/SqlLab/useSqlLab";
 import { useNotificationStore } from "@/store/notificationStore";
 import api from "@/api";
 import type { QueryResult } from "@/types/api";
+
+vi.mock("@/store/authStore", () => ({
+  useAuthStore: (
+    selector: (state: { user: { username: string } }) => unknown,
+  ) => selector({ user: { username: "alice" } }),
+}));
 
 vi.mock("@/api", () => ({
   default: {
@@ -42,6 +67,13 @@ function okResult(one: number): ExecuteResponse {
       data: [{ one }],
     },
   };
+}
+
+function executionSignal(callIndex = 0): AbortSignal {
+  const config = postMock.mock.calls[callIndex]?.[2] as {
+    signal: AbortSignal;
+  };
+  return config.signal;
 }
 
 /** Render the hook with a database/SQL already available so runs can start. */
@@ -291,4 +323,125 @@ test("shows an explicit rate-limit message when execute returns 429", async () =
 
   expect(result.current.error).toContain("频繁");
   expect(result.current.error).toContain("429");
+});
+
+test("stop aborts the active request and ignores its late success", async () => {
+  const request = deferred<ExecuteResponse>();
+  postMock.mockReturnValueOnce(request.promise);
+  const { result } = renderSqlLab();
+  await act(async () => {});
+
+  let run: Promise<void> = Promise.resolve();
+  act(() => {
+    run = result.current.handleRunSql("SELECT 1 AS one");
+  });
+  const signal = executionSignal();
+  expect(signal.aborted).toBe(false);
+  expect(result.current.loading).toBe(true);
+
+  act(() => result.current.stopQuery());
+
+  expect(signal.aborted).toBe(true);
+  expect(result.current.loading).toBe(false);
+
+  await act(async () => {
+    request.resolve(okResult(1));
+    await run;
+  });
+
+  expect(result.current.result).toBeNull();
+  expect(result.current.error).toBeNull();
+  expect(result.current.loading).toBe(false);
+  expect(result.current.recentQueries).toEqual([]);
+});
+
+test("stop suppresses the aborted request's rejection", async () => {
+  const request = deferred<ExecuteResponse>();
+  postMock.mockReturnValueOnce(request.promise);
+  const { result } = renderSqlLab();
+  await act(async () => {});
+
+  let run: Promise<void> = Promise.resolve();
+  act(() => {
+    run = result.current.handleRun();
+  });
+  act(() => result.current.stopQuery());
+
+  await act(async () => {
+    request.reject(
+      new DOMException("The operation was aborted.", "AbortError"),
+    );
+    await run;
+  });
+
+  expect(result.current.error).toBeNull();
+  expect(result.current.result).toBeNull();
+  expect(result.current.loading).toBe(false);
+});
+
+test("a new run aborts the previous request and stop aborts only the latest", async () => {
+  const older = deferred<ExecuteResponse>();
+  const newer = deferred<ExecuteResponse>();
+  postMock
+    .mockReturnValueOnce(older.promise)
+    .mockReturnValueOnce(newer.promise);
+  const { result } = renderSqlLab();
+  await act(async () => {});
+
+  let olderRun: Promise<void> = Promise.resolve();
+  let newerRun: Promise<void> = Promise.resolve();
+  act(() => {
+    olderRun = result.current.handleRunSql("SELECT 1 AS old");
+    newerRun = result.current.handleRunSql("SELECT 2 AS new");
+  });
+
+  expect(executionSignal(0).aborted).toBe(true);
+  expect(executionSignal(1).aborted).toBe(false);
+
+  act(() => result.current.stopQuery());
+
+  expect(executionSignal(1).aborted).toBe(true);
+  expect(result.current.loading).toBe(false);
+
+  await act(async () => {
+    newer.resolve(okResult(2));
+    older.resolve(okResult(1));
+    await Promise.all([olderRun, newerRun]);
+  });
+
+  expect(result.current.result).toBeNull();
+  expect(result.current.error).toBeNull();
+  expect(result.current.recentQueries).toEqual([]);
+});
+
+test("a query can run successfully after stopping the previous request", async () => {
+  const stopped = deferred<ExecuteResponse>();
+  postMock
+    .mockReturnValueOnce(stopped.promise)
+    .mockResolvedValueOnce(okResult(2));
+  const { result } = renderSqlLab();
+  await act(async () => {});
+
+  let stoppedRun: Promise<void> = Promise.resolve();
+  act(() => {
+    stoppedRun = result.current.handleRun();
+  });
+  act(() => result.current.stopQuery());
+
+  await act(async () => {
+    await result.current.handleRun();
+  });
+
+  expect(executionSignal(1).aborted).toBe(false);
+  expect(result.current.result?.data).toEqual([{ one: 2 }]);
+  expect(result.current.loading).toBe(false);
+
+  await act(async () => {
+    stopped.resolve(okResult(1));
+    await stoppedRun;
+  });
+
+  expect(result.current.result?.data).toEqual([{ one: 2 }]);
+  expect(result.current.error).toBeNull();
+  expect(result.current.loading).toBe(false);
 });

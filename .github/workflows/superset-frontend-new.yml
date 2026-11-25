@@ -1,0 +1,133 @@
+name: Superset Frontend New CI
+
+on:
+  push:
+    paths:
+      - "superset-frontend-new/**"
+      - ".github/workflows/superset-frontend-new.yml"
+  pull_request:
+    types: [synchronize, opened, reopened, ready_for_review]
+    paths:
+      - "superset-frontend-new/**"
+      - ".github/workflows/superset-frontend-new.yml"
+  workflow_dispatch:
+    inputs:
+      superset_url:
+        description: "Running Superset backend URL used by E2E"
+        required: true
+        type: string
+      playwright_base_url:
+        description: "Running superset-frontend-new URL used by E2E"
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: superset-frontend-new
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: superset-frontend-new/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Type check
+        run: npm run type
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: superset-frontend-new-coverage
+          path: superset-frontend-new/coverage
+          retention-days: 7
+
+      - name: Build
+        run: npm run build
+
+      - name: Check initial bundle budget
+        run: npm run check:bundle
+
+      - name: List Playwright tests
+        run: npm run playwright -- --list
+
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    environment: superset-frontend-e2e
+    env:
+      E2E_USER: ${{ secrets.E2E_USER }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      SUPERSET_URL: ${{ inputs.superset_url }}
+      PLAYWRIGHT_BASE_URL: ${{ inputs.playwright_base_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Validate E2E prerequisites
+        run: |
+          : "${E2E_USER:?E2E_USER secret is required}"
+          : "${E2E_PASSWORD:?E2E_PASSWORD secret is required}"
+          : "${SUPERSET_URL:?Superset backend URL is required}"
+          : "${PLAYWRIGHT_BASE_URL:?Playwright base URL is required}"
+          curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 5 "${SUPERSET_URL%/}/health"
+          curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 5 "${PLAYWRIGHT_BASE_URL%/}/login"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: superset-frontend-new/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Run Playwright tests
+        run: npm run playwright
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: superset-frontend-new-playwright-report
+          path: superset-frontend-new/playwright-report
+          retention-days: 7

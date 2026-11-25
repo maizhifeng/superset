@@ -1,3 +1,22 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useNavStore } from "@/store/navStore";
@@ -46,14 +65,11 @@ export function useNavManager() {
   const routeOverrides = useUserRouteOverrides((s) => s.overrides);
   const currentUsername = useAuthStore((s) => s.user?.username);
 
-  // 系统管理固定入口：显式拒绝优先，其次单用户放行，最后回落到管理员角色。
   const canAccessSystemAdmin = useMemo(() => {
     if (!currentUsername) return false;
     const userOverrides = routeOverrides[currentUsername] ?? {};
-    const override = userOverrides["/system/admin"];
-    if (override === false) return false;
-    if (override === true) return true;
-    return userRoles?.["Admin"] === true;
+    if (userOverrides["/system/admin"] === false) return false;
+    return userRoles?.Admin === true;
   }, [currentUsername, userRoles, routeOverrides]);
 
   const activeCategory = useNavStore((s) => s.activeCategory);
@@ -83,46 +99,46 @@ export function useNavManager() {
   const openTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const closeTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
+  const navigationItems = useMemo(() => {
+    const visibleItems = items
+      .filter((item) => {
+        if (item.id === "home") return false;
+        if (!enabled[item.id]) return false;
+        const userOverrides = currentUsername
+          ? (routeOverrides[currentUsername] ?? {})
+          : {};
+        if (userOverrides[item.path] === false) return false;
+        if (!item.roles || item.roles.length === 0) return true;
+        return item.roles.some((role) => userRoles?.[role] === true);
+      })
+      .map((item) => ({
+        id: item.id,
+        path: item.path,
+        label: item.label,
+      }));
+    return canAccessSystemAdmin
+      ? [
+          ...visibleItems,
+          { id: "system_admin", path: "/system/admin", label: "系统管理" },
+        ]
+      : visibleItems;
+  }, [
+    items,
+    enabled,
+    userRoles,
+    routeOverrides,
+    currentUsername,
+    canAccessSystemAdmin,
+  ]);
+
   const activityBarItems: ActivityBarItem[] = useMemo(
-    () => [
-      ...items
-        .filter((item) => {
-          if (item.id === "home") return false;
-          if (!enabled[item.id]) return false;
-          // Per-user overrides win over role checks for every menu entry.
-          const userOverrides = currentUsername
-            ? (routeOverrides[currentUsername] ?? {})
-            : {};
-          const override = userOverrides[item.path];
-          if (override === true) return true;
-          if (override === false) return false;
-          if (!item.roles || item.roles.length === 0) return true;
-          return item.roles.some((role) => userRoles?.[role] === true);
-        })
-        .map((item) => ({
-          id: item.id,
-          icon: menuIconMap[item.id] ?? defaultIcon,
-          label: item.label,
-        })),
-      // 系统管理为固定入口，不受菜单开关控制，默认对管理员启用。
-      ...(canAccessSystemAdmin
-        ? [
-            {
-              id: "system_admin",
-              icon: menuIconMap.system_admin ?? defaultIcon,
-              label: "系统管理",
-            },
-          ]
-        : []),
-    ],
-    [
-      items,
-      enabled,
-      userRoles,
-      routeOverrides,
-      currentUsername,
-      canAccessSystemAdmin,
-    ],
+    () =>
+      navigationItems.map((item) => ({
+        id: item.id,
+        icon: menuIconMap[item.id] ?? defaultIcon,
+        label: item.label,
+      })),
+    [navigationItems],
   );
 
   const handleNavEnter = useCallback((cat: string) => {
@@ -156,6 +172,8 @@ export function useNavManager() {
 
   const handleActivitySelect = useCallback(
     async (id: string) => {
+      clearTimeout(openTimerRef.current);
+      clearTimeout(closeTimerRef.current);
       const mapped = menuIdToCategory[id];
       if (mapped === "sqllab") {
         openOverlay("sqllab");
@@ -242,6 +260,7 @@ export function useNavManager() {
     togglePinSidePanel,
     closeSidePanel,
     activityBarItems,
+    navigationItems,
     handleNavEnter,
     handleNavLeave,
     handleActivitySelect,
